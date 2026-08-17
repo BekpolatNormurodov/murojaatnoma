@@ -17,7 +17,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
 RUN npm run build
-RUN npm prune --omit=dev
+# NOTE: dev deps are intentionally kept so the Prisma CLI is available at
+# runtime to sync the schema on first boot (skeleton has no migrations yet).
+# For production, add real migrations and prune dev deps again.
 
 ##
 ## 3) runtime - minimal production image
@@ -36,4 +38,7 @@ COPY --from=build /app/package.json ./package.json
 USER nestjs
 
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+# On start: sync the Prisma schema to the DB (creates tables on first boot —
+# idempotent), then launch. Replace `db push` with `migrate deploy` once real
+# migrations exist.
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && node dist/main.js"]
