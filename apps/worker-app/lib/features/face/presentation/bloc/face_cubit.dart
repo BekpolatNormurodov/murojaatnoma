@@ -14,8 +14,9 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
-import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
+import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
+import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
@@ -880,18 +881,17 @@ class FaceCubit extends Cubit<FaceState> {
     }
 
     emit(const FaceCheckingIn());
+    // Jonli backend (`useMock == false`) yuz moslikni SERVER hisoblaydi:
+    // probe `embedding` + koordinata yuboriladi, yakuniy qaror
+    // (`CheckScanResult.isValid`/`faceScore`) serverdan keladi (employeeId
+    // JWT'dan olinadi — yuborilmaydi). `screenshotPath` faqat mahalliy
+    // davomat-isboti sifatida saqlanadi (backend kontraktida bunday maydon
+    // yo'q). Mock oqimda embedding e'tiborga olinmaydi (backend yo'q).
     final checkInEither = await _checkIn(
-      CheckInParams(
-        lat: position.latitude,
-        lng: position.longitude,
-        screenshotPath: screenshotPath,
-        // Jonli backend (`useMock == false`) o'zi (>=0.7) moslikni
-        // hisoblaydi — shuning uchun probe embedding + ishchi ID ham
-        // yuboriladi. Mock oqimda (standart, `useMock == true`) bu ikki
-        // maydon `null` qoladi: mahalliy moslik yuqorida (`_verifyFace`)
-        // allaqachon tekshirilgan, backend esa umuman yo'q.
-        employeeId: AppConfig.useMock ? null : _workerId,
-        embedding: AppConfig.useMock ? null : probe,
+      AttendanceScanParams(
+        embedding: probe,
+        latitude: position.latitude,
+        longitude: position.longitude,
       ),
     );
 
@@ -912,9 +912,20 @@ class FaceCubit extends Cubit<FaceState> {
           emit(FaceError(failure.message));
         }
       },
-      (attendance) {
+      (CheckScanResult result) {
+        // Server yuzni (embedding) qayta moslashtirdi — `isValid == false`
+        // bo'lsa (masalan server shabloni bilan mos kelmadi) muvaffaqiyat
+        // EMAS: sababni ko'rsatamiz.
+        if (!result.isValid) {
+          emit(
+            result.reason != null && result.reason!.isNotEmpty
+                ? FaceError(result.reason!)
+                : const FaceMatchFailed(),
+          );
+          return;
+        }
         _finished = true;
-        emit(FaceCheckinSuccess(attendance.checkIn ?? _formattedNow()));
+        emit(FaceCheckinSuccess(_formattedNow()));
       },
     );
   }
