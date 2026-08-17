@@ -7,10 +7,11 @@ import { Card } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, formatCompact, timeAgo } from '@/shared/lib/format';
+import { api } from '@/shared/api/client';
 import { NEWS_META } from '@/shared/data/mock';
 import type { NewsCategory, NewsItem } from '@/shared/data/types';
 import { useNews } from './useNews';
-import { AddNewsModal, NewsDetailDrawer } from './NewsModals';
+import { AddNewsModal, EditNewsModal, NewsDetailDrawer } from './NewsModals';
 
 const CATEGORIES = Object.keys(NEWS_META) as NewsCategory[];
 
@@ -31,11 +32,47 @@ export function NewsPage() {
   const { data, isLoading, isError, error, refetch } = useNews();
   const [items, setItems] = useState<NewsItem[]>([]);
   const [selected, setSelected] = useState<NewsItem | null>(null);
+  const [editing, setEditing] = useState<NewsItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     if (data) setItems(data);
   }, [data]);
+
+  // POST /news — yaratilgan yozuv backenddan qaytadi va ro'yxat boshiga
+  // qo'shiladi (mahalliy-only emas).
+  async function createNews(payload: Omit<NewsItem, 'id'>) {
+    const created = await api.post<NewsItem>('/news', payload);
+    setItems((prev) => [created, ...prev]);
+    return created;
+  }
+
+  // PATCH /news/:id — optimistik: darhol mahalliy birlashtiriladi, xato
+  // bo'lsa oldingi holatga qaytariladi.
+  async function updateNews(id: string, payload: Omit<NewsItem, 'id'>) {
+    const prev = items;
+    setItems((p) => p.map((n) => (n.id === id ? { ...n, ...payload } : n)));
+    try {
+      const updated = await api.patch<NewsItem>(`/news/${id}`, payload);
+      setItems((p) => p.map((n) => (n.id === id ? updated : n)));
+      return updated;
+    } catch (err) {
+      setItems(prev);
+      throw err instanceof Error ? err : new Error("Yangilikni yangilab bo'lmadi");
+    }
+  }
+
+  // DELETE /news/:id — optimistik o'chirish, xato bo'lsa qaytariladi.
+  async function deleteNews(id: string) {
+    const prev = items;
+    setItems((p) => p.filter((n) => n.id !== id));
+    try {
+      await api.del(`/news/${id}`);
+    } catch (err) {
+      setItems(prev);
+      throw err instanceof Error ? err : new Error("Yangilikni o'chirib bo'lmadi");
+    }
+  }
 
   const hero = useMemo(
     () => items.find((n) => n.featured && n.status === 'published'),
@@ -135,12 +172,17 @@ export function NewsPage() {
         </>
       )}
 
-      <AddNewsModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onCreate={(item) => setItems((prev) => [item, ...prev])}
+      <AddNewsModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={createNews} />
+      <EditNewsModal item={editing} onClose={() => setEditing(null)} onUpdate={updateNews} />
+      <NewsDetailDrawer
+        item={selected}
+        onClose={() => setSelected(null)}
+        onEdit={(item) => {
+          setSelected(null);
+          setEditing(item);
+        }}
+        onDelete={deleteNews}
       />
-      <NewsDetailDrawer item={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }
