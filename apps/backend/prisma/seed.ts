@@ -10,7 +10,7 @@
  * realistic data the mock produces (11 districts, 14 workers, 64 murojaat,
  * 22 cameras, 66 utility rows, 12 utility/finance months, 26 documents,
  * 10 staff, 6 deputies, 18 complaints, 10 meetings, 8 news, 35 app-users,
- * 6 notifications).
+ * 6 notifications, 11 chat conversations + seed messages).
  *
  * Idempotency: every row is written with upsert() keyed by its stable id, so a
  * re-run updates in place and never duplicates.
@@ -796,6 +796,123 @@ const NOTIFICATIONS = ([
 });
 
 /* ============================================================
+   Chat — umumiy (guruh) va shaxsiy (xodimlar bilan) suhbatlar
+   Self-contained port of web-admin/src/shared/store/chat.ts
+   (buildConversations() / buildSeedMessages()) — same conversation/message
+   ids and text so a fresh DB looks identical to the old in-store mock.
+   ============================================================ */
+const CHAT_ME_ID = 'me';
+const CHAT_GROUP_ID = 'group-all';
+
+const chatMinsAgo = (m: number) => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - m);
+  return d.toISOString();
+};
+
+const CHAT_CONVERSATIONS: {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle: string | null;
+  avatarColor: string | null;
+  photo: string | null;
+  staffId: string | null;
+  online: boolean;
+}[] = [
+  {
+    id: CHAT_GROUP_ID,
+    kind: 'group',
+    title: 'Umumiy chat',
+    subtitle: `${STAFF.length} a'zo · Hokimiyat apparati`,
+    avatarColor: '#10b981',
+    photo: null,
+    staffId: null,
+    online: true,
+  },
+  ...STAFF.map((s, i) => ({
+    id: `dm-${s.id}`,
+    kind: 'direct',
+    title: s.name,
+    subtitle: s.position,
+    avatarColor: s.avatarColor,
+    photo: s.photo,
+    staffId: s.id,
+    online: s.status === 'active' && i % 3 !== 1,
+  })),
+];
+
+const CHAT_MESSAGES: {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  kind: string;
+  text: string;
+  createdAt: string;
+  status: string;
+}[] = [];
+let chatMsgSeq = 0;
+const nextChatMsgId = () => `cm${++chatMsgSeq}`;
+
+// Umumiy guruh suhbati
+(
+  [
+    { sender: 's2', text: "Assalomu alaykum, hammaga xayrli tong! Bugungi yig'ilish soat 10:00 da.", ago: 220 },
+    { sender: 's5', text: "Va alaykum assalom. Murojaatlar bo'yicha hisobot tayyor.", ago: 205 },
+    { sender: CHAT_ME_ID, text: "Rahmat. Shoshilinch murojaatlarga e'tibor qarating, muddati o'tmasin.", ago: 180 },
+    { sender: 's3', text: "Obodonlashtirish bo'yicha 3 ta yangi murojaat keldi, ko'rib chiqyapmiz.", ago: 95 },
+    { sender: 's6', text: "Call-markaz: bugun 42 ta qo'ng'iroq qabul qilindi.", ago: 30 },
+  ] as { sender: string; text: string; ago: number }[]
+).forEach((g) => {
+  CHAT_MESSAGES.push({
+    id: nextChatMsgId(),
+    conversationId: CHAT_GROUP_ID,
+    senderId: g.sender,
+    kind: 'text',
+    text: g.text,
+    createdAt: chatMinsAgo(g.ago),
+    status: 'read',
+  });
+});
+
+// Shaxsiy suhbat — s2 (Hokim yordamchisi)
+(
+  [
+    { sender: 's2', text: "Hurmatli rahbar, kommunal to'lovlar hisobotini yubordim.", ago: 48, status: 'read' },
+    { sender: CHAT_ME_ID, text: "Qabul qildim, ko'rib chiqaman. Rahmat!", ago: 46, status: 'read' },
+    { sender: 's2', text: "Ertaga qo'shimcha ma'lumot kerak bo'lsa, tayyorman.", ago: 8, status: 'delivered' },
+  ] as { sender: string; text: string; ago: number; status: string }[]
+).forEach((m) => {
+  CHAT_MESSAGES.push({
+    id: nextChatMsgId(),
+    conversationId: 'dm-s2',
+    senderId: m.sender,
+    kind: 'text',
+    text: m.text,
+    createdAt: chatMinsAgo(m.ago),
+    status: m.status,
+  });
+});
+
+// Shaxsiy suhbat — s5 (Bo'lim boshlig'i)
+(
+  [
+    { sender: 's5', text: "Yangi murojaat operatori sifatida grafik bo'yicha savol bor edi.", ago: 125, status: 'read' },
+    { sender: CHAT_ME_ID, text: 'Albatta, yozing.', ago: 120, status: 'read' },
+  ] as { sender: string; text: string; ago: number; status: string }[]
+).forEach((m) => {
+  CHAT_MESSAGES.push({
+    id: nextChatMsgId(),
+    conversationId: 'dm-s5',
+    senderId: m.sender,
+    kind: 'text',
+    text: m.text,
+    createdAt: chatMinsAgo(m.ago),
+    status: m.status,
+  });
+});
+
+/* ============================================================
    Persistence — idempotent upsert by stable id
    ============================================================ */
 const DATASETS: Record<string, any[]> = {
@@ -814,6 +931,8 @@ const DATASETS: Record<string, any[]> = {
   news: NEWS,
   appUsers: APP_USERS,
   notifications: NOTIFICATIONS,
+  chatConversations: CHAT_CONVERSATIONS,
+  chatMessages: CHAT_MESSAGES,
 };
 
 function reportCounts(): void {
@@ -854,6 +973,8 @@ const toMeeting = (m: any) => ({ ...m, startAt: new Date(m.startAt) });
 const toNews = (n: any) => ({ ...n, publishedAt: new Date(n.publishedAt) });
 const toDocument = (d: any) => ({ ...d, createdAt: new Date(d.createdAt) });
 const toNotification = (n: any) => ({ ...n, createdAt: new Date(n.createdAt) });
+const toChatConversation = (c: any) => c;
+const toChatMessage = (m: any) => ({ ...m, createdAt: new Date(m.createdAt) });
 
 async function upsertAll(model: any, rows: any[], map: (r: any) => any): Promise<void> {
   for (const row of rows) {
@@ -902,6 +1023,8 @@ async function main(): Promise<void> {
     await upsertAll(prisma.newsItem, NEWS, toNews);
     await upsertAll(prisma.appUser, APP_USERS, toAppUser);
     await upsertAll(prisma.adminNotification, NOTIFICATIONS, toNotification);
+    await upsertAll(prisma.chatConversation, CHAT_CONVERSATIONS, toChatConversation);
+    await upsertAll(prisma.chatMessage, CHAT_MESSAGES, toChatMessage);
 
     console.log('Seed complete. Row counts:');
     reportCounts();

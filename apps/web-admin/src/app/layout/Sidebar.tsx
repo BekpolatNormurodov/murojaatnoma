@@ -27,7 +27,7 @@ import {
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useAuth } from '@/shared/store/auth';
 import { useUI } from '@/shared/store/ui';
-import { useChat, ME_ID } from '@/shared/store/chat';
+import { useConversations } from '@/features/chat/useChat';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { COMPLAINTS } from '@/shared/data/mock';
 import { cn } from '@/shared/lib/cn';
@@ -96,9 +96,10 @@ export function SidebarContent({
   const { t } = useI18n();
   const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
-  const chatUnread = useChat((s) =>
-    s.messages.filter((m) => m.senderId !== ME_ID && m.status !== 'read').length,
-  );
+  // Suhbatlar ro'yxati boshqa joyda (ChatPage) allaqachon so'ralgan bo'lsa,
+  // react-query keshidan qayta ishlatiladi — qo'shimcha so'rov yubormaydi.
+  const { data: conversations } = useConversations();
+  const chatUnread = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0);
   const [logoutOpen, setLogoutOpen] = useState(false);
   return (
     <>

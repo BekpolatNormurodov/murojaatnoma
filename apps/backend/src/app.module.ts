@@ -18,6 +18,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { FinanceModule } from './modules/finance/finance.module';
@@ -56,6 +57,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AnalyticsModule,
     CatalogModule,
     FinanceModule,
+    ChatModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

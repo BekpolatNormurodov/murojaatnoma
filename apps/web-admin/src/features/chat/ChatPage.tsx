@@ -13,11 +13,14 @@ import {
   CloseCircle,
   Messages2,
   DocumentDownload,
+  RotateRight,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
+import { Button } from '@/shared/ui/Button';
 import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
 import { ChatComposer } from './ChatComposer';
-import { useChat, ME_ID, GROUP_ID, type ChatMessage } from '@/shared/store/chat';
+import { useConversations, useMessages, useSendMessage, useMarkRead } from './useChat';
+import { ME_ID, GROUP_ID, useChatUi, type ChatMessage } from '@/shared/store/chat';
 import { STAFF } from '@/shared/data/mock';
 import { formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
@@ -72,16 +75,35 @@ const REPLIES = [
   "Hammasi joyida, hujjatni ko'rib chiqaman.",
 ];
 
+/* ---------------- Skeleton (yuklanmoqda) ---------------- */
+function RowSkeleton() {
+  return (
+    <div className="flex items-center gap-3 rounded-xl px-2.5 py-2.5">
+      <div className="h-12 w-12 shrink-0 animate-pulse rounded-full bg-surface-2" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="h-3 w-2/3 animate-pulse rounded bg-surface-2" />
+        <div className="h-2.5 w-4/5 animate-pulse rounded bg-surface-2" />
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    Chat sahifasi — umumiy va shaxsiy suhbatlar
    ============================================================ */
 export function ChatPage() {
-  const conversations = useChat((s) => s.conversations);
-  const messages = useChat((s) => s.messages);
-  const send = useChat((s) => s.send);
-  const markRead = useChat((s) => s.markRead);
+  const conversationsQuery = useConversations();
+  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
 
-  const [activeId, setActiveId] = useState<string>(GROUP_ID);
+  const activeId = useChatUi((s) => s.activeConversationId);
+  const setActiveId = useChatUi((s) => s.setActiveConversationId);
+
+  const messagesQuery = useMessages(activeId);
+  const activeMessages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
+
+  const sendMessage = useSendMessage();
+  const { mutate: markRead } = useMarkRead();
+
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
   const [mobileThread, setMobileThread] = useState(false);
@@ -93,45 +115,29 @@ export function ChatPage() {
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
 
-  const activeMessages = useMemo(
-    () =>
-      messages
-        .filter((m) => m.conversationId === activeId)
-        .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt)),
-    [messages, activeId],
-  );
-
-  // Suhbatlar ro'yxati: oxirgi xabar + o'qilmaganlar
+  // Suhbatlar ro'yxati: qidiruv/filtr, so'ng guruh birinchi + oxirgi xabar vaqti bo'yicha
   const convList = useMemo(() => {
     const q = query.trim().toLowerCase();
     return conversations
       .filter((c) => (filter === 'direct' ? c.kind === 'direct' : true))
       .filter((c) => !q || c.title.toLowerCase().includes(q))
-      .map((c) => {
-        const msgs = messages.filter((m) => m.conversationId === c.id);
-        const last = msgs.reduce<ChatMessage | null>(
-          (acc, m) => (!acc || +new Date(m.createdAt) > +new Date(acc.createdAt) ? m : acc),
-          null,
-        );
-        const unread = msgs.filter((m) => m.senderId !== ME_ID && m.status !== 'read').length;
-        return { conv: c, last, unread };
-      })
       .sort((a, b) => {
-        if (a.conv.id === GROUP_ID) return -1;
-        if (b.conv.id === GROUP_ID) return 1;
-        const ta = a.last ? +new Date(a.last.createdAt) : 0;
-        const tb = b.last ? +new Date(b.last.createdAt) : 0;
+        if (a.id === GROUP_ID) return -1;
+        if (b.id === GROUP_ID) return 1;
+        const ta = a.lastMessage ? +new Date(a.lastMessage.createdAt) : 0;
+        const tb = b.lastMessage ? +new Date(b.lastMessage.createdAt) : 0;
         return tb - ta;
       });
-  }, [conversations, messages, query, filter]);
+  }, [conversations, query, filter]);
 
   const totalUnread = useMemo(
-    () => messages.filter((m) => m.senderId !== ME_ID && m.status !== 'read').length,
-    [messages],
+    () => conversations.reduce((sum, c) => sum + c.unreadCount, 0),
+    [conversations],
   );
 
-  // Faol suhbat ochilganda o'qilgan deb belgilash
+  // Faol suhbat ochilganda (yoki unga yangi xabar kelganda) o'qilgan deb belgilash
   useEffect(() => {
+    if (!activeId) return;
     markRead(activeId);
   }, [activeId, activeMessages.length, markRead]);
 
@@ -191,7 +197,7 @@ export function ChatPage() {
     window.setTimeout(
       () => {
         setTypingConv((cur) => (cur === convId ? null : cur));
-        send({
+        sendMessage.mutate({
           conversationId: convId,
           senderId: staffId,
           kind: 'text',
@@ -203,15 +209,22 @@ export function ChatPage() {
   }
 
   function handleSendText(text: string) {
-    send({ conversationId: activeId, senderId: ME_ID, kind: 'text', text });
+    sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'text', text });
     scheduleReply(activeId);
   }
   function handleSendVoice(url: string, durationSec: number) {
-    send({ conversationId: activeId, senderId: ME_ID, kind: 'voice', url, durationSec });
+    sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'voice', url, durationSec });
     scheduleReply(activeId);
   }
   function handleSendFile(url: string, kind: 'image' | 'file', name: string, size: number) {
-    send({ conversationId: activeId, senderId: ME_ID, kind, url, fileName: name, fileSize: size });
+    sendMessage.mutate({
+      conversationId: activeId,
+      senderId: ME_ID,
+      kind,
+      url,
+      fileName: name,
+      fileSize: size,
+    });
     scheduleReply(activeId);
   }
 
@@ -262,64 +275,86 @@ export function ChatPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
-          {convList.map(({ conv, last, unread }) => (
-            <button
-              key={conv.id}
-              onClick={() => openConv(conv.id)}
-              className={cn(
-                'flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors',
-                activeId === conv.id ? 'bg-primary-50' : 'hover:bg-surface-2',
-              )}
-            >
-              <div className="relative shrink-0">
-                {conv.kind === 'group' ? (
-                  <span
-                    className="flex h-12 w-12 items-center justify-center rounded-full text-white"
-                    style={{ background: `linear-gradient(135deg, ${conv.avatarColor}, ${conv.avatarColor}bb)` }}
-                  >
-                    <People size={24} variant="Bulk" />
-                  </span>
-                ) : (
-                  <Avatar name={conv.title} src={conv.photo} color={conv.avatarColor} size={48} />
-                )}
-                {conv.kind === 'direct' && conv.online && (
-                  <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-surface bg-success" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn('truncate text-[14px]', unread ? 'font-bold text-ink' : 'font-semibold text-ink')}>
-                    {conv.title}
-                  </span>
-                  {last && <span className="shrink-0 text-[11px] text-ink-muted">{timeHM(last.createdAt)}</span>}
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className={cn('truncate text-[12.5px]', unread ? 'text-ink-soft' : 'text-ink-muted')}>
-                    {typingConv === conv.id ? (
-                      <span className="text-primary-600">yozmoqda…</span>
-                    ) : last ? (
-                      <>
-                        {last.senderId === ME_ID && <span className="text-ink-muted">Siz: </span>}
-                        {conv.kind === 'group' && last.senderId !== ME_ID && (
-                          <span className="text-ink-muted">{senderInfo(last.senderId).name.split(' ')[0]}: </span>
-                        )}
-                        {previewText(last)}
-                      </>
-                    ) : (
-                      <span className="italic text-ink-muted">Xabar yo'q</span>
+          {conversationsQuery.isError ? (
+            <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+              <CloseCircle size={32} variant="Bulk" className="text-danger" />
+              <p className="text-sm text-ink-muted">Suhbatlarni yuklab bo'lmadi</p>
+              <Button variant="secondary" size="sm" onClick={() => conversationsQuery.refetch()}>
+                <RotateRight size={15} /> Qayta urinish
+              </Button>
+            </div>
+          ) : conversationsQuery.isLoading ? (
+            <div className="space-y-1">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <RowSkeleton key={i} />
+              ))}
+            </div>
+          ) : (
+            <>
+              {convList.map((conv) => {
+                const last = conv.lastMessage;
+                const unread = conv.unreadCount;
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => openConv(conv.id)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors',
+                      activeId === conv.id ? 'bg-primary-50' : 'hover:bg-surface-2',
                     )}
-                  </span>
-                  {unread > 0 && (
-                    <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary-600 px-1.5 text-[11px] font-bold text-white">
-                      {unread}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </button>
-          ))}
-          {convList.length === 0 && (
-            <p className="py-10 text-center text-sm text-ink-muted">Suhbat topilmadi</p>
+                  >
+                    <div className="relative shrink-0">
+                      {conv.kind === 'group' ? (
+                        <span
+                          className="flex h-12 w-12 items-center justify-center rounded-full text-white"
+                          style={{ background: `linear-gradient(135deg, ${conv.avatarColor}, ${conv.avatarColor}bb)` }}
+                        >
+                          <People size={24} variant="Bulk" />
+                        </span>
+                      ) : (
+                        <Avatar name={conv.title} src={conv.photo} color={conv.avatarColor} size={48} />
+                      )}
+                      {conv.kind === 'direct' && conv.online && (
+                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-surface bg-success" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn('truncate text-[14px]', unread ? 'font-bold text-ink' : 'font-semibold text-ink')}>
+                          {conv.title}
+                        </span>
+                        {last && <span className="shrink-0 text-[11px] text-ink-muted">{timeHM(last.createdAt)}</span>}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn('truncate text-[12.5px]', unread ? 'text-ink-soft' : 'text-ink-muted')}>
+                          {typingConv === conv.id ? (
+                            <span className="text-primary-600">yozmoqda…</span>
+                          ) : last ? (
+                            <>
+                              {last.senderId === ME_ID && <span className="text-ink-muted">Siz: </span>}
+                              {conv.kind === 'group' && last.senderId !== ME_ID && (
+                                <span className="text-ink-muted">{senderInfo(last.senderId).name.split(' ')[0]}: </span>
+                              )}
+                              {previewText(last)}
+                            </>
+                          ) : (
+                            <span className="italic text-ink-muted">Xabar yo'q</span>
+                          )}
+                        </span>
+                        {unread > 0 && (
+                          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primary-600 px-1.5 text-[11px] font-bold text-white">
+                            {unread}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+              {convList.length === 0 && (
+                <p className="py-10 text-center text-sm text-ink-muted">Suhbat topilmadi</p>
+              )}
+            </>
           )}
         </div>
       </aside>
@@ -388,36 +423,58 @@ export function ChatPage() {
 
             {/* Xabarlar */}
             <div ref={scrollRef} className="flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6">
-              {rendered.map((item) =>
-                item.kind === 'day' ? (
-                  <div key={item.id} className="flex justify-center py-3">
-                    <span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] font-medium text-ink-muted">
-                      {item.label}
-                    </span>
-                  </div>
-                ) : (
-                  <MessageRow
-                    key={item.id}
-                    msg={item.msg}
-                    first={item.first}
-                    isGroup={activeConv.kind === 'group'}
-                    onImageClick={setLightbox}
-                  />
-                ),
-              )}
-              {typingConv === activeConv.id && (
-                <div className="flex items-center gap-1.5 px-1 pt-2">
-                  <span className="flex gap-1 rounded-2xl bg-surface px-3 py-2.5 shadow-card">
-                    {[0, 1, 2].map((i) => (
-                      <motion.span
-                        key={i}
-                        className="h-2 w-2 rounded-full bg-ink-muted"
-                        animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-                        transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
-                      />
-                    ))}
-                  </span>
+              {messagesQuery.isError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <CloseCircle size={32} variant="Bulk" className="text-danger" />
+                  <p className="text-sm text-ink-muted">Xabarlarni yuklab bo'lmadi</p>
+                  <Button variant="secondary" size="sm" onClick={() => messagesQuery.refetch()}>
+                    <RotateRight size={15} /> Qayta urinish
+                  </Button>
                 </div>
+              ) : messagesQuery.isLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+                </div>
+              ) : (
+                <>
+                  {rendered.map((item) =>
+                    item.kind === 'day' ? (
+                      <div key={item.id} className="flex justify-center py-3">
+                        <span className="rounded-full bg-surface-2 px-3 py-1 text-[11px] font-medium text-ink-muted">
+                          {item.label}
+                        </span>
+                      </div>
+                    ) : (
+                      <MessageRow
+                        key={item.id}
+                        msg={item.msg}
+                        first={item.first}
+                        isGroup={activeConv.kind === 'group'}
+                        onImageClick={setLightbox}
+                      />
+                    ),
+                  )}
+                  {activeMessages.length === 0 && (
+                    <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+                      <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
+                      <p className="text-sm text-ink-muted">Hali xabar yo'q — birinchi bo'lib yozing</p>
+                    </div>
+                  )}
+                  {typingConv === activeConv.id && (
+                    <div className="flex items-center gap-1.5 px-1 pt-2">
+                      <span className="flex gap-1 rounded-2xl bg-surface px-3 py-2.5 shadow-card">
+                        {[0, 1, 2].map((i) => (
+                          <motion.span
+                            key={i}
+                            className="h-2 w-2 rounded-full bg-ink-muted"
+                            animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
+                            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+                          />
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -428,6 +485,10 @@ export function ChatPage() {
               onSendFile={handleSendFile}
             />
           </>
+        ) : conversationsQuery.isLoading ? (
+          <div className="flex flex-1 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+          </div>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
             <Messages2 size={48} variant="Bulk" className="text-ink-muted" />
@@ -440,8 +501,8 @@ export function ChatPage() {
       <VideoCall
         open={callOpen}
         onClose={() => setCallOpen(false)}
-        title={activeConv?.title ?? 'Qo\u2018ng\u2018iroq'}
-        subtitle={activeConv?.kind === 'group' ? 'Guruh qo\u2018ng\u2018irog\u2018i' : undefined}
+        title={activeConv?.title ?? 'Qo‘ng‘iroq'}
+        subtitle={activeConv?.kind === 'group' ? 'Guruh qo‘ng‘irog‘i' : undefined}
         participants={callParticipants}
       />
 
