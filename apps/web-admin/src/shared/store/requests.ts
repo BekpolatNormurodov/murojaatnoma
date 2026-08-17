@@ -67,6 +67,9 @@ export const useRequests = create<RequestsState>((set, get) => ({
       }));
     } catch (err) {
       console.error("Murojaat qo'shishda xatolik:", err);
+      // Backend qabul qilmasa — optimistik (soxta id'li) yozuvni olib
+      // tashlaymiz, aks holda unga keyingi amallar 404 beradi.
+      set((s) => ({ requests: s.requests.filter((x) => x.id !== tempId) }));
     }
   },
 

@@ -72,6 +72,14 @@ export class CreateRequestDto {
   @IsISO8601()
   createdAt?: string;
 
+  // Ignored — a freshly submitted request is never pre-resolved (server forces
+  // null). Whitelisted only so the store's full `Omit<CitizenRequest,"id">`
+  // payload (which carries resolvedAt) doesn't trip forbidNonWhitelisted → 400.
+  @ApiPropertyOptional({ nullable: true, description: 'Ignored — server forces null on create' })
+  @IsOptional()
+  @IsISO8601()
+  resolvedAt?: string | null;
+
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()

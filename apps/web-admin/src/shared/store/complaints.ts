@@ -24,7 +24,7 @@ interface ComplaintsState {
   /** Shikoyatlar ro'yxatini backenddan qayta yuklaydi. */
   fetchComplaints: () => Promise<void>;
   /** Shikoyatga rasmiy javob yozish. Birinchi javobda holat "reviewing" ga o'tadi. */
-  addResponse: (id: string, text: string, author: string) => void;
+  addResponse: (id: string, text: string, author: string) => Promise<void>;
   /** Shikoyat holatini o'zgartirish (hal qilindi / rad etildi / ...). */
   setStatus: (id: string, status: ComplaintStatus) => void;
 }
@@ -48,14 +48,16 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
     }
   },
 
-  // Backendda hozircha rasmiy javoblarni saqlash uchun alohida endpoint yo'q
-  // (faqat status PATCH qilinadi), shu sababli javob mahalliy holatda qo'shiladi.
-  addResponse: (id, text, author) =>
+  // Rasmiy javob backendga POST /complaints/:id/response orqali saqlanadi.
+  // Optimistik: darhol mahalliy ko'rsatamiz, backend qaytargan yozuv bilan
+  // almashtiramiz; xato bo'lsa orqaga qaytaramiz.
+  addResponse: async (id, text, author) => {
+    const prev = get().complaints;
     set((s) => ({
       complaints: s.complaints.map((c) => {
         if (c.id !== id) return c;
         const response: ComplaintResponse = {
-          id: `R-${Date.now()}`,
+          id: `local-${Date.now()}`,
           text,
           author,
           createdAt: new Date().toISOString(),
@@ -66,7 +68,17 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
           status: c.status === "new" ? "reviewing" : c.status,
         };
       }),
-    })),
+    }));
+    try {
+      const updated = await api.post<Complaint>(`/complaints/${id}/response`, { text, author });
+      set((s) => ({
+        complaints: s.complaints.map((c) => (c.id === id ? updated : c)),
+      }));
+    } catch (err) {
+      console.error("Shikoyat javobini saqlab bo'lmadi:", err);
+      set({ complaints: prev });
+    }
+  },
 
   setStatus: (id, status) => {
     const prev = get().complaints.find((c) => c.id === id) ?? null;
