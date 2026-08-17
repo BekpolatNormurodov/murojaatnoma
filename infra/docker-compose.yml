@@ -67,6 +67,9 @@ services:
       GEOFENCE_RADIUS_M: ${GEOFENCE_RADIUS_M:-200}
       OFFICE_LATITUDE: ${OFFICE_LATITUDE:-41.311081}
       OFFICE_LONGITUDE: ${OFFICE_LONGITUDE:-69.240562}
+      # Dev bridge: return the OTP code in the request-otp response (no SMS
+      # gateway wired yet). MUST be false in real production once SMS lands.
+      OTP_DEV_ECHO: ${OTP_DEV_ECHO:-false}
     depends_on:
       postgres:
         condition: service_healthy
