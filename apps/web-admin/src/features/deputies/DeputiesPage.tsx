@@ -10,20 +10,23 @@ import {
   MessageQuestion,
   Danger,
   Star1,
+  CloseCircle,
+  RotateRight,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Card } from '@/shared/ui/Card';
 import { Avatar } from '@/shared/ui/Avatar';
-import {
-  CATEGORY_META,
-  COMPLAINTS,
-  DEPUTIES,
-  MEETINGS,
-  REQUESTS,
-  STAFF,
-} from '@/shared/data/mock';
+import { Button } from '@/shared/ui/Button';
+import { cn } from '@/shared/lib/cn';
+import { CATEGORY_META, COMPLAINTS, MEETINGS, REQUESTS } from '@/shared/data/mock';
 import type { Deputy } from '@/shared/data/types';
+import { useDeputies } from './useDeputies';
+import { useStaff } from '../staff/useStaff';
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
+}
 
 function deputyStats(d: Deputy) {
   const requests = REQUESTS.filter((r) => d.categories.includes(r.category));
@@ -156,16 +159,20 @@ function DeputyCard({ d, index }: { d: Deputy; index: number }) {
 }
 
 export function DeputiesPage() {
-  const hokim = useMemo(() => STAFF.find((s) => s.role === 'hokim'), []);
+  const { data, isLoading, isError, error, refetch } = useDeputies();
+  const { data: staffData } = useStaff();
+  const deputies = useMemo(() => data ?? [], [data]);
+
+  const hokim = useMemo(() => staffData?.find((s) => s.role === 'hokim'), [staffData]);
 
   const totals = useMemo(() => {
     const routed = REQUESTS.filter((r) =>
-      DEPUTIES.some((d) => d.categories.includes(r.category)),
+      deputies.some((d) => d.categories.includes(r.category)),
     ).length;
-    const directions = DEPUTIES.length;
+    const directions = deputies.length;
     const complaints = COMPLAINTS.length;
-    return { deputies: DEPUTIES.length, directions, routed, complaints };
-  }, []);
+    return { deputies: deputies.length, directions, routed, complaints };
+  }, [deputies]);
 
   return (
     <div>
@@ -174,45 +181,80 @@ export function DeputiesPage() {
         subtitle="Hokimiyat rahbariyati — yo'nalishlar bo'yicha mas'ul o'rinbosarlar. Murojaatlar yo'nalishga qarab avtomatik biriktiriladi."
       />
 
-      {/* KPIs */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Hierarchy} label="O'rinbosarlar" value={String(totals.deputies)} tint="#7c3aed" index={0} />
-        <StatCard icon={Star1} label="Yo'nalishlar" value={String(totals.directions)} tint="#2563eb" index={1} />
-        <StatCard icon={MessageQuestion} label="Biriktirilgan murojaat" value={String(totals.routed)} tint="#f59e0b" index={2} />
-        <StatCard icon={Danger} label="Shikoyatlar nazorat" value={String(totals.complaints)} tint="#ef4444" index={3} />
-      </div>
-
-      {/* Hokim banner */}
-      {hokim && (
-        <Card className="mb-6 flex flex-col gap-4 overflow-hidden bg-linear-to-br from-primary-700 to-primary-600 p-5 text-white sm:flex-row sm:items-center">
-          <div className="flex items-center gap-4">
-            <Avatar src={hokim.photo} name={hokim.name} color={hokim.avatarColor} size={64} ring />
-            <div>
-              <div className="flex items-center gap-2">
-                <Crown1 size={18} variant="Bulk" className="text-amber-300" />
-                <span className="text-[12px] font-semibold uppercase tracking-wider text-white/80">
-                  Tuman hokimi
-                </span>
-              </div>
-              <h2 className="mt-0.5 text-xl font-bold">{hokim.name}</h2>
-              <p className="text-[13px] text-white/80">{hokim.position}</p>
-            </div>
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {error instanceof Error ? error.message : "Noma'lum xatolik yuz berdi"}
+            </p>
           </div>
-          <div className="sm:ml-auto">
-            <div className="rounded-xl bg-white/15 px-4 py-2.5 text-[13px] backdrop-blur-sm">
-              Quyida {DEPUTIES.length} ta hokim o'rinbosari o'z yo'nalishi bo'yicha
-              <br className="hidden sm:block" /> fuqaro murojaatlari va shikoyatlariga javob beradi.
-            </div>
-          </div>
+          <Button variant="secondary" onClick={() => refetch()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
         </Card>
-      )}
+      ) : (
+        <>
+          {/* KPIs */}
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[124px]" />)
+            ) : (
+              <>
+                <StatCard icon={Hierarchy} label="O'rinbosarlar" value={String(totals.deputies)} tint="#7c3aed" index={0} />
+                <StatCard icon={Star1} label="Yo'nalishlar" value={String(totals.directions)} tint="#2563eb" index={1} />
+                <StatCard icon={MessageQuestion} label="Biriktirilgan murojaat" value={String(totals.routed)} tint="#f59e0b" index={2} />
+                <StatCard icon={Danger} label="Shikoyatlar nazorat" value={String(totals.complaints)} tint="#ef4444" index={3} />
+              </>
+            )}
+          </div>
 
-      {/* Deputies grid */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {DEPUTIES.map((d, i) => (
-          <DeputyCard key={d.id} d={d} index={i} />
-        ))}
-      </div>
+          {/* Hokim banner */}
+          {hokim && (
+            <Card className="mb-6 flex flex-col gap-4 overflow-hidden bg-linear-to-br from-primary-700 to-primary-600 p-5 text-white sm:flex-row sm:items-center">
+              <div className="flex items-center gap-4">
+                <Avatar src={hokim.photo} name={hokim.name} color={hokim.avatarColor} size={64} ring />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Crown1 size={18} variant="Bulk" className="text-amber-300" />
+                    <span className="text-[12px] font-semibold uppercase tracking-wider text-white/80">
+                      Tuman hokimi
+                    </span>
+                  </div>
+                  <h2 className="mt-0.5 text-xl font-bold">{hokim.name}</h2>
+                  <p className="text-[13px] text-white/80">{hokim.position}</p>
+                </div>
+              </div>
+              <div className="sm:ml-auto">
+                <div className="rounded-xl bg-white/15 px-4 py-2.5 text-[13px] backdrop-blur-sm">
+                  Quyida {deputies.length} ta hokim o'rinbosari o'z yo'nalishi bo'yicha
+                  <br className="hidden sm:block" /> fuqaro murojaatlari va shikoyatlariga javob beradi.
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Deputies grid */}
+          {isLoading ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-[360px]" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {deputies.map((d, i) => (
+                <DeputyCard key={d.id} d={d} index={i} />
+              ))}
+            </div>
+          )}
+
+          {!isLoading && deputies.length === 0 && (
+            <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
