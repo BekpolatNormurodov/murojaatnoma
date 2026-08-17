@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
+import { CreateRequestDto } from './dto/create-request.dto';
 import { ListRequestsQueryDto } from './dto/list-requests-query.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 import { CitizenRequestResponse, RequestsService, RequestStatsResponse } from './requests.service';
@@ -39,6 +40,13 @@ export class RequestsController {
   @ApiOperation({ summary: 'Get a single citizen request by id' })
   findOne(@Param('id') id: string): Promise<CitizenRequestResponse> {
     return this.requestsService.findOne(id);
+  }
+
+  @Public()
+  @Post()
+  @ApiOperation({ summary: 'Create a new citizen request (murojaat)' })
+  create(@Body() dto: CreateRequestDto): Promise<CitizenRequestResponse> {
+    return this.requestsService.create(dto);
   }
 
   @Public()

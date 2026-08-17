@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CitizenRequest, Prisma, RequestCategory, RequestStatus } from '@prisma/client';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CreateRequestDto } from './dto/create-request.dto';
 import { ListRequestsQueryDto } from './dto/list-requests-query.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 
@@ -65,8 +66,60 @@ export class RequestsService {
     return this.toResponse(request);
   }
 
+  /**
+   * `POST /requests` — new murojaat submitted from the web-admin form. The
+   * server always generates `id` (seed uses `R-${1000 + i}`; live rows use a
+   * timestamp-based id in the same `R-` family so both stay collision-free
+   * and sortable) and `createdAt`, even if the caller's payload includes
+   * them (the store's `add()` action sends `Omit<CitizenRequest, "id">`,
+   * which does carry a `createdAt`).
+   */
+  async create(dto: CreateRequestDto): Promise<CitizenRequestResponse> {
+    const created = await this.prisma.citizenRequest.create({
+      data: {
+        id: `R-${Date.now()}`,
+        title: dto.title,
+        description: dto.description,
+        category: dto.category,
+        status: dto.status ?? RequestStatus.new,
+        region: dto.region,
+        districtId: dto.districtId,
+        address: dto.address,
+        citizenName: dto.citizenName,
+        citizenPhone: dto.citizenPhone,
+        citizenPhoto: dto.citizenPhoto ?? '',
+        createdAt: new Date(),
+        // A freshly submitted request can't already be resolved.
+        resolvedAt: null,
+        assignedWorkerId: dto.assignedWorkerId ?? null,
+        priority: dto.priority,
+        lat: dto.lat ?? 0,
+        lng: dto.lng ?? 0,
+        photos: dto.photos ?? [],
+        responseHours: dto.responseHours ?? null,
+        feedback: dto.feedback ?? null,
+        cost: dto.cost ?? 0,
+      },
+    });
+
+    return this.toResponse(created);
+  }
+
+  /**
+   * `PATCH /requests/:id` — status transition and/or (re)assignment.
+   * `resolvedAt` is derived server-side (mirrors the web-admin store's
+   * optimistic-update logic): it's stamped the moment `status` becomes
+   * `resolved` (keeping any prior value if it was already resolved), and
+   * cleared whenever the status moves to anything else.
+   */
   async update(id: string, dto: UpdateRequestDto): Promise<CitizenRequestResponse> {
-    await this.ensureExists(id);
+    const existing = await this.prisma.citizenRequest.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Request ${id} not found`);
+    }
+
+    const nextStatus = dto.status ?? existing.status;
+    const resolved = nextStatus === RequestStatus.resolved;
 
     const updated = await this.prisma.citizenRequest.update({
       where: { id },
@@ -74,6 +127,9 @@ export class RequestsService {
         ...(dto.status ? { status: dto.status } : {}),
         ...(dto.assignedWorkerId !== undefined
           ? { assignedWorkerId: dto.assignedWorkerId }
+          : {}),
+        ...(dto.status
+          ? { resolvedAt: resolved ? (existing.resolvedAt ?? new Date()) : null }
           : {}),
       },
     });
@@ -117,15 +173,5 @@ export class RequestsService {
       .sort((a, b) => b.count - a.count);
 
     return { total, byStatus, byCategory, byDistrict };
-  }
-
-  private async ensureExists(id: string): Promise<void> {
-    const exists = await this.prisma.citizenRequest.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!exists) {
-      throw new NotFoundException(`Request ${id} not found`);
-    }
   }
 }

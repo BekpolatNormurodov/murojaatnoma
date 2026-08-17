@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Complaint } from '@prisma/client';
 import { Public } from '../../common/decorators/public.decorator';
 import { ComplaintsService } from './complaints.service';
+import { CreateComplaintResponseDto } from './dto/create-complaint-response.dto';
 import { ListComplaintsQueryDto } from './dto/list-complaints-query.dto';
 import { UpdateComplaintDto } from './dto/update-complaint.dto';
 
@@ -32,5 +33,15 @@ export class ComplaintsController {
   @ApiOperation({ summary: 'Shikoyat statusini yangilash' })
   update(@Param('id') id: string, @Body() dto: UpdateComplaintDto): Promise<Complaint> {
     return this.complaintsService.update(id, dto);
+  }
+
+  @Public()
+  @Post(':id/response')
+  @ApiOperation({ summary: "Shikoyatga rasmiy javob qo'shish" })
+  addResponse(
+    @Param('id') id: string,
+    @Body() dto: CreateComplaintResponseDto,
+  ): Promise<Complaint> {
+    return this.complaintsService.addResponse(id, dto);
   }
 }

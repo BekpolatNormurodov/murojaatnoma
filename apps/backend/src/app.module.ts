@@ -20,6 +20,7 @@ import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { EmployeesModule } from './modules/employees/employees.module';
+import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -54,6 +55,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     AppUsersModule,
     AnalyticsModule,
     CatalogModule,
+    FinanceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
