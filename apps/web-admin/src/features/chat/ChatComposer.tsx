@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Paperclip, Gallery, Microphone2, Send2, Trash } from 'iconsax-react';
+import { usePrefersReducedMotion } from './useChat';
 
 /* Suhbat uchun xabar yozish paneli: matn, fayl, rasm va ovozli xabar. */
 
@@ -20,6 +21,8 @@ export function ChatComposer({
   const [text, setText] = useState('');
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const panelTransition = { duration: prefersReducedMotion ? 0 : 0.2 };
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
@@ -119,6 +122,7 @@ export function ChatComposer({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
+            transition={panelTransition}
             className="flex items-center gap-3 rounded-2xl border border-red-200 bg-danger-soft px-3 py-2"
           >
             <button
@@ -141,8 +145,16 @@ export function ChatComposer({
                 <motion.span
                   key={i}
                   className="w-0.5 rounded-full bg-red-400"
-                  animate={{ height: [4, 6 + ((i * 7) % 16), 4] }}
-                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.05 }}
+                  animate={
+                    prefersReducedMotion
+                      ? { height: 6 + ((i * 7) % 16) }
+                      : { height: [4, 6 + ((i * 7) % 16), 4] }
+                  }
+                  transition={
+                    prefersReducedMotion
+                      ? { duration: 0 }
+                      : { duration: 0.8, repeat: Infinity, delay: i * 0.05 }
+                  }
                 />
               ))}
             </div>
@@ -160,6 +172,7 @@ export function ChatComposer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={panelTransition}
             className="flex items-end gap-2"
           >
             <button

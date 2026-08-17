@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
 import type { ChatConversation, ChatMessage, CreateChatMessageInput } from '@/shared/store/chat';
@@ -66,4 +67,27 @@ export function useMarkRead() {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     },
   });
+}
+
+/**
+ * Foydalanuvchi tizim darajasida "kamaytirilgan animatsiya"ni yoqqan-yoqmaganini
+ * kuzatadi (`prefers-reduced-motion: reduce`). Suhbat oynasidagi skroll xatti-
+ * harakati va bezak animatsiyalarini shunga moslashtirish uchun ishlatiladi.
+ */
+export function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false,
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => setReduced(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  return reduced;
 }

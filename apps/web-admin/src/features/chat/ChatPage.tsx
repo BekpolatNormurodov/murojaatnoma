@@ -19,7 +19,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
 import { ChatComposer } from './ChatComposer';
-import { useConversations, useMessages, useSendMessage, useMarkRead } from './useChat';
+import { useConversations, useMessages, useSendMessage, useMarkRead, usePrefersReducedMotion } from './useChat';
 import { ME_ID, GROUP_ID, useChatUi, type ChatMessage } from '@/shared/store/chat';
 import { STAFF } from '@/shared/data/mock';
 import { formatDate } from '@/shared/lib/format';
@@ -102,6 +102,13 @@ export function ChatPage() {
   const [lightbox, setLightbox] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Oxirgi marta qaysi suhbat uchun tagiga tushirilganini eslab qolamiz —
+  // suhbat ochilganda sakrab (animatsiyasiz), yangi xabar kelganda esa
+  // silliq skroll qilish uchun.
+  const scrolledConvRef = useRef<string | null>(null);
+
+  const prefersReducedMotion = usePrefersReducedMotion();
 
   const activeConv = conversations.find((c) => c.id === activeId) ?? null;
 
@@ -131,11 +138,19 @@ export function ChatPage() {
     markRead(activeId);
   }, [activeId, activeMessages.length, markRead]);
 
-  // Pastga avtomatik scroll
+  // Pastga avtomatik scroll: suhbat ochilganda (yoki hali xabarlar
+  // yuklanmaganda) — sakrab, animatsiyasiz; keyingi yangi xabarlarda —
+  // silliq skroll. `prefers-reduced-motion` yoqilgan bo'lsa har doim sakraydi.
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [activeId, activeMessages.length]);
+    if (!activeId || messagesQuery.isLoading) return;
+    const el = bottomRef.current;
+    if (!el) return;
+
+    const isFirstOpen = scrolledConvRef.current !== activeId;
+    const behavior: ScrollBehavior = isFirstOpen || prefersReducedMotion ? 'auto' : 'smooth';
+    el.scrollIntoView({ behavior, block: 'end' });
+    scrolledConvRef.current = activeId;
+  }, [activeId, activeMessages.length, messagesQuery.isLoading, prefersReducedMotion]);
 
   // Render uchun kunlar bo'yicha guruhlash
   const rendered = useMemo(() => {
@@ -256,6 +271,12 @@ export function ChatPage() {
               {Array.from({ length: 7 }).map((_, i) => (
                 <RowSkeleton key={i} />
               ))}
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+              <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
+              <p className="text-sm font-medium text-ink">Hozircha suhbatlar yo'q</p>
+              <p className="text-xs text-ink-muted">Xodim bilan yozishmani boshlaganingizda shu yerda ko'rinadi</p>
             </div>
           ) : (
             <>
@@ -386,7 +407,13 @@ export function ChatPage() {
             </div>
 
             {/* Xabarlar */}
-            <div ref={scrollRef} className="flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6">
+            <div
+              ref={scrollRef}
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              className="flex-1 space-y-1 overflow-y-auto px-3 py-4 sm:px-6"
+            >
               {messagesQuery.isError ? (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                   <CloseCircle size={32} variant="Bulk" className="text-danger" />
@@ -421,9 +448,10 @@ export function ChatPage() {
                   {activeMessages.length === 0 && (
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                       <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
-                      <p className="text-sm text-ink-muted">Hali xabar yo'q — birinchi bo'lib yozing</p>
+                      <p className="text-sm text-ink-muted">Hali xabarlar yo'q — birinchi bo'lib yozing</p>
                     </div>
                   )}
+                  <div ref={bottomRef} />
                 </>
               )}
             </div>
@@ -463,6 +491,7 @@ export function ChatPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
             onClick={() => setLightbox(null)}
             className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-6 backdrop-blur-sm"
           >
@@ -476,6 +505,7 @@ export function ChatPage() {
               initial={{ scale: 0.9 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.9 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
               src={lightbox}
               alt="rasm"
               onClick={(e) => e.stopPropagation()}
