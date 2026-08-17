@@ -28,27 +28,25 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useAuth((s) => s.login);
-  const [email, setEmail] = useState('admin@hokimiyat.uz');
-  const [password, setPassword] = useState('123456');
+  const [email, setEmail] = useState('admin');
+  const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const from = (location.state as { from?: string } | null)?.from ?? '/';
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    setTimeout(() => {
-      const res = login(email, password);
-      if (res.ok) {
-        navigate(from, { replace: true });
-      } else {
-        setError(res.error ?? "Kirishda xatolik");
-        setLoading(false);
-      }
-    }, 800);
+    const res = await login(email, password);
+    if (res.ok) {
+      navigate(from, { replace: true });
+    } else {
+      setError(res.error ?? 'Kirishda xatolik');
+      setLoading(false);
+    }
   }
 
   return (

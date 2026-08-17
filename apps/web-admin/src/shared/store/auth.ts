@@ -1,89 +1,148 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { API_BASE } from "@/shared/api/config";
 
 export interface AuthUser {
   name: string;
   email: string;
   role: string;
   avatar?: string;
+  username?: string;
 }
-
-/** Soxta (demo) login ma'lumotlari — backend yo'q, faqat namoyish uchun. */
-export const DEMO_CREDENTIALS = {
-  email: "admin@hokimiyat.uz",
-  password: "123456",
-};
 
 export interface AuthResult {
   ok: boolean;
   error?: string;
 }
 
+interface AdminDto {
+  id: string;
+  username: string;
+  fullName: string;
+  email: string | null;
+  role: string;
+}
+
+interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
+  admin: AdminDto;
+}
+
 interface AuthState {
   isAuthed: boolean;
   user: AuthUser | null;
-  /** Soxta JWT-ko'rinishidagi token (demo). */
+  /** Access token (real JWT from the backend admin-auth service). */
   token: string | null;
-  /** Email + parolni tekshirib, muvaffaqiyatli bo'lsa soxta token beradi. */
-  login: (email: string, password: string) => AuthResult;
+  refreshToken: string | null;
+  /** Real login: POST /auth/admin/login (username + password). */
+  login: (username: string, password: string) => Promise<AuthResult>;
+  /** Silent access-token rotation via the refresh token. */
+  refresh: () => Promise<boolean>;
   logout: () => void;
 }
 
-const DEFAULT_USER: AuthUser = {
-  name: "Admin Hokim",
-  email: "admin@hokimiyat.uz",
-  role: "Bosh administrator",
-  avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-};
-
-/** base64url — JWT segmentlari uchun (oaddiy, brauzerda ishlaydigan). */
-function b64url(value: string): string {
-  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+function toUser(a: AdminDto): AuthUser {
+  return {
+    name: a.fullName || a.username,
+    email: a.email ?? "",
+    role: a.role,
+    username: a.username,
+  };
 }
 
-/**
- * Soxta JWT yasaydi (header.payload.signature). Imzo HAQIQIY emas — demo uchun
- * tasodifiy qiymat. Backend ulanganda bu butunlay almashtiriladi.
- */
-function makeFakeToken(user: AuthUser): string {
-  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const now = Math.floor(Date.now() / 1000);
-  const payload = b64url(
-    JSON.stringify({
-      sub: user.email,
-      name: user.name,
-      role: user.role,
-      iat: now,
-      exp: now + 60 * 60 * 24, // 24 soat
-    }),
-  );
-  const signature = b64url(`${Math.random().toString(36).slice(2)}${now}`);
-  return `${header}.${payload}.${signature}`;
+async function readJson(res: Response): Promise<unknown> {
+  return res.json().catch(() => null);
 }
+
+function messageOf(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "message" in data) {
+    const m = (data as { message: unknown }).message;
+    if (Array.isArray(m)) return m.join(", ");
+    if (typeof m === "string") return m;
+  }
+  return fallback;
+}
+
+// Shared in-flight refresh so concurrent 401s trigger only one refresh call.
+let refreshInFlight: Promise<boolean> | null = null;
 
 export const useAuth = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isAuthed: false,
       user: null,
       token: null,
-      login: (email, password) => {
-        const e = email.trim().toLowerCase();
-        if (
-          e !== DEMO_CREDENTIALS.email ||
-          password !== DEMO_CREDENTIALS.password
-        ) {
-          return { ok: false, error: "Email yoki parol noto'g'ri" };
+      refreshToken: null,
+
+      login: async (username, password) => {
+        try {
+          const res = await fetch(`${API_BASE}/auth/admin/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: username.trim(), password }),
+          });
+          const data = await readJson(res);
+          if (!res.ok) {
+            return { ok: false, error: messageOf(data, "Login yoki parol xato") };
+          }
+          const d = data as LoginResponse;
+          set({
+            isAuthed: true,
+            user: toUser(d.admin),
+            token: d.accessToken,
+            refreshToken: d.refreshToken,
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false, error: "Serverga ulanib bo'lmadi" };
         }
-        const user: AuthUser = {
-          ...DEFAULT_USER,
-          email: DEMO_CREDENTIALS.email,
-        };
-        set({ isAuthed: true, user, token: makeFakeToken(user) });
-        return { ok: true };
       },
-      logout: () => set({ isAuthed: false, user: null, token: null }),
+
+      refresh: () => {
+        const rt = get().refreshToken;
+        if (!rt) return Promise.resolve(false);
+        if (refreshInFlight) return refreshInFlight;
+
+        refreshInFlight = (async () => {
+          try {
+            const res = await fetch(`${API_BASE}/auth/admin/refresh`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refreshToken: rt }),
+            });
+            if (!res.ok) {
+              set({ isAuthed: false, user: null, token: null, refreshToken: null });
+              return false;
+            }
+            const d = (await res.json()) as LoginResponse;
+            set({
+              isAuthed: true,
+              user: toUser(d.admin),
+              token: d.accessToken,
+              refreshToken: d.refreshToken,
+            });
+            return true;
+          } catch {
+            return false;
+          } finally {
+            refreshInFlight = null;
+          }
+        })();
+        return refreshInFlight;
+      },
+
+      logout: () =>
+        set({ isAuthed: false, user: null, token: null, refreshToken: null }),
     }),
-    { name: "hokimiyat-auth" },
+    {
+      name: "hokimiyat-auth",
+      partialize: (s) => ({
+        isAuthed: s.isAuthed,
+        user: s.user,
+        token: s.token,
+        refreshToken: s.refreshToken,
+      }),
+    },
   ),
 );
