@@ -28,6 +28,14 @@ import 'package:worker_app/features/meetings/presentation/bloc/meeting_detail_cu
 import 'package:worker_app/features/meetings/presentation/bloc/meetings_cubit.dart';
 import 'package:worker_app/features/meetings/presentation/pages/meeting_detail_page.dart';
 import 'package:worker_app/features/meetings/presentation/pages/meetings_page.dart';
+import 'package:worker_app/features/documents/presentation/bloc/document_detail_cubit.dart';
+import 'package:worker_app/features/documents/presentation/bloc/documents_cubit.dart';
+import 'package:worker_app/features/documents/presentation/pages/document_detail_page.dart';
+import 'package:worker_app/features/documents/presentation/pages/documents_page.dart';
+import 'package:worker_app/features/news/presentation/bloc/news_cubit.dart';
+import 'package:worker_app/features/news/presentation/bloc/news_detail_cubit.dart';
+import 'package:worker_app/features/news/presentation/pages/news_detail_page.dart';
+import 'package:worker_app/features/news/presentation/pages/news_page.dart';
 import 'package:worker_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:worker_app/features/points/presentation/bloc/points_cubit.dart';
 import 'package:worker_app/features/points/presentation/pages/points_page.dart';
@@ -231,6 +239,44 @@ class AppRouter {
             return BlocProvider(
               create: (_) => getIt<MeetingDetailCubit>()..load(id),
               child: const MeetingDetailPage(),
+            );
+          },
+        ),
+        // `/news` va `/news/:id` — profil menyusidan PUSH qilinadigan
+        // "Yangiliklar" sahifalari (shell darajasidan TASHQARIDA).
+        GoRoute(
+          path: '/news',
+          builder: (context, _) => BlocProvider(
+            create: (_) => getIt<NewsCubit>()..load(),
+            child: const NewsPage(),
+          ),
+        ),
+        GoRoute(
+          path: '/news/:id',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return BlocProvider(
+              create: (_) => getIt<NewsDetailCubit>()..load(id),
+              child: const NewsDetailPage(),
+            );
+          },
+        ),
+        // `/documents` va `/documents/:id` — profil menyusidan PUSH
+        // qilinadigan "Hujjatlar" sahifalari (shell darajasidan TASHQARIDA).
+        GoRoute(
+          path: '/documents',
+          builder: (context, _) => BlocProvider(
+            create: (_) => getIt<DocumentsCubit>()..load(),
+            child: const DocumentsPage(),
+          ),
+        ),
+        GoRoute(
+          path: '/documents/:id',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return BlocProvider(
+              create: (_) => getIt<DocumentDetailCubit>()..load(id),
+              child: const DocumentDetailPage(),
             );
           },
         ),

@@ -48,6 +48,20 @@ import 'package:worker_app/features/meetings/domain/usecases/get_meetings.dart';
 import 'package:worker_app/features/meetings/domain/usecases/join_meeting.dart';
 import 'package:worker_app/features/meetings/presentation/bloc/meeting_detail_cubit.dart';
 import 'package:worker_app/features/meetings/presentation/bloc/meetings_cubit.dart';
+import 'package:worker_app/features/documents/data/datasources/documents_remote_data_source.dart';
+import 'package:worker_app/features/documents/data/repositories/documents_repository_impl.dart';
+import 'package:worker_app/features/documents/domain/repositories/documents_repository.dart';
+import 'package:worker_app/features/documents/domain/usecases/get_document.dart';
+import 'package:worker_app/features/documents/domain/usecases/get_documents.dart';
+import 'package:worker_app/features/documents/presentation/bloc/document_detail_cubit.dart';
+import 'package:worker_app/features/documents/presentation/bloc/documents_cubit.dart';
+import 'package:worker_app/features/news/data/datasources/news_remote_data_source.dart';
+import 'package:worker_app/features/news/data/repositories/news_repository_impl.dart';
+import 'package:worker_app/features/news/domain/repositories/news_repository.dart';
+import 'package:worker_app/features/news/domain/usecases/get_news_item.dart';
+import 'package:worker_app/features/news/domain/usecases/get_news_list.dart';
+import 'package:worker_app/features/news/presentation/bloc/news_cubit.dart';
+import 'package:worker_app/features/news/presentation/bloc/news_detail_cubit.dart';
 import 'package:worker_app/features/notifications/data/datasources/notifications_remote_data_source.dart';
 import 'package:worker_app/features/notifications/data/repositories/notifications_repository_impl.dart';
 import 'package:worker_app/features/notifications/domain/repositories/notifications_repository.dart';
@@ -350,6 +364,49 @@ Future<void> configureDependencies() async {
         getMeeting: getIt<GetMeeting>(),
         joinMeeting: getIt<JoinMeeting>(),
       ),
+    )
+    // ---- Yangiliklar/News (hokimiyat yangiliklari) ----
+    ..registerLazySingleton<NewsRemoteDataSource>(
+      () => AppConfig.useMock
+          ? NewsRemoteDataSourceMockImpl()
+          : NewsRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<NewsRepository>(
+      () => NewsRepositoryImpl(remote: getIt<NewsRemoteDataSource>()),
+    )
+    ..registerLazySingleton<GetNewsList>(
+      () => GetNewsList(getIt<NewsRepository>()),
+    )
+    ..registerLazySingleton<GetNewsItem>(
+      () => GetNewsItem(getIt<NewsRepository>()),
+    )
+    ..registerFactory<NewsCubit>(
+      () => NewsCubit(getNewsList: getIt<GetNewsList>()),
+    )
+    ..registerFactory<NewsDetailCubit>(
+      () => NewsDetailCubit(getNewsItem: getIt<GetNewsItem>()),
+    )
+    // ---- Hujjatlar/Documents (rasmiy hujjatlar) ----
+    ..registerLazySingleton<DocumentsRemoteDataSource>(
+      () => AppConfig.useMock
+          ? DocumentsRemoteDataSourceMockImpl()
+          : DocumentsRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<DocumentsRepository>(
+      () =>
+          DocumentsRepositoryImpl(remote: getIt<DocumentsRemoteDataSource>()),
+    )
+    ..registerLazySingleton<GetDocuments>(
+      () => GetDocuments(getIt<DocumentsRepository>()),
+    )
+    ..registerLazySingleton<GetDocument>(
+      () => GetDocument(getIt<DocumentsRepository>()),
+    )
+    ..registerFactory<DocumentsCubit>(
+      () => DocumentsCubit(getDocuments: getIt<GetDocuments>()),
+    )
+    ..registerFactory<DocumentDetailCubit>(
+      () => DocumentDetailCubit(getDocument: getIt<GetDocument>()),
     )
     // ---- Ball nazorati/Points (xodim ball tarixi) ----
     ..registerLazySingleton<PointsRemoteDataSource>(

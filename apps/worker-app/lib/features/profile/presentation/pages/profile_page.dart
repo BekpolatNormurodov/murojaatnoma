@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
@@ -25,14 +26,31 @@ import 'package:worker_app/injection.dart';
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
-  /// Mock ish ma'lumotlari — bular uchun hali alohida API/endpoint yo'q
-  /// (backend ulanguncha). Foydalanuvchi sessiyasi kabi ma'lumot emas,
-  /// shuning uchun `context.l10n` ORQALI EMAS (tilga qarab tarjima
-  /// qilinmaydi — xuddi `AuthSession.position`/`region` kabi xom ma'lumot).
-  static const _mockWorkingHours = '09:00–18:00';
-  static const _mockRating = '4.8';
-  static const _mockDepartment = "Kommunal xo'jalik boshqarmasi";
-  static const _mockAppVersion = 'v1.0.0';
+  /// Backendda hali "ish soatlari"ga alohida maydon yo'q (`AuthSession`da
+  /// yo'q) — soxta qiymat o'ylab topmaslik uchun neytral belgi ko'rsatiladi,
+  /// qator o'zi baribir `/schedule`ga olib boradi (haqiqiy jadval o'sha
+  /// yerda).
+  static const _workingHoursPlaceholder = '—';
+
+  /// Ilova versiyasi — `pubspec.yaml`dagi `version:` bilan QO'LDA
+  /// sinxronlanadi (`package_info_plus` kabi runtime-o'quvchi paket hali
+  /// bog'liqlik sifatida qo'shilmagan, shuning uchun bu yerda o'z-o'zidan
+  /// o'qilmaydi). Fabrikatsiya qilingan '4.8' reyting kabi ХАТО qiymat
+  /// EMAS — bu haqiqiy release versiyasi, faqat statik konstanta sifatida.
+  static const _appVersion = 'v1.0.8';
+
+  /// [session]dan "Bo'lim" qatori uchun eng yaqin haqiqiy ma'lumot —
+  /// backendda alohida "bo'lim nomi" maydoni yo'q, shuning uchun
+  /// hudud/tuman birlashtirilib ko'rsatiladi (soxta bo'lim nomi
+  /// o'ylab topilmaydi). Ikkalasi ham bo'sh bo'lsa — neytral belgi.
+  static String _departmentValue(AuthSession? session) {
+    final region = session?.region ?? '';
+    final district = session?.district ?? '';
+    if (region.isEmpty && district.isEmpty) return _workingHoursPlaceholder;
+    if (district.isEmpty) return region;
+    if (region.isEmpty) return district;
+    return '$region, $district';
+  }
 
   Future<void> _logout(BuildContext context) async {
     final l10n = context.l10n;
@@ -171,26 +189,36 @@ class ProfilePage extends StatelessWidget {
                           AppListTile(
                             title: l10n.profileWorkingHoursLabel,
                             leadingIcon: AppIcons.timer,
-                            trailing: const _TrailingValue(_mockWorkingHours),
+                            trailing: const _TrailingValue(
+                              _workingHoursPlaceholder,
+                            ),
                             onTap: () => context.push('/schedule'),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.profileRatingLabel,
-                            leadingIcon: AppIcons.star,
-                            trailing: const _TrailingValue(_mockRating),
                           ),
                           const Divider(height: 1),
                           AppListTile(
                             title: l10n.profileDepartmentLabel,
                             leadingIcon: AppIcons.building,
-                            trailing: const _TrailingValue(_mockDepartment),
+                            trailing: _TrailingValue(
+                              _departmentValue(session),
+                            ),
                           ),
                           const Divider(height: 1),
                           AppListTile(
                             title: l10n.leaveRequestTileLabel,
                             leadingIcon: AppIcons.calendar,
                             onTap: () => context.push('/leave-request'),
+                          ),
+                          const Divider(height: 1),
+                          AppListTile(
+                            title: l10n.profileNewsTileLabel,
+                            leadingIcon: AppIcons.notification,
+                            onTap: () => context.push('/news'),
+                          ),
+                          const Divider(height: 1),
+                          AppListTile(
+                            title: l10n.profileDocumentsTileLabel,
+                            leadingIcon: IconsaxPlusLinear.document_text,
+                            onTap: () => context.push('/documents'),
                           ),
                         ],
                       ),
@@ -209,7 +237,7 @@ class ProfilePage extends StatelessWidget {
                       child: AppListTile(
                         title: l10n.profileAppVersionLabel,
                         leadingIcon: AppIcons.info,
-                        trailing: const _TrailingValue(_mockAppVersion),
+                        trailing: const _TrailingValue(_appVersion),
                       ),
                     )
                     .animate(delay: 180.ms)
