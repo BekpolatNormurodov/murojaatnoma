@@ -13,6 +13,12 @@ import type {
    hozircha faqat `status` maydonini saqlaydi, shu sababli
    `resolvedAt` (yopilgan sana) oldingi mock mantig'i bo'yicha
    mahalliy hisoblab qo'yiladi.
+
+   Barcha yozish amallari (addResponse/setStatus/deleteComplaint)
+   optimistik: UI darhol yangilanadi, so'ng backendga so'rov
+   yuboriladi; xato bo'lsa oldingi holatga qaytariladi va xatolik
+   chaqiruvchi tarafga qayta uloqtiriladi (throw) — shu orqali
+   ComplaintsPage komponenti xatoni maydon yonida ko'rsata oladi.
    ============================================================ */
 
 interface ComplaintsState {
@@ -26,7 +32,9 @@ interface ComplaintsState {
   /** Shikoyatga rasmiy javob yozish. Birinchi javobda holat "reviewing" ga o'tadi. */
   addResponse: (id: string, text: string, author: string) => Promise<void>;
   /** Shikoyat holatini o'zgartirish (hal qilindi / rad etildi / ...). */
-  setStatus: (id: string, status: ComplaintStatus) => void;
+  setStatus: (id: string, status: ComplaintStatus) => Promise<void>;
+  /** Shikoyatni butunlay o'chirish. */
+  deleteComplaint: (id: string) => Promise<void>;
 }
 
 export const useComplaints = create<ComplaintsState>((set, get) => ({
@@ -77,10 +85,11 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
     } catch (err) {
       console.error("Shikoyat javobini saqlab bo'lmadi:", err);
       set({ complaints: prev });
+      throw err instanceof Error ? err : new Error("Javobni yuborib bo'lmadi");
     }
   },
 
-  setStatus: (id, status) => {
+  setStatus: async (id, status) => {
     const prev = get().complaints.find((c) => c.id === id) ?? null;
 
     // Darhol (optimistik) yangilash — sahifa hech qanday kutish holatisiz,
@@ -97,7 +106,9 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
       }),
     }));
 
-    api.patch<Complaint>(`/complaints/${id}`, { status }).catch((err) => {
+    try {
+      await api.patch<Complaint>(`/complaints/${id}`, { status });
+    } catch (err) {
       console.error("Shikoyat holatini yangilab bo'lmadi:", err);
       // Backend rad etsa — mahalliy holatni orqaga qaytaramiz.
       if (prev) {
@@ -105,7 +116,26 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
           complaints: s.complaints.map((c) => (c.id === id ? prev : c)),
         }));
       }
-    });
+      throw err instanceof Error ? err : new Error("Holatni yangilab bo'lmadi");
+    }
+  },
+
+  // Optimistik o'chirish: ro'yxatdan darhol olib tashlanadi; backend
+  // rad etsa (yoki tarmoq xatosi) — o'sha o'rniga qaytarib qo'yiladi.
+  deleteComplaint: async (id) => {
+    const prev = get().complaints;
+    const index = prev.findIndex((c) => c.id === id);
+    if (index === -1) return;
+
+    set((s) => ({ complaints: s.complaints.filter((c) => c.id !== id) }));
+
+    try {
+      await api.del(`/complaints/${id}`);
+    } catch (err) {
+      console.error("Shikoyatni o'chirib bo'lmadi:", err);
+      set({ complaints: prev });
+      throw err instanceof Error ? err : new Error("Shikoyatni o'chirib bo'lmadi");
+    }
   },
 }));
 

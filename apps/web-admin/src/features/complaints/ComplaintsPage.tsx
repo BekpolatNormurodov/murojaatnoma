@@ -16,6 +16,8 @@ import {
   TickSquare,
   CloseCircle,
   RotateRight,
+  Trash,
+  type Icon as IconType,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -24,6 +26,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Button } from '@/shared/ui/Button';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import {
   COMPLAINT_SEVERITY_META,
   COMPLAINT_STATUS_META,
@@ -45,6 +48,24 @@ const STATUS_TABS: { key: ComplaintStatus | 'all'; label: string }[] = [
   { key: 'resolved', label: 'Hal qilingan' },
   { key: 'rejected', label: 'Rad etilgan' },
 ];
+
+/** Backenddan kutilmagan qiymat kelsa ham UI qulamasligi uchun himoyalangan meta. */
+const FALLBACK_SEVERITY: (typeof COMPLAINT_SEVERITY_META)['low'] = {
+  label: "Noma'lum",
+  tone: 'neutral',
+  color: '#94a3b8',
+};
+const FALLBACK_STATUS: (typeof COMPLAINT_STATUS_META)['new'] = {
+  label: "Noma'lum",
+  tone: 'neutral',
+};
+
+function severityMeta(s: Complaint['severity']) {
+  return COMPLAINT_SEVERITY_META[s] ?? FALLBACK_SEVERITY;
+}
+function statusMeta(s: Complaint['status']) {
+  return COMPLAINT_STATUS_META[s] ?? FALLBACK_STATUS;
+}
 
 function daysLeft(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / 86400_000);
@@ -121,20 +142,31 @@ export function ComplaintsPage() {
     [complaints],
   );
 
+  const hasActiveFilters = tab !== 'all' || severity !== 'all' || query.trim() !== '';
+  function resetFilters() {
+    setTab('all');
+    setSeverity('all');
+    setQuery('');
+  }
+
   return (
     <div>
       <PageHeader
         title="Shikoyatlar"
         subtitle="Fuqarolarning rasmiy shikoyatlari — yo'nalish bo'yicha hokim o'rinbosarlariga biriktiriladi"
         action={
-          <div className="flex items-center gap-2 rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2 text-[13px] font-medium text-red-700">
+          <div
+            role="status"
+            aria-atomic="true"
+            className="flex items-center gap-2 rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2 text-[13px] font-medium text-red-700"
+          >
             <Flag size={17} variant="Bulk" /> {stats.escalated} ta nazoratda
           </div>
         }
       />
 
       {error ? (
-        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+        <Card role="alert" className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
             <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
@@ -200,6 +232,7 @@ export function ComplaintsPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Qidirish..."
+            aria-label="Shikoyatlar orasidan qidirish"
             className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
           />
         </div>
@@ -239,8 +272,8 @@ export function ComplaintsPage() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((c, i) => {
           const deputy = getDeputy(c.deputyId);
-          const sev = COMPLAINT_SEVERITY_META[c.severity];
-          const st = COMPLAINT_STATUS_META[c.status];
+          const sev = severityMeta(c.severity);
+          const st = statusMeta(c.status);
           return (
             <motion.button
               key={c.id}
@@ -310,9 +343,25 @@ export function ComplaintsPage() {
       </div>
 
       {filtered.length === 0 && (
-        <Card className="flex flex-col items-center justify-center gap-2 py-16 text-center">
+        <Card className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Danger size={40} variant="Bulk" className="text-ink-muted" />
-          <p className="text-sm text-ink-muted">Mos shikoyatlar topilmadi</p>
+          {complaints.length === 0 ? (
+            <>
+              <p className="text-sm text-ink-muted">Hozircha shikoyatlar mavjud emas</p>
+              <Button variant="secondary" size="sm" onClick={() => fetchComplaints()}>
+                <RotateRight size={15} /> Qayta yuklash
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-ink-muted">Mos shikoyatlar topilmadi</p>
+              {hasActiveFilters && (
+                <Button variant="secondary" size="sm" onClick={resetFilters}>
+                  Filtrlarni tozalash
+                </Button>
+              )}
+            </>
+          )}
         </Card>
       )}
         </>
@@ -322,6 +371,36 @@ export function ComplaintsPage() {
     </div>
   );
 }
+
+/* ============================================================
+   Holat o'zgartirish tasdiqi uchun matnlar
+   ============================================================ */
+type TransitionStatus = 'reviewing' | 'resolved' | 'rejected';
+const STATUS_CONFIRM: Record<
+  TransitionStatus,
+  { title: string; message: string; tone: 'primary' | 'warning' | 'danger'; icon: IconType }
+> = {
+  reviewing: {
+    title: "Ko'rib chiqishga o'tkazilsinmi?",
+    message: 'Shikoyat holati "Ko\'rib chiqilmoqda"ga o\'zgaradi. Fuqaro ilovada buni ko\'radi.',
+    tone: 'primary',
+    icon: Clock,
+  },
+  resolved: {
+    title: 'Shikoyat hal qilindi deb belgilansinmi?',
+    message: 'Holat "Hal qilindi"ga o\'zgaradi va yopilgan sana qayd etiladi.',
+    tone: 'primary',
+    icon: TickCircle,
+  },
+  rejected: {
+    title: 'Shikoyat rad etilsinmi?',
+    message: 'Holat "Rad etildi"ga o\'zgaradi. Sababini rasmiy javobda ko\'rsatishni tavsiya qilamiz.',
+    tone: 'danger',
+    icon: CloseCircle,
+  },
+};
+
+const MIN_REPLY_LEN = 3;
 
 function ComplaintDetail({
   complaint,
@@ -335,18 +414,109 @@ function ComplaintDetail({
   const author = deputy?.name ?? 'Hokimiyat';
   const addResponse = useComplaints((s) => s.addResponse);
   const setStatus = useComplaints((s) => s.setStatus);
+  const deleteComplaint = useComplaints((s) => s.deleteComplaint);
+
   const [reply, setReply] = useState('');
+  const [touched, setTouched] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  const [pendingStatus, setPendingStatus] = useState<TransitionStatus | null>(null);
+  const [statusChanging, setStatusChanging] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setReply('');
+    setTouched(false);
+    setSendError(null);
+    setSent(false);
+    setPendingStatus(null);
+    setStatusError(null);
+    setDeleteOpen(false);
+    setDeleteError(null);
   }, [c?.id]);
 
-  function send() {
-    const text = reply.trim();
-    if (!c || !text) return;
-    addResponse(c.id, text, author);
-    setReply('');
+  const trimmedReply = reply.trim();
+  const replyEmpty = touched && trimmedReply.length === 0;
+  const replyTooShort = touched && trimmedReply.length > 0 && trimmedReply.length < MIN_REPLY_LEN;
+
+  async function send() {
+    setTouched(true);
+    if (!c || trimmedReply.length < MIN_REPLY_LEN) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await addResponse(c.id, trimmedReply, author);
+      setReply('');
+      setTouched(false);
+      setSent(true);
+      window.setTimeout(() => setSent(false), 2500);
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Javobni yuborib bo'lmadi");
+    } finally {
+      setSending(false);
+    }
   }
+
+  function requestStatus(s: TransitionStatus) {
+    if (!c || c.status === s) return;
+    setStatusError(null);
+    setPendingStatus(s);
+  }
+
+  async function confirmStatus() {
+    if (!c || !pendingStatus) return;
+    setStatusChanging(true);
+    try {
+      await setStatus(c.id, pendingStatus);
+      setPendingStatus(null);
+      setStatusError(null);
+    } catch (err) {
+      setStatusError(err instanceof Error ? err.message : "Holatni yangilab bo'lmadi");
+    } finally {
+      setStatusChanging(false);
+    }
+  }
+
+  function closeStatusDialog() {
+    if (statusChanging) return;
+    setPendingStatus(null);
+    setStatusError(null);
+  }
+
+  async function confirmDelete() {
+    if (!c) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteComplaint(c.id);
+      setDeleteOpen(false);
+      onClose();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Shikoyatni o'chirib bo'lmadi");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteOpen(false);
+    setDeleteError(null);
+  }
+
+  const sev = c ? severityMeta(c.severity) : null;
+  const st = c ? statusMeta(c.status) : null;
+  const sortedResponses = c
+    ? [...c.responses].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      )
+    : [];
 
   return (
     <Drawer
@@ -356,25 +526,35 @@ function ComplaintDetail({
       subtitle={c ? `#${c.id}` : undefined}
       width={500}
     >
-      {c && (
+      {c && sev && st && (
         <div className="space-y-5">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white"
-                style={{ background: COMPLAINT_SEVERITY_META[c.severity].color }}
-              >
-                {COMPLAINT_SEVERITY_META[c.severity].label} daraja
-              </span>
-              <Badge tone={COMPLAINT_STATUS_META[c.status].tone} dot>
-                {COMPLAINT_STATUS_META[c.status].label}
-              </Badge>
-              {c.isRepeat && <Badge tone="warning">Takroriy</Badge>}
-              {c.escalated && (
-                <Badge tone="danger">
-                  <Flag size={12} variant="Bulk" /> Nazoratda
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className="rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white"
+                  style={{ background: sev.color }}
+                >
+                  {sev.label} daraja
+                </span>
+                <Badge tone={st.tone} dot>
+                  {st.label}
                 </Badge>
-              )}
+                {c.isRepeat && <Badge tone="warning">Takroriy</Badge>}
+                {c.escalated && (
+                  <Badge tone="danger">
+                    <Flag size={12} variant="Bulk" /> Nazoratda
+                  </Badge>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                aria-label="Shikoyatni o'chirish"
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-danger-soft bg-danger-soft px-3 text-[12.5px] font-medium text-red-700 transition-colors hover:brightness-95"
+              >
+                <Trash size={16} variant="Bulk" /> O'chirish
+              </button>
             </div>
             <h3 className="mt-3 text-lg font-bold text-ink">{c.title}</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{c.description}</p>
@@ -454,15 +634,17 @@ function ComplaintDetail({
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="mb-2.5 text-[13px] font-semibold text-ink">Holatni o'zgartirish</p>
             <div className="flex flex-wrap gap-1.5">
-              {(['reviewing', 'resolved', 'rejected'] as ComplaintStatus[]).map((s) => {
-                const meta = COMPLAINT_STATUS_META[s];
+              {(['reviewing', 'resolved', 'rejected'] as TransitionStatus[]).map((s) => {
+                const meta = statusMeta(s);
                 const active = c.status === s;
                 return (
                   <button
                     key={s}
-                    onClick={() => setStatus(c.id, s)}
+                    type="button"
+                    onClick={() => requestStatus(s)}
+                    aria-pressed={active}
                     className={cn(
-                      'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
+                      'flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
                       active
                         ? 'bg-ink text-white'
                         : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
@@ -485,15 +667,15 @@ function ComplaintDetail({
               </span>
             </p>
 
-            {c.responses.length > 0 ? (
+            {sortedResponses.length > 0 ? (
               <div className="space-y-3">
-                {c.responses.map((r) => (
+                {sortedResponses.map((r) => (
                   <div key={r.id} className="rounded-xl bg-surface-2 p-3">
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <span className="text-[12.5px] font-semibold text-ink">{r.author}</span>
                       <span className="text-[11px] text-ink-muted">{timeAgo(r.createdAt)}</span>
                     </div>
-                    <p className="text-[13px] leading-relaxed text-ink-soft">{r.text}</p>
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-soft">{r.text}</p>
                   </div>
                 ))}
               </div>
@@ -505,30 +687,111 @@ function ComplaintDetail({
 
             {/* Javob yozish */}
             <div className="mt-3">
+              <label htmlFor="complaint-reply" className="sr-only">
+                Rasmiy javob matni
+              </label>
               <textarea
+                id="complaint-reply"
                 value={reply}
-                onChange={(e) => setReply(e.target.value)}
+                onChange={(e) => {
+                  setReply(e.target.value);
+                  if (sendError) setSendError(null);
+                }}
+                onBlur={() => setTouched(true)}
                 rows={3}
                 placeholder="Fuqaroga rasmiy javob yozing..."
-                className="w-full resize-none rounded-xl border border-line bg-canvas px-3.5 py-2.5 text-sm text-ink outline-none transition-colors focus:border-primary-300"
+                disabled={sending}
+                aria-invalid={replyEmpty || replyTooShort || !!sendError}
+                aria-describedby="complaint-reply-hint"
+                className={cn(
+                  'w-full resize-none rounded-xl border bg-canvas px-3.5 py-2.5 text-sm text-ink outline-none transition-colors focus:border-primary-300 disabled:opacity-60',
+                  replyEmpty || replyTooShort || sendError ? 'border-danger' : 'border-line',
+                )}
               />
+              <div id="complaint-reply-hint" className="mt-1.5 min-h-[16px] text-[11.5px]">
+                {replyEmpty ? (
+                  <span role="alert" className="font-medium text-danger">
+                    Javob matnini kiriting
+                  </span>
+                ) : replyTooShort ? (
+                  <span role="alert" className="font-medium text-danger">
+                    Javob kamida {MIN_REPLY_LEN} ta belgidan iborat bo'lsin
+                  </span>
+                ) : sendError ? (
+                  <span role="alert" className="font-medium text-danger">
+                    {sendError}
+                  </span>
+                ) : (
+                  <span className="text-ink-muted">Fuqaro ushbu javobni ilovada ko'radi</span>
+                )}
+              </div>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-[11.5px] text-ink-muted">
-                  {deputy ? `${deputy.name} nomidan` : 'Hokimiyat nomidan'}
+                <span aria-live="polite" className="flex items-center gap-1.5 text-[11.5px] text-ink-muted">
+                  {sent && <TickCircle size={13} variant="Bold" className="text-primary-600" />}
+                  {sent ? 'Yuborildi' : deputy ? `${deputy.name} nomidan` : 'Hokimiyat nomidan'}
                 </span>
                 <button
                   type="button"
                   onClick={send}
-                  disabled={!reply.trim()}
-                  className="flex items-center gap-1.5 rounded-xl bg-primary-600 px-4 py-2 text-[13px] font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
+                  disabled={sending || trimmedReply.length === 0}
+                  className="flex h-11 items-center gap-1.5 rounded-xl bg-primary-600 px-4 text-[13px] font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  <Send2 size={16} variant="Bulk" /> Javob yuborish
+                  {sending ? (
+                    <RotateRight size={16} className="animate-spin" />
+                  ) : (
+                    <Send2 size={16} variant="Bulk" />
+                  )}
+                  {sending ? 'Yuborilmoqda...' : 'Javob yuborish'}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Holat o'zgartirish tasdiqi */}
+      <ConfirmDialog
+        open={!!pendingStatus}
+        onClose={closeStatusDialog}
+        onConfirm={confirmStatus}
+        title={pendingStatus ? STATUS_CONFIRM[pendingStatus].title : ''}
+        message={
+          <>
+            {pendingStatus && STATUS_CONFIRM[pendingStatus].message}
+            {statusError && (
+              <span role="alert" className="mt-2 block font-medium text-danger">
+                {statusError}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel="Tasdiqlash"
+        tone={pendingStatus ? STATUS_CONFIRM[pendingStatus].tone : 'primary'}
+        icon={pendingStatus ? STATUS_CONFIRM[pendingStatus].icon : undefined}
+        loading={statusChanging}
+      />
+
+      {/* O'chirish tasdiqi */}
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Shikoyatni o'chirasizmi?"
+        message={
+          <>
+            {c && <>"{c.title}" nomli shikoyat butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.</>}
+            {deleteError && (
+              <span role="alert" className="mt-2 block font-medium text-danger">
+                {deleteError}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleting}
+      />
     </Drawer>
   );
 }
