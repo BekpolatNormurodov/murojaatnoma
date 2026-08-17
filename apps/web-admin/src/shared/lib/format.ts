@@ -41,13 +41,17 @@ const UZ_MONTHS_SHORT = [
 
 /** Sana: 12 Iyn 2026 */
 export function formatDate(iso: string): string {
+  if (!iso) return "—";
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
   return `${d.getDate()} ${UZ_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 /** Nisbiy vaqt: "3 kun oldin" */
 export function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
+  const at = new Date(iso).getTime();
+  if (!iso || Number.isNaN(at)) return "—";
+  const diff = Date.now() - at;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "hozirgina";
   if (mins < 60) return `${mins} daqiqa oldin`;

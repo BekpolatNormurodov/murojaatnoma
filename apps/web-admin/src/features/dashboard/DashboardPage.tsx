@@ -44,14 +44,14 @@ import {
   CATEGORY_META,
   LOAD_COLOR,
   LOAD_LABEL,
-  NEWS,
   NEWS_META,
-  REQUESTS,
   STATUS_META,
-  WORKERS,
 } from '@/shared/data/mock';
 import { formatNumber, formatSomShort, timeAgo } from '@/shared/lib/format';
 import { LiveLocationSummaryCard } from '@/features/map/LiveLocationSummaryCard';
+import { useRequests } from '@/shared/store/requests';
+import { useNews } from '@/features/news/useNews';
+import { useWorkers } from '@/features/workers/useWorkers';
 import {
   useAnalyticsSummary,
   useCategoryDistribution,
@@ -101,14 +101,21 @@ export function DashboardPage() {
   const categoryQuery = useCategoryDistribution();
   const regionQuery = useRegionStats();
   const districtLoadsQuery = useDistrictLoads();
+  const newsQuery = useNews();
+  const workersQuery = useWorkers();
+  const requests = useRequests((s) => s.requests);
 
   const summary = summaryQuery.data;
   const kpiTrend = kpiTrendQuery.data ?? [];
   const categoryDistribution = categoryQuery.data ?? [];
   const regionStats = regionQuery.data ?? [];
   const districtLoads = districtLoadsQuery.data ?? [];
+  const news = newsQuery.data ?? [];
+  const workers = workersQuery.data ?? [];
 
-  const recent = REQUESTS.slice(0, 6);
+  const recent = [...requests]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 6);
 
   return (
     <div>
@@ -358,17 +365,17 @@ export function DashboardPage() {
               <WidgetRow
                 icon={<TickCircle size={16} variant="Bulk" className="text-primary-500" />}
                 label="Bugun ishga keldi"
-                value={`${summary.checkedInToday}/${WORKERS.length}`}
+                value={`${summary.checkedInToday}/${workers.length}`}
               />
               <WidgetRow
                 icon={<ShieldTick size={16} variant="Bulk" className="text-accent-500" />}
                 label="O'zini tasdiqladi"
-                value={`${summary.confirmedToday}/${WORKERS.length}`}
+                value={`${summary.confirmedToday}/${workers.length}`}
               />
               <WidgetRow
                 icon={<Location size={16} variant="Bulk" className="text-amber-500" />}
                 label="Hududida"
-                value={`${summary.insideRegion}/${WORKERS.length}`}
+                value={`${summary.insideRegion}/${workers.length}`}
               />
               <div>
                 <div className="mb-1.5 flex items-center justify-between text-[13px]">
@@ -538,7 +545,7 @@ export function DashboardPage() {
               <div className="py-16 text-center text-ink-muted">Hech narsa topilmadi</div>
             ) : (
               recent.map((r, i) => {
-                const worker = WORKERS.find((w) => w.id === r.assignedWorkerId);
+                const worker = workers.find((w) => w.id === r.assignedWorkerId);
                 return (
                   <motion.div
                     key={r.id}
@@ -659,7 +666,8 @@ export function DashboardPage() {
           </Link>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {NEWS.filter((n) => n.status === 'published')
+          {news
+            .filter((n) => n.status === 'published')
             .slice(0, 4)
             .map((n, i) => {
               const meta = NEWS_META[n.category];
