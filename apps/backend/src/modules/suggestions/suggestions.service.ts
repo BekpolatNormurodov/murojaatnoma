@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Suggestion } from '@prisma/client';
+import { Prisma, Suggestion } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateSuggestionDto } from './dto/create-suggestion.dto';
 
@@ -54,26 +54,36 @@ export class SuggestionsService {
     return this.toDto(created);
   }
 
-  /** One vote per employee (idempotent): first vote increments, repeats no-op. */
+  /**
+   * One vote per employee, idempotent + race-safe. Rather than check-then-insert
+   * (which lets a concurrent double-tap pass the check twice, then 500 on the
+   * second insert), we insert unconditionally and let the
+   * `@@unique([suggestionId, employeeId])` constraint reject duplicates: a
+   * P2002 means "already voted" and is treated as a no-op returning current state.
+   */
   async vote(employeeId: string, id: string): Promise<SuggestionDto> {
     const exists = await this.prisma.suggestion.findUnique({ where: { id } });
     if (!exists) {
       throw new NotFoundException('Suggestion not found');
     }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const already = await tx.suggestionVote.findUnique({
-        where: { suggestionId_employeeId: { suggestionId: id, employeeId } },
+    try {
+      const updated = await this.prisma.$transaction(async (tx) => {
+        await tx.suggestionVote.create({ data: { suggestionId: id, employeeId } });
+        return tx.suggestion.update({
+          where: { id },
+          data: { votes: { increment: 1 } },
+        });
       });
-      if (already) {
-        return tx.suggestion.findUniqueOrThrow({ where: { id } });
+      return this.toDto(updated);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return this.toDto(exists);
       }
-      await tx.suggestionVote.create({ data: { suggestionId: id, employeeId } });
-      return tx.suggestion.update({
-        where: { id },
-        data: { votes: { increment: 1 } },
-      });
-    });
-    return this.toDto(updated);
+      throw error;
+    }
   }
 }
