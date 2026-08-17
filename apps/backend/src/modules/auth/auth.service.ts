@@ -64,6 +64,14 @@ export class AuthService {
       throw new BadRequestException('OTP code expired or not found');
     }
 
+    // Brute-force lockout: after 5 wrong codes for this challenge, stop
+    // accepting attempts — the user must request a fresh OTP.
+    if (challenge.attempts >= 5) {
+      throw new BadRequestException(
+        'Too many incorrect attempts. Request a new code.',
+      );
+    }
+
     if (challenge.code !== dto.code) {
       await this.prisma.otpChallenge.update({
         where: { id: challenge.id },
@@ -143,7 +151,15 @@ export class AuthService {
       data: { revoked: true },
     });
 
-    return this.issueTokenPair(payload);
+    // Strip the decoded token's `iat`/`exp` before re-signing: handing a
+    // payload that already carries `exp` together with `expiresIn` makes
+    // jsonwebtoken throw ("Bad options.expiresIn ... already has 'exp'"),
+    // which broke every refresh. Rebuild a clean claim set instead.
+    return this.issueTokenPair({
+      sub: payload.sub,
+      phone: payload.phone,
+      role: payload.role,
+    });
   }
 
   private async issueTokenPair(payload: JwtPayload): Promise<TokenPairDto> {
