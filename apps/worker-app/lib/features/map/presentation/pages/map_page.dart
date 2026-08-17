@@ -10,7 +10,10 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 import 'package:worker_app/features/map/presentation/bloc/map_cubit.dart';
+import 'package:worker_app/features/tracking/location_tracking_service.dart';
+import 'package:worker_app/injection.dart';
 
 /// OpenStreetMap tayl serveri — OSM foydalanish siyosati identifikatorli
 /// `User-Agent` talab qiladi (qarang: `TileLayer.userAgentPackageName`).
@@ -63,6 +66,24 @@ class _MapPageState extends State<MapPage> {
   /// `MapInitial`ga qaytilganda (kuzatuv to'xtatilganda) qayta `false`ga
   /// tushadi, shunda keyingi sessiya yana bir marta markazlashadi.
   bool _centeredOnFirstFix = false;
+
+  /// Tuman + mahalla chegaralari (backend `/zones` dan) — bir marta yuklanadi.
+  List<Polygon> _boundaries = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Doimiy lokatsiya kuzatuvini serverga yuborishni boshlaymiz (xodim ->
+    // POST /locations, offline outbox bilan). Idempotent singleton — bir marta
+    // boshlanadi va Map tabidan chiqilsa ham butun ilova davomida ishlaydi.
+    unawaited(getIt<LocationTrackingService>().start());
+    unawaited(_loadBoundaries());
+  }
+
+  Future<void> _loadBoundaries() async {
+    final polygons = await ZoneBoundaryLoader(getIt<DioClient>().dio).load();
+    if (mounted) setState(() => _boundaries = polygons);
+  }
 
   @override
   void dispose() {
@@ -131,6 +152,7 @@ class _MapPageState extends State<MapPage> {
           MapStopped() => _TrackingScaffold(
             state: state,
             mapController: _mapController,
+            boundaries: _boundaries,
             onRecenter: () => _onRecenterPressed(cubit),
           ),
         };
@@ -174,11 +196,13 @@ class _TrackingScaffold extends StatelessWidget {
   const _TrackingScaffold({
     required this.state,
     required this.mapController,
+    required this.boundaries,
     required this.onRecenter,
   });
 
   final MapState state;
   final MapController mapController;
+  final List<Polygon> boundaries;
   final VoidCallback onRecenter;
 
   @override
@@ -204,6 +228,9 @@ class _TrackingScaffold extends StatelessWidget {
                   urlTemplate: _osmTileUrlTemplate,
                   userAgentPackageName: _osmUserAgentPackageName,
                 ),
+                // Tuman + mahalla chegaralari (backend /zones) — hudud
+                // vizualizatsiyasi. Bo'sh bo'lsa (offline/URL yo'q) chizilmaydi.
+                if (boundaries.isNotEmpty) PolygonLayer(polygons: boundaries),
                 CircleLayer(
                   circles: [
                     CircleMarker(
