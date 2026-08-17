@@ -51,6 +51,7 @@ import {
   WORKERS,
 } from '@/shared/data/mock';
 import { formatNumber, formatSomShort, timeAgo } from '@/shared/lib/format';
+import { LiveLocationSummaryCard } from '@/features/map/LiveLocationSummaryCard';
 import {
   useAnalyticsSummary,
   useCategoryDistribution,
@@ -330,8 +331,8 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {/* Operational widgets: attendance · cameras · finance */}
-      <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-3">
+      {/* Operational widgets: attendance · cameras · finance · live location */}
+      <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {/* Attendance */}
         <Card className="p-5">
           <div className="flex items-center justify-between">
@@ -481,6 +482,9 @@ export function DashboardPage() {
             </div>
           )}
         </Card>
+
+        {/* Live location */}
+        <LiveLocationSummaryCard />
       </div>
 
       {/* Bottom row: regions bar + recent requests */}
