@@ -61,15 +61,17 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
         builder: (context, state) {
           final l10n = context.l10n;
           final isDark = Theme.of(context).brightness == Brightness.dark;
-          final inkMuted = isDark
-              ? AppColors.darkInkMuted
-              : AppColors.inkMuted;
+          final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
           final errorText = switch (state) {
             PinVerifyError() => l10n.pinWrongError,
             PinStorageError() => l10n.pinStorageErrorMessage,
             PinLockedOut() => l10n.pinLockedOutMessage,
             _ => null,
           };
+          // Kiritilgan PIN saqlangan xesh bilan solishtirilayotgan qisqa
+          // oraliq — klaviatura shu payt bloklanadi (`PinSetPage`dagi
+          // `PinSaving` bilan bir xil naqsh) va kichik spinner ko'rsatiladi.
+          final busy = state is PinVerifying;
 
           return SafeArea(
             child: LayoutBuilder(
@@ -97,17 +99,45 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
                           const SizedBox(height: 8),
                           Text(
                             l10n.pinUnlockSubtitle,
-                            style: AppTextStyles.body.copyWith(
-                              color: inkMuted,
-                            ),
+                            style: AppTextStyles.body.copyWith(color: inkMuted),
                             textAlign: TextAlign.center,
                           ).animate(delay: 80.ms).fadeIn(),
                           const Spacer(),
-                          AppPinInput(
-                            key: _pinKey,
-                            errorText: errorText,
-                            onCompleted: (pin) =>
-                                context.read<PinCubit>().verifyPin(pin),
+                          // Sobit balandlikdagi joy — `busy` paytida kichik
+                          // spinner shu yerda paydo bo'ladi, PIN kataklari
+                          // pastga surilib qolmaydi (layout sakramaydi).
+                          SizedBox(
+                            height: 24,
+                            child: Center(
+                              child: AnimatedOpacity(
+                                duration: const Duration(milliseconds: 150),
+                                opacity: busy ? 1 : 0,
+                                child: const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          IgnorePointer(
+                            // Tekshirish davom etayotganda klaviatura
+                            // bloklanadi — ikkita parallel `verifyPin`
+                            // chaqiruvining (poyga sharoiti) oldini oladi.
+                            ignoring: busy,
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 150),
+                              opacity: busy ? 0.5 : 1,
+                              child: AppPinInput(
+                                key: _pinKey,
+                                errorText: errorText,
+                                onCompleted: (pin) =>
+                                    context.read<PinCubit>().verifyPin(pin),
+                              ),
+                            ),
                           ).animate().fadeIn().slideY(begin: 0.08, end: 0),
                           const Spacer(flex: 2),
                         ],

@@ -2,6 +2,9 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/empty_view.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:user_app/features/notifications/presentation/widgets/notification_tile.dart';
 
@@ -42,14 +45,18 @@ class NotificationsPage extends StatelessWidget {
       ),
       body: SafeArea(
         child: switch (cubit.state) {
-          NotificationsLoading() => const AppSkeletonList(
+          NotificationsLoading() => const ShimmerList(
+            6,
             key: Key('notifications_skeleton'),
           ),
-          NotificationsError(:final message) => _ErrorView(
-            message: message,
-            onRetry: () => context.read<NotificationsCubit>().load(),
+          NotificationsError(:final message) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: ErrorView(
+              message: message,
+              onRetry: () => context.read<NotificationsCubit>().load(),
+            ),
           ),
-          NotificationsEmpty() => EmptyState(
+          NotificationsEmpty() => EmptyView(
             icon: AppIcons.notification,
             title: l10n.notificationsEmptyTitle,
             message: l10n.notificationsEmptyMessage,
@@ -72,27 +79,6 @@ class NotificationsPage extends StatelessWidget {
             ),
           ),
         },
-      ),
-    );
-  }
-}
-
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: EmptyState(
-        icon: AppIcons.close,
-        title: l10n.notificationsErrorTitle,
-        message: message,
-        action: AppButton(label: l10n.retry, expand: false, onPressed: onRetry),
       ),
     );
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
@@ -19,7 +21,58 @@ class OtpPage extends StatefulWidget {
 }
 
 class _OtpPageState extends State<OtpPage> {
+  /// Qayta yuborishlar orasidagi eng kam kutish vaqti (soniya) — SMS
+  /// spamini oldini olish va foydalanuvchiga aniq kutish muddatini
+  /// ko'rsatish uchun.
+  static const _resendCooldownSeconds = 30;
+
+  final _otpKey = GlobalKey<OtpInputState>();
   String _code = '';
+  Timer? _resendTimer;
+  int _secondsLeft = _resendCooldownSeconds;
+
+  @override
+  void initState() {
+    super.initState();
+    // `PhoneInputPage` bu sahifaga o'tishdan OLDIN kodni allaqachon
+    // yuborgan — shuning uchun sovutish taymeri darhol, sahifa ochilishi
+    // bilan boshlanadi.
+    _startResendCooldown();
+  }
+
+  @override
+  void dispose() {
+    _resendTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startResendCooldown() {
+    _resendTimer?.cancel();
+    setState(() => _secondsLeft = _resendCooldownSeconds);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_secondsLeft <= 1) {
+        timer.cancel();
+        setState(() => _secondsLeft = 0);
+      } else {
+        setState(() => _secondsLeft--);
+      }
+    });
+  }
+
+  void _handleResend(BuildContext context) {
+    _otpKey.currentState?.clear();
+    setState(() => _code = '');
+    context.read<AuthCubit>().requestOtp(widget.phone);
+    _startResendCooldown();
+  }
+
+  /// "Qayta yuborish" tugmasi matni — sovutish davom etayotganda qolgan
+  /// vaqtni (`0:ss`) qavs ichida ko'rsatadi.
+  String _resendLabel(AppLocalizations l10n) {
+    if (_secondsLeft <= 0) return l10n.resendCode;
+    final seconds = _secondsLeft.toString().padLeft(2, '0');
+    return '${l10n.resendCode} (0:$seconds)';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +83,14 @@ class _OtpPageState extends State<OtpPage> {
           if (state.status == AuthStatus.authenticated) {
             context.go('/home');
           } else if (state.status == AuthStatus.error) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.errorMessage ?? context.l10n.errorGeneric),
-                backgroundColor: AppColors.danger,
-              ),
+            // Noto'g'ri/eskirgan kod — PIN oqimidagi `shakeAndClear` bilan
+            // bir xil taassurot: kataklar silkinadi, tozalanadi va
+            // foydalanuvchi darhol qayta kirita boshlashi mumkin.
+            _otpKey.currentState?.shakeAndClear();
+            setState(() => _code = '');
+            AppAlert.error(
+              context,
+              state.errorMessage ?? context.l10n.errorGeneric,
             );
           }
         },
@@ -70,6 +126,7 @@ class _OtpPageState extends State<OtpPage> {
                           ).animate(delay: 120.ms).fadeIn(),
                           const SizedBox(height: 40),
                           OtpInput(
+                                key: _otpKey,
                                 // Real backend (`/auth/request-otp`) HAR DOIM
                                 // 6 xonali kod generatsiya qiladi
                                 // (`randomInt(100000, 999999)`, qarang:
@@ -93,17 +150,19 @@ class _OtpPageState extends State<OtpPage> {
                           const SizedBox(height: 28),
                           Center(
                             child: TextButton(
-                              onPressed: loading
+                              onPressed: (loading || _secondsLeft > 0)
                                   ? null
-                                  : () => context.read<AuthCubit>().requestOtp(
-                                      widget.phone,
-                                    ),
-                              child: Text(
-                                context.l10n.resendCode,
-                                style: AppTextStyles.label.copyWith(
-                                  color: isDark
-                                      ? AppColors.darkInkMuted
-                                      : AppColors.inkMuted,
+                                  : () => _handleResend(context),
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: Text(
+                                  _resendLabel(context.l10n),
+                                  key: ValueKey(_secondsLeft > 0),
+                                  style: AppTextStyles.label.copyWith(
+                                    color: isDark
+                                        ? AppColors.darkInkMuted
+                                        : AppColors.inkMuted,
+                                  ),
                                 ),
                               ),
                             ),

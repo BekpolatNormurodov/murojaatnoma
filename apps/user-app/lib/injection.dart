@@ -4,6 +4,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/router/app_router.dart';
+import 'package:user_app/core/cache/cache_service.dart';
+import 'package:user_app/core/monitoring/app_logger.dart';
 import 'package:user_app/core/notifications/notification_service.dart';
 import 'package:user_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:user_app/features/auth/data/repositories/auth_repository_impl.dart';
@@ -73,6 +75,17 @@ Future<void> configureDependencies() async {
     // butun ilova davomida BITTA plagin instansiyasi (`init()` bir marta,
     // `bootstrap()`da) kifoya.
     ..registerLazySingleton<NotificationService>(NotificationService.new)
+    // `CacheService` — SharedPreferences ustidagi yupqa, ixtiyoriy TTL'ga
+    // ega JSON kesh. "Cache-then-network" ro'yxat ekranlari uchun: lazy
+    // singleton, chunki butun ilova davomida bitta `SharedPreferences`
+    // instansiyasi ustida ishlaydi (yuqoridagi bilan bir xil).
+    ..registerLazySingleton<CacheService>(
+      () => CacheService(getIt<SharedPreferences>()),
+    )
+    // `AppLogger` — debug-only konsol logging seam'i (kelajakdagi
+    // crash/monitoring backend uchun). Holatsiz, shuning uchun lazy
+    // singleton xavfsiz va yetarli.
+    ..registerLazySingleton<AppLogger>(AppLogger.new)
     // ---- App-level cubits (theme + locale) ----
     ..registerFactory<ThemeCubit>(ThemeCubit.new)
     ..registerFactory<LocaleCubit>(LocaleCubit.new)

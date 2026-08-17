@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/empty_view.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/payments/domain/entities/payment.dart';
 import 'package:user_app/features/payments/domain/entities/utility.dart';
 import 'package:user_app/features/payments/presentation/bloc/payment_history_cubit.dart';
@@ -27,25 +30,20 @@ class PaymentHistoryPage extends StatelessWidget {
       body: SafeArea(
         child: BlocBuilder<PaymentHistoryCubit, PaymentHistoryState>(
           builder: (context, state) => switch (state) {
-            PaymentHistoryLoading() => const AppSkeletonList(
+            PaymentHistoryLoading() => const ShimmerList(
+              6,
               key: Key('history_skeleton'),
             ),
             PaymentHistoryError(:final message) => Padding(
               padding: const EdgeInsets.all(24),
-              child: EmptyState(
-                icon: AppIcons.close,
-                title: l10n.dataLoadErrorTitle,
+              child: ErrorView(
                 message: message,
-                action: AppButton(
-                  label: l10n.retry,
-                  expand: false,
-                  onPressed: () => context.read<PaymentHistoryCubit>().load(),
-                ),
+                onRetry: () => context.read<PaymentHistoryCubit>().load(),
               ),
             ),
             PaymentHistoryEmpty() => Padding(
               padding: const EdgeInsets.all(24),
-              child: EmptyState(
+              child: EmptyView(
                 icon: AppIcons.receipt,
                 title: l10n.paymentHistoryEmptyTitle,
                 message: l10n.paymentHistoryEmptyMessage,
@@ -65,7 +63,7 @@ class PaymentHistoryPage extends StatelessWidget {
                   child: filtered.isEmpty
                       ? Padding(
                           padding: const EdgeInsets.all(24),
-                          child: EmptyState(
+                          child: EmptyView(
                             icon: AppIcons.receipt,
                             title: l10n.paymentHistoryEmptyTitle,
                             message: l10n.paymentHistoryEmptyMessage,

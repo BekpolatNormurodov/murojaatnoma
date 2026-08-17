@@ -1,7 +1,10 @@
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/entities/request_message.dart';
 import 'package:user_app/features/requests/presentation/bloc/request_detail_cubit.dart';
@@ -77,80 +80,94 @@ class _DetailContent extends StatelessWidget {
     final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Text(request.title, style: AppTextStyles.h2)),
-            const SizedBox(width: 10),
-            RequestStatusChip(status: request.status),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            AppBadge(
-              label: RequestKindMeta.label(l10n, request.kind),
-              variant: request.kind == RequestKind.ariza
-                  ? AppBadgeVariant.info
-                  : AppBadgeVariant.warning,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                request.category,
-                style: AppTextStyles.caption.copyWith(color: inkSoft),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+    // Pastga tortib yangilash — faqat xabarlar thread'ini qayta yuklaydi
+    // (murojaatning o'zi sahifa ochilganda allaqachon yuklangan), shu
+    // tufayli butun sahifa qayta skeleton holatiga qaytmaydi (qarang:
+    // `RequestDetailCubit.reloadMessages`).
+    return RefreshIndicator(
+      onRefresh: () => context.read<RequestDetailCubit>().reloadMessages(),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: Text(request.title, style: AppTextStyles.h2)),
+              const SizedBox(width: 10),
+              RequestStatusChip(status: request.status),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              AppBadge(
+                label: RequestKindMeta.label(l10n, request.kind),
+                variant: request.kind == RequestKind.ariza
+                    ? AppBadgeVariant.info
+                    : AppBadgeVariant.warning,
               ),
-            ),
-            const SizedBox(width: 8),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  request.category,
+                  style: AppTextStyles.caption.copyWith(color: inkSoft),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                formatIsoDate(request.createdAt),
+                style: AppTextStyles.caption.copyWith(color: inkMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
+            child: _StatusTimeline(status: request.status),
+          ),
+          const SizedBox(height: 20),
+          _SectionTitle(l10n.requestDescriptionTitle),
+          const SizedBox(height: 8),
+          AppCard(child: Text(request.body, style: AppTextStyles.body)),
+          const SizedBox(height: 20),
+          _SectionTitle(l10n.requestAttachmentsTitle),
+          const SizedBox(height: 8),
+          if (request.attachments.isEmpty)
             Text(
-              formatIsoDate(request.createdAt),
+              l10n.requestNoAttachments,
               style: AppTextStyles.caption.copyWith(color: inkMuted),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        AppCard(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-          child: _StatusTimeline(status: request.status),
-        ),
-        const SizedBox(height: 20),
-        _SectionTitle(l10n.requestDescriptionTitle),
-        const SizedBox(height: 8),
-        AppCard(child: Text(request.body, style: AppTextStyles.body)),
-        const SizedBox(height: 20),
-        _SectionTitle(l10n.requestAttachmentsTitle),
-        const SizedBox(height: 8),
-        if (request.attachments.isEmpty)
-          Text(
-            l10n.requestNoAttachments,
-            style: AppTextStyles.caption.copyWith(color: inkMuted),
-          )
-        else
-          for (final attachment in request.attachments) ...[
-            RequestAttachmentTile(attachment: attachment),
-            const SizedBox(height: 8),
-          ],
-        const SizedBox(height: 20),
-        _SectionTitle(l10n.requestResponseTitle),
-        const SizedBox(height: 8),
-        if (messages.isEmpty)
-          Text(
-            l10n.chatEmptyMessage,
-            style: AppTextStyles.caption.copyWith(color: inkMuted),
-          )
-        else
-          for (final message in messages) ...[
-            _MessageBubble(message: message),
-            const SizedBox(height: 12),
-          ],
-        const SizedBox(height: 8),
-        _MessageComposer(sending: sendingMessage),
-      ],
+            )
+          else
+            for (final attachment in request.attachments) ...[
+              RequestAttachmentTile(attachment: attachment),
+              const SizedBox(height: 8),
+            ],
+          const SizedBox(height: 20),
+          _SectionTitle(l10n.requestResponseTitle),
+          const SizedBox(height: 8),
+          if (messages.isEmpty)
+            Text(
+              l10n.chatEmptyMessage,
+              style: AppTextStyles.caption.copyWith(color: inkMuted),
+            )
+          else
+            // Har bir pufakcha o'z `message.id`si bilan kalitlangan — shu
+            // tufayli mavjud xabarlar qayta qurilishda animatsiyasini QAYTA
+            // O'YNAMAYDI, faqat YANGI xabar (masalan optimistik yuborilgan)
+            // silliq (fade + slide) paydo bo'ladi — "smooth append".
+            for (final message in messages) ...[
+              _MessageBubble(
+                key: ValueKey(message.id),
+                message: message,
+              ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.12, end: 0),
+              const SizedBox(height: 12),
+            ],
+          const SizedBox(height: 8),
+          _MessageComposer(sending: sendingMessage),
+        ],
+      ),
     );
   }
 }
@@ -159,7 +176,7 @@ class _DetailContent extends StatelessWidget {
 /// xodim/tizim xabarlari chapga (neytral qopqoq bilan) tekislanadi —
 /// odatiy chat vizual tili.
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({required this.message, super.key});
 
   final RequestMessage message;
 
@@ -403,31 +420,29 @@ class _DetailSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(AppRadii.lg);
-    return Padding(
-      padding: const EdgeInsets.all(20),
+    return const Padding(
+      padding: EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const AppSkeleton(width: double.infinity, height: 24),
-          const SizedBox(height: 12),
-          const AppSkeleton(width: 160),
-          const SizedBox(height: 24),
-          AppSkeleton(width: double.infinity, height: 90, borderRadius: radius),
-          const SizedBox(height: 20),
-          AppSkeleton(
-            width: double.infinity,
-            height: 120,
-            borderRadius: radius,
-          ),
-          const SizedBox(height: 20),
-          AppSkeleton(width: double.infinity, height: 80, borderRadius: radius),
+          ShimmerBox(width: double.infinity, height: 24),
+          SizedBox(height: 12),
+          ShimmerBox(width: 160),
+          SizedBox(height: 24),
+          ShimmerBox(width: double.infinity, height: 90, radius: AppRadii.lg),
+          SizedBox(height: 20),
+          ShimmerBox(width: double.infinity, height: 120, radius: AppRadii.lg),
+          SizedBox(height: 20),
+          ShimmerBox(width: double.infinity, height: 80, radius: AppRadii.lg),
         ],
       ),
     );
   }
 }
 
+/// Murojaatni yuklashda xatolik — `ErrorView` ustida quriladi, faqat
+/// murojaat topilmadi sarlavhasini `message` oldiga qo'shadi (`ErrorView`ning
+/// o'zi faqat bitta matn qatorini qabul qiladi).
 class _DetailErrorView extends StatelessWidget {
   const _DetailErrorView({required this.message});
 
@@ -436,18 +451,10 @@ class _DetailErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: EmptyState(
-        icon: AppIcons.close,
-        title: l10n.requestNotFoundTitle,
-        message: message,
-        action: AppButton(
-          label: l10n.retry,
-          expand: false,
-          onPressed: () => context.read<RequestDetailCubit>().retry(),
-        ),
-      ),
+    return ErrorView(
+      message: '${l10n.requestNotFoundTitle}\n$message',
+      retryLabel: l10n.retry,
+      onRetry: () => context.read<RequestDetailCubit>().retry(),
     );
   }
 }

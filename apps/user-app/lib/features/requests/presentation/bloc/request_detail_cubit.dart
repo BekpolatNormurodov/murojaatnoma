@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:user_app/core/monitoring/app_logger.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/entities/request_message.dart';
 import 'package:user_app/features/requests/domain/usecases/get_citizen_request.dart';
@@ -24,14 +25,23 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     required GetCitizenRequest getCitizenRequest,
     required GetRequestMessages getRequestMessages,
     required SendRequestMessage sendRequestMessage,
+    AppLogger? logger,
   }) : _getCitizenRequest = getCitizenRequest,
        _getRequestMessages = getRequestMessages,
        _sendRequestMessage = sendRequestMessage,
+       _logger = logger ?? const AppLogger(),
        super(const RequestDetailLoading());
 
   final GetCitizenRequest _getCitizenRequest;
   final GetRequestMessages _getRequestMessages;
   final SendRequestMessage _sendRequestMessage;
+  final AppLogger _logger;
+
+  /// Optimistik (hali serverga tasdiqlanmagan) xabar ID'lari shu prefiks
+  /// bilan boshlanadi — [sendMessage] ularni haqiqiy ID bilan
+  /// almashtirganda yoki xatolik bo'lsa ro'yxatdan olib tashlaganda
+  /// aniqlash uchun.
+  static const _optimisticIdPrefix = '_optimistic_';
 
   /// So'nggi [load] bilan chaqirilgan ID — [retry]/[sendMessage]
   /// parametrsiz qayta yuklay olishi uchun saqlanadi.
@@ -43,13 +53,21 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     try {
       final result = await _getCitizenRequest(GetCitizenRequestParams(id));
       await result.fold(
-        (failure) async => emit(RequestDetailError(failure.message)),
+        (failure) async {
+          _logger.logError(
+            failure,
+            StackTrace.current,
+            reason: 'RequestDetailCubit.load',
+          );
+          emit(RequestDetailError(failure.message));
+        },
         (request) async {
           final messages = await _fetchMessages(id);
           emit(RequestDetailLoaded(request: request, messages: messages));
         },
       );
-    } on Object catch (e) {
+    } on Object catch (e, stackTrace) {
+      _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.load');
       emit(RequestDetailError('Kutilmagan xatolik: $e'));
     }
   }
@@ -60,12 +78,21 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
   Future<List<RequestMessage>> _fetchMessages(String id) async {
     try {
       final result = await _getRequestMessages(GetRequestMessagesParams(id));
-      final messages = result.fold(
-        (_) => const <RequestMessage>[],
-        (messages) => messages,
-      );
+      final messages = result.fold((failure) {
+        _logger.logError(
+          failure,
+          StackTrace.current,
+          reason: 'RequestDetailCubit._fetchMessages',
+        );
+        return const <RequestMessage>[];
+      }, (messages) => messages);
       return messages;
-    } on Object catch (_) {
+    } on Object catch (e, stackTrace) {
+      _logger.logError(
+        e,
+        stackTrace,
+        reason: 'RequestDetailCubit._fetchMessages',
+      );
       return const [];
     }
   }
@@ -86,10 +113,17 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     emit(current.copyWith(messages: messages));
   }
 
-  /// [text]ni fuqaro nomidan murojaat thread'iga yuboradi. Muvaffaqiyatli
-  /// bo'lsa yangi xabar ro'yxatga qo'shiladi va `null` qaytadi; xatolik
-  /// bo'lsa foydalanuvchiga ko'rsatsa bo'ladigan xabar matni qaytadi
-  /// (sahifa buni `AppAlert.error` bilan ko'rsatadi).
+  /// [text]ni fuqaro nomidan murojaat thread'iga yuboradi.
+  ///
+  /// OPTIMISTIK: server javobini kutmasdan, xabar DARHOL (vaqtinchalik ID
+  /// bilan) thread oxiriga qo'shiladi — foydalanuvchi "yuborildi" holatini
+  /// kutish o'rniga o'z xabarini zudlik bilan ko'radi (`sendingMessage`
+  /// esa hali `true`, composer tugmasi loading holatida qoladi).
+  /// Muvaffaqiyatli bo'lsa vaqtinchalik xabar serverdan qaytgan haqiqiy
+  /// xabar bilan (o'sha o'rinda) almashtiriladi va `null` qaytadi; xatolik
+  /// bo'lsa vaqtinchalik xabar ro'yxatdan OLIB TASHLANADI (optimistik
+  /// yozuv bekor qilinadi) va foydalanuvchiga ko'rsatsa bo'ladigan xabar
+  /// matni qaytadi (sahifa buni `AppAlert.error` bilan ko'rsatadi).
   Future<String?> sendMessage(String text) async {
     final id = _lastId;
     final current = state;
@@ -98,29 +132,56 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
       return null;
     }
 
-    emit(current.copyWith(sendingMessage: true));
+    final optimisticId =
+        '$_optimisticIdPrefix${DateTime.now().microsecondsSinceEpoch}';
+    final optimisticMessage = RequestMessage(
+      id: optimisticId,
+      senderRole: RequestMessageSenderRole.citizen,
+      text: trimmed,
+      createdAt: DateTime.now().toIso8601String(),
+    );
+
+    emit(
+      current.copyWith(
+        sendingMessage: true,
+        messages: [...current.messages, optimisticMessage],
+      ),
+    );
+
     final result = await _sendRequestMessage(
       SendRequestMessageParams(id: id, text: trimmed),
     );
 
     return result.fold(
       (failure) {
+        _logger.logError(
+          failure,
+          StackTrace.current,
+          reason: 'RequestDetailCubit.sendMessage',
+        );
         final latest = state;
         if (latest is RequestDetailLoaded) {
-          emit(latest.copyWith(sendingMessage: false));
+          emit(
+            latest.copyWith(
+              sendingMessage: false,
+              messages: latest.messages
+                  .where((m) => m.id != optimisticId)
+                  .toList(),
+            ),
+          );
         }
         return failure.message;
       },
       (message) {
         final latest = state;
-        final baseMessages = latest is RequestDetailLoaded
-            ? latest.messages
-            : current.messages;
         if (latest is RequestDetailLoaded) {
           emit(
             latest.copyWith(
               sendingMessage: false,
-              messages: [...baseMessages, message],
+              messages: [
+                for (final m in latest.messages)
+                  if (m.id == optimisticId) message else m,
+              ],
             ),
           );
         }

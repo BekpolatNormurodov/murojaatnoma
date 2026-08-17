@@ -7,6 +7,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/empty_view.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/presentation/bloc/requests_cubit.dart';
 import 'package:user_app/features/requests/presentation/widgets/citizen_request_card.dart';
@@ -146,36 +149,54 @@ class _RequestsPageState extends State<RequestsPage> {
             const SizedBox(height: 8),
             Expanded(
               child: switch (cubit.state) {
-                RequestsLoading() => const AppSkeletonList(
+                RequestsLoading() => const ShimmerList(
+                  6,
                   key: Key('requests_skeleton'),
                 ),
-                RequestsError(:final message) => _RequestsErrorView(
+                RequestsError(:final message) => ErrorView(
                   message: message,
                   onRetry: cubit.reload,
+                  retryLabel: l10n.retry,
                 ),
-                RequestsEmpty() => _RequestsEmptyView(
-                  hasFilters:
+                RequestsEmpty() => EmptyView(
+                  icon: AppIcons.requests,
+                  title: l10n.requestsEmptyTitle,
+                  message:
                       cubit.hasActiveFilters ||
-                      (cubit.query?.isNotEmpty ?? false),
+                          (cubit.query?.isNotEmpty ?? false)
+                      ? l10n.requestsEmptyFilteredMessage
+                      : l10n.requestsEmptyMessage,
                 ),
-                RequestsLoaded(:final items) => RefreshIndicator(
-                  onRefresh: cubit.reload,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                    itemCount: items.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final request = items[index];
-                      return CitizenRequestCard(
-                            request: request,
-                            onTap: () => _openDetail(context, request.id),
-                          )
-                          .animate(delay: (index * 60).ms)
-                          .fadeIn(duration: 250.ms)
-                          .slideY(begin: 0.08, end: 0);
-                    },
-                  ),
+                RequestsLoaded(:final items, :final isRefreshing) => Column(
+                  children: [
+                    // Kesh darhol ko'rsatilgan, tarmoq esa fon rejimida
+                    // yangilanmoqda — bu holatni butun ekranni skeleton
+                    // bilan qoplamasdan, ingichka progress chizig'i bilan
+                    // bildiramiz (ro'yxat allaqachon interaktiv).
+                    if (isRefreshing) const _RefreshingBar(),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: cubit.reload,
+                        child: ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                          itemCount: items.length,
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final request = items[index];
+                            return CitizenRequestCard(
+                                  key: ValueKey(request.id),
+                                  request: request,
+                                  onTap: () => _openDetail(context, request.id),
+                                )
+                                .animate(delay: (index * 60).ms)
+                                .fadeIn(duration: 250.ms)
+                                .slideY(begin: 0.08, end: 0);
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               },
             ),
@@ -228,40 +249,20 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
-class _RequestsEmptyView extends StatelessWidget {
-  const _RequestsEmptyView({required this.hasFilters});
-
-  final bool hasFilters;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return EmptyState(
-      icon: AppIcons.requests,
-      title: l10n.requestsEmptyTitle,
-      message: hasFilters
-          ? l10n.requestsEmptyFilteredMessage
-          : l10n.requestsEmptyMessage,
-    );
-  }
-}
-
-class _RequestsErrorView extends StatelessWidget {
-  const _RequestsErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
+/// Ro'yxat "cache-then-network" fon yangilanishida (kesh darhol
+/// ko'rsatilgan, tarmoq javobi hali kutilmoqda) ro'yxat tepasida chiziladigan
+/// ingichka, aniqlanmagan-davomiylik progress chizig'i.
+class _RefreshingBar extends StatelessWidget {
+  const _RefreshingBar();
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: EmptyState(
-        icon: AppIcons.close,
-        title: l10n.requestsErrorTitle,
-        message: message,
-        action: AppButton(label: l10n.retry, expand: false, onPressed: onRetry),
+    return const SizedBox(
+      height: 2.5,
+      child: LinearProgressIndicator(
+        minHeight: 2.5,
+        backgroundColor: Colors.transparent,
+        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
       ),
     );
   }

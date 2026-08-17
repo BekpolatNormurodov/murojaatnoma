@@ -64,12 +64,7 @@ class _PinSetPageState extends State<PinSetPage> {
             case PinSetSuccess():
               unawaited(_proceedToHome(context));
             case PinStorageError():
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(context.l10n.pinStorageErrorMessage),
-                  backgroundColor: AppColors.danger,
-                ),
-              );
+              AppAlert.error(context, context.l10n.pinStorageErrorMessage);
             case PinInitial():
             case PinSaving():
             case PinVerifying():
@@ -86,6 +81,7 @@ class _PinSetPageState extends State<PinSetPage> {
           return _PinEntryBody(
             pinKey: _pinKey,
             confirming: state is PinAwaitingConfirmation,
+            busy: state is PinSaving,
             errorText: state is PinMismatch
                 ? context.l10n.pinMismatchError
                 : null,
@@ -101,12 +97,18 @@ class _PinEntryBody extends StatelessWidget {
   const _PinEntryBody({
     required this.pinKey,
     required this.confirming,
+    required this.busy,
     required this.errorText,
     required this.onCompleted,
   });
 
   final GlobalKey<AppPinInputState> pinKey;
   final bool confirming;
+
+  /// PIN xeshi xavfsiz xotiraga yozilmoqda (`PinSaving`) — shu payt
+  /// klaviatura vaqtincha bloklanadi (qo'sh-yuborishning oldini olish
+  /// uchun) va kichik yuklanish indikatori ko'rsatiladi.
+  final bool busy;
   final String? errorText;
   final ValueChanged<String> onCompleted;
 
@@ -116,9 +118,7 @@ class _PinEntryBody extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final title = confirming ? l10n.pinConfirmTitle : l10n.pinSetTitle;
-    final subtitle = confirming
-        ? l10n.pinConfirmSubtitle
-        : l10n.pinSetSubtitle;
+    final subtitle = confirming ? l10n.pinConfirmSubtitle : l10n.pinSetSubtitle;
 
     return SafeArea(
       child: LayoutBuilder(
@@ -155,10 +155,39 @@ class _PinEntryBody extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    AppPinInput(
-                      key: pinKey,
-                      errorText: errorText,
-                      onCompleted: onCompleted,
+                    // Sobit balandlikdagi joy — `busy` paytida kichik
+                    // spinner shu yerda paydo bo'ladi, pastdagi PIN
+                    // kataklarini pastga surib qo'ymaydi (layout sakramaydi).
+                    SizedBox(
+                      height: 24,
+                      child: Center(
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 150),
+                          opacity: busy ? 1 : 0,
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2.2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    IgnorePointer(
+                      // PIN xeshi saqlanayotganda klaviatura bloklanadi —
+                      // ikki marta ketma-ket to'liq kiritish (masalan
+                      // tasodifiy qo'shimcha bosish) ikkita parallel
+                      // `confirmEntry` chaqiruviga olib kelmasligi uchun.
+                      ignoring: busy,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 150),
+                        opacity: busy ? 0.5 : 1,
+                        child: AppPinInput(
+                          key: pinKey,
+                          errorText: errorText,
+                          onCompleted: onCompleted,
+                        ),
+                      ),
                     ).animate().fadeIn().slideY(begin: 0.08, end: 0),
                     const Spacer(flex: 2),
                   ],

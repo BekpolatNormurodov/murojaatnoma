@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
@@ -32,9 +34,12 @@ class HomePage extends StatelessWidget {
         child: BlocBuilder<HomeCubit, HomeState>(
           builder: (context, state) => switch (state) {
             HomeLoading() => const _HomeSkeleton(key: Key('home_skeleton')),
-            HomeError(:final message) => _HomeErrorView(
-              message: message,
-              onRetry: () => context.read<HomeCubit>().load(),
+            HomeError(:final message) => Padding(
+              padding: const EdgeInsets.all(24),
+              child: ErrorView(
+                message: message,
+                onRetry: () => context.read<HomeCubit>().load(),
+              ),
             ),
             HomeEmpty() => const _HomeContent(
               utilities: [],
@@ -427,99 +432,80 @@ class _QuickAction extends StatelessWidget {
   }
 }
 
-/// Yuklanish holati — shimmer bilan silliq "skeleton", hech qachon oq
-/// ekran emas.
+/// Yuklanish holati — bosh sahifaning haqiqiy joylashuviga mos "shaped"
+/// skeleton (avatar+ism, jami-qarz kartasi, tezkor xizmatlar katakchalari),
+/// [ShimmerBox]lardan yig'ilgan — hech qachon oq/bo'sh ekran emas.
 class _HomeSkeleton extends StatelessWidget {
   const _HomeSkeleton({super.key});
 
-  static Widget _box({
-    required Color color,
-    double height = 16,
-    double? width,
-    double radius = 10,
-  }) {
-    return Container(
-      height: height,
-      width: width,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final line = isDark ? AppColors.darkLine : AppColors.line;
-    final glint = isDark ? AppColors.darkInkMuted : AppColors.surface;
-
-    return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return const Padding(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  _box(height: 56, width: 56, radius: 28, color: line),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _box(height: 14, width: 100, color: line),
-                        const SizedBox(height: 8),
-                        _box(height: 18, width: 160, color: line),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 26),
-              _box(height: 130, radius: 20, color: line),
-              const SizedBox(height: 24),
-              _box(height: 18, width: 140, color: line),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(child: _box(height: 92, radius: 18, color: line)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _box(height: 92, radius: 18, color: line)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: _box(height: 92, radius: 18, color: line)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _box(height: 92, radius: 18, color: line)),
-                ],
+              ShimmerBox(circle: true, height: 56),
+              SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShimmerBox(width: 100, height: 14),
+                    SizedBox(height: 8),
+                    ShimmerBox(width: 160, height: 18),
+                  ],
+                ),
               ),
             ],
           ),
-        )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1200.ms, color: glint);
-  }
-}
-
-/// Xatolik holati — xabar + "Qayta urinish" tugmasi.
-class _HomeErrorView extends StatelessWidget {
-  const _HomeErrorView({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: EmptyState(
-        icon: AppIcons.close,
-        title: l10n.dataLoadErrorTitle,
-        message: message,
-        action: AppButton(label: l10n.retry, expand: false, onPressed: onRetry),
+          SizedBox(height: 26),
+          ShimmerBox(width: double.infinity, height: 130, radius: 20),
+          SizedBox(height: 24),
+          ShimmerBox(width: 140, height: 18),
+          SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: ShimmerBox(
+                  width: double.infinity,
+                  height: 92,
+                  radius: 18,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: ShimmerBox(
+                  width: double.infinity,
+                  height: 92,
+                  radius: 18,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ShimmerBox(
+                  width: double.infinity,
+                  height: 92,
+                  radius: 18,
+                ),
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: ShimmerBox(
+                  width: double.infinity,
+                  height: 92,
+                  radius: 18,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

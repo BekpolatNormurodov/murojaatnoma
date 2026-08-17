@@ -37,11 +37,9 @@ class _PhoneInputPageState extends State<PhoneInputPage> {
           if (state.status == AuthStatus.otpSent) {
             context.push('/otp', extra: '+998 ${_phone.text}');
           } else if (state.status == AuthStatus.error) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.errorMessage ?? context.l10n.errorGeneric),
-                backgroundColor: AppColors.danger,
-              ),
+            AppAlert.error(
+              context,
+              state.errorMessage ?? context.l10n.errorGeneric,
             );
           }
         },

@@ -30,6 +30,25 @@ class NotificationItem extends Equatable {
     this.read = false,
   });
 
+  /// Keshdan (`SharedPreferences`/JSON) o'qiladi — `CacheService.getJsonList`
+  /// orqali. Buzilgan/kutilmagan shakl bo'lsa `CacheService` o'zi `null`
+  /// qaytaradi (bu yerga hech qachon yetib kelmaydi).
+  factory NotificationItem.fromJson(Map<String, dynamic> json) {
+    return NotificationItem(
+      id: json['id'] as String,
+      type: NotificationType.values.byName(json['type'] as String),
+      title: json['title'] as String,
+      body: json['body'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      read: json['read'] as bool? ?? false,
+    );
+  }
+
+  /// `CacheService` kaliti — `NotificationsCubit` cache-then-network
+  /// naqshi uchun (oxirgi ko'rsatilgan ro'yxat, o'qilgan-belgilar bilan
+  /// birga, ilova qayta ochilganda darhol ko'rsatiladi).
+  static const cacheKey = 'cache_notifications_v1';
+
   final String id;
   final NotificationType type;
   final String title;
@@ -48,4 +67,13 @@ class NotificationItem extends Equatable {
 
   @override
   List<Object?> get props => [id, type, title, body, createdAt, read];
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'type': type.name,
+    'title': title,
+    'body': body,
+    'created_at': createdAt.toIso8601String(),
+    'read': read,
+  };
 }

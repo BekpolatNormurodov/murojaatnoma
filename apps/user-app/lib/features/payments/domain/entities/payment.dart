@@ -35,6 +35,10 @@ class Payment extends Equatable {
     );
   }
 
+  /// `CacheService` kaliti — `PaymentHistoryCubit` cache-then-network
+  /// naqshi uchun (`PaymentsRepository.history()` natijasini keshlaydi).
+  static const cacheKey = 'cache_payments_history_v1';
+
   final String id;
   final UtilityType type;
   final double amount;

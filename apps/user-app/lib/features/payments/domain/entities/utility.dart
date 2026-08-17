@@ -28,6 +28,13 @@ class Utility extends Equatable {
     );
   }
 
+  /// `CacheService` kaliti — `HomeCubit` va `UtilitiesCubit` bir xil
+  /// masofaviy ro'yxatni (`PaymentsRepository.utilities()`) keshlaydi,
+  /// shuning uchun ikkalasi ham shu bitta kalitdan foydalanadi (cache-then-
+  /// network naqshi: qaysi biri oldin yuklansa, ikkinchisi ham shu keshdan
+  /// darhol foydalana oladi).
+  static const cacheKey = 'cache_payments_utilities_v1';
+
   final String id;
   final UtilityType type;
   final String provider;

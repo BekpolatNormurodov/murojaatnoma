@@ -14,19 +14,28 @@ sealed class RequestsState extends Equatable {
 }
 
 /// `load()` boshlanganda (yoki tab/qidiruv/filtr o'zgarib qayta
-/// yuklanganda) — ro'yxat skeleton (`AppSkeletonList`) ko'rsatadi.
+/// yuklanganda) — mos kesh topilmasa ro'yxat skeleton (`ShimmerList`)
+/// ko'rsatadi. Kesh topilsa buning o'rniga to'g'ridan-to'g'ri
+/// [RequestsLoaded] (`isRefreshing: true`) emit qilinadi.
 class RequestsLoading extends RequestsState {
   const RequestsLoading();
 }
 
 /// Murojaatlar ro'yxati muvaffaqiyatli yuklandi va bo'sh emas.
 class RequestsLoaded extends RequestsState {
-  const RequestsLoaded(this.items);
+  const RequestsLoaded(this.items, {this.isRefreshing = false});
 
   final List<CitizenRequest> items;
 
+  /// `true` bo'lsa [items] keshdan (oldingi yuklashdan) darhol ko'rsatilgan,
+  /// tarmoqdan haqiqiy ro'yxat esa hali fon rejimida kelmoqda — "cache-then-
+  /// network" naqshi. Sahifa shu bayroqni ko'rib, ro'yxat ustida ingichka
+  /// yangilanish ko'rsatkichini chizadi (butun ekranni skeleton bilan
+  /// almashtirmasdan).
+  final bool isRefreshing;
+
   @override
-  List<Object?> get props => [items];
+  List<Object?> get props => [items, isRefreshing];
 }
 
 /// Joriy filtrlar (tur/qidiruv/holat) bo'yicha hech qanday murojaat

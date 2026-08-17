@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -88,7 +89,13 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
       backgroundColor: AppColors.ink,
       body: BlocConsumer<FaceCubit, FaceState>(
         listener: (context, state) {
-          if (state is FaceSuccess) {
+          if (state is FaceCapturing) {
+            // Suratga olish boshlanishi — "shutter" taassurotini beruvchi
+            // qisqa haptik (bir martalik, chunki `FaceCapturing` faqat
+            // sifat-gate barqaror bo'lgach BIR marta emitlanadi).
+            unawaited(HapticFeedback.mediumImpact());
+          } else if (state is FaceSuccess) {
+            unawaited(HapticFeedback.lightImpact());
             unawaited(_proceedToPinSetup());
           }
         },
@@ -109,52 +116,69 @@ class _FaceEnrollBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
 
-    return switch (state) {
-      FaceInitializing() => _LoadingView(text: l10n.faceInitializing),
-      FacePermissionDenied(:final permanentlyDenied) => _MessageView(
-        icon: AppIcons.lock,
-        title: l10n.facePermissionTitle,
-        message: l10n.faceCameraPermissionMessage,
-        actionLabel: permanentlyDenied
-            ? l10n.faceOpenSettings
-            : l10n.faceGrantPermission,
-        onAction: () {
-          if (permanentlyDenied) {
-            unawaited(openAppSettings());
-          } else {
-            unawaited(context.read<FaceCubit>().startCamera());
-          }
-        },
-      ),
-      FaceCameraError() => _MessageView(
-        icon: AppIcons.camera,
-        title: l10n.faceCameraErrorTitle,
-        message: l10n.faceCameraErrorMessage,
-        actionLabel: l10n.retry,
-        onAction: () => unawaited(context.read<FaceCubit>().startCamera()),
-      ),
-      FaceModelError() => _MessageView(
-        icon: AppIcons.scan,
-        title: l10n.faceModelErrorTitle,
-        message: l10n.faceModelErrorMessage,
-        actionLabel: l10n.retry,
-        onAction: () => unawaited(context.read<FaceCubit>().startCamera()),
-      ),
-      FaceError(:final message) => _MessageView(
-        icon: AppIcons.close,
-        title: l10n.faceErrorTitle,
-        message: message,
-        actionLabel: l10n.retry,
-        onAction: () => context.read<FaceCubit>().retry(),
-      ),
-      FaceSuccess() => const _SuccessView(),
-      FaceSearching() ||
-      FacePoorQuality() ||
-      FaceAligning() ||
-      FaceCapturing() ||
-      FaceEmbedding() ||
-      FaceEnrolling() => _LiveGateView(state: state),
-    };
+    // Butun ekran-darajasidagi holatlar (yuklanish/jonli skaner/muvaffaqiyat/
+    // xato) orasida yumshoq o'tish — `AnimatedSwitcher` standart
+    // `FadeTransition`i. `_LiveGateView` BIR XIL widget turi bo'lgani uchun
+    // (barcha `searching`/`poorQuality`/`aligning`/`capturing`/`embedding`/
+    // `enrolling` bir xil `_LiveGateView` klassiga xaritalanadi, kalitsiz)
+    // ICHKI sifat-gate holatlari orasida bu o'tish HECH QANDAY qo'shimcha
+    // animatsiya QO'SHMAYDI (`Widget.canUpdate` bir xil turdagi ikkita
+    // kalitsiz widget'ni "bir xil" deb hisoblaydi) — faqat kamera oldida
+    // FaceScanOverlay'ning o'z silliq animatsiyalari davom etadi. Faqat
+    // widget TURI o'zgarganda (masalan `_LoadingView` -> `_LiveGateView`
+    // yoki `_LiveGateView` -> `_SuccessView`/`_MessageView`) haqiqiy
+    // krossfeyd sodir bo'ladi.
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 320),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: switch (state) {
+        FaceInitializing() => _LoadingView(text: l10n.faceInitializing),
+        FacePermissionDenied(:final permanentlyDenied) => _MessageView(
+          icon: AppIcons.lock,
+          title: l10n.facePermissionTitle,
+          message: l10n.faceCameraPermissionMessage,
+          actionLabel: permanentlyDenied
+              ? l10n.faceOpenSettings
+              : l10n.faceGrantPermission,
+          onAction: () {
+            if (permanentlyDenied) {
+              unawaited(openAppSettings());
+            } else {
+              unawaited(context.read<FaceCubit>().startCamera());
+            }
+          },
+        ),
+        FaceCameraError() => _MessageView(
+          icon: AppIcons.camera,
+          title: l10n.faceCameraErrorTitle,
+          message: l10n.faceCameraErrorMessage,
+          actionLabel: l10n.retry,
+          onAction: () => unawaited(context.read<FaceCubit>().startCamera()),
+        ),
+        FaceModelError() => _MessageView(
+          icon: AppIcons.scan,
+          title: l10n.faceModelErrorTitle,
+          message: l10n.faceModelErrorMessage,
+          actionLabel: l10n.retry,
+          onAction: () => unawaited(context.read<FaceCubit>().startCamera()),
+        ),
+        FaceError(:final message) => _MessageView(
+          icon: AppIcons.close,
+          title: l10n.faceErrorTitle,
+          message: message,
+          actionLabel: l10n.retry,
+          onAction: () => context.read<FaceCubit>().retry(),
+        ),
+        FaceSuccess() => const _SuccessView(),
+        FaceSearching() ||
+        FacePoorQuality() ||
+        FaceAligning() ||
+        FaceCapturing() ||
+        FaceEmbedding() ||
+        FaceEnrolling() => _LiveGateView(state: state),
+      },
+    );
   }
 }
 
@@ -180,8 +204,9 @@ class _LiveGateView extends StatelessWidget {
   FaceScanStatus get _scanStatus => switch (state) {
     FacePoorQuality() => FaceScanStatus.error,
     FaceAligning() => FaceScanStatus.aligning,
-    FaceCapturing() || FaceEmbedding() || FaceEnrolling() =>
-      FaceScanStatus.capturing,
+    FaceCapturing() ||
+    FaceEmbedding() ||
+    FaceEnrolling() => FaceScanStatus.capturing,
     _ => FaceScanStatus.searching,
   };
 

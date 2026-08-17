@@ -118,62 +118,86 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
             return ListView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
               children: [
-                Text(l10n.citizenRequestKindLabel, style: AppTextStyles.label),
-                const SizedBox(height: 8),
-                AppSegmented<RequestKind>(
-                  value: _kind,
-                  segments: [
-                    AppSegment(
-                      value: RequestKind.ariza,
-                      label: l10n.requestKindAriza,
+                // Yuborish davomida butun forma bloklanadi (IgnorePointer)
+                // va xiralashtiriladi (AnimatedOpacity) — aniq "yuborilmoqda,
+                // hozircha tahrirlash mumkin emas" signali, tugmaning o'zi
+                // (pastda, wrapper tashqarisida) esa o'z loading holatini
+                // to'liq yorqinlikda ko'rsatadi.
+                AnimatedOpacity(
+                  opacity: submitting ? 0.55 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring: submitting,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          l10n.citizenRequestKindLabel,
+                          style: AppTextStyles.label,
+                        ),
+                        const SizedBox(height: 8),
+                        AppSegmented<RequestKind>(
+                          value: _kind,
+                          segments: [
+                            AppSegment(
+                              value: RequestKind.ariza,
+                              label: l10n.requestKindAriza,
+                            ),
+                            AppSegment(
+                              value: RequestKind.shikoyat,
+                              label: l10n.requestKindShikoyat,
+                            ),
+                          ],
+                          onChanged: (value) => setState(() => _kind = value),
+                        ),
+                        const SizedBox(height: 16),
+                        AppTextField(
+                          label: l10n.createRequestTitleLabel,
+                          hint: l10n.createRequestTitleHint,
+                          controller: _titleController,
+                          errorText: _titleError,
+                          enabled: !submitting,
+                        ),
+                        const SizedBox(height: 16),
+                        AppSelect<String>(
+                          label: l10n.createRequestCategoryLabel,
+                          hint: l10n.createRequestCategoryHint,
+                          searchHint: l10n.searchHint,
+                          value: _category,
+                          options: [
+                            for (final category in _categories(l10n))
+                              AppSelectOption(value: category, label: category),
+                          ],
+                          onChanged: (value) => setState(() {
+                            _category = value;
+                            _categoryError = null;
+                          }),
+                          errorText: _categoryError,
+                          enabled: !submitting,
+                        ),
+                        const SizedBox(height: 16),
+                        AppTextField(
+                          label: l10n.createRequestDescriptionLabel,
+                          hint: l10n.createRequestDescriptionHint,
+                          controller: _bodyController,
+                          maxLines: 5,
+                          errorText: _bodyError,
+                          enabled: !submitting,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          l10n.createRequestAttachmentsLabel,
+                          style: AppTextStyles.label,
+                        ),
+                        const SizedBox(height: 8),
+                        RequestAttachmentPicker(
+                          attachments: _attachments,
+                          onChanged: (value) =>
+                              setState(() => _attachments = value),
+                        ),
+                      ],
                     ),
-                    AppSegment(
-                      value: RequestKind.shikoyat,
-                      label: l10n.requestKindShikoyat,
-                    ),
-                  ],
-                  onChanged: (value) => setState(() => _kind = value),
-                ),
-                const SizedBox(height: 16),
-                AppTextField(
-                  label: l10n.createRequestTitleLabel,
-                  hint: l10n.createRequestTitleHint,
-                  controller: _titleController,
-                  errorText: _titleError,
-                ),
-                const SizedBox(height: 16),
-                AppSelect<String>(
-                  label: l10n.createRequestCategoryLabel,
-                  hint: l10n.createRequestCategoryHint,
-                  searchHint: l10n.searchHint,
-                  value: _category,
-                  options: [
-                    for (final category in _categories(l10n))
-                      AppSelectOption(value: category, label: category),
-                  ],
-                  onChanged: (value) => setState(() {
-                    _category = value;
-                    _categoryError = null;
-                  }),
-                  errorText: _categoryError,
-                ),
-                const SizedBox(height: 16),
-                AppTextField(
-                  label: l10n.createRequestDescriptionLabel,
-                  hint: l10n.createRequestDescriptionHint,
-                  controller: _bodyController,
-                  maxLines: 5,
-                  errorText: _bodyError,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  l10n.createRequestAttachmentsLabel,
-                  style: AppTextStyles.label,
-                ),
-                const SizedBox(height: 8),
-                RequestAttachmentPicker(
-                  attachments: _attachments,
-                  onChanged: (value) => setState(() => _attachments = value),
+                  ),
                 ),
                 const SizedBox(height: 28),
                 AppButton(

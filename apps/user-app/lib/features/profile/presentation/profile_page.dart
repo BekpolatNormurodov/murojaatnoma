@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/widgets/app_shimmer.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
 import 'package:user_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
@@ -80,6 +81,15 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
         FutureBuilder<_EnrollInfo>(
           future: _enrollInfo,
           builder: (context, snapshot) {
+            // Best-effort ma'lumot yuklanayotganda joy "sakramasligi" uchun
+            // kichik shimmer o'rinbosar — natija kelgach yo sana matniga,
+            // yo (bo'lmasa) hech narsaga almashadi.
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: ShimmerBox(width: 170, height: 12),
+              );
+            }
             final enrolledAt = snapshot.data?.enrolledAt;
             if (enrolledAt == null) return const SizedBox.shrink();
             return Padding(
