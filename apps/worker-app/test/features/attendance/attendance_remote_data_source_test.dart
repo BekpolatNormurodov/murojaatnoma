@@ -1,66 +1,85 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:worker_app/core/mock/mock_attendance.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
-import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
-import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 
 void main() {
   // Faqat Mock impl sinaladi — Api impl jonli backend talab qiladi
   // (mock-first; qarang: `AttendanceRemoteDataSourceApiImpl`).
   group(AttendanceRemoteDataSourceMockImpl, () {
     late AttendanceRemoteDataSourceMockImpl subject;
-    late List<AttendanceDay> seed;
 
-    const params = CheckInParams(
-      lat: 41.3111,
-      lng: 69.3402,
-      screenshotPath: '/tmp/shot.jpg',
-    );
+    const embedding = [0.1, 0.2, 0.3];
+    const latitude = 41.3111;
+    const longitude = 69.3402;
 
-    // `mockAttendanceHistory` — modul darajasidagi (global), testlar
-    // orasida ulashiladigan mutable ro'yxat; `checkIn` unga qo'shadi.
-    // Testlar tartibidan mustaqil bo'lishi (bir-biriga holat "sizdirmasligi")
-    // uchun har bir testdan OLDIN joriy holatni saqlab olamiz (`setUp`) va
-    // testdan KEYIN asl holatga qaytaramiz (`tearDown`) — shu bilan har bir
-    // test doim bir xil, boshlang'ich urug' (seed) holatidan boshlanadi.
     setUp(() {
       subject = AttendanceRemoteDataSourceMockImpl();
-      seed = List<AttendanceDay>.of(mockAttendanceHistory);
-    });
-
-    tearDown(() {
-      mockAttendanceHistory
-        ..clear()
-        ..addAll(seed);
     });
 
     test(
-      'checkIn returns an AttendanceDay for today with the expected shape',
+      'checkIn returns a valid CheckScanResult for CHECK_IN',
       () async {
-        final day = await subject.checkIn(params);
+        final result = await subject.checkIn(
+          embedding: embedding,
+          latitude: latitude,
+          longitude: longitude,
+        );
 
-        expect(day.selfConfirmed, isTrue);
-        expect(day.insideGeofence, isTrue);
-        expect(day.status, AttendanceStatus.present);
-        expect(day.checkIn, isNotNull);
-        expect(day.checkIn, matches(r'^\d{2}:\d{2}$'));
-        expect(day.confirmedAt, isNotNull);
-        expect(day.confirmedAt, matches(r'^\d{2}:\d{2}$'));
+        expect(result.isValid, isTrue);
+        expect(result.type, 'CHECK_IN');
+        expect(result.faceScore, greaterThan(0));
       },
     );
 
     test(
-      'checkIn appends the created day to history (list-append proven)',
+      'checkOut returns a valid CheckScanResult for CHECK_OUT',
       () async {
-        final before = await subject.history();
+        final result = await subject.checkOut(
+          embedding: embedding,
+          latitude: latitude,
+          longitude: longitude,
+        );
 
-        final created = await subject.checkIn(params);
-        final after = await subject.history();
-
-        expect(after.length, before.length + 1);
-        expect(after.last, created);
-        expect(after, contains(created));
+        expect(result.isValid, isTrue);
+        expect(result.type, 'CHECK_OUT');
       },
     );
+
+    test(
+      'myAttendance reflects checkIn/checkOut performed earlier in the '
+      'same instance (in-memory mock state)',
+      () async {
+        final before = await subject.myAttendance();
+        expect(before.today.checkIn, isNull);
+        expect(before.week, isNotEmpty);
+
+        await subject.checkIn(
+          embedding: embedding,
+          latitude: latitude,
+          longitude: longitude,
+        );
+        final afterCheckIn = await subject.myAttendance();
+        expect(afterCheckIn.today.checkIn, isNotNull);
+        expect(afterCheckIn.today.checkIn, matches(r'^\d{2}:\d{2}$'));
+        expect(afterCheckIn.today.checkOut, isNull);
+
+        await subject.checkOut(
+          embedding: embedding,
+          latitude: latitude,
+          longitude: longitude,
+        );
+        final afterCheckOut = await subject.myAttendance();
+        expect(afterCheckOut.today.checkOut, isNotNull);
+        expect(afterCheckOut.today.checkOut, matches(r'^\d{2}:\d{2}$'));
+      },
+    );
+
+    test('myAttendance includes worker profile fields', () async {
+      final attendance = await subject.myAttendance();
+
+      expect(attendance.employeeId, isNotEmpty);
+      expect(attendance.fullName, isNotEmpty);
+      expect(attendance.department, isNotEmpty);
+      expect(attendance.workStartTime, isNotEmpty);
+    });
   });
 }

@@ -1,8 +1,8 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
+import 'package:worker_app/features/attendance/domain/entities/my_attendance.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 
@@ -11,10 +11,13 @@ part 'attendance_state.dart';
 /// Bosh sahifa (davomat) dashboard'ini boshqaruvchi Cubit.
 ///
 /// Ikki mustaqil vazifa bajaradi:
-/// - [load] — `AttendanceRepository.history()`dan bugungi holat va
-///   so'nggi hafta ma'lumotlarini o'qiydi (asosiy `AttendanceState`
-///   pipeline'i, `HomePage`ning butun tanasi shunga qarab qurilib
-///   qayta quriladi).
+/// - [load] — `AttendanceRepository.myAttendance()`dan (`GET
+///   /attendance/me`) bugungi holat va so'nggi hafta ma'lumotlarini
+///   BITTA so'rovda o'qiydi (asosiy `AttendanceState` pipeline'i,
+///   `HomePage`ning butun tanasi shunga qarab qurilib qayta quriladi).
+///   Eski `history()`dan farqi: server `today`ni O'ZI ajratib beradi —
+///   endi bu yerda sana bo'yicha qidirish/`clock` inject qilish shart
+///   emas (qarang: [_loadedStateFor]).
 /// - [checkGeofence] — "Yuz bilan tasdiqlash" CTA bosilganda bir martalik
 ///   joylashuv tekshiruvi; `FaceCubit.checkGeofence()` (Vazifa 17) bilan
 ///   bir xil naqsh: asosiy state pipeline'iga UMUMAN ta'sir qilmaydi
@@ -27,59 +30,49 @@ class AttendanceCubit extends Cubit<AttendanceState> {
   AttendanceCubit({
     required AttendanceRepository repository,
     required GeofenceService geofence,
-    DateTime Function() clock = DateTime.now,
     Future<Position> Function() locate = _defaultLocate,
   }) : _repository = repository,
        _geofence = geofence,
-       _clock = clock,
        _locate = locate,
        super(const AttendanceLoading());
 
   final AttendanceRepository _repository;
   final GeofenceService _geofence;
-  final DateTime Function() _clock;
   final Future<Position> Function() _locate;
 
-  /// `AttendanceDay.date` bilan bir xil formatda ('yyyy-MM-dd') — faqat
-  /// sonli maydonlardan iborat, shuning uchun `intl` mahalliy sana
-  /// nomlari (oy/hafta kunlari) yuklanishini talab qilmaydi va istalgan
-  /// qurilma/test lokalida xavfsiz ishlaydi.
-  static final _dateFormat = DateFormat('yyyy-MM-dd');
-
-  /// Davomat tarixini yuklaydi (yoki qayta yuklaydi — masalan pull-to-
+  /// Davomat holatini yuklaydi (yoki qayta yuklaydi — masalan pull-to-
   /// refresh). Har doim [AttendanceLoading] bilan boshlanadi, shunda
   /// qayta yuklashda ham eski ma'lumot ustida "muzlab qolgan" holat
   /// ko'rinmaydi.
   Future<void> load() async {
     emit(const AttendanceLoading());
     try {
-      final result = await _repository.history();
+      final result = await _repository.myAttendance();
       result.fold(
         (failure) => emit(AttendanceError(failure.message)),
-        (days) => emit(_loadedStateFor(days)),
+        (attendance) => emit(_loadedStateFor(attendance)),
       );
     } on Object catch (e) {
       emit(AttendanceError('Kutilmagan xatolik: $e'));
     }
   }
 
-  AttendanceState _loadedStateFor(List<AttendanceDay> days) {
-    if (days.isEmpty) return const AttendanceEmpty();
+  /// `MyAttendance` (`GET /attendance/me`) javobini `AttendanceState`ga
+  /// aylantiradi.
+  ///
+  /// [MyAttendance.today] server tomonidan HAR DOIM beriladi (hattoki
+  /// hali check-in qilinmagan bo'lsa ham — `checkIn == null`, status
+  /// odatda `'absent'`). Bu yerda ATAYLAB `today.checkIn == null`da
+  /// [AttendanceLoaded.today]ni `null`ga tushiramiz — "hali check-in
+  /// qilmadi" (neytral, `TodayStatusCard`da kulrang) semantik jihatdan
+  /// "kelmadi deb belgilandi" (qizil `absent` chip)dan boshqa narsa, eski
+  /// `history()`-based oqimdagi bilan bir xil ajratish saqlanadi (qarang:
+  /// `AttendanceState.AttendanceLoaded` hujjati).
+  AttendanceState _loadedStateFor(MyAttendance attendance) {
+    if (attendance.week.isEmpty) return const AttendanceEmpty();
 
-    final sorted = [...days]..sort((a, b) => a.date.compareTo(b.date));
-    final todayKey = _dateFormat.format(_clock());
-    AttendanceDay? today;
-    for (final day in sorted) {
-      if (day.date == todayKey) {
-        today = day;
-        break;
-      }
-    }
-    final week = sorted.length > 7
-        ? sorted.sublist(sorted.length - 7)
-        : sorted;
-
-    return AttendanceLoaded(today: today, week: week);
+    final today = attendance.today.checkIn == null ? null : attendance.today;
+    return AttendanceLoaded(today: today, week: attendance.week);
   }
 
   /// "Yuz bilan tasdiqlash" CTA bosilganda chaqiriladi: joriy joylashuvni

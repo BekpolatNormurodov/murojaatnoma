@@ -11,6 +11,8 @@ import 'package:worker_app/features/attendance/data/repositories/attendance_repo
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
+import 'package:worker_app/features/attendance/domain/usecases/get_my_attendance.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:worker_app/features/auth/data/repositories/auth_repository_impl.dart';
@@ -189,6 +191,12 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<CheckIn>(
       () => CheckIn(getIt<AttendanceRepository>(), getIt<GeofenceService>()),
+    )
+    ..registerLazySingleton<CheckOut>(
+      () => CheckOut(getIt<AttendanceRepository>(), getIt<GeofenceService>()),
+    )
+    ..registerLazySingleton<GetMyAttendance>(
+      () => GetMyAttendance(getIt<AttendanceRepository>()),
     )
     // `AttendanceCubit` (Vazifa 18: bosh sahifa/davomat dashboard) —
     // router'ning "home" branchida yaratiladi (`getIt<AttendanceCubit>()`).

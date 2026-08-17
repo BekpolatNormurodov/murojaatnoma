@@ -4,6 +4,8 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
+import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
+import 'package:worker_app/features/attendance/domain/entities/my_attendance.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
@@ -11,14 +13,46 @@ import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubi
 /// Xotirada ishlaydigan soxta repository — `check_in_test.dart`/
 /// `attendance_repository_test.dart`dagi fake-based uslubga mos.
 class _FakeAttendanceRepository implements AttendanceRepository {
-  Either<Failure, List<AttendanceDay>> historyResult = const Right([]);
+  Either<Failure, MyAttendance> myAttendanceResult = const Right(
+    MyAttendance(
+      employeeId: 'EMP-1',
+      fullName: 'Sardor Karimov',
+      department: 'Kommunal xizmat',
+      workStartTime: '09:00',
+      today: AttendanceDay(
+        date: '2026-07-24',
+        checkIn: null,
+        checkOut: null,
+        status: AttendanceStatus.absent,
+        hours: 0,
+        insideGeofence: true,
+        selfConfirmed: false,
+        confirmedAt: null,
+      ),
+      week: [],
+    ),
+  );
 
   @override
-  Future<Either<Failure, List<AttendanceDay>>> history() async => historyResult;
+  Future<Either<Failure, MyAttendance>> myAttendance() async =>
+      myAttendanceResult;
 
   @override
-  Future<Either<Failure, AttendanceDay>> checkIn(CheckInParams params) {
+  Future<Either<Failure, CheckScanResult>> checkIn({
+    required List<double> embedding,
+    required double latitude,
+    required double longitude,
+  }) {
     throw UnimplementedError('AttendanceCubit does not call checkIn');
+  }
+
+  @override
+  Future<Either<Failure, CheckScanResult>> checkOut({
+    required List<double> embedding,
+    required double latitude,
+    required double longitude,
+  }) {
+    throw UnimplementedError('AttendanceCubit does not call checkOut');
   }
 }
 
@@ -37,6 +71,20 @@ AttendanceDay _day(
     insideGeofence: true,
     selfConfirmed: checkIn != null,
     confirmedAt: checkIn,
+  );
+}
+
+MyAttendance _attendance({
+  required AttendanceDay today,
+  required List<AttendanceDay> week,
+}) {
+  return MyAttendance(
+    employeeId: 'EMP-1',
+    fullName: 'Sardor Karimov',
+    department: 'Kommunal xizmat',
+    workStartTime: '09:00',
+    today: today,
+    week: week,
   );
 }
 
@@ -70,13 +118,11 @@ void main() {
   group(AttendanceCubit, () {
     late _FakeAttendanceRepository repository;
     final geofence = GeofenceService();
-    final today = DateTime(2026, 7, 24);
 
     AttendanceCubit buildCubit({Future<Position> Function()? locate}) {
       return AttendanceCubit(
         repository: repository,
         geofence: geofence,
-        clock: () => today,
         locate: locate ?? () async => _fakePosition,
       );
     }
@@ -91,20 +137,34 @@ void main() {
 
     group('load', () {
       blocTest<AttendanceCubit, AttendanceState>(
-        'history() returns an empty list -> emits AttendanceEmpty',
-        setUp: () => repository.historyResult = const Right([]),
+        'myAttendance() returns an empty week -> emits AttendanceEmpty',
+        setUp: () => repository.myAttendanceResult = Right(
+          _attendance(
+            today: _day(
+              '2026-07-24',
+              checkIn: null,
+              status: AttendanceStatus.absent,
+            ),
+            week: const [],
+          ),
+        ),
         build: buildCubit,
         act: (c) => c.load(),
         expect: () => [const AttendanceLoading(), const AttendanceEmpty()],
       );
 
       blocTest<AttendanceCubit, AttendanceState>(
-        "history() includes today's date -> today is that exact entry",
-        setUp: () => repository.historyResult = Right([
-          _day('2026-07-22'),
-          _day('2026-07-23', status: AttendanceStatus.late),
-          _day('2026-07-24'),
-        ]),
+        'myAttendance().today has a checkIn -> today is that exact entry',
+        setUp: () => repository.myAttendanceResult = Right(
+          _attendance(
+            today: _day('2026-07-24'),
+            week: [
+              _day('2026-07-22'),
+              _day('2026-07-23', status: AttendanceStatus.late),
+              _day('2026-07-24'),
+            ],
+          ),
+        ),
         build: buildCubit,
         act: (c) => c.load(),
         expect: () => [
@@ -116,13 +176,23 @@ void main() {
       );
 
       blocTest<AttendanceCubit, AttendanceState>(
-        'history() has no entry for today -> today is null (a distinct '
-        "'not yet checked in' state, not a synthesized absent record)",
-        setUp: () => repository.historyResult = Right([
-          _day('2026-07-21'),
-          _day('2026-07-22'),
-          _day('2026-07-23'),
-        ]),
+        'myAttendance().today.checkIn is null -> today is null (a distinct '
+        "'not yet checked in' state, not a synthesized absent record, even "
+        "though the server's today.status may say 'absent')",
+        setUp: () => repository.myAttendanceResult = Right(
+          _attendance(
+            today: _day(
+              '2026-07-24',
+              checkIn: null,
+              status: AttendanceStatus.absent,
+            ),
+            week: [
+              _day('2026-07-21'),
+              _day('2026-07-22'),
+              _day('2026-07-23'),
+            ],
+          ),
+        ),
         build: buildCubit,
         act: (c) => c.load(),
         expect: () => [
@@ -134,37 +204,42 @@ void main() {
       );
 
       blocTest<AttendanceCubit, AttendanceState>(
-        'week keeps only the most recent 7 entries, sorted ascending by '
-        'date, even when history is unsorted and has more',
-        setUp: () => repository.historyResult = Right([
-          // Ataylab aralashtirilgan (na o'suvchi, na kamayuvchi) tartibda —
-          // agar cubit ichidagi `..sort(...)` olib tashlansa (yoki
-          // noto'g'ri `.reversed` bilan almashtirilsa) natija quyidagi
-          // `expect`dagi qat'iy o'suvchi tartibga mos kelmaydi.
-          for (final d in [22, 16, 24, 15, 19, 17, 23, 20, 18, 21])
-            _day('2026-07-${d.toString().padLeft(2, '0')}'),
-        ]),
+        'week is passed through exactly as returned by the server (no '
+        'client-side sorting/truncation needed anymore)',
+        setUp: () => repository.myAttendanceResult = Right(
+          _attendance(
+            today: _day('2026-07-24'),
+            week: [
+              for (final d in [18, 19, 20, 21, 22, 23, 24])
+                _day('2026-07-${d.toString().padLeft(2, '0')}'),
+            ],
+          ),
+        ),
         build: buildCubit,
         act: (c) => c.load(),
         expect: () => [
           const AttendanceLoading(),
           isA<AttendanceLoaded>()
-              .having((s) => s.week.map((d) => d.date).toList(), 'week dates', [
-                '2026-07-18',
-                '2026-07-19',
-                '2026-07-20',
-                '2026-07-21',
-                '2026-07-22',
-                '2026-07-23',
-                '2026-07-24',
-              ]),
+              .having(
+                (s) => s.week.map((d) => d.date).toList(),
+                'week dates',
+                [
+                  '2026-07-18',
+                  '2026-07-19',
+                  '2026-07-20',
+                  '2026-07-21',
+                  '2026-07-22',
+                  '2026-07-23',
+                  '2026-07-24',
+                ],
+              ),
         ],
       );
 
       blocTest<AttendanceCubit, AttendanceState>(
-        'history() returns Left(Failure) -> emits AttendanceError with the '
-        "failure's message (never uncaught)",
-        setUp: () => repository.historyResult = const Left(
+        'myAttendance() returns Left(Failure) -> emits AttendanceError with '
+        "the failure's message (never uncaught)",
+        setUp: () => repository.myAttendanceResult = const Left(
           ServerFailure('tarmoq xatosi'),
         ),
         build: buildCubit,
@@ -179,7 +254,16 @@ void main() {
         'always starts by emitting AttendanceLoading, even when called '
         'again after a previous load (never a blank/white screen while '
         'refreshing)',
-        setUp: () => repository.historyResult = const Right([]),
+        setUp: () => repository.myAttendanceResult = Right(
+          _attendance(
+            today: _day(
+              '2026-07-24',
+              checkIn: null,
+              status: AttendanceStatus.absent,
+            ),
+            week: const [],
+          ),
+        ),
         build: buildCubit,
         seed: () => const AttendanceLoaded(today: null, week: []),
         act: (c) => c.load(),

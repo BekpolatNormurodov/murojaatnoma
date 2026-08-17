@@ -4,19 +4,20 @@ import 'package:worker_app/features/attendance/domain/entities/check_scan_result
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
 
-/// Ish joyiga o'z-o'zini check-in qilish — avval [GeofenceService] orqali
-/// ish hududi ichida ekanini (mahalliy, tezkor) tekshiradi, so'ng
-/// [AttendanceRepository.checkIn]ni chaqiradi — moslikni YAKUNIY
+/// Bugungi ish kunini yakunlash (check-out) — [CheckIn]ning
+/// "oynadagi aksi": avval [GeofenceService] orqali ish hududi ichida
+/// ekanini (mahalliy, tezkor) tekshiradi, so'ng
+/// [AttendanceRepository.checkOut]ni chaqiradi — moslikni YAKUNIY
 /// SERVER hisoblaydi (`CheckScanResult`).
 ///
-/// Yuzni tekshirish (face verify/liveness) bu usecase'da EMAS: u UI
-/// oqimida (`FaceCubit`) check-in'dan OLDIN bajariladi va faqat
-/// muvaffaqiyatli bo'lganda olingan probe `embedding` bilan shu usecase
-/// chaqiriladi. Shuning uchun bu klass `VerifyFace`/`FaceEmbedder`ga
-/// bog'liq emas — faqat `GeofenceService` va `AttendanceRepository`ga.
-class CheckIn implements UseCase<CheckScanResult, AttendanceScanParams> {
-  CheckIn(this.repository, this.geofenceService);
+/// Server tomoni qo'shimcha holatlarni tekshiradi: bugun hali check-in
+/// qilinmagan bo'lsa `NotCheckedInFailure` (400), allaqachon check-out
+/// qilingan bo'lsa `AlreadyCheckedOutFailure` (409) — qarang:
+/// `AttendanceRepositoryImpl.checkOut`.
+class CheckOut implements UseCase<CheckScanResult, AttendanceScanParams> {
+  CheckOut(this.repository, this.geofenceService);
 
   final AttendanceRepository repository;
   final GeofenceService geofenceService;
@@ -28,7 +29,7 @@ class CheckIn implements UseCase<CheckScanResult, AttendanceScanParams> {
     if (!geofenceService.isInside(params.latitude, params.longitude)) {
       return const Left(GeofenceFailure());
     }
-    return repository.checkIn(
+    return repository.checkOut(
       embedding: params.embedding,
       latitude: params.latitude,
       longitude: params.longitude,
