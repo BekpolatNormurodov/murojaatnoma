@@ -12,6 +12,7 @@ import 'package:user_app/features/auth/domain/entities/auth_session.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
 import 'package:user_app/features/home/presentation/bloc/home_cubit.dart';
+import 'package:user_app/features/news/presentation/widgets/news_section.dart';
 import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:user_app/features/payments/domain/entities/utility.dart';
 import 'package:user_app/injection.dart';
@@ -100,6 +101,8 @@ class _HomeContent extends StatelessWidget {
               ).animate(delay: 160.ms).fadeIn(duration: 300.ms),
               const SizedBox(height: 14),
               const _QuickActionsGrid(),
+              const SizedBox(height: 26),
+              const NewsSection(),
             ],
           ),
         );
