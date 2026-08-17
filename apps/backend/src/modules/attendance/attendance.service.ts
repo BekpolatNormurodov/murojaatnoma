@@ -413,11 +413,14 @@ export class AttendanceService {
     const todaysRecords = await this.prisma.attendanceRecord.findMany({
       where: { employeeId, recordedAt: { gte: from, lte: to } },
     });
+    // Only a VALID scan counts as "already checked in/out". A failed scan
+    // (below face threshold or outside geofence, isValid=false) must NOT lock
+    // the employee out for the day — they need to retry until one succeeds.
     const hasCheckIn = todaysRecords.some(
-      (record) => record.type === AttendanceType.CHECK_IN,
+      (record) => record.type === AttendanceType.CHECK_IN && record.isValid,
     );
     const hasCheckOut = todaysRecords.some(
-      (record) => record.type === AttendanceType.CHECK_OUT,
+      (record) => record.type === AttendanceType.CHECK_OUT && record.isValid,
     );
 
     if (type === AttendanceType.CHECK_IN && hasCheckIn) {
@@ -557,20 +560,20 @@ export class AttendanceService {
         summary.invalidScans += 1;
       }
 
-      if (record.type === AttendanceType.CHECK_IN) {
+      if (record.type === AttendanceType.CHECK_IN && record.isValid) {
+        // Only valid scans define arrival — a failed attempt must not be
+        // reported as the employee's firstCheckIn.
         if (!summary.firstCheckIn) {
           summary.firstCheckIn = record.recordedAt;
         }
-        if (record.isValid) {
-          presentEmployeeIds.add(record.employeeId);
-          if (record.isLate) {
-            summary.lateCount += 1;
-            summary.lateMinutes += record.lateMinutes;
-            summary.isLate = true;
-          }
+        presentEmployeeIds.add(record.employeeId);
+        if (record.isLate) {
+          summary.lateCount += 1;
+          summary.lateMinutes += record.lateMinutes;
+          summary.isLate = true;
         }
       }
-      if (record.type === AttendanceType.CHECK_OUT) {
+      if (record.type === AttendanceType.CHECK_OUT && record.isValid) {
         summary.lastCheckOut = record.recordedAt;
       }
     }
