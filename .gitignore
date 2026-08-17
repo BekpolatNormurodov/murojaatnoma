@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────
+# Root ignore (monorepo: user-app, worker-app, web-admin)
+# Har bir app ichida o'z .gitignore fayli ham bor.
+# ─────────────────────────────────────────────
+
+# OS / muhit
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.idea/
+*.iml
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Loglar
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Node / Vite (web-admin) ──
+**/node_modules/
+**/dist/
+**/dist-ssr/
+*.local
+**/.vite/
+
+# ── Flutter / Dart (user-app, worker-app) ──
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/build/
+**/.pub-cache/
+**/.pub/
+**/coverage/
+**/android/local.properties
+**/android/.gradle/
+**/android/key.properties
+**/ios/Flutter/.last_build_id
+**/ios/Pods/
+**/*.g.dart.lock
+
+# Maxfiy / muhit fayllari
+**/.env
+**/.env.*
+!**/.env.example
+
+# Lokal agent / tooling scratch (public repo — kiritilmasin)
+.claude/
+.superpowers/
+
+# Backend (NestJS)
+apps/backend/dist/
+apps/backend/node_modules/
+
+# Docker / infra secrets
+infra/.env
+infra/certs/*.pem
+infra/certs/*.key
+
+# Java heap dumps (build OOM artifacts)
+**/*.hprof

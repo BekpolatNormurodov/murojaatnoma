@@ -1,0 +1,358 @@
+@import "tailwindcss";
+
+/* Class-based dark mode (toggled via <html class="dark">) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   Hokimiyat Admin — Design System (Tailwind v4)
+   ============================================================ */
+
+@theme {
+  /* ---- Brand: O'zbekiston (yashil) + Hokimiyat (ko'k) ---- */
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-900: #064e3b;
+
+  --color-accent-50: #eff6ff;
+  --color-accent-100: #dbeafe;
+  --color-accent-200: #bfdbfe;
+  --color-accent-300: #93c5fd;
+  --color-accent-400: #60a5fa;
+  --color-accent-500: #3b82f6;
+  --color-accent-600: #2563eb;
+  --color-accent-700: #1d4ed8;
+  --color-accent-800: #1e40af;
+  --color-accent-900: #1e3a8a;
+
+  /* ---- Semantic ---- */
+  --color-success: #10b981;
+  --color-success-soft: #d1fae5;
+  --color-warning: #f59e0b;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fee2e2;
+  --color-info: #3b82f6;
+  --color-info-soft: #dbeafe;
+
+  /* ---- Surfaces (light) ---- */
+  --color-canvas: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #f9fafb;
+  --color-line: #eaeef3;
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-ink-muted: #94a3b8;
+
+  /* ---- Radii ---- */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* ---- Shadows ---- */
+  --shadow-card:
+    0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-pop: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 8px 30px rgba(16, 185, 129, 0.25);
+
+  /* ---- Font ---- */
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  /* ---- Animations ---- */
+  --animate-fade-in: fade-in 0.4s ease both;
+  --animate-rise: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pulse-ring: pulse-ring 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-pulse-danger: pulse-danger 1.6s cubic-bezier(0.4, 0, 0.6, 1)
+    infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+@keyframes pulse-danger {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+/* ============================================================
+   Tungi rejim (Dark mode) — semantik tokenlarni qayta belgilash
+   ============================================================ */
+.dark {
+  /* Surfaces */
+  --color-canvas: #0b1220;
+  --color-surface: #141c2b;
+  --color-surface-2: #1b2536;
+  --color-line: #29344a;
+  --color-ink: #e6ecf5;
+  --color-ink-soft: #9aa8bd;
+  --color-ink-muted: #677488;
+
+  /* Soft semantic chiplar — shaffof tint */
+  --color-success-soft: rgba(16, 185, 129, 0.16);
+  --color-warning-soft: rgba(245, 158, 11, 0.16);
+  --color-danger-soft: rgba(239, 68, 68, 0.16);
+  --color-info-soft: rgba(59, 130, 246, 0.16);
+
+  /* Yorug' brend fonlari (faol nav, chiplar) */
+  --color-primary-50: rgba(16, 185, 129, 0.14);
+  --color-primary-100: rgba(16, 185, 129, 0.22);
+  --color-accent-50: rgba(59, 130, 246, 0.14);
+  --color-accent-100: rgba(59, 130, 246, 0.22);
+
+  /* Soft fon ustidagi matn — yoritilgan */
+  --color-primary-700: #34d399;
+  --color-accent-700: #60a5fa;
+  --color-red-700: #f87171;
+  --color-red-600: #f87171;
+  --color-amber-700: #fbbf24;
+  --color-amber-600: #fbbf24;
+
+  /* Soyalar — chuqurroq */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================
+   Force-light — brendli kirish ekranlari (login/splash) doim
+   yorug' palitrada ko'rinadi, global dark rejimdan qat'i nazar.
+   ============================================================ */
+.force-light {
+  --color-canvas: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #f9fafb;
+  --color-line: #eaeef3;
+  --color-ink: #0f172a;
+  --color-ink-soft: #475569;
+  --color-ink-muted: #94a3b8;
+
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-700: #047857;
+  --color-accent-50: #eff6ff;
+  --color-accent-100: #dbeafe;
+  --color-accent-700: #1d4ed8;
+
+  --color-success-soft: #d1fae5;
+  --color-warning-soft: #fef3c7;
+  --color-danger-soft: #fee2e2;
+  --color-info-soft: #dbeafe;
+
+  --color-red-700: #b91c1c;
+  --color-red-600: #dc2626;
+  --color-amber-700: #b45309;
+  --color-amber-600: #d97706;
+
+  --shadow-card:
+    0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-pop: 0 12px 40px rgba(15, 23, 42, 0.12);
+  color-scheme: light;
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+* {
+  border-color: var(--color-line);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   iconsax-react fix (React 19)
+   React 19 dropped `defaultProps` on function components, so the
+   library's defaults (color: "currentColor", size: 24) are ignored
+   and icons render invisible. We restore them here, scoped strictly
+   to iconsax SVGs (svg[fill="none"]) and only when the attribute is
+   absent — so any explicit `color`/`size` prop is still respected,
+   and recharts/leaflet SVGs are never touched.
+   ============================================================ */
+svg[fill="none"]:not([width]) {
+  width: 24px;
+  height: 24px;
+}
+svg[fill="none"] [stroke-width]:not([stroke]) {
+  stroke: currentColor;
+}
+svg[fill="none"] path:not([stroke-width]):not([fill]),
+svg[fill="none"] circle:not([stroke-width]):not([fill]),
+svg[fill="none"] rect:not([stroke-width]):not([fill]),
+svg[fill="none"] ellipse:not([stroke-width]):not([fill]),
+svg[fill="none"] polygon:not([stroke-width]):not([fill]) {
+  fill: currentColor;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d7dee8;
+  border-radius: 999px;
+  border: 2px solid var(--color-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c2ccd9;
+}
+
+/* ============================================================
+   Reusable utilities
+   ============================================================ */
+@utility card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+@utility glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Leaflet polish */
+.leaflet-container {
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  background: #eaf1f7;
+}
+.leaflet-control-attribution {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* Transparent div icons for custom markers */
+.worker-pin,
+.cam-pin,
+.home-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* "Bizning hudud" zonasi — yumshoq porlash (glow) */
+.home-zone {
+  filter: drop-shadow(0 0 5px rgba(5, 150, 105, 0.55));
+  animation: homeZonePulse 2.8s ease-in-out infinite;
+}
+@keyframes homeZonePulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(5, 150, 105, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(5, 150, 105, 0.75));
+  }
+}
+
+/* District name labels (permanent tooltip) */
+.district-label.leaflet-tooltip {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--color-ink);
+  font-weight: 700;
+  font-size: 11px;
+  text-shadow:
+    0 1px 2px #fff,
+    0 0 6px #fff,
+    0 0 3px #fff;
+  padding: 0;
+}
+.district-label.leaflet-tooltip::before {
+  display: none;
+}
+
+/* ============================================================
+   Tungi rejim qo'shimcha tuzatishlari
+   ============================================================ */
+.dark .glass {
+  background: rgba(20, 28, 43, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.dark .leaflet-container {
+  background: #0f1626;
+}
+.dark .leaflet-tile {
+  filter: brightness(0.85) invert(0.92) contrast(0.95) hue-rotate(180deg)
+    saturate(0.75);
+}
+.dark .district-label.leaflet-tooltip {
+  color: #e6ecf5;
+  text-shadow:
+    0 1px 3px #000,
+    0 0 6px #000;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #2d3a52;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3a4a66;
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

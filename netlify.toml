@@ -1,0 +1,15 @@
+# Build sozlamalari — web-admin papkasidan deploy qilinadi.
+[build]
+  base = "apps/web-admin"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA (createBrowserRouter) — har qanday yo'lni index.html'ga yo'naltirish,
+# aks holda sahifani yangilaganda 404 bo'ladi.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

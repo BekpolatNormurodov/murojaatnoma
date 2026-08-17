@@ -1,0 +1,214 @@
+// Hokimiyat tizimi - backend data model
+// Prisma schema: employees, attendance, citizen applications/chat, notifications, auth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum EmployeeRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum ApplicationStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum MessageSenderRole {
+  CITIZEN
+  EMPLOYEE
+  SYSTEM
+}
+
+enum AttachmentType {
+  PHOTO
+  VIDEO
+}
+
+enum NotificationType {
+  GENERAL
+  ATTENDANCE
+  APPLICATION
+}
+
+// ---------------------------------------------------------------------------
+// Employees (Xodim)
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id        String       @id @default(uuid())
+  fullName  String
+  phone     String       @unique
+  position  String
+  region    String
+  district  String
+  role      EmployeeRole @default(EMPLOYEE)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  faceTemplates     FaceTemplate[]
+  attendanceRecords AttendanceRecord[]
+  refreshTokens     RefreshToken[]
+  notifications     Notification[]
+  assignedApplications Application[]
+
+  @@map("employees")
+}
+
+model FaceTemplate {
+  id         String   @id @default(uuid())
+  employeeId String
+  embedding  Float[]
+  enrolledAt DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("face_templates")
+}
+
+// ---------------------------------------------------------------------------
+// Attendance (Davomat)
+// ---------------------------------------------------------------------------
+
+model AttendanceRecord {
+  id         String         @id @default(uuid())
+  employeeId String
+  type       AttendanceType
+  faceScore  Float
+  latitude   Float
+  longitude  Float
+  isValid    Boolean
+  reason     String?
+  recordedAt DateTime       @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, recordedAt])
+  @@map("attendance_records")
+}
+
+// ---------------------------------------------------------------------------
+// Applications / Complaints (Murojaat / Ariza)
+// ---------------------------------------------------------------------------
+
+model Application {
+  id                 String            @id @default(uuid())
+  applicantFullName  String
+  applicantPhone     String
+  subject            String
+  description        String
+  region             String?
+  district           String?
+  status             ApplicationStatus @default(NEW)
+  assignedEmployeeId String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  assignedEmployee Employee?            @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  messages         ApplicationMessage[]
+  attachments      Attachment[]
+
+  @@index([status])
+  @@index([applicantPhone])
+  @@map("applications")
+}
+
+model ApplicationMessage {
+  id             String            @id @default(uuid())
+  applicationId  String
+  senderRole     MessageSenderRole
+  senderName     String?
+  text           String
+  attachmentUrl  String?
+  createdAt      DateTime          @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("application_messages")
+}
+
+model Attachment {
+  id            String         @id @default(uuid())
+  applicationId String
+  type          AttachmentType
+  url           String
+  fileName      String?
+  mimeType      String?
+  sizeBytes     Int?
+  uploadedAt    DateTime       @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("attachments")
+}
+
+// ---------------------------------------------------------------------------
+// Notifications
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id         String           @id @default(uuid())
+  employeeId String
+  title      String
+  body       String
+  type       NotificationType @default(GENERAL)
+  isRead     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, isRead])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Auth (phone + SMS OTP)
+// ---------------------------------------------------------------------------
+
+model OtpChallenge {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  consumed  Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+  @@map("otp_challenges")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  employeeId String
+  tokenHash  String
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("refresh_tokens")
+}

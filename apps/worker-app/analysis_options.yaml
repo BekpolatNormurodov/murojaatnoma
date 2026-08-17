@@ -1,0 +1,7 @@
+# Strict lint set shared across the monorepo (also used by packages/*).
+include: package:very_good_analysis/analysis_options.yaml
+
+linter:
+  rules:
+    public_member_api_docs: false
+    sort_pub_dependencies: false
