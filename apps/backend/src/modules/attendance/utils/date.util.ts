@@ -38,3 +38,15 @@ export function parseTimeOnDate(date: Date, hhmm: string): Date {
 export function minutesAfter(reference: Date, date: Date): number {
   return Math.floor((date.getTime() - reference.getTime()) / 60_000);
 }
+
+/**
+ * Local calendar day as `YYYY-MM-DD` (server-local time, matching the day
+ * bucket produced by `dayRange`). Used to group attendance records by day
+ * for multi-day views.
+ */
+export function formatLocalDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

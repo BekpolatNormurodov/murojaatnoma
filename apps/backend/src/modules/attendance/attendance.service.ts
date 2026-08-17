@@ -19,7 +19,7 @@ import {
 import { VerifyFaceDto } from './dto/verify-face.dto';
 import { VerifyFaceResultDto } from './dto/verify-face-result.dto';
 import { distanceInMeters } from './utils/geo.util';
-import { dayRange, minutesAfter, parseTimeOnDate } from './utils/date.util';
+import { dayRange, formatLocalDate, minutesAfter, parseTimeOnDate } from './utils/date.util';
 
 export interface EmployeeDailySummary {
   employeeId: string;
@@ -86,6 +86,45 @@ export interface TodayAttendance {
   date: Date;
   roster: EmployeeTodayEntry[];
   summary: TodayAttendanceSummary;
+}
+
+/** A single day's pairing result, shared by `today()` and `me()`. */
+interface DayAttendanceEntry {
+  status: TodayAttendanceStatus;
+  checkIn: TodayCheckIn | null;
+  checkOut: TodayCheckOut | null;
+  hoursWorked: number | null;
+}
+
+export interface MeWeekCheckIn {
+  time: Date;
+  isLate: boolean;
+  lateMinutes: number;
+}
+
+export interface MeDayEntry {
+  date: string;
+  status: TodayAttendanceStatus;
+  checkIn: TodayCheckIn | null;
+  checkOut: TodayCheckOut | null;
+  hoursWorked: number | null;
+}
+
+export interface MeWeekEntry {
+  date: string;
+  status: TodayAttendanceStatus;
+  checkIn: MeWeekCheckIn | null;
+  checkOut: TodayCheckOut | null;
+  hoursWorked: number | null;
+}
+
+export interface EmployeeMeAttendance {
+  employeeId: string;
+  fullName: string;
+  department: string | null;
+  workStartTime: string;
+  today: MeDayEntry;
+  week: MeWeekEntry[];
 }
 
 @Injectable()
@@ -183,51 +222,12 @@ export class AttendanceService {
 
     const roster: EmployeeTodayEntry[] = employees.map((employee) => {
       const empRecords = recordsByEmployee.get(employee.id) ?? [];
-
-      // Records are already sorted ascending by recordedAt.
-      const checkInRecord = empRecords.find(
-        (record) => record.type === AttendanceType.CHECK_IN && record.isValid,
+      const { status, checkIn, checkOut, hoursWorked } = this.buildDayEntry(
+        empRecords,
+        geofenceRadiusM,
+        officeLatitude,
+        officeLongitude,
       );
-      const checkOutRecord = [...empRecords]
-        .reverse()
-        .find((record) => record.type === AttendanceType.CHECK_OUT && record.isValid);
-
-      const checkIn: TodayCheckIn | null = checkInRecord
-        ? {
-            time: checkInRecord.recordedAt,
-            isLate: checkInRecord.isLate,
-            lateMinutes: checkInRecord.lateMinutes,
-            insideGeofence:
-              distanceInMeters(
-                checkInRecord.latitude,
-                checkInRecord.longitude,
-                officeLatitude,
-                officeLongitude,
-              ) <= geofenceRadiusM,
-          }
-        : null;
-
-      const checkOut: TodayCheckOut | null = checkOutRecord
-        ? { time: checkOutRecord.recordedAt }
-        : null;
-
-      let status: TodayAttendanceStatus;
-      if (!checkIn) {
-        status = 'absent';
-      } else if (checkOut) {
-        status = 'left';
-      } else if (checkIn.isLate) {
-        status = 'late';
-      } else {
-        status = 'present';
-      }
-
-      const hoursWorked =
-        checkIn && checkOut
-          ? Math.round(
-              ((checkOut.time.getTime() - checkIn.time.getTime()) / 3_600_000) * 100,
-            ) / 100
-          : null;
 
       return {
         employeeId: employee.id,
@@ -250,6 +250,150 @@ export class AttendanceService {
     };
 
     return { date: from, roster, summary };
+  }
+
+  /**
+   * The authenticated employee's own attendance: today's status plus the
+   * last 7 calendar days (oldest -> newest, today last). Uses the same
+   * per-day CHECK_IN/CHECK_OUT pairing as `today()`, just scoped to one
+   * employee across a date range instead of one day across all employees.
+   */
+  async me(employeeId: string): Promise<EmployeeMeAttendance> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { department: true },
+    });
+    if (!employee) {
+      throw new NotFoundException(`Employee ${employeeId} not found`);
+    }
+
+    const today = new Date();
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - 6);
+
+    const { from } = dayRange(weekStart);
+    const { to } = dayRange(today);
+
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { employeeId, recordedAt: { gte: from, lte: to } },
+      orderBy: { recordedAt: 'asc' },
+    });
+
+    const recordsByDay = new Map<string, AttendanceRecord[]>();
+    for (const record of records) {
+      const key = formatLocalDate(record.recordedAt);
+      const list = recordsByDay.get(key);
+      if (list) {
+        list.push(record);
+      } else {
+        recordsByDay.set(key, [record]);
+      }
+    }
+
+    const { geofenceRadiusM, officeLatitude, officeLongitude } = this.configService.get(
+      'attendance',
+      { infer: true },
+    );
+
+    const week: MeWeekEntry[] = [];
+    for (let offset = 6; offset >= 0; offset -= 1) {
+      const day = new Date(today);
+      day.setDate(day.getDate() - offset);
+      const key = formatLocalDate(day);
+      const dayRecords = recordsByDay.get(key) ?? [];
+
+      const { status, checkIn, checkOut, hoursWorked } = this.buildDayEntry(
+        dayRecords,
+        geofenceRadiusM,
+        officeLatitude,
+        officeLongitude,
+      );
+
+      week.push({
+        date: key,
+        status,
+        checkIn: checkIn
+          ? { time: checkIn.time, isLate: checkIn.isLate, lateMinutes: checkIn.lateMinutes }
+          : null,
+        checkOut,
+        hoursWorked,
+      });
+    }
+
+    const todayKey = formatLocalDate(today);
+    const todayDayEntry = this.buildDayEntry(
+      recordsByDay.get(todayKey) ?? [],
+      geofenceRadiusM,
+      officeLatitude,
+      officeLongitude,
+    );
+
+    return {
+      employeeId: employee.id,
+      fullName: employee.fullName,
+      department: employee.department?.name ?? null,
+      workStartTime: employee.workStartTime,
+      today: { date: todayKey, ...todayDayEntry },
+      week,
+    };
+  }
+
+  /**
+   * Pairs one employee's CHECK_IN/CHECK_OUT records for a single local day
+   * into a status + hours-worked summary. `dayRecords` must already be
+   * scoped to that one day, sorted ascending by `recordedAt` (shared by
+   * `today()`'s per-employee roster and `me()`'s per-day week view).
+   */
+  private buildDayEntry(
+    dayRecords: AttendanceRecord[],
+    geofenceRadiusM: number,
+    officeLatitude: number,
+    officeLongitude: number,
+  ): DayAttendanceEntry {
+    const checkInRecord = dayRecords.find(
+      (record) => record.type === AttendanceType.CHECK_IN && record.isValid,
+    );
+    const checkOutRecord = [...dayRecords]
+      .reverse()
+      .find((record) => record.type === AttendanceType.CHECK_OUT && record.isValid);
+
+    const checkIn: TodayCheckIn | null = checkInRecord
+      ? {
+          time: checkInRecord.recordedAt,
+          isLate: checkInRecord.isLate,
+          lateMinutes: checkInRecord.lateMinutes,
+          insideGeofence:
+            distanceInMeters(
+              checkInRecord.latitude,
+              checkInRecord.longitude,
+              officeLatitude,
+              officeLongitude,
+            ) <= geofenceRadiusM,
+        }
+      : null;
+
+    const checkOut: TodayCheckOut | null = checkOutRecord
+      ? { time: checkOutRecord.recordedAt }
+      : null;
+
+    let status: TodayAttendanceStatus;
+    if (!checkIn) {
+      status = 'absent';
+    } else if (checkOut) {
+      status = 'left';
+    } else if (checkIn.isLate) {
+      status = 'late';
+    } else {
+      status = 'present';
+    }
+
+    const hoursWorked =
+      checkIn && checkOut
+        ? Math.round(((checkOut.time.getTime() - checkIn.time.getTime()) / 3_600_000) * 100) /
+          100
+        : null;
+
+    return { status, checkIn, checkOut, hoursWorked };
   }
 
   private async recordScan(

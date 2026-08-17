@@ -7,6 +7,7 @@ import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.in
 import {
   AttendanceReport,
   AttendanceService,
+  EmployeeMeAttendance,
   TodayAttendance,
 } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -66,6 +67,16 @@ export class AttendanceController {
       this.resolveEmployeeId(user, dto.employeeId),
       dto,
     );
+  }
+
+  @Get('me')
+  @ApiOperation({
+    summary:
+      "The authenticated employee's own attendance: today's status plus the " +
+      'last 7 calendar days (oldest to newest)',
+  })
+  me(@CurrentUser() user: AuthenticatedUser): Promise<EmployeeMeAttendance> {
+    return this.attendanceService.me(user.employeeId);
   }
 
   @Get('today')
