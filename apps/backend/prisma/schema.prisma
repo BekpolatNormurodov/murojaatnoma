@@ -139,6 +139,9 @@ model Employee {
   notifications        Notification[]
   assignedApplications Application[]
   locations            EmployeeLocation[]
+  pointsEntries        PointsEntry[]
+  suggestions          Suggestion[]
+  suggestionVotes      SuggestionVote[]
 
   @@map("employees")
 }
@@ -973,4 +976,65 @@ model ChatMessage {
 
   @@index([conversationId, createdAt])
   @@map("chat_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Employee points / rating (Ball nazorati — worker-app)
+// ---------------------------------------------------------------------------
+
+model PointsEntry {
+  id         String   @id @default(uuid())
+  employeeId String
+  reason     String
+  delta      Int
+  positive   Boolean
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, createdAt])
+  @@map("points_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Employee rationalization suggestions (Takliflar — worker-app)
+// ---------------------------------------------------------------------------
+
+enum SuggestionStatus {
+  yangi
+  korilmoqda
+  qabulQilindi
+  rad
+}
+
+model Suggestion {
+  id        String           @id @default(uuid())
+  authorId  String
+  title     String
+  body      String
+  category  String
+  status    SuggestionStatus @default(yangi)
+  votes     Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  author      Employee         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  voteRecords SuggestionVote[]
+
+  @@index([status])
+  @@map("suggestions")
+}
+
+model SuggestionVote {
+  id           String   @id @default(uuid())
+  suggestionId String
+  employeeId   String
+  createdAt    DateTime @default(now())
+
+  suggestion Suggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([suggestionId, employeeId])
+  @@index([suggestionId])
+  @@map("suggestion_votes")
 }

@@ -51,6 +51,7 @@ export class BootstrapService implements OnApplicationBootstrap {
       await this.seedAdmin();
       if (this.config.get('admin', { infer: true }).seedDemoData) {
         await this.seedDemoEmployees(districtCode);
+        await this.seedDemoEngagement();
       }
     } catch (error) {
       this.logger.error(`Bootstrap seeding failed: ${String(error)}`);
@@ -290,5 +291,59 @@ export class BootstrapService implements OnApplicationBootstrap {
     }
 
     this.logger.log('Demo employees + locations ensured.');
+  }
+
+  /** Seeds a few points entries + suggestions so those worker-app screens aren't empty. */
+  private async seedDemoEngagement(): Promise<void> {
+    const employees = await this.prisma.employee.findMany({
+      where: { phone: { startsWith: '+99890111220' } },
+      select: { id: true },
+      take: 6,
+    });
+    if (employees.length === 0) {
+      return;
+    }
+
+    for (const emp of employees) {
+      const existing = await this.prisma.pointsEntry.count({
+        where: { employeeId: emp.id },
+      });
+      if (existing > 0) {
+        continue;
+      }
+      await this.prisma.pointsEntry.createMany({
+        data: [
+          { employeeId: emp.id, reason: "Ariza o'z vaqtida bajarildi", delta: 10, positive: true },
+          { employeeId: emp.id, reason: 'Ish hududida davomat', delta: 5, positive: true },
+          { employeeId: emp.id, reason: 'Kechikish', delta: -3, positive: false },
+        ],
+      });
+    }
+
+    const suggestionCount = await this.prisma.suggestion.count();
+    if (suggestionCount === 0) {
+      const author = employees[0].id;
+      const author2 = employees[1]?.id ?? author;
+      await this.prisma.suggestion.createMany({
+        data: [
+          {
+            authorId: author,
+            title: 'Murojaatlarni raqamlashtirish',
+            body: "Qog'oz murojaatlarni to'liq elektron tizimga o'tkazish taklifi.",
+            category: 'Raqamlashtirish',
+            votes: 4,
+          },
+          {
+            authorId: author2,
+            title: 'Ish jarayonini optimallashtirish',
+            body: 'Takroriy hisobotlarni avtomatlashtirish orqali vaqtni tejash.',
+            category: 'Ish jarayoni',
+            votes: 2,
+          },
+        ],
+      });
+    }
+
+    this.logger.log('Demo points + suggestions ensured.');
   }
 }
