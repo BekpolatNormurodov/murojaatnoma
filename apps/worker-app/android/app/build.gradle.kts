@@ -59,6 +59,13 @@ android {
             isShrinkResources = false
         }
     }
+
+    lint {
+        // Lint is not needed to produce the release APK, and its analysis task
+        // (lintVitalAnalyzeRelease, run for every plugin module) exhausts the
+        // capped Metaspace on this low-RAM machine. Skip it for release builds.
+        checkReleaseBuilds = false
+    }
 }
 
 flutter {
