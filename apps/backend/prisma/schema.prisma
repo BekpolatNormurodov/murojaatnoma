@@ -46,6 +46,48 @@ enum NotificationType {
   GENERAL
   ATTENDANCE
   APPLICATION
+  LOCATION
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  VIEWER
+}
+
+enum ZoneKind {
+  DISTRICT
+  MAHALLA
+}
+
+enum LocationSource {
+  FOREGROUND
+  BACKGROUND
+  MANUAL
+}
+
+enum ApplicationEventType {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  MESSAGE
+}
+
+// ---------------------------------------------------------------------------
+// Departments (Bo'lim) — organizational units employees belong to and
+// applications can be routed to.
+// ---------------------------------------------------------------------------
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  employees    Employee[]
+  applications Application[]
+
+  @@map("departments")
 }
 
 // ---------------------------------------------------------------------------
@@ -53,22 +95,50 @@ enum NotificationType {
 // ---------------------------------------------------------------------------
 
 model Employee {
-  id        String       @id @default(uuid())
-  fullName  String
-  phone     String       @unique
-  position  String
-  region    String
-  district  String
-  role      EmployeeRole @default(EMPLOYEE)
-  isActive  Boolean      @default(true)
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id            String       @id @default(uuid())
+  fullName      String
+  phone         String       @unique
+  position      String
+  region        String
+  district      String
+  role          EmployeeRole @default(EMPLOYEE)
+  isActive      Boolean      @default(true)
+  avatarUrl     String?
+  email         String?      @unique
+  passwordHash  String?
+  departmentId  String?
+  workStartTime String       @default("09:00")
+  workEndTime   String       @default("18:00")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
-  faceTemplates     FaceTemplate[]
-  attendanceRecords AttendanceRecord[]
-  refreshTokens     RefreshToken[]
-  notifications     Notification[]
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  // --- Geofence / office assignment (per employee; falls back to global env) ---
+  officeLat       Float?
+  officeLng       Float?
+  officeRadiusM   Int?
+  homeMahallaCode String?
+
+  // --- Denormalized "latest location" for fast admin live-map + stale checks ---
+  lastLat            Float?
+  lastLng            Float?
+  lastAccuracyM      Float?
+  lastLocationAt     DateTime?
+  lastMahallaCode    String?
+  lastMahallaName    String?
+  lastInsideDistrict Boolean   @default(false)
+  lastInsideOffice   Boolean   @default(false)
+  // Set when a "no location for N minutes" alert has already been raised for the
+  // current stale episode, so the scheduler doesn't spam. Cleared on next report.
+  staleAlertedAt     DateTime?
+
+  faceTemplates        FaceTemplate[]
+  attendanceRecords    AttendanceRecord[]
+  refreshTokens        RefreshToken[]
+  notifications        Notification[]
   assignedApplications Application[]
+  locations            EmployeeLocation[]
 
   @@map("employees")
 }
@@ -90,15 +160,17 @@ model FaceTemplate {
 // ---------------------------------------------------------------------------
 
 model AttendanceRecord {
-  id         String         @id @default(uuid())
-  employeeId String
-  type       AttendanceType
-  faceScore  Float
-  latitude   Float
-  longitude  Float
-  isValid    Boolean
-  reason     String?
-  recordedAt DateTime       @default(now())
+  id          String         @id @default(uuid())
+  employeeId  String
+  type        AttendanceType
+  faceScore   Float
+  latitude    Float
+  longitude   Float
+  isValid     Boolean
+  reason      String?
+  isLate      Boolean        @default(false)
+  lateMinutes Int            @default(0)
+  recordedAt  DateTime       @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -111,21 +183,24 @@ model AttendanceRecord {
 // ---------------------------------------------------------------------------
 
 model Application {
-  id                 String            @id @default(uuid())
-  applicantFullName  String
-  applicantPhone     String
-  subject            String
-  description        String
-  region             String?
-  district           String?
-  status             ApplicationStatus @default(NEW)
-  assignedEmployeeId String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id                   String            @id @default(uuid())
+  applicantFullName    String
+  applicantPhone       String
+  subject              String
+  description          String
+  region               String?
+  district             String?
+  status               ApplicationStatus @default(NEW)
+  assignedEmployeeId   String?
+  assignedDepartmentId String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
-  assignedEmployee Employee?            @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
-  messages         ApplicationMessage[]
-  attachments      Attachment[]
+  assignedEmployee   Employee?            @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  assignedDepartment Department?          @relation(fields: [assignedDepartmentId], references: [id])
+  messages           ApplicationMessage[]
+  attachments        Attachment[]
+  events             ApplicationEvent[]
 
   @@index([status])
   @@index([applicantPhone])
@@ -133,13 +208,13 @@ model Application {
 }
 
 model ApplicationMessage {
-  id             String            @id @default(uuid())
-  applicationId  String
-  senderRole     MessageSenderRole
-  senderName     String?
-  text           String
-  attachmentUrl  String?
-  createdAt      DateTime          @default(now())
+  id            String            @id @default(uuid())
+  applicationId String
+  senderRole    MessageSenderRole
+  senderName    String?
+  text          String
+  attachmentUrl String?
+  createdAt     DateTime          @default(now())
 
   application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
@@ -161,6 +236,25 @@ model Attachment {
 
   @@index([applicationId])
   @@map("attachments")
+}
+
+model ApplicationEvent {
+  id              String               @id @default(cuid())
+  applicationId   String
+  type            ApplicationEventType
+  fromStatus      ApplicationStatus?
+  toStatus        ApplicationStatus?
+  fromEmployeeId  String?
+  toEmployeeId    String?
+  departmentId    String?
+  actorEmployeeId String?
+  note            String?
+  createdAt       DateTime             @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("application_events")
 }
 
 // ---------------------------------------------------------------------------
@@ -211,4 +305,609 @@ model RefreshToken {
 
   @@index([employeeId])
   @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Admin panel users (web-admin login/password auth — separate from employees)
+// ---------------------------------------------------------------------------
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  email        String?   @unique
+  passwordHash String
+  fullName     String
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  refreshTokens AdminRefreshToken[]
+
+  @@map("admin_users")
+}
+
+model AdminRefreshToken {
+  id        String   @id @default(uuid())
+  adminId   String
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  admin AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("admin_refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Zones (Hudud) — administrative boundaries: district (tuman) + mahallas.
+// Seeded from real GIS shapefiles (Mirzo Ulug'bek tumani, 70 mahallas).
+// `geometry` holds a GeoJSON geometry object (coords in [lng, lat] order).
+// ---------------------------------------------------------------------------
+
+model Zone {
+  id          String   @id @default(uuid())
+  kind        ZoneKind
+  code        String   @unique // KOD for mahalla, district code for district
+  soato       String?
+  nameUzLat   String
+  nameUzCyr   String?
+  nameRu      String?
+  parentCode  String? // mahalla -> district code
+  centroidLat Float
+  centroidLng Float
+  minLat      Float
+  minLng      Float
+  maxLat      Float
+  maxLng      Float
+  areaM2      Float?
+  geometry    Json // GeoJSON geometry (Polygon | MultiPolygon), [lng, lat]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([kind])
+  @@map("zones")
+}
+
+// ---------------------------------------------------------------------------
+// Employee location time-series (doimiy lokatsiya) — one row per GPS report.
+// The server derives mahalla + office-geofence membership on ingest.
+// ---------------------------------------------------------------------------
+
+model EmployeeLocation {
+  id                String         @id @default(uuid())
+  employeeId        String
+  latitude          Float
+  longitude         Float
+  accuracy          Float?
+  speed             Float?
+  heading           Float?
+  battery           Int?
+  source            LocationSource @default(FOREGROUND)
+  mahallaCode       String?
+  mahallaName       String?
+  insideDistrict    Boolean        @default(false)
+  insideOffice      Boolean        @default(false)
+  distanceToOfficeM Float?
+  recordedAt        DateTime // device timestamp
+  createdAt         DateTime       @default(now()) // server receive timestamp
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, recordedAt])
+  @@map("employee_locations")
+}
+
+// ===========================================================================
+// WEB-ADMIN DOMAIN MODELS
+// ---------------------------------------------------------------------------
+// These models mirror the web-admin mock contract
+// (apps/web-admin/src/shared/data/{types,mock}.ts). Every endpoint that serves
+// one of these must return JSON that is a drop-in replacement for the matching
+// mock export: identical field names + nesting, dates as ISO strings, and the
+// literal enum values below (kept lowercase on purpose so the JSON matches the
+// TypeScript union types exactly — e.g. status "in_progress", category
+// "kommunal"). Enum member names double as the wire value; do NOT @map them.
+//
+// Nested value-objects (attendance days, worker documents, complaint responses,
+// app-user activity points, staff schedule, district center/polygon) are stored
+// as Json so the persisted shape is byte-identical to the mock's nested arrays.
+//
+// Large monetary figures (utility/finance) use Float, not Int/BigInt: the values
+// exceed the 32-bit Int range, and Float serialises cleanly to a JSON number
+// (BigInt would throw in JSON.stringify and break the drop-in contract).
+//
+// NOTE: all admin endpoints backed by these models are @Public() for this TEST
+// deployment; auth-gating them is a later config step.
+// ===========================================================================
+
+// ---- Enums (lowercase literals mirror the web-admin TS unions) -------------
+
+enum RequestCategory {
+  kommunal
+  yol
+  suv
+  elektr
+  tozalik
+  obodonlashtirish
+}
+
+enum RequestStatus {
+  new
+  in_progress
+  resolved
+  rejected
+}
+
+enum Priority {
+  low
+  medium
+  high
+}
+
+enum WorkerStatus {
+  online
+  offline
+  on_task
+  break
+}
+
+enum UtilityType {
+  suv
+  gaz
+  elektr
+  issiqlik
+  tozalik
+  internet
+}
+
+enum CameraType {
+  fixed
+  ptz
+  anpr
+  thermal
+}
+
+enum CameraStatus {
+  online
+  offline
+  maintenance
+}
+
+enum GovDocType {
+  qaror
+  buyruq
+  hisobot
+  shartnoma
+  ariza
+  dalolatnoma
+}
+
+enum GovDocStatus {
+  draft
+  review
+  signed
+  archived
+}
+
+enum StaffRole {
+  hokim
+  hokim_yordamchisi
+  bolim_boshligi
+  operator
+  nazoratchi
+  ishchi
+}
+
+enum StaffStatus {
+  active
+  inactive
+  suspended
+}
+
+enum ModuleKey {
+  dashboard
+  requests
+  map
+  workers
+  attendance
+  staff
+  cameras
+  finance
+  analytics
+  documents
+  news
+  settings
+}
+
+enum NewsCategory {
+  elon
+  tadbir
+  qaror
+  ogohlantirish
+  yangilik
+}
+
+enum NewsStatus {
+  published
+  draft
+}
+
+enum AppUserStatus {
+  active
+  inactive
+  blocked
+}
+
+enum AppUserDevice {
+  android
+  ios
+}
+
+enum AdminNotificationType {
+  request
+  worker
+  finance
+  camera
+  system
+}
+
+enum ComplaintStatus {
+  new
+  reviewing
+  resolved
+  rejected
+}
+
+enum ComplaintSeverity {
+  low
+  medium
+  high
+}
+
+enum MeetingType {
+  apparat
+  qabul
+  shtab
+  video
+  hashar
+}
+
+enum MeetingStatus {
+  scheduled
+  ongoing
+  done
+  cancelled
+}
+
+// ---- District (Tuman) ------------------------------------------------------
+// id is the stable slug ("mirzo", "chilonzor", ...). center = [lat,lng];
+// polygon = [lat,lng][] — both kept as Json to preserve the tuple shape.
+
+model District {
+  id         String   @id
+  name       String
+  center     Json // [lat, lng]
+  polygon    Json // [lat, lng][]
+  color      String
+  population Int
+  households Int
+  areaKm2    Float
+  createdAt  DateTime @default(now())
+
+  @@map("districts")
+}
+
+// ---- Worker (dala ishchisi) ------------------------------------------------
+
+model Worker {
+  id             String            @id // "w1"
+  name           String
+  photo          String
+  avatarColor    String
+  position       String
+  region         String
+  districtId     String
+  phone          String
+  email          String
+  specialization RequestCategory[]
+  status         WorkerStatus
+  insideRegion   Boolean
+  rating         Float
+  points         Int
+  completedTasks Int
+  activeTasks    Int
+  lat            Float
+  lng            Float
+  hiredAt        DateTime
+  checkInTime    String? // "08:12" (clock time, not a date)
+  checkOutTime   String?
+  todayConfirmed Boolean
+  attendanceRate Int
+  onTimeRate     Int
+  monthlyHours   Int
+  attendance     Json // AttendanceDay[]
+  salary         Int
+  bonus          Int
+  vehicle        String?
+  documents      Json // WorkerDocument[]
+  createdAt      DateTime          @default(now())
+
+  @@index([districtId])
+  @@index([status])
+  @@map("workers")
+}
+
+// ---- CitizenRequest (Murojaat) — the REQUESTS export -----------------------
+
+model CitizenRequest {
+  id               String          @id // "R-1000"
+  title            String
+  description      String
+  category         RequestCategory
+  status           RequestStatus
+  region           String
+  districtId       String
+  address          String
+  citizenName      String
+  citizenPhone     String
+  citizenPhoto     String
+  createdAt        DateTime
+  resolvedAt       DateTime?
+  assignedWorkerId String?
+  priority         Priority
+  lat              Float
+  lng              Float
+  photos           String[]
+  responseHours    Int?
+  feedback         Int?
+  cost             Int
+
+  @@index([status])
+  @@index([category])
+  @@index([districtId])
+  @@map("citizen_requests")
+}
+
+// ---- Staff (Xodim / tizim foydalanuvchisi) ---------------------------------
+
+model Staff {
+  id          String      @id // "s1"
+  name        String
+  photo       String
+  avatarColor String
+  role        StaffRole
+  position    String
+  department  String
+  email       String
+  phone       String
+  login       String
+  status      StaffStatus
+  permissions ModuleKey[]
+  schedule    Json // { start, end, days: number[] }
+  lastLogin   DateTime?
+  createdAt   DateTime
+  twoFactor   Boolean
+
+  @@index([role])
+  @@index([status])
+  @@map("staff")
+}
+
+// ---- Deputy (Hokim o'rinbosari) --------------------------------------------
+
+model Deputy {
+  id             String            @id // "d1"
+  name           String
+  photo          String
+  color          String
+  position       String
+  direction      String
+  shortDirection String
+  categories     RequestCategory[]
+  topics         String[]
+  phone          String
+  email          String
+  office         String
+  receptionDay   String
+
+  @@map("deputies")
+}
+
+// ---- Complaint (Shikoyat) — responses[] stored as Json ---------------------
+
+model Complaint {
+  id           String            @id // "SH-2000"
+  title        String
+  description  String
+  topic        String
+  severity     ComplaintSeverity
+  status       ComplaintStatus
+  districtId   String
+  region       String
+  address      String
+  citizenName  String
+  citizenPhone String
+  citizenPhoto String
+  createdAt    DateTime
+  deadlineAt   DateTime
+  resolvedAt   DateTime?
+  deputyId     String
+  isRepeat     Boolean
+  escalated    Boolean
+  responses    Json // ComplaintResponse[]
+
+  @@index([status])
+  @@index([deputyId])
+  @@map("complaints")
+}
+
+// ---- AppUser (Mobil ilova foydalanuvchisi) — activity[] as Json ------------
+
+model AppUser {
+  id              String        @id // "au1"
+  name            String
+  phone           String
+  photo           String
+  avatarColor     String
+  region          String
+  districtId      String
+  address         String
+  device          AppUserDevice
+  appVersion      String
+  status          AppUserStatus
+  verified        Boolean
+  registeredAt    DateTime
+  lastActiveAt    DateTime
+  requestsCount   Int
+  resolvedCount   Int
+  avgRating       Float
+  points          Int
+  notificationsOn Boolean
+  activity        Json // AppUserActivityPoint[]
+
+  @@index([status])
+  @@map("app_users")
+}
+
+// ---- AdminNotification (web-admin NotificationItem) ------------------------
+// Named AdminNotification to avoid clashing with the existing employee-facing
+// `Notification` model. JSON shape still matches the mock's NotificationItem.
+
+model AdminNotification {
+  id        String                @id // "ntf1"
+  type      AdminNotificationType
+  title     String
+  message   String
+  createdAt DateTime
+  read      Boolean               @default(false)
+  href      String?
+
+  @@map("admin_notifications")
+}
+
+// ---- Camera (CCTV) — Tier 2 ------------------------------------------------
+
+model Camera {
+  id            String       @id // "CAM-01"
+  name          String
+  region        String
+  districtId    String
+  type          CameraType
+  status        CameraStatus
+  lat           Float
+  lng           Float
+  resolution    String
+  recording     Boolean
+  uptime        Float
+  detections24h Int
+  lastEvent     String?
+  installedAt   DateTime
+
+  @@index([status])
+  @@index([districtId])
+  @@map("cameras")
+}
+
+// ---- Meeting (Yig'ilish) — Tier 2 ------------------------------------------
+
+model Meeting {
+  id            String        @id // "YIG-3000"
+  title         String
+  type          MeetingType
+  status        MeetingStatus
+  startAt       DateTime
+  durationMin   Int
+  location      String
+  chairDeputyId String
+  agenda        String[]
+  participants  Int
+  districtId    String
+
+  @@index([status])
+  @@map("meetings")
+}
+
+// ---- NewsItem (Yangilik / e'lon) — Tier 2 ----------------------------------
+
+model NewsItem {
+  id          String       @id // "n1"
+  title       String
+  excerpt     String
+  body        String
+  category    NewsCategory
+  status      NewsStatus
+  cover       String
+  author      String
+  publishedAt DateTime
+  views       Int
+  featured    Boolean
+
+  @@index([status])
+  @@index([category])
+  @@map("news_items")
+}
+
+// ---- GovDocument (Hokimiyat hujjati) — Tier 2 ------------------------------
+
+model GovDocument {
+  id        String       @id // "D-1"
+  code      String
+  title     String
+  type      GovDocType
+  status    GovDocStatus
+  author    String
+  region    String
+  createdAt DateTime
+  sizeKb    Int
+  pages     Int
+
+  @@index([type])
+  @@index([status])
+  @@map("gov_documents")
+}
+
+// ---- Utility & Finance monthly series — Tier 2 -----------------------------
+// Large sums use Float (see header note on BigInt/JSON).
+
+model UtilityPayment {
+  id             String      @id // "olmazor-suv"
+  type           UtilityType
+  region         String
+  districtId     String
+  period         String // "2026-05"
+  charged        Float
+  collected      Float
+  debt           Float
+  households     Int
+  collectionRate Float
+
+  @@index([districtId])
+  @@index([type])
+  @@map("utility_payments")
+}
+
+model UtilityMonthly {
+  month    String @id // "Iyul"
+  suv      Float
+  gaz      Float
+  elektr   Float
+  issiqlik Float
+  tozalik  Float
+  internet Float
+
+  @@map("utility_monthly")
+}
+
+model FinanceMonthly {
+  month     String @id // "Iyul"
+  budget    Float
+  spent     Float
+  collected Float
+  turnover  Float
+
+  @@map("finance_monthly")
 }

@@ -1,7 +1,13 @@
 import {
   DEFAULT_FACE_MATCH_THRESHOLD,
   DEFAULT_GEOFENCE_RADIUS_M,
+  DEFAULT_OFFICE_LATITUDE,
+  DEFAULT_OFFICE_LONGITUDE,
   DEFAULT_OTP_TTL_SECONDS,
+  DEFAULT_STALE_LOCATION_MINUTES,
+  DEFAULT_WORK_START,
+  DEFAULT_WORK_END,
+  LATE_GRACE_MINUTES,
 } from './constants';
 
 /**
@@ -24,12 +30,28 @@ export interface AppConfig {
   };
   otp: {
     ttlSeconds: number;
+    /** Dev convenience: echo the generated OTP code back in the response. */
+    devEcho: boolean;
   };
   attendance: {
     faceMatchThreshold: number;
     geofenceRadiusM: number;
     officeLatitude: number;
     officeLongitude: number;
+  };
+  location: {
+    staleMinutes: number;
+  };
+  work: {
+    startTime: string;
+    endTime: string;
+    lateGraceMinutes: number;
+  };
+  admin: {
+    seedUsername: string;
+    seedPassword: string;
+    seedFullName: string;
+    seedDemoData: boolean;
   };
 }
 
@@ -49,6 +71,7 @@ export default (): AppConfig => ({
   },
   otp: {
     ttlSeconds: parseInt(process.env.OTP_TTL_SECONDS ?? `${DEFAULT_OTP_TTL_SECONDS}`, 10),
+    devEcho: (process.env.OTP_DEV_ECHO ?? 'false').toLowerCase() === 'true',
   },
   attendance: {
     faceMatchThreshold: parseFloat(
@@ -57,7 +80,29 @@ export default (): AppConfig => ({
     geofenceRadiusM: parseFloat(
       process.env.GEOFENCE_RADIUS_M ?? `${DEFAULT_GEOFENCE_RADIUS_M}`,
     ),
-    officeLatitude: parseFloat(process.env.OFFICE_LATITUDE ?? '41.311081'),
-    officeLongitude: parseFloat(process.env.OFFICE_LONGITUDE ?? '69.240562'),
+    officeLatitude: parseFloat(process.env.OFFICE_LATITUDE ?? `${DEFAULT_OFFICE_LATITUDE}`),
+    officeLongitude: parseFloat(
+      process.env.OFFICE_LONGITUDE ?? `${DEFAULT_OFFICE_LONGITUDE}`,
+    ),
+  },
+  location: {
+    staleMinutes: parseInt(
+      process.env.STALE_LOCATION_MINUTES ?? `${DEFAULT_STALE_LOCATION_MINUTES}`,
+      10,
+    ),
+  },
+  work: {
+    startTime: process.env.WORK_START_TIME ?? DEFAULT_WORK_START,
+    endTime: process.env.WORK_END_TIME ?? DEFAULT_WORK_END,
+    lateGraceMinutes: parseInt(
+      process.env.LATE_GRACE_MINUTES ?? `${LATE_GRACE_MINUTES}`,
+      10,
+    ),
+  },
+  admin: {
+    seedUsername: process.env.ADMIN_USERNAME ?? 'admin',
+    seedPassword: process.env.ADMIN_PASSWORD ?? '',
+    seedFullName: process.env.ADMIN_FULL_NAME ?? 'Bosh administrator',
+    seedDemoData: (process.env.SEED_DEMO_DATA ?? 'true').toLowerCase() === 'true',
   },
 });
