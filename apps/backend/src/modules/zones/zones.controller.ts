@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Header, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ZoneKind } from '@prisma/client';
 import { Public } from '../../common/decorators/public.decorator';
@@ -26,8 +26,12 @@ export class ZonesController {
     throw new BadRequestException(`Unknown zone kind "${kind}" (use district|mahalla)`);
   }
 
+  // Zones are effectively immutable reference data (seeded from static GIS
+  // files). Let map clients cache them so every page load doesn't re-download
+  // ~290KB of mahalla polygons; a 1-hour window still picks up a re-seed soon.
   @Public()
   @Get()
+  @Header('Cache-Control', 'public, max-age=3600')
   @ApiOperation({ summary: 'Zone metadata (no geometry)' })
   @ApiQuery({ name: 'kind', required: false, enum: ['district', 'mahalla'] })
   listZones(@Query('kind') kind?: string) {
@@ -36,6 +40,7 @@ export class ZonesController {
 
   @Public()
   @Get('geojson')
+  @Header('Cache-Control', 'public, max-age=3600')
   @ApiOperation({ summary: 'Zones as a GeoJSON FeatureCollection (for maps)' })
   @ApiQuery({ name: 'kind', required: false, enum: ['district', 'mahalla'] })
   geojson(@Query('kind') kind?: string) {
