@@ -5,6 +5,7 @@ import {
   UserTick,
   ShieldTick,
   Add,
+  Trash,
   SearchNormal1,
   Crown1,
   Clock,
@@ -18,12 +19,15 @@ import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
 import { ROLE_META, STAFF_STATUS_META, WEEKDAYS } from '@/shared/data/mock';
 import type { StaffMember, StaffRole } from '@/shared/data/types';
 import { ROLE_ICON, StaffDetail } from './StaffDetail';
+import { StaffFormModal } from './StaffFormModal';
 import { useStaff } from './useStaff';
+import { useCreateStaff, useDeleteStaff, useUpdateStaff } from './useStaffMutations';
 
 const ROLE_ORDER = (Object.keys(ROLE_META) as StaffRole[]).sort(
   (a, b) => ROLE_META[a].rank - ROLE_META[b].rank,
@@ -40,20 +44,30 @@ function Skeleton({ className }: { className?: string }) {
 
 export function StaffPage() {
   const { data, isLoading, isError, error, refetch } = useStaff();
-  // Xodimlar ro'yxati lokal state'da saqlanadi (rol/ruxsat tahriri drawer'da
-  // shu yerda amalga oshadi) — dastlab server javobidan bir marta to'ldiriladi.
-  const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [seeded, setSeeded] = useState(false);
-  useEffect(() => {
-    if (data && !seeded) {
-      setStaff(data.map((s) => ({ ...s })));
-      setSeeded(true);
-    }
-  }, [data, seeded]);
+  // Ro'yxat to'g'ridan-to'g'ri React Query keshidan o'qiladi. Rol/ruxsat
+  // tahriri va o'chirish backendga PATCH/DELETE yuboradi va keshni optimistik
+  // yangilaydi — mahalliy nusxa (setStaff) yo'q, shu sababli "soxta" (faqat
+  // UI'da qoladigan, serverga bormaydigan) o'zgarishlar bo'lmaydi.
+  const staff = useMemo(() => data ?? [], [data]);
 
   const [roleFilter, setRoleFilter] = useState<StaffRole | 'all'>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // CRUD holati: yaratish oynasi / o'chirishni tasdiqlash / qisqa toast.
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<StaffMember | null>(null);
+  const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
+
+  const createStaff = useCreateStaff();
+  const updateStaff = useUpdateStaff();
+  const deleteStaff = useDeleteStaff();
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -85,8 +99,40 @@ export function StaffPage() {
     return m;
   }, [staff]);
 
-  function handleSave(updated: StaffMember) {
-    setStaff((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+  // Drawer'dagi tahrir — endi haqiqiy PATCH /staff/:id. Xato bo'lsa
+  // (throw) StaffDetail buni ushlab, drawer ichida ko'rsatadi.
+  async function handleSave(updated: StaffMember) {
+    await updateStaff.mutateAsync({
+      id: updated.id,
+      role: updated.role,
+      status: updated.status,
+      login: updated.login,
+      permissions: updated.permissions,
+      schedule: updated.schedule,
+      twoFactor: updated.twoFactor,
+    });
+    setToast({ tone: 'success', msg: 'Xodim maʼlumotlari yangilandi' });
+  }
+
+  async function handleCreate(input: Parameters<typeof createStaff.mutateAsync>[0]) {
+    await createStaff.mutateAsync(input);
+    setToast({ tone: 'success', msg: "Yangi xodim qo'shildi" });
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const name = deleting.name;
+    try {
+      await deleteStaff.mutateAsync(deleting.id);
+      setDeleting(null);
+      setSelectedId(null);
+      setToast({ tone: 'success', msg: `${name} o'chirildi` });
+    } catch (err) {
+      setToast({
+        tone: 'error',
+        msg: err instanceof Error ? err.message : "Xodimni o'chirib bo'lmadi",
+      });
+    }
   }
 
   const selected = staff.find((s) => s.id === selectedId) ?? null;
@@ -97,7 +143,10 @@ export function StaffPage() {
         title="Xodimlar boshqaruvi"
         subtitle="Hokim apparati xodimlari, rollar, ruxsatlar va kirish ma'lumotlari"
         action={
-          <button className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700">
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+          >
             <Add size={20} /> Xodim qo'shish
           </button>
         }
@@ -239,7 +288,50 @@ export function StaffPage() {
         </>
       )}
 
-      <StaffDetail member={selected} onClose={() => setSelectedId(null)} onSave={handleSave} />
+      <StaffDetail
+        member={selected}
+        onClose={() => setSelectedId(null)}
+        onSave={handleSave}
+        onDelete={(m) => setDeleting(m)}
+      />
+
+      <StaffFormModal open={creating} onClose={() => setCreating(false)} onSubmit={handleCreate} />
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title="Xodimni o'chirish"
+        message={
+          <>
+            <strong className="text-ink">{deleting?.name}</strong> hisobi va ruxsatlari butunlay
+            o'chiriladi. Rostdan ham o'chirmoqchimisiz?
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleteStaff.isPending}
+      />
+
+      {toast && (
+        <div
+          aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}
+          role={toast.tone === 'error' ? 'alert' : 'status'}
+          className="fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4"
+        >
+          <div
+            className={cn(
+              'rounded-xl border px-4 py-3 text-sm font-medium shadow-pop',
+              toast.tone === 'success'
+                ? 'border-primary-200 bg-surface text-primary-700'
+                : 'border-red-200 bg-danger-soft text-red-700',
+            )}
+          >
+            {toast.msg}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

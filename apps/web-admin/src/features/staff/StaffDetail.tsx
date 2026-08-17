@@ -16,6 +16,8 @@ import {
   Call,
   RecordCircle,
   Save2,
+  Trash,
+  CloseCircle,
   type Icon as IconType,
 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
@@ -53,10 +55,13 @@ export function StaffDetail({
   member,
   onClose,
   onSave,
+  onDelete,
 }: {
   member: StaffMember | null;
   onClose: () => void;
-  onSave: (updated: StaffMember) => void;
+  /** Haqiqiy PATCH — Promise qaytaradi; xato bo'lsa drawer'da ko'rsatiladi. */
+  onSave: (updated: StaffMember) => void | Promise<void>;
+  onDelete?: (member: StaffMember) => void;
 }) {
   return (
     <Drawer
@@ -66,7 +71,15 @@ export function StaffDetail({
       subtitle={member ? member.position : undefined}
       width={520}
     >
-      {member && <StaffEditor key={member.id} member={member} onSave={onSave} onClose={onClose} />}
+      {member && (
+        <StaffEditor
+          key={member.id}
+          member={member}
+          onSave={onSave}
+          onClose={onClose}
+          onDelete={onDelete}
+        />
+      )}
     </Drawer>
   );
 }
@@ -75,10 +88,12 @@ function StaffEditor({
   member,
   onSave,
   onClose,
+  onDelete,
 }: {
   member: StaffMember;
-  onSave: (updated: StaffMember) => void;
+  onSave: (updated: StaffMember) => void | Promise<void>;
   onClose: () => void;
+  onDelete?: (member: StaffMember) => void;
 }) {
   const [role, setRole] = useState<StaffRole>(member.role);
   const [status, setStatus] = useState<StaffStatus>(member.status);
@@ -88,6 +103,8 @@ function StaffEditor({
   const [twoFactor, setTwoFactor] = useState(member.twoFactor);
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function toggleModule(m: ModuleKey) {
     setPermissions((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
@@ -103,9 +120,16 @@ function StaffEditor({
     setPermissions([...ROLE_META[r].defaults]);
   }
 
-  function handleSave() {
-    onSave({ ...member, role, status, login, permissions, schedule, twoFactor });
-    onClose();
+  async function handleSave() {
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave({ ...member, role, status, login, permissions, schedule, twoFactor });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Saqlab bo'lmadi. Qaytadan urining.");
+      setSaving(false);
+    }
   }
 
   return (
@@ -337,20 +361,49 @@ function StaffEditor({
         </div>
       </div>
 
+      {/* Delete */}
+      {onDelete && (
+        <button
+          onClick={() => onDelete(member)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/30 bg-danger-soft py-2.5 text-sm font-medium text-red-700 transition-colors hover:bg-danger/15"
+        >
+          <Trash size={18} variant="Bulk" /> Xodimni o'chirish
+        </button>
+      )}
+
       {/* Save */}
-      <div className="sticky bottom-0 -mx-5 flex gap-3 border-t border-line bg-canvas px-5 py-4">
-        <button
-          onClick={onClose}
-          className="flex-1 rounded-xl border border-line bg-surface py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
-        >
-          Bekor qilish
-        </button>
-        <button
-          onClick={handleSave}
-          className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
-        >
-          <Save2 size={18} variant="Bulk" /> Saqlash
-        </button>
+      <div className="sticky bottom-0 -mx-5 border-t border-line bg-canvas px-5 py-4">
+        {saveError && (
+          <div
+            role="alert"
+            className="mb-3 flex items-start gap-2.5 rounded-xl border border-red-200 bg-danger-soft p-3 text-[13px] font-medium text-red-700"
+          >
+            <CloseCircle size={18} variant="Bulk" className="mt-0.5 shrink-0" />
+            <span>{saveError}</span>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-xl border border-line bg-surface py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2 disabled:opacity-60"
+          >
+            Bekor qilish
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex flex-2 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {saving ? (
+              'Saqlanmoqda...'
+            ) : (
+              <>
+                <Save2 size={18} variant="Bulk" /> Saqlash
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

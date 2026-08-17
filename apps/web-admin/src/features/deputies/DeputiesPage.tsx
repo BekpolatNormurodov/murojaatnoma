@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Crown1,
@@ -12,16 +12,22 @@ import {
   Star1,
   CloseCircle,
   RotateRight,
+  Add,
+  Edit2,
+  Trash,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Card } from '@/shared/ui/Card';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { CATEGORY_META, COMPLAINTS, MEETINGS, REQUESTS } from '@/shared/data/mock';
 import type { Deputy, RequestCategory } from '@/shared/data/types';
 import { useDeputies } from './useDeputies';
+import { DeputyFormModal } from './DeputyFormModal';
+import { useCreateDeputy, useDeleteDeputy, useUpdateDeputy } from './useDeputyMutations';
 import { useStaff } from '../staff/useStaff';
 
 function Skeleton({ className }: { className?: string }) {
@@ -65,7 +71,17 @@ function MiniStat({
   );
 }
 
-function DeputyCard({ d, index }: { d: Deputy; index: number }) {
+function DeputyCard({
+  d,
+  index,
+  onEdit,
+  onDelete,
+}: {
+  d: Deputy;
+  index: number;
+  onEdit: (d: Deputy) => void;
+  onDelete: (d: Deputy) => void;
+}) {
   const s = deputyStats(d);
   return (
     <motion.div
@@ -80,8 +96,26 @@ function DeputyCard({ d, index }: { d: Deputy; index: number }) {
         style={{ background: d.color, opacity: 0.1 }}
       />
 
+      {/* Edit / delete controls */}
+      <div className="absolute right-3 top-3 z-10 flex gap-1.5">
+        <button
+          onClick={() => onEdit(d)}
+          aria-label="Tahrirlash"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface/80 text-ink-soft backdrop-blur-sm transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          <Edit2 size={16} variant="Bulk" />
+        </button>
+        <button
+          onClick={() => onDelete(d)}
+          aria-label="O'chirish"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-danger/30 bg-danger-soft/80 text-red-700 backdrop-blur-sm transition-colors hover:bg-danger/15"
+        >
+          <Trash size={16} variant="Bulk" />
+        </button>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pr-16">
         <Avatar src={d.photo} name={d.name} color={d.color} size={56} ring />
         <div className="min-w-0">
           <h3 className="truncate text-[16px] font-bold text-ink">{d.name}</h3>
@@ -175,6 +209,53 @@ export function DeputiesPage() {
 
   const hokim = useMemo(() => staffData?.find((s) => s.role === 'hokim'), [staffData]);
 
+  // CRUD holati: yaratish / tahrirlash / o'chirish oynalari + qisqa toast.
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Deputy | null>(null);
+  const [deleting, setDeleting] = useState<Deputy | null>(null);
+  const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
+
+  const createDeputy = useCreateDeputy();
+  const updateDeputy = useUpdateDeputy();
+  const deleteDeputy = useDeleteDeputy();
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const formOpen = creating || !!editing;
+  const closeForm = () => {
+    setCreating(false);
+    setEditing(null);
+  };
+
+  async function handleSubmit(input: Parameters<typeof createDeputy.mutateAsync>[0]) {
+    if (editing) {
+      await updateDeputy.mutateAsync({ id: editing.id, ...input });
+      setToast({ tone: 'success', msg: 'Oʼrinbosar maʼlumotlari yangilandi' });
+    } else {
+      await createDeputy.mutateAsync(input);
+      setToast({ tone: 'success', msg: "Yangi o'rinbosar qo'shildi" });
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const name = deleting.name;
+    try {
+      await deleteDeputy.mutateAsync(deleting.id);
+      setDeleting(null);
+      setToast({ tone: 'success', msg: `${name} o'chirildi` });
+    } catch (err) {
+      setToast({
+        tone: 'error',
+        msg: err instanceof Error ? err.message : "O'rinbosarni o'chirib bo'lmadi",
+      });
+    }
+  }
+
   const totals = useMemo(() => {
     const routed = REQUESTS.filter((r) =>
       deputies.some((d) => d.categories.includes(r.category)),
@@ -189,6 +270,14 @@ export function DeputiesPage() {
       <PageHeader
         title="Hokim o'rinbosarlari"
         subtitle="Hokimiyat rahbariyati — yo'nalishlar bo'yicha mas'ul o'rinbosarlar. Murojaatlar yo'nalishga qarab avtomatik biriktiriladi."
+        action={
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+          >
+            <Add size={20} /> O'rinbosar qo'shish
+          </button>
+        }
       />
 
       {isError ? (
@@ -255,7 +344,7 @@ export function DeputiesPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {deputies.map((d, i) => (
-                <DeputyCard key={d.id} d={d} index={i} />
+                <DeputyCard key={d.id} d={d} index={i} onEdit={setEditing} onDelete={setDeleting} />
               ))}
             </div>
           )}
@@ -264,6 +353,49 @@ export function DeputiesPage() {
             <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
           )}
         </>
+      )}
+
+      <DeputyFormModal
+        open={formOpen}
+        deputy={editing}
+        onClose={closeForm}
+        onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={confirmDelete}
+        title="O'rinbosarni o'chirish"
+        message={
+          <>
+            <strong className="text-ink">{deleting?.name}</strong> profili butunlay o'chiriladi.
+            Rostdan ham o'chirmoqchimisiz?
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleteDeputy.isPending}
+      />
+
+      {toast && (
+        <div
+          aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}
+          role={toast.tone === 'error' ? 'alert' : 'status'}
+          className="fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4"
+        >
+          <div
+            className={cn(
+              'rounded-xl border px-4 py-3 text-sm font-medium shadow-pop',
+              toast.tone === 'success'
+                ? 'border-primary-200 bg-surface text-primary-700'
+                : 'border-red-200 bg-danger-soft text-red-700',
+            )}
+          >
+            {toast.msg}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -15,6 +15,8 @@ import {
   DocumentText,
   TaskSquare,
   ShieldTick,
+  Edit2,
+  Trash,
 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
@@ -55,9 +57,13 @@ function MiniStat({ label, value, accent }: { label: string; value: string; acce
 export function WorkerDetail({
   worker,
   onClose,
+  onEdit,
+  onDelete,
 }: {
   worker: Worker | null;
   onClose: () => void;
+  onEdit?: (worker: Worker) => void;
+  onDelete?: (worker: Worker) => void;
 }) {
   return (
     <Drawer
@@ -266,6 +272,28 @@ export function WorkerDetail({
             </div>
             <Progress value={(worker.rating / 5) * 100} color={worker.avatarColor} />
           </div>
+
+          {/* Actions */}
+          {(onEdit || onDelete) && (
+            <div className="flex gap-3 border-t border-line pt-4">
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(worker)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+                >
+                  <Edit2 size={18} variant="Bulk" /> Tahrirlash
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(worker)}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-danger/30 bg-danger-soft px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-danger/15"
+                >
+                  <Trash size={18} variant="Bulk" /> O'chirish
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </Drawer>
