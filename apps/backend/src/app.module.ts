@@ -1,19 +1,31 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './common/config/configuration';
 import { envValidationSchema } from './common/config/env.validation';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
+import { ScopeGuard } from './common/guards/scope.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { AppUsersModule } from './modules/app-users/app-users.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
+import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { HealthModule } from './modules/health/health.module';
+import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { RequestsModule } from './modules/requests/requests.module';
+import { WorkforceModule } from './modules/workforce/workforce.module';
+import { ZonesModule } from './modules/zones/zones.module';
 
 @Module({
   imports: [
@@ -23,6 +35,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: false },
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     HealthModule,
     AuthModule,
@@ -30,10 +43,22 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     AttendanceModule,
     ApplicationsModule,
     NotificationsModule,
+    ZonesModule,
+    LocationsModule,
+    AdminAuthModule,
+    BootstrapModule,
+    // Admin data domain (web-admin) — @Public read/stats endpoints
+    RequestsModule,
+    WorkforceModule,
+    ComplaintsModule,
+    AppUsersModule,
+    AnalyticsModule,
+    CatalogModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    { provide: APP_GUARD, useClass: ScopeGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
   ],
