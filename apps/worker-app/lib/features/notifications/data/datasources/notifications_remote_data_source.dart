@@ -78,7 +78,16 @@ class NotificationsRemoteDataSourceApiImpl
       final response = await _client.dio.patch<Map<String, dynamic>>(
         '/notifications/$id/read',
       );
-      return NotificationItem.fromJson(response.data ?? const {});
+      final data = response.data;
+      // PATCH mark-read odatda yangilangan bildirishnomani qaytaradi; backend
+      // bo'sh/nomaqbul javob bersa (204 yoki `id`siz) xom `fromJson({})` cast
+      // yiqilishi o'rniga nazoratli xato beramiz — cubit uni yumshoq ko'rsatadi.
+      if (data == null || data['id'] == null) {
+        throw ServerException(
+          "Bildirishnomani belgilashda kutilmagan javob",
+        );
+      }
+      return NotificationItem.fromJson(data);
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
     }

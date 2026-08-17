@@ -157,6 +157,18 @@ class ApplicationsRemoteDataSourceApiImpl
     }
   }
 
+  /// Sub-resurs ro'yxatini BEST-EFFORT o'qiydi — xato bo'lsa (masalan
+  /// bo'sh/404/vaqtinchalik nosozlik) bo'sh ro'yxat qaytaradi va
+  /// chaqiruvchini (ariza tafsiloti) yiqitmaydi.
+  Future<List<dynamic>> _bestEffortList(String path) async {
+    try {
+      final resp = await _client.dio.get<List<dynamic>>(path);
+      return resp.data ?? const [];
+    } on Object {
+      return const [];
+    }
+  }
+
   @override
   Future<List<Application>> list({
     bool assignedOnly = false,
@@ -226,28 +238,20 @@ class ApplicationsRemoteDataSourceApiImpl
   Future<Application> getById(String id) async {
     try {
       final currentEmployeeId = await _currentEmployeeId();
-      final applicationFuture = _client.dio.get<Map<String, dynamic>>(
+      // Asosiy ariza — MAJBURIY. Biriktirmalar (`/attachments`) va xabarlar
+      // (`/messages`) sub-resurslari BEST-EFFORT: biri xato bersa (bo'sh/404/
+      // vaqtincha nosozlik) ham ariza tafsiloti baribir ko'rsatiladi. Avval
+      // uchtasi `Future.wait`da edi — sub-resurslardan biri yiqilsa, allaqachon
+      // muvaffaqiyatli yuklangan arizani ham yo'qotib, butun ekran xato berardi.
+      final applicationResp = await _client.dio.get<Map<String, dynamic>>(
         '/applications/$id',
       );
-      final attachmentsFuture = _client.dio.get<List<dynamic>>(
+      final applicationJson =
+          applicationResp.data ?? const <String, dynamic>{};
+      final attachmentsJson = await _bestEffortList(
         '/applications/$id/attachments',
       );
-      final messagesFuture = _client.dio.get<List<dynamic>>(
-        '/applications/$id/messages',
-      );
-      final results = await Future.wait([
-        applicationFuture,
-        attachmentsFuture,
-        messagesFuture,
-      ]);
-
-      final applicationJson =
-          (results[0] as Response<Map<String, dynamic>>).data ??
-          const <String, dynamic>{};
-      final attachmentsJson =
-          (results[1] as Response<List<dynamic>>).data ?? const [];
-      final messagesJson =
-          (results[2] as Response<List<dynamic>>).data ?? const [];
+      final messagesJson = await _bestEffortList('/applications/$id/messages');
 
       return Application.fromJson(
         _adaptApplicationJson(
