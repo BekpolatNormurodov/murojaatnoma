@@ -1,9 +1,9 @@
 import 'package:worker_app/features/notifications/domain/entities/notification_item.dart';
 
-/// MOCK bildirishnomalar manbai — hozircha haqiqiy backend yo'q
-/// (mock-first, qarang: `applications_remote_data_source.dart`dagi
-/// `AppConfig.useMock` naqshi — bu yerda esa soddaroq: butun feature
-/// hali faqat MOCK, `NotificationsCubit` shu klassni bevosita ishlatadi).
+/// MOCK bildirishnomalar manbai — `NotificationsRemoteDataSourceMockImpl`
+/// (qarang: `notifications_remote_data_source.dart`) tomonidan o'rab
+/// olinadi va `AppConfig.useMock` `true` bo'lganda ishlatiladi
+/// (`ApplicationsRemoteDataSource` bilan bir xil Mock/Api naqshi).
 ///
 /// `title`/`body` ATAYLAB oddiy `String` (l10n kaliti EMAS) — vazifa
 /// shartnomasiga ko'ra bildirishnoma MATNI (chrome emas) MOCK ma'lumot

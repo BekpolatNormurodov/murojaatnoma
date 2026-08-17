@@ -104,20 +104,27 @@ class _OtpPageState extends State<OtpPage> {
                               children: otpSentSpans,
                             ),
                           ).animate(delay: 120.ms).fadeIn(),
+                          if (state.devCode != null &&
+                              state.devCode!.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            _DevOtpHint(
+                              code: state.devCode!,
+                            ).animate(delay: 160.ms).fadeIn(),
+                          ],
                           const SizedBox(height: 40),
                           OtpInput(
-                            onChanged: (v) => setState(() => _code = v),
-                            onCompleted: (code) {
-                              setState(() => _code = code);
-                              context.read<AuthCubit>().verifyOtp(
-                                widget.phone,
-                                code,
-                              );
-                            },
-                          ).animate(delay: 280.ms).fadeIn().slideY(
-                            begin: 0.2,
-                            end: 0,
-                          ),
+                                onChanged: (v) => setState(() => _code = v),
+                                onCompleted: (code) {
+                                  setState(() => _code = code);
+                                  context.read<AuthCubit>().verifyOtp(
+                                    widget.phone,
+                                    code,
+                                  );
+                                },
+                              )
+                              .animate(delay: 280.ms)
+                              .fadeIn()
+                              .slideY(begin: 0.2, end: 0),
                           const SizedBox(height: 28),
                           Center(
                             child: TextButton(
@@ -154,6 +161,47 @@ class _OtpPageState extends State<OtpPage> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Dev/staging'da (`OTP_DEV_ECHO=true`) backend qaytargan haqiqiy SMS-OTP
+/// kodni ko'rsatuvchi maslahat — real SMS gateway ulanmagan muhitlarda
+/// (masalan lokal ishlab chiqish yoki demo/UAT) xodim shu kodni ko'chirib
+/// darhol tizimga kirishi mumkin. `AuthState.devCode` `null` bo'lsa
+/// (production, real SMS gateway ishlayotganda) bu widget umuman
+/// chizilmaydi — qarang: `OtpPage.build`.
+class _DevOtpHint extends StatelessWidget {
+  const _DevOtpHint({required this.code});
+
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: isDark ? 0.16 : 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(AppIcons.info, size: 18, color: AppColors.warning),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Test rejimi — SMS o‘rniga kod: $code',
+              style: AppTextStyles.label.copyWith(
+                color: AppColors.warning,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

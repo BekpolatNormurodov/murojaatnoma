@@ -46,6 +46,9 @@ import 'package:worker_app/features/meetings/domain/usecases/get_meetings.dart';
 import 'package:worker_app/features/meetings/domain/usecases/join_meeting.dart';
 import 'package:worker_app/features/meetings/presentation/bloc/meeting_detail_cubit.dart';
 import 'package:worker_app/features/meetings/presentation/bloc/meetings_cubit.dart';
+import 'package:worker_app/features/notifications/data/datasources/notifications_remote_data_source.dart';
+import 'package:worker_app/features/notifications/data/repositories/notifications_repository_impl.dart';
+import 'package:worker_app/features/notifications/domain/repositories/notifications_repository.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/points/data/datasources/points_remote_data_source.dart';
 import 'package:worker_app/features/points/data/repositories/points_repository_impl.dart';
@@ -394,10 +397,25 @@ Future<void> configureDependencies() async {
         voteSuggestion: getIt<VoteSuggestion>(),
       ),
     )
-    // ---- Bildirishnomalar/Notifications (mock-first ro'yxat) ----
+    // ---- Bildirishnomalar/Notifications (Mock/Api seam — AppConfig.useMock) ----
+    ..registerLazySingleton<NotificationsRemoteDataSource>(
+      () => AppConfig.useMock
+          ? NotificationsRemoteDataSourceMockImpl()
+          : NotificationsRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<NotificationsRepository>(
+      () => NotificationsRepositoryImpl(
+        remote: getIt<NotificationsRemoteDataSource>(),
+      ),
+    )
     // `HomeCubit` (user-app) bilan bir xil naqsh: LAZY SINGLETON (factory
     // EMAS) — bosh sahifadagi qo'ng'iroq belgisi VA `/notifications`
     // sahifasi XUDDI SHU instansiyani (va uning unread-sonini) ko'rishi
     // kerak.
-    ..registerLazySingleton<NotificationsCubit>(NotificationsCubit.new);
+    ..registerLazySingleton<NotificationsCubit>(
+      () => NotificationsCubit(
+        repository: getIt<NotificationsRepository>(),
+        authCubit: getIt<AuthCubit>(),
+      ),
+    );
 }

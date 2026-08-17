@@ -14,7 +14,7 @@ import 'package:worker_app/features/auth/presentation/pages/phone_input_page.dar
 
 class _FakeRepo implements AuthRepository {
   @override
-  Future<Either<Failure, Unit>> sendOtp(String phone) async =>
+  Future<Either<Failure, String?>> sendOtp(String phone) async =>
       const Left(AuthFailure());
 
   @override

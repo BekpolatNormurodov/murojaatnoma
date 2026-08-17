@@ -109,9 +109,10 @@ void main() {
 
     group('requestOtp', () {
       blocTest<AuthCubit, AuthState>(
-        'emits [loading, otpSent] when the SMS is sent successfully',
+        'emits [loading, otpSent] when the SMS is sent successfully '
+        '(production/mock: no devCode in the response)',
         setUp: () {
-          when(() => sendOtp(any())).thenAnswer((_) async => const Right(unit));
+          when(() => sendOtp(any())).thenAnswer((_) async => const Right(null));
         },
         build: buildCubit,
         act: (c) => c.requestOtp(phone),
@@ -121,11 +122,32 @@ void main() {
             'status',
             AuthStatus.loading,
           ),
+          isA<AuthState>()
+              .having((s) => s.status, 'status', AuthStatus.otpSent)
+              .having((s) => s.devCode, 'devCode', isNull),
+        ],
+      );
+
+      blocTest<AuthCubit, AuthState>(
+        'emits [loading, otpSent] with devCode set when the backend echoes '
+        'it back (OTP_DEV_ECHO=true, dev/staging without a real SMS '
+        'gateway)',
+        setUp: () {
+          when(
+            () => sendOtp(any()),
+          ).thenAnswer((_) async => const Right('948433'));
+        },
+        build: buildCubit,
+        act: (c) => c.requestOtp(phone),
+        expect: () => [
           isA<AuthState>().having(
             (s) => s.status,
             'status',
-            AuthStatus.otpSent,
+            AuthStatus.loading,
           ),
+          isA<AuthState>()
+              .having((s) => s.status, 'status', AuthStatus.otpSent)
+              .having((s) => s.devCode, 'devCode', '948433'),
         ],
       );
 

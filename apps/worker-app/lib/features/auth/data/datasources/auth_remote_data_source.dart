@@ -4,7 +4,10 @@ import 'package:worker_app/features/auth/data/models/auth_session_model.dart';
 
 /// Ishchi auth uchun masofaviy ma'lumot manbai (telefon/OTP oqimi).
 abstract class AuthRemoteDataSource {
-  Future<void> sendOtp(String phone);
+  /// SMS-OTP kod yuborish. Backend `OTP_DEV_ECHO=true` bo'lsa javobda
+  /// `devCode`ni ham qaytaradi (real SMS gateway'siz login uchun) — shu
+  /// qiymat qaytariladi, aks holda `null`.
+  Future<String?> sendOtp(String phone);
 
   Future<AuthSessionModel> verifyOtp({
     required String phone,
@@ -13,14 +16,17 @@ abstract class AuthRemoteDataSource {
 }
 
 /// Mock implementatsiya (backend tayyor bo'lguncha) — [AppConfig.useMock]
-/// `true` bo'lganda ishlatiladi.
+/// `true` bo'lganda ishlatiladi. Haqiqiy backend'i yo'q, shuning uchun
+/// `devCode` doim `null` — mock oqimda hech qanday maslahat/hint
+/// ko'rsatilmaydi.
 class AuthRemoteDataSourceMockImpl implements AuthRemoteDataSource {
   @override
-  Future<void> sendOtp(String phone) async {
+  Future<String?> sendOtp(String phone) async {
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (phone.replaceAll(RegExp(r'\D'), '').length < 9) {
       throw AuthException('Telefon raqami noto‘g‘ri');
     }
+    return null;
   }
 
   @override
@@ -64,12 +70,18 @@ class AuthApiImpl implements AuthRemoteDataSource {
   final DioClient _client;
 
   @override
-  Future<void> sendOtp(String phone) async {
+  Future<String?> sendOtp(String phone) async {
     try {
-      await _client.dio.post<dynamic>(
+      final response = await _client.dio.post<Map<String, dynamic>>(
         '/auth/request-otp',
         data: {'phone': phone},
       );
+      // `devCode` faqat backend `OTP_DEV_ECHO=true` bo'lganda (dev/staging)
+      // javobda keladi — ishlab chiqarishda (production) maydon umuman
+      // yo'q, shuning uchun bu yerda HECH QANDAY qo'shimcha shart kerak
+      // emas: `null` bo'lsa yuqori qatlamlar (cubit/UI) hech narsa
+      // ko'rsatmaydi — sizib chiqish (leak) ehtimoli yo'q.
+      return response.data?['devCode'] as String?;
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
     }

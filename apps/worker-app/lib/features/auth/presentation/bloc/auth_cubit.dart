@@ -30,6 +30,13 @@ class AuthCubit extends Cubit<AuthState> {
   final RestoreSession _restoreSession;
 
   /// Telefon raqamiga SMS-OTP tasdiqlash kodini yuborish.
+  ///
+  /// Server javobida `devCode` bo'lsa (faqat `OTP_DEV_ECHO=true` bo'lgan
+  /// dev/staging muhitda), u holatga (`AuthState.devCode`) qo'shiladi —
+  /// `OtpPage` shu qiymatni foydalanuvchiga ko'rsatadi, real SMS
+  /// gateway'siz login qilish imkonini beradi. Production'da (yoki mock
+  /// oqimda) `devCode` doim `null` bo'ladi, shuning uchun hech narsa
+  /// ko'rsatilmaydi.
   Future<void> requestOtp(String phone) async {
     emit(state.copyWith(status: AuthStatus.loading));
     final result = await sendOtp(SendOtpParams(phone));
@@ -37,7 +44,8 @@ class AuthCubit extends Cubit<AuthState> {
       (failure) => emit(
         state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
       ),
-      (_) => emit(state.copyWith(status: AuthStatus.otpSent)),
+      (devCode) =>
+          emit(state.copyWith(status: AuthStatus.otpSent, devCode: devCode)),
     );
   }
 

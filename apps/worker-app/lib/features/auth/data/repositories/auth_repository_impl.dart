@@ -37,10 +37,10 @@ class AuthRepositoryImpl implements AuthRepository {
   static const _secureRefreshTokenKey = 'auth_refresh_token';
 
   @override
-  Future<Either<Failure, Unit>> sendOtp(String phone) async {
+  Future<Either<Failure, String?>> sendOtp(String phone) async {
     try {
-      await remote.sendOtp(phone);
-      return const Right(unit);
+      final devCode = await remote.sendOtp(phone);
+      return Right(devCode);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));
     } on Exception catch (_) {

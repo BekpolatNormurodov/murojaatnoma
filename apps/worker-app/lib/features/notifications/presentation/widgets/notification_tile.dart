@@ -27,6 +27,14 @@ class NotificationTile extends StatelessWidget {
     ),
     NotificationType.meetingSoon => (AppIcons.videoBold, AppColors.info),
     NotificationType.leaveStatus => (AppIcons.tick, AppColors.success),
+    NotificationType.general => (
+      IconsaxPlusBold.notification,
+      AppColors.accent,
+    ),
+    NotificationType.locationAlert => (
+      AppIcons.locationBold,
+      AppColors.danger,
+    ),
   };
 
   @override

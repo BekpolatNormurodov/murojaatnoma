@@ -5,7 +5,11 @@ import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 /// Ishchi avtorizatsiyasi uchun shartnoma (telefon/OTP oqimi).
 abstract class AuthRepository {
   /// Telefon raqamiga SMS-OTP kod yuborish.
-  Future<Either<Failure, Unit>> sendOtp(String phone);
+  ///
+  /// Muvaffaqiyatli bo'lsa server yuborgan `devCode`ni qaytaradi — bu
+  /// backend `OTP_DEV_ECHO=true` bo'lganda (dev/staging, real SMS
+  /// gateway'siz login uchun) keladi, aks holda (production) `null`.
+  Future<Either<Failure, String?>> sendOtp(String phone);
 
   /// SMS-OTP kodni tasdiqlash — muvaffaqiyatli bo'lsa sessiya qaytaradi.
   Future<Either<Failure, AuthSession>> verifyOtp({
