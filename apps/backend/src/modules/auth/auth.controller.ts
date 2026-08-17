@@ -1,9 +1,13 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { AuthService } from './auth.service';
+import { MeDto } from './dto/me.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { RequestOtpResultDto } from './dto/request-otp-result.dto';
 import { TokenPairDto } from './dto/token-pair.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 
@@ -16,7 +20,7 @@ export class AuthController {
   @Post('request-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send a one-time SMS code to the given phone number' })
-  requestOtp(@Body() dto: RequestOtpDto): Promise<{ expiresInSeconds: number }> {
+  requestOtp(@Body() dto: RequestOtpDto): Promise<RequestOtpResultDto> {
     return this.authService.requestOtp(dto);
   }
 
@@ -34,5 +38,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Exchange a refresh token for a new token pair' })
   refresh(@Body() dto: RefreshTokenDto): Promise<TokenPairDto> {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Get('me')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get the current authenticated employee profile' })
+  me(@CurrentUser() user: AuthenticatedUser): Promise<MeDto> {
+    return this.authService.me(user.employeeId);
   }
 }

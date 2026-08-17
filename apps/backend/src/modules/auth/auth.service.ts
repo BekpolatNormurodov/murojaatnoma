@@ -10,7 +10,9 @@ import { createHash, randomInt } from 'node:crypto';
 import { AppConfig } from '../../common/config/configuration';
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { MeDto } from './dto/me.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
+import { RequestOtpResultDto } from './dto/request-otp-result.dto';
 import { TokenPairDto } from './dto/token-pair.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { OtpSmsProvider } from './providers/otp-sms.provider';
@@ -26,9 +28,14 @@ export class AuthService {
     private readonly otpSmsProvider: OtpSmsProvider,
   ) {}
 
-  /** Generates and "sends" (stub) a one-time code for the given phone number. */
-  async requestOtp(dto: RequestOtpDto): Promise<{ expiresInSeconds: number }> {
-    const { ttlSeconds } = this.configService.get('otp', { infer: true });
+  /**
+   * Generates and "sends" (stub) a one-time code for the given phone number.
+   * `OtpSmsProvider` currently just logs the code — a real SMS aggregator
+   * (e.g. Eskiz.uz) will replace it, at which point `devCode` below should
+   * be disabled (OTP_DEV_ECHO=false) in every non-development environment.
+   */
+  async requestOtp(dto: RequestOtpDto): Promise<RequestOtpResultDto> {
+    const { ttlSeconds, devEcho } = this.configService.get('otp', { infer: true });
     const code = randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
@@ -38,7 +45,12 @@ export class AuthService {
 
     this.otpSmsProvider.send(dto.phone, code);
 
-    return { expiresInSeconds: ttlSeconds };
+    return {
+      expiresInSeconds: ttlSeconds,
+      // Dev convenience only: lets the login flow be exercised end-to-end
+      // without a live SMS gateway. Omitted unless OTP_DEV_ECHO=true.
+      ...(devEcho ? { devCode: code } : {}),
+    };
   }
 
   /** Verifies the OTP and issues an access/refresh token pair for the matching employee. */
@@ -78,6 +90,30 @@ export class AuthService {
       phone: employee.phone,
       role: employee.role,
     });
+  }
+
+  /** Returns the current employee's profile, derived from the JWT subject. */
+  async me(employeeId: string): Promise<MeDto> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { _count: { select: { faceTemplates: true } } },
+    });
+
+    if (!employee) {
+      throw new UnauthorizedException('Employee not found');
+    }
+
+    return {
+      id: employee.id,
+      fullName: employee.fullName,
+      phone: employee.phone,
+      position: employee.position,
+      region: employee.region,
+      district: employee.district,
+      role: employee.role,
+      avatarUrl: employee.avatarUrl,
+      hasFace: employee._count.faceTemplates > 0,
+    };
   }
 
   /** Rotates a refresh token: validates it, revokes it, and issues a new pair. */
