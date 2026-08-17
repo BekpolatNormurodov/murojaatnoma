@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -26,6 +26,13 @@ import {
   Sort,
   CloseCircle,
   RotateRight,
+  More,
+  Slash,
+  ShieldTick,
+  TickCircle,
+  Location,
+  InfoCircle,
+  FilterRemove,
 } from 'iconsax-react';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -34,19 +41,23 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Select } from '@/shared/ui/Select';
 import { Button } from '@/shared/ui/Button';
+import { Dropdown } from '@/shared/ui/Dropdown';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { AppUserDetail } from './AppUserDetail';
-import { useAppUsers } from './useAppUsers';
+import { useAppUsers, useUpdateAppUser, type UpdateAppUserInput } from './useAppUsers';
 import { useAppUserStats } from './useAppUserStats';
 import { useAppUserDau } from './useAppUserDau';
 import { useAppUserGrowth } from './useAppUserGrowth';
 import { APP_USER_STATUS_META } from '@/shared/data/mock';
-import type { AppUser, AppUserStatus } from '@/shared/data/types';
+import type { AppUser, AppUserDevice, AppUserStatus } from '@/shared/data/types';
 import type { AppUserStats } from './api/types';
 import { formatNumber, formatDate, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 
 type StatusFilter = AppUserStatus | 'all';
+type DeviceFilter = AppUserDevice | 'all';
 type SortKey = 'recent' | 'requests' | 'points';
+const ALL_REGIONS = 'all';
 
 const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
   { value: 'all', label: 'Barcha holatlar' },
@@ -55,11 +66,24 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
   { value: 'blocked', label: 'Bloklangan', dot: '#ef4444' },
 ];
 
+const DEVICE_OPTIONS: { value: DeviceFilter; label: string; icon?: typeof Android }[] = [
+  { value: 'all', label: 'Barcha qurilmalar' },
+  { value: 'android', label: 'Android', icon: Android },
+  { value: 'ios', label: 'iOS', icon: Apple },
+];
+
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'recent', label: 'Oxirgi faollik' },
   { value: 'requests', label: 'Murojaatlar soni' },
   { value: 'points', label: 'Faollik balli' },
 ];
+
+/** Amal natijasi haqida qisqa xabar (aria-live orqali o'qib beriladi). */
+interface ActionFeedback {
+  id: number;
+  tone: 'success' | 'error';
+  message: string;
+}
 
 const EMPTY_STATS: AppUserStats = {
   total: 0,
@@ -107,16 +131,82 @@ function appUserStatusMeta(status: AppUserStatus) {
 export function AppUsersPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [device, setDevice] = useState<DeviceFilter>('all');
+  const [region, setRegion] = useState<string>(ALL_REGIONS);
   const [sortKey, setSortKey] = useState<SortKey>('recent');
-  const [selected, setSelected] = useState<AppUser | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<AppUser | null>(null);
+  const [feedback, setFeedback] = useState<ActionFeedback | null>(null);
+  const reduceMotion = useReducedMotion();
 
   const usersQuery = useAppUsers();
   const statsQuery = useAppUserStats();
   const dauQuery = useAppUserDau();
   const growthQuery = useAppUserGrowth();
+  const updateMutation = useUpdateAppUser();
 
   const users = usersQuery.data?.data ?? [];
   const stats = statsQuery.data ?? EMPTY_STATS;
+  const selected = useMemo(
+    () => users.find((u) => u.id === selectedId) ?? null,
+    [users, selectedId],
+  );
+
+  // Toast xabari bir necha soniyadan so'ng o'zi yopiladi.
+  useEffect(() => {
+    if (!feedback) return;
+    const t = setTimeout(() => setFeedback(null), 3200);
+    return () => clearTimeout(t);
+  }, [feedback]);
+
+  const notify = useCallback((tone: ActionFeedback['tone'], message: string) => {
+    setFeedback({ id: Date.now(), tone, message });
+  }, []);
+
+  /** PATCH /app-users/:id — muvaffaqiyat/xato haqida darhol xabar beradi. */
+  const runUpdate = useCallback(
+    (user: AppUser, patch: UpdateAppUserInput, successMessage: string) => {
+      updateMutation.mutate(
+        { id: user.id, ...patch },
+        {
+          onSuccess: () => notify('success', successMessage),
+          onError: (err) =>
+            notify('error', err instanceof Error ? err.message : "Amalni bajarib bo'lmadi"),
+        },
+      );
+    },
+    [updateMutation, notify],
+  );
+
+  /** Faol/nofaol foydalanuvchini bloklashdan oldin tasdiq so'raladi; blokdan chiqarish darhol bajariladi. */
+  const requestToggleBlock = useCallback(
+    (user: AppUser) => {
+      if (user.status === 'blocked') {
+        runUpdate(user, { status: 'active' }, `${user.name} faollashtirildi`);
+      } else {
+        setConfirmTarget(user);
+      }
+    },
+    [runUpdate],
+  );
+
+  const confirmBlock = useCallback(() => {
+    if (!confirmTarget) return;
+    const user = confirmTarget;
+    setConfirmTarget(null);
+    runUpdate(user, { status: 'blocked' }, `${user.name} bloklandi`);
+  }, [confirmTarget, runUpdate]);
+
+  const toggleVerify = useCallback(
+    (user: AppUser) => {
+      runUpdate(
+        user,
+        { verified: !user.verified },
+        user.verified ? `${user.name} tasdig'i bekor qilindi` : `${user.name} shaxsi tasdiqlandi`,
+      );
+    },
+    [runUpdate],
+  );
 
   const dauData = useMemo(
     () =>
@@ -127,16 +217,38 @@ export function AppUsersPage() {
     [dauQuery.data],
   );
 
+  const regionOptions = useMemo(() => {
+    const unique = Array.from(new Set(users.map((u) => u.region))).sort((a, b) =>
+      a.localeCompare(b, 'uz'),
+    );
+    return [
+      { value: ALL_REGIONS, label: 'Barcha mahallalar' },
+      ...unique.map((r) => ({ value: r, label: r })),
+    ];
+  }, [users]);
+
+  const hasActiveFilters =
+    query.trim() !== '' || status !== 'all' || device !== 'all' || region !== ALL_REGIONS;
+
+  const clearFilters = useCallback(() => {
+    setQuery('');
+    setStatus('all');
+    setDevice('all');
+    setRegion(ALL_REGIONS);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     const list = users.filter((u) => {
       const matchesStatus = status === 'all' || u.status === status;
+      const matchesDevice = device === 'all' || u.device === device;
+      const matchesRegion = region === ALL_REGIONS || u.region === region;
       const matchesQuery =
         !q ||
         u.name.toLowerCase().includes(q) ||
         u.phone.includes(q) ||
         u.region.toLowerCase().includes(q);
-      return matchesStatus && matchesQuery;
+      return matchesStatus && matchesDevice && matchesRegion && matchesQuery;
     });
     list.sort((a, b) => {
       if (sortKey === 'requests') return b.requestsCount - a.requestsCount;
@@ -144,7 +256,7 @@ export function AppUsersPage() {
       return +new Date(b.lastActiveAt) - +new Date(a.lastActiveAt);
     });
     return list;
-  }, [users, query, status, sortKey]);
+  }, [users, query, status, device, region, sortKey]);
 
   const topUsers = useMemo(
     () => [...users].sort((a, b) => b.points - a.points).slice(0, 5),
@@ -153,6 +265,8 @@ export function AppUsersPage() {
 
   const deviceTotal = stats.android + stats.ios;
   const androidPct = deviceTotal > 0 ? Math.round((stats.android / deviceTotal) * 100) : 0;
+
+  const pendingUserId = updateMutation.isPending ? updateMutation.variables?.id : undefined;
 
   return (
     <div>
@@ -408,7 +522,7 @@ export function AppUsersPage() {
                   : topUsers.map((u, i) => (
                       <button
                         key={u.id}
-                        onClick={() => setSelected(u)}
+                        onClick={() => setSelectedId(u.id)}
                         className="flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors hover:bg-surface-2"
                       >
                         <span
@@ -450,12 +564,29 @@ export function AppUsersPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Ism, telefon yoki mahalla bo'yicha qidirish..."
+                aria-label="Foydalanuvchilarni qidirish"
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+              <Select value={device} onChange={setDevice} options={DEVICE_OPTIONS} />
+              <Select
+                value={region}
+                onChange={setRegion}
+                options={regionOptions}
+                icon={Location}
+                menuAlign="end"
+              />
               <Select value={sortKey} onChange={setSortKey} options={SORT_OPTIONS} icon={Sort} />
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2"
+                >
+                  <FilterRemove size={16} variant="Bulk" /> Tozalash
+                </button>
+              )}
             </div>
           </div>
 
@@ -477,14 +608,25 @@ export function AppUsersPage() {
                   ))
                 : filtered.map((u, i) => {
                     const st = appUserStatusMeta(u.status);
+                    const isBlocked = u.status === 'blocked';
+                    const rowPending = pendingUserId === u.id;
                     return (
-                      <motion.button
+                      <motion.div
                         key={u.id}
-                        initial={{ opacity: 0, y: 8 }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${u.name} profilini ochish`}
+                        initial={reduceMotion ? undefined : { opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: Math.min(i * 0.015, 0.25) }}
-                        onClick={() => setSelected(u)}
-                        className="grid w-full grid-cols-1 items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-surface-2 md:grid-cols-12 md:gap-4"
+                        transition={{ delay: reduceMotion ? 0 : Math.min(i * 0.015, 0.25) }}
+                        onClick={() => setSelectedId(u.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedId(u.id);
+                          }
+                        }}
+                        className="grid w-full cursor-pointer grid-cols-1 items-center gap-3 px-5 py-3.5 text-left outline-none transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-300 md:grid-cols-12 md:gap-4"
                       >
                         <div className="col-span-4 flex items-center gap-3">
                           <Avatar src={u.photo} name={u.name} color={u.avatarColor} size={40} />
@@ -518,26 +660,126 @@ export function AppUsersPage() {
                         <div className="col-span-2 text-[12px] text-ink-muted md:text-center">
                           {timeAgo(u.lastActiveAt)}
                         </div>
-                        <div className="col-span-2 flex items-center justify-between md:justify-end">
+                        <div className="col-span-2 flex items-center justify-between gap-1.5 md:justify-end">
                           <Badge tone={st.tone} dot>
                             {st.label}
                           </Badge>
-                          <ArrowRight size={16} className="ml-2 hidden text-ink-muted md:block" />
+                          <ArrowRight size={16} className="hidden text-ink-muted md:block" />
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          >
+                            <Dropdown
+                              align="end"
+                              width={220}
+                              trigger={
+                                <button
+                                  type="button"
+                                  aria-label={`${u.name} uchun amallar`}
+                                  disabled={rowPending}
+                                  className="flex h-11 w-11 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50"
+                                >
+                                  <More size={18} />
+                                </button>
+                              }
+                              items={[
+                                {
+                                  label: isBlocked ? 'Faollashtirish' : 'Bloklash',
+                                  icon: Slash,
+                                  danger: !isBlocked,
+                                  disabled: rowPending,
+                                  onClick: () => requestToggleBlock(u),
+                                },
+                                {
+                                  label: u.verified ? "Tasdiqni bekor qilish" : 'Tasdiqlash',
+                                  icon: ShieldTick,
+                                  disabled: rowPending,
+                                  onClick: () => toggleVerify(u),
+                                },
+                              ]}
+                            />
+                          </div>
                         </div>
-                      </motion.button>
+                      </motion.div>
                     );
                   })}
             </div>
 
             {!usersQuery.isLoading && filtered.length === 0 && (
-              <div className="flex flex-col items-center gap-2 py-16 text-center text-ink-muted">
-                <CloseCircle size={32} variant="Bulk" />
-                Foydalanuvchi topilmadi
+              <div className="flex flex-col items-center gap-3 py-16 text-center">
+                <CloseCircle size={32} variant="Bulk" className="text-ink-muted" />
+                <div>
+                  <p className="font-medium text-ink">Foydalanuvchi topilmadi</p>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    {hasActiveFilters
+                      ? "Qidiruv yoki filtrlarni o'zgartirib ko'ring"
+                      : 'Hozircha ilova foydalanuvchilari mavjud emas'}
+                  </p>
+                </div>
+                {hasActiveFilters && (
+                  <Button variant="secondary" size="sm" onClick={clearFilters}>
+                    <FilterRemove size={14} /> Filtrlarni tozalash
+                  </Button>
+                )}
               </div>
             )}
           </Card>
 
-          <AppUserDetail user={selected} onClose={() => setSelected(null)} />
+          <AppUserDetail
+            user={selected}
+            onClose={() => setSelectedId(null)}
+            onToggleBlock={requestToggleBlock}
+            onToggleVerify={toggleVerify}
+            pending={!!selected && pendingUserId === selected.id}
+          />
+
+          <ConfirmDialog
+            open={!!confirmTarget}
+            onClose={() => setConfirmTarget(null)}
+            onConfirm={confirmBlock}
+            title="Foydalanuvchini bloklash"
+            message={
+              <>
+                <strong className="text-ink">{confirmTarget?.name}</strong> ilovaga kira olmay
+                qoladi. Bu amalni keyinroq bekor qilishingiz mumkin.
+              </>
+            }
+            confirmLabel="Ha, bloklash"
+            tone="danger"
+            icon={Slash}
+            loading={!!confirmTarget && pendingUserId === confirmTarget.id}
+          />
+
+          {/* Amal natijasi — screen reader uchun aria-live, ko'zga esa qisqa toast sifatida */}
+          <div
+            aria-live={feedback?.tone === 'error' ? 'assertive' : 'polite'}
+            role={feedback?.tone === 'error' ? 'alert' : 'status'}
+            className="pointer-events-none fixed inset-x-0 bottom-5 z-[60] flex justify-center px-4"
+          >
+            <AnimatePresence>
+              {feedback && (
+                <motion.div
+                  initial={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={reduceMotion ? undefined : { opacity: 0, y: 12, scale: 0.98 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                  className={cn(
+                    'pointer-events-auto flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium shadow-pop',
+                    feedback.tone === 'success'
+                      ? 'border-primary-200 bg-surface text-primary-700'
+                      : 'border-red-200 bg-surface text-red-700',
+                  )}
+                >
+                  {feedback.tone === 'success' ? (
+                    <TickCircle size={18} variant="Bulk" className="shrink-0" />
+                  ) : (
+                    <InfoCircle size={18} variant="Bulk" className="shrink-0" />
+                  )}
+                  {feedback.message}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </>
       )}
     </div>

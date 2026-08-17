@@ -75,9 +75,18 @@ function InfoRow({
 export function AppUserDetail({
   user,
   onClose,
+  onToggleBlock,
+  onToggleVerify,
+  pending = false,
 }: {
   user: AppUser | null;
   onClose: () => void;
+  /** Bloklash/faollashtirish — bloklashdan oldin sahifa darajasida tasdiq so'raladi. */
+  onToggleBlock?: (user: AppUser) => void;
+  /** Shaxsni tasdiqlash/tasdiqni bekor qilish. */
+  onToggleVerify?: (user: AppUser) => void;
+  /** Shu foydalanuvchi uchun PATCH so'rovi hozir bajarilyaptimi. */
+  pending?: boolean;
 }) {
   const u = user;
   const maxActivity = useMemo(
@@ -249,14 +258,31 @@ export function AppUserDetail({
               <Sms size={16} variant="Bulk" /> Aloqa
             </a>
             <button
+              type="button"
+              onClick={() => onToggleVerify?.(u)}
+              disabled={pending}
               className={cn(
-                'flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium',
+                'flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+                u.verified
+                  ? 'border-line bg-surface text-ink-soft hover:bg-surface-2'
+                  : 'border-accent-200 bg-info-soft text-accent-700 hover:opacity-90',
+              )}
+            >
+              <ShieldTick size={16} variant="Bulk" />
+              {u.verified ? "Tasdiqni bekor qilish" : 'Tasdiqlash'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleBlock?.(u)}
+              disabled={pending}
+              className={cn(
+                'flex items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
                 isBlocked
                   ? 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100'
                   : 'border-red-200 bg-danger-soft text-red-700 hover:opacity-90',
               )}
             >
-              <Slash size={16} variant="Bulk" /> {isBlocked ? 'Blokdan chiqarish' : 'Bloklash'}
+              <Slash size={16} variant="Bulk" /> {isBlocked ? 'Faollashtirish' : 'Bloklash'}
             </button>
           </div>
         </div>
