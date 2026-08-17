@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   GeoJSON,
   MapContainer,
@@ -157,6 +157,27 @@ export function MapPage() {
     l.fullName.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
+  // Live per-mahalla headcount (employees whose last known mahalla is X),
+  // used to tint the mahalla polygons. Keyed so the GeoJSON restyles only
+  // when the distribution actually changes (an employee crosses a boundary).
+  const occupancy = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const l of locations) {
+      if (l.mahallaCode && l.hasLocation) {
+        counts.set(l.mahallaCode, (counts.get(l.mahallaCode) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [locations]);
+  const occupancyKey = useMemo(
+    () =>
+      [...occupancy.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map((e) => `${e[0]}:${e[1]}`)
+        .join(','),
+    [occupancy],
+  );
+
   const trackLine: [number, number][] =
     track?.points.map((p) => [p.latitude, p.longitude]) ?? [];
 
@@ -267,16 +288,29 @@ export function MapPage() {
 
           {showMahallas && mahallaQ.data && (
             <GeoJSON
-              key="mahallas"
+              key={`mahallas-${occupancyKey}`}
               data={mahallaQ.data}
-              style={{ color: '#64748b', weight: 1, fillOpacity: 0.02, fillColor: '#94a3b8' }}
+              style={(feature) => {
+                const code = (feature?.properties as ZoneProps | undefined)?.code;
+                const count = code ? occupancy.get(code) ?? 0 : 0;
+                if (count > 0) {
+                  return {
+                    color: '#059669',
+                    weight: 1.5,
+                    fillColor: '#10b981',
+                    fillOpacity: Math.min(0.18 + count * 0.12, 0.6),
+                  };
+                }
+                return { color: '#94a3b8', weight: 1, fillColor: '#94a3b8', fillOpacity: 0.02 };
+              }}
               onEachFeature={(feature: Feature, layer: Layer) => {
                 const p = feature.properties as ZoneProps | undefined;
-                if (p) {
-                  layer.bindTooltip(lang === 'ru' ? p.name_ru ?? p.name_uz_lt : p.name_uz_lt, {
-                    sticky: true,
-                  });
-                }
+                if (!p) return;
+                const count = occupancy.get(p.code) ?? 0;
+                const name = lang === 'ru' ? p.name_ru ?? p.name_uz_lt : p.name_uz_lt;
+                layer.bindTooltip(count > 0 ? `${name} — ${count} xodim` : name, {
+                  sticky: true,
+                });
               }}
             />
           )}
