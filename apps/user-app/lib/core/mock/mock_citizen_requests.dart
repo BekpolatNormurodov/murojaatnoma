@@ -1,4 +1,5 @@
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
+import 'package:user_app/features/requests/domain/entities/request_message.dart';
 
 /// Fuqaro arizalari/shikoyatlari uchun xotiradagi soxta (mock) "backend"
 /// holati.
@@ -139,3 +140,26 @@ final List<CitizenRequest> mockCitizenRequests = [
     ),
   ),
 ];
+
+/// Har bir murojaat uchun xotiradagi xabarlar (thread) — `CitizenRequest.id`
+/// bo'yicha kalitlangan. `CitizenRequestsRemoteDataSourceMockImpl.getMessages`
+/// birinchi chaqiruvda [seedMockMessagesFor] orqali (mavjud `response`dan)
+/// boshlang'ich holatni to'ldiradi, keyingi `sendMessage()` chaqiruvlari
+/// shu ro'yxatga qo'shib boradi.
+final Map<String, List<RequestMessage>> mockCitizenRequestMessages = {};
+
+/// [request]ning eski (bitta maydonli) `response`ini — mavjud bo'lsa — bitta
+/// XODIM xabari sifatida thread'ning boshlang'ich holatiga aylantiradi.
+List<RequestMessage> seedMockMessagesFor(CitizenRequest request) {
+  final response = request.response;
+  if (response == null) return [];
+  return [
+    RequestMessage(
+      id: '${request.id}-seed-response',
+      senderRole: RequestMessageSenderRole.employee,
+      senderName: "Mas'ul xodim",
+      text: response.text,
+      createdAt: response.respondedAt,
+    ),
+  ];
+}

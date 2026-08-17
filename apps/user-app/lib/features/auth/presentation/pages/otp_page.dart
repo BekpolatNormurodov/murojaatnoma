@@ -70,18 +70,26 @@ class _OtpPageState extends State<OtpPage> {
                           ).animate(delay: 120.ms).fadeIn(),
                           const SizedBox(height: 40),
                           OtpInput(
-                            onChanged: (v) => setState(() => _code = v),
-                            onCompleted: (code) {
-                              setState(() => _code = code);
-                              context.read<AuthCubit>().verifyOtp(
-                                widget.phone,
-                                code,
-                              );
-                            },
-                          ).animate(delay: 280.ms).fadeIn().slideY(
-                            begin: 0.2,
-                            end: 0,
-                          ),
+                                // Real backend (`/auth/request-otp`) HAR DOIM
+                                // 6 xonali kod generatsiya qiladi
+                                // (`randomInt(100000, 999999)`, qarang:
+                                // `apps/backend/src/modules/auth/auth.service.ts`)
+                                // — standart 4 xonali uzunlik demo/mock
+                                // rejimidagi 4-xonali "1111" kodiga mos edi,
+                                // xolos.
+                                length: 6,
+                                onChanged: (v) => setState(() => _code = v),
+                                onCompleted: (code) {
+                                  setState(() => _code = code);
+                                  context.read<AuthCubit>().verifyOtp(
+                                    widget.phone,
+                                    code,
+                                  );
+                                },
+                              )
+                              .animate(delay: 280.ms)
+                              .fadeIn()
+                              .slideY(begin: 0.2, end: 0),
                           const SizedBox(height: 28),
                           Center(
                             child: TextButton(
@@ -105,7 +113,7 @@ class _OtpPageState extends State<OtpPage> {
                             label: context.l10n.confirm,
                             icon: AppIcons.tick,
                             loading: loading,
-                            onPressed: _code.length == 4
+                            onPressed: _code.length == 6
                                 ? () => context.read<AuthCubit>().verifyOtp(
                                     widget.phone,
                                     _code,

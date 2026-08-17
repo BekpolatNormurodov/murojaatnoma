@@ -48,6 +48,8 @@ import 'package:user_app/features/requests/data/repositories/citizen_requests_re
 import 'package:user_app/features/requests/domain/repositories/citizen_requests_repository.dart';
 import 'package:user_app/features/requests/domain/usecases/get_citizen_request.dart';
 import 'package:user_app/features/requests/domain/usecases/get_citizen_requests.dart';
+import 'package:user_app/features/requests/domain/usecases/get_request_messages.dart';
+import 'package:user_app/features/requests/domain/usecases/send_request_message.dart';
 import 'package:user_app/features/requests/domain/usecases/submit_citizen_request.dart';
 import 'package:user_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:user_app/features/requests/presentation/bloc/requests_cubit.dart';
@@ -76,11 +78,18 @@ Future<void> configureDependencies() async {
     ..registerFactory<LocaleCubit>(LocaleCubit.new)
     // ---- Router ----
     ..registerLazySingleton<AppRouter>(AppRouter.new)
-    // ---- Auth (Mock/Api seam — AppConfig.useMock tanlaydi) ----
+    // ---- Auth ----
+    // MUROJAAT (arizalar/shikoyatlar) funksiyasi HAQIQIY, jonli backendga
+    // (`https://murojaatnoma.uz/api`) ulanadi — bu esa fuqaroning
+    // avtorizatsiya qilingan bo'lishini talab qiladi. Shu sabab Auth
+    // ATAYLAB `AppConfig.useMock`dan MUSTAQIL RAVISHDA doim HAQIQIY
+    // `AuthApiImpl`ga ulanadi (boshqa barcha funksiyalar — to'lovlar va
+    // h.k. — hali ham o'zining `AppConfig.useMock` shartiga bo'ysunadi,
+    // ularning backendi hali tayyor emas). `AuthRemoteDataSourceMockImpl`
+    // shu tufayli endi hech qayerdan ro'yxatdan o'tkazilmaydi (klass
+    // o'zi hali ham mavjud — kelajakda kerak bo'lsa qaytarish oson).
     ..registerLazySingleton<AuthRemoteDataSource>(
-      () => AppConfig.useMock
-          ? AuthRemoteDataSourceMockImpl()
-          : AuthApiImpl(getIt<DioClient>()),
+      () => AuthApiImpl(getIt<DioClient>()),
     )
     ..registerLazySingleton<AuthRepository>(
       () => AuthRepositoryImpl(
@@ -213,12 +222,20 @@ Future<void> configureDependencies() async {
     ..registerFactory<PaymentHistoryCubit>(
       () => PaymentHistoryCubit(getPaymentHistory: getIt<GetPaymentHistory>()),
     )
-    // ---- Citizen requests (arizalar/shikoyatlar) — Mock/Api seam via
-    // AppConfig.useMock ----
+    // ---- Citizen requests (arizalar/shikoyatlar — MUROJAAT) ----
+    // Shu ilova sessiyasining asosiy vazifasi: MUROJAAT ATAYLAB doim
+    // HAQIQIY `CitizenRequestsApiImpl`ga ulanadi (`AppConfig.useMock`dan
+    // MUSTAQIL, xuddi Auth kabi) — `https://murojaatnoma.uz/api
+    // /applications*`. Boshqa barcha funksiyalar (to'lovlar va h.k.)
+    // o'zining mavjud `AppConfig.useMock` shartida qoladi —
+    // `AppConfig.apiBaseUrl` global o'zgarmagani uchun ularning backendi
+    // hali tayyor bo'lmasa ham buzilmaydi.
     ..registerLazySingleton<CitizenRequestsRemoteDataSource>(
-      () => AppConfig.useMock
-          ? CitizenRequestsRemoteDataSourceMockImpl()
-          : CitizenRequestsApiImpl(getIt<DioClient>()),
+      () => CitizenRequestsApiImpl(
+        getIt<DioClient>(),
+        authRepository: getIt<AuthRepository>(),
+        registrationRepository: getIt<RegistrationRepository>(),
+      ),
     )
     ..registerLazySingleton<CitizenRequestsRepository>(
       () => CitizenRequestsRepositoryImpl(
@@ -234,6 +251,12 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<SubmitCitizenRequest>(
       () => SubmitCitizenRequest(getIt<CitizenRequestsRepository>()),
     )
+    ..registerLazySingleton<GetRequestMessages>(
+      () => GetRequestMessages(getIt<CitizenRequestsRepository>()),
+    )
+    ..registerLazySingleton<SendRequestMessage>(
+      () => SendRequestMessage(getIt<CitizenRequestsRepository>()),
+    )
     // `RequestsCubit` — router'ning "applications" shell branchida
     // yaratiladi: factory, chunki `StatefulShellRoute.indexedStack` branch
     // holatini o'zi saqlaydi — amalda ilova davomida faqat BIR MARTA
@@ -245,7 +268,11 @@ Future<void> configureDependencies() async {
     // instansiya (factory): oldingi murojaatning holati keyingisiga
     // "sizib qolmasligi" kerak.
     ..registerFactory<RequestDetailCubit>(
-      () => RequestDetailCubit(getCitizenRequest: getIt<GetCitizenRequest>()),
+      () => RequestDetailCubit(
+        getCitizenRequest: getIt<GetCitizenRequest>(),
+        getRequestMessages: getIt<GetRequestMessages>(),
+        sendRequestMessage: getIt<SendRequestMessage>(),
+      ),
     )
     // `SubmitRequestCubit` — har bir `/applications/submit` ochilishida
     // YANGI instansiya, xuddi `PayCubit` kabi.

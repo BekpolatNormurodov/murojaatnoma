@@ -1,10 +1,12 @@
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
+import 'package:user_app/features/requests/domain/entities/request_message.dart';
 
 /// Fuqaroning arizalari/shikoyatlari bilan ishlash uchun shartnoma —
-/// ro'yxatni (filtrlash bilan) o'qish, bitta murojaatni olish va yangi
-/// murojaat yuborish.
+/// ro'yxatni (filtrlash bilan) o'qish, bitta murojaatni olish, yangi
+/// murojaat yuborish va murojaat mavzusidagi xabarlar (thread) bilan
+/// ishlash.
 abstract class CitizenRequestsRepository {
   /// Fuqaroning murojaatlari ro'yxatini oladi.
   ///
@@ -25,4 +27,11 @@ abstract class CitizenRequestsRepository {
   /// maydonlari server (yoki mock) tomonidan almashtiriladi — chaqiruvchi
   /// faqat `kind`/`category`/`title`/`body`/`attachments`ni to'ldiradi.
   Future<Either<Failure, CitizenRequest>> submit(CitizenRequest draft);
+
+  /// Bitta murojaat mavzusidagi barcha xabarlarni (fuqaro savollari + xodim
+  /// javoblari) xronologik tartibda oladi.
+  Future<Either<Failure, List<RequestMessage>>> getMessages(String id);
+
+  /// Murojaat mavzusiga fuqaro nomidan yangi xabar yozadi.
+  Future<Either<Failure, RequestMessage>> sendMessage(String id, String text);
 }

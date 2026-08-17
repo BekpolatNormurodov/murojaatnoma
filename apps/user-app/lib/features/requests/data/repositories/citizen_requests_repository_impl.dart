@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:user_app/features/requests/data/datasources/citizen_requests_remote_data_source.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
+import 'package:user_app/features/requests/domain/entities/request_message.dart';
 import 'package:user_app/features/requests/domain/repositories/citizen_requests_repository.dart';
 
 /// `CitizenRequestsRepository`ning masofaviy-manba (mock/api)
@@ -42,6 +43,31 @@ class CitizenRequestsRepositoryImpl implements CitizenRequestsRepository {
   Future<Either<Failure, CitizenRequest>> submit(CitizenRequest draft) async {
     try {
       return Right(await remote.submit(draft));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, List<RequestMessage>>> getMessages(String id) async {
+    try {
+      return Right(await remote.getMessages(id));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, RequestMessage>> sendMessage(
+    String id,
+    String text,
+  ) async {
+    try {
+      return Right(await remote.sendMessage(id, text));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message));
     } on Exception catch (_) {

@@ -3,6 +3,7 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
+import 'package:user_app/features/requests/domain/entities/request_message.dart';
 import 'package:user_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:user_app/features/requests/presentation/widgets/citizen_request_card.dart';
 import 'package:user_app/features/requests/presentation/widgets/request_attachment_tile.dart';
@@ -41,9 +42,16 @@ class RequestDetailPage extends StatelessWidget {
             RequestDetailError(:final message) => _DetailErrorView(
               message: message,
             ),
-            RequestDetailLoaded(:final request) => _DetailContent(
-              request: request,
-            ),
+            RequestDetailLoaded(
+              :final request,
+              :final messages,
+              :final sendingMessage,
+            ) =>
+              _DetailContent(
+                request: request,
+                messages: messages,
+                sendingMessage: sendingMessage,
+              ),
           },
         ),
       ),
@@ -52,9 +60,15 @@ class RequestDetailPage extends StatelessWidget {
 }
 
 class _DetailContent extends StatelessWidget {
-  const _DetailContent({required this.request});
+  const _DetailContent({
+    required this.request,
+    required this.messages,
+    required this.sendingMessage,
+  });
 
   final CitizenRequest request;
+  final List<RequestMessage> messages;
+  final bool sendingMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -121,24 +135,158 @@ class _DetailContent extends StatelessWidget {
             RequestAttachmentTile(attachment: attachment),
             const SizedBox(height: 8),
           ],
-        if (request.response case final response?) ...[
-          const SizedBox(height: 20),
-          _SectionTitle(l10n.requestResponseTitle),
-          const SizedBox(height: 8),
-          AppCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(response.text, style: AppTextStyles.body),
-                const SizedBox(height: 8),
-                Text(
-                  formatIsoDateTime(response.respondedAt),
-                  style: AppTextStyles.caption.copyWith(color: inkMuted),
-                ),
-              ],
+        const SizedBox(height: 20),
+        _SectionTitle(l10n.requestResponseTitle),
+        const SizedBox(height: 8),
+        if (messages.isEmpty)
+          Text(
+            l10n.chatEmptyMessage,
+            style: AppTextStyles.caption.copyWith(color: inkMuted),
+          )
+        else
+          for (final message in messages) ...[
+            _MessageBubble(message: message),
+            const SizedBox(height: 12),
+          ],
+        const SizedBox(height: 8),
+        _MessageComposer(sending: sendingMessage),
+      ],
+    );
+  }
+}
+
+/// Thread'dagi bitta xabar — fuqaro xabarlari o'ngga (brend rangida),
+/// xodim/tizim xabarlari chapga (neytral qopqoq bilan) tekislanadi —
+/// odatiy chat vizual tili.
+class _MessageBubble extends StatelessWidget {
+  const _MessageBubble({required this.message});
+
+  final RequestMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
+    final isCitizen = message.senderRole == RequestMessageSenderRole.citizen;
+    final isSystem = message.senderRole == RequestMessageSenderRole.system;
+
+    final senderName = message.senderName?.trim();
+    final senderLabel = isCitizen
+        ? l10n.callYou
+        : (senderName != null && senderName.isNotEmpty)
+        ? senderName
+        : (isSystem ? null : l10n.requestResponseTitle);
+
+    return Align(
+      alignment: isCitizen ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: isCitizen
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          if (senderLabel != null) ...[
+            Text(
+              senderLabel,
+              style: AppTextStyles.caption.copyWith(
+                color: inkMuted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
+          Container(
+            constraints: const BoxConstraints(maxWidth: 280),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: isCitizen
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : surface,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+              border: isCitizen ? null : Border.all(color: line),
+            ),
+            child: Text(message.text, style: AppTextStyles.body),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            formatIsoDateTime(message.createdAt),
+            style: AppTextStyles.caption.copyWith(
+              color: inkMuted,
+              fontSize: 10.5,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Xabarlar thread'iga fuqaro nomidan yangi xabar yozish uchun ixcham
+/// forma — matn maydoni + yuborish tugmasi (`RequestRespondPage`
+/// (worker-app)dagi bir xil naqsh: matn bo'sh bo'lsa xato ko'rsatiladi,
+/// yuborilayotganda tugma loading holatida).
+class _MessageComposer extends StatefulWidget {
+  const _MessageComposer({required this.sending});
+
+  final bool sending;
+
+  @override
+  State<_MessageComposer> createState() => _MessageComposerState();
+}
+
+class _MessageComposerState extends State<_MessageComposer> {
+  final _controller = TextEditingController();
+  String? _errorText;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send(BuildContext context) async {
+    final l10n = context.l10n;
+    final text = _controller.text.trim();
+    if (text.isEmpty) {
+      setState(() => _errorText = l10n.requestResponseEmptyError);
+      return;
+    }
+
+    final error = await context.read<RequestDetailCubit>().sendMessage(text);
+    if (!context.mounted) return;
+    if (error == null) {
+      _controller.clear();
+      setState(() => _errorText = null);
+    } else {
+      AppAlert.error(context, error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppTextField(
+          hint: l10n.chatMessageHint,
+          controller: _controller,
+          maxLines: 3,
+          errorText: _errorText,
+          enabled: !widget.sending,
+          onChanged: (_) {
+            if (_errorText != null) setState(() => _errorText = null);
+          },
+        ),
+        const SizedBox(height: 10),
+        AppButton(
+          label: l10n.requestSendResponse,
+          icon: AppIcons.send,
+          loading: widget.sending,
+          onPressed: widget.sending ? null : () => _send(context),
+        ),
       ],
     );
   }

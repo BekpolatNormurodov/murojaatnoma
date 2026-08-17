@@ -17,6 +17,12 @@ class AuthRepositoryImpl implements AuthRepository {
   /// Sessiya JSON'i shu kalit ostida saqlanadi (userId/ism/telefon/hudud).
   static const _sessionKey = 'user_session';
 
+  /// Refresh token shu kalit ostida ALOHIDA saqlanadi (`/auth/refresh`
+  /// uchun kelajakda; hozircha hech qanday oqim uni iste'mol qilmaydi) —
+  /// `AuthInterceptor.tokenKey`dan farqli, chunki u faqat access token
+  /// bilan ishlaydi.
+  static const _refreshTokenKey = 'refresh_token';
+
   @override
   Future<Either<Failure, Unit>> sendOtp(String phone) async {
     try {
@@ -38,6 +44,10 @@ class AuthRepositoryImpl implements AuthRepository {
       final session = await remote.verifyOtp(phone: phone, code: code);
       // `AuthInterceptor` har bir so'rovga shu kalitdan JWT o'qib qo'shadi.
       await prefs.setString(AuthInterceptor.tokenKey, session.token);
+      final refreshToken = session.refreshToken;
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await prefs.setString(_refreshTokenKey, refreshToken);
+      }
       await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
       return Right(session);
     } on AuthException catch (e) {
@@ -57,6 +67,7 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> logout() async {
     await prefs.remove(AuthInterceptor.tokenKey);
+    await prefs.remove(_refreshTokenKey);
     await prefs.remove(_sessionKey);
   }
 }

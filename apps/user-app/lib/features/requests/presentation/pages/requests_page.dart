@@ -261,11 +261,7 @@ class _RequestsErrorView extends StatelessWidget {
         icon: AppIcons.close,
         title: l10n.requestsErrorTitle,
         message: message,
-        action: AppButton(
-          label: l10n.retry,
-          expand: false,
-          onPressed: onRetry,
-        ),
+        action: AppButton(label: l10n.retry, expand: false, onPressed: onRetry),
       ),
     );
   }

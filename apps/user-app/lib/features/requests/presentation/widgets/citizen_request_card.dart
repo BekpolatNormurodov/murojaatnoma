@@ -88,9 +88,7 @@ class CitizenRequestCard extends StatelessWidget {
               // kengligi cheklanmagan birodar (sibling) bo'lsa, uzun
               // holat yorlig'i sarlavhani siqib qo'yishi mumkin edi —
               // `loose` moslashuv sarlavhaga ustuvorlik beradi.
-              Flexible(
-                child: RequestStatusChip(status: request.status),
-              ),
+              Flexible(child: RequestStatusChip(status: request.status)),
             ],
           ),
           const SizedBox(height: 12),

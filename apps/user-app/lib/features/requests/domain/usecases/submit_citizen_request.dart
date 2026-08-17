@@ -8,8 +8,7 @@ import 'package:user_app/features/requests/domain/repositories/citizen_requests_
 /// Kirish parametri sifatida to'g'ridan-to'g'ri [CitizenRequest] (draft)
 /// ishlatiladi — alohida `Params` klass shart emas, chunki
 /// [CitizenRequestsRepository.submit] bitta argument oladi.
-class SubmitCitizenRequest
-    implements UseCase<CitizenRequest, CitizenRequest> {
+class SubmitCitizenRequest implements UseCase<CitizenRequest, CitizenRequest> {
   SubmitCitizenRequest(this.repository);
 
   final CitizenRequestsRepository repository;

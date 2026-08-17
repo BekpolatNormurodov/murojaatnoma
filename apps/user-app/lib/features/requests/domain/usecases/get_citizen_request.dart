@@ -12,9 +12,7 @@ class GetCitizenRequest
   final CitizenRequestsRepository repository;
 
   @override
-  Future<Either<Failure, CitizenRequest>> call(
-    GetCitizenRequestParams params,
-  ) {
+  Future<Either<Failure, CitizenRequest>> call(GetCitizenRequestParams params) {
     return repository.getById(params.id);
   }
 }
