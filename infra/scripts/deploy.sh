@@ -22,8 +22,11 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-if [[ ! -f certs/fullchain.pem || ! -f certs/privkey.pem ]]; then
-  echo "==> No TLS certificate found, generating a self-signed one"
+# Real TLS certs come from the host's /etc/letsencrypt (mounted into the gateway;
+# see docker-compose.yml + conf.d/default.conf). The ./certs self-signed set is only
+# a fallback for non-domain/local testing — generate it only when explicitly asked.
+if [[ "${GEN_SELF_SIGNED:-0}" == "1" && ( ! -f certs/fullchain.pem || ! -f certs/privkey.pem ) ]]; then
+  echo "==> GEN_SELF_SIGNED=1: generating a self-signed cert into ./certs"
   bash scripts/gen-selfsigned.sh
 fi
 
@@ -32,6 +35,15 @@ docker compose build
 
 echo "==> docker compose up -d"
 docker compose up -d
+
+# nginx.conf and conf.d are bind-mounted read-only, so `up -d` does NOT reload
+# them (the gateway container definition is unchanged). Validate + reload explicitly.
+echo "==> validate + reload gateway nginx"
+if docker compose exec -T gateway nginx -t; then
+  docker compose exec -T gateway nginx -s reload && echo "nginx reloaded"
+else
+  echo "WARN: nginx config test failed — NOT reloading (old config still serving)" >&2
+fi
 
 echo "==> docker compose ps"
 docker compose ps

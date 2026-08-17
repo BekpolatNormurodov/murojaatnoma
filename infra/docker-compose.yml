@@ -1,5 +1,13 @@
 name: gov-system
 
+# Bounded container logs (docker's json-file driver is unbounded by default and
+# will eventually fill the disk — the OTP/request logs grow every login).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 # Single internal network. Only the gateway publishes ports to the host.
 networks:
   internal:
@@ -15,6 +23,8 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 2g
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -42,6 +52,8 @@ services:
     build:
       context: ../apps/backend
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 1g
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
@@ -63,6 +75,12 @@ services:
     # Internal only — not published to the host.
     expose:
       - "3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
   # ---------------------------------------------------------------------
   # web-admin — React/Vite SPA built and served by its own nginx (see
@@ -72,6 +90,8 @@ services:
     build:
       context: ../apps/web-admin
     restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 256m
     networks:
       - internal
     expose:
