@@ -28,11 +28,10 @@ import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useAuth } from '@/shared/store/auth';
 import { useUI } from '@/shared/store/ui';
 import { useConversations } from '@/features/chat/useChat';
+import { useRequests } from '@/shared/store/requests';
+import { useComplaints } from '@/shared/store/complaints';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
-import { COMPLAINTS } from '@/shared/data/mock';
 import { cn } from '@/shared/lib/cn';
-
-const NEW_COMPLAINTS = COMPLAINTS.filter((c) => c.status === 'new').length;
 
 interface NavItem {
   to: string;
@@ -51,8 +50,8 @@ const SECTIONS: NavSection[] = [
     titleKey: 'nav.section.main',
     items: [
       { to: '/', labelKey: 'nav.dashboard', icon: Element3 },
-      { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion, badge: 12 },
-      { to: '/complaints', labelKey: 'nav.complaints', icon: Danger, badge: NEW_COMPLAINTS },
+      { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion },
+      { to: '/complaints', labelKey: 'nav.complaints', icon: Danger },
       { to: '/meetings', labelKey: 'nav.meetings', icon: Calendar },
       { to: '/chat', labelKey: 'nav.chat', icon: Messages2 },
       { to: '/map', labelKey: 'nav.map', icon: Map1 },
@@ -100,6 +99,13 @@ export function SidebarContent({
   // react-query keshidan qayta ishlatiladi — qo'shimcha so'rov yubormaydi.
   const { data: conversations } = useConversations();
   const chatUnread = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0);
+  // Bu do'konlar ilova yuklanganda bir marta backend'dan hydrate bo'ladi
+  // (shared/store/requests.ts, shared/store/complaints.ts) — shu yerda
+  // faqat mavjud holatdan ochiq/yangi sonini hisoblaymiz.
+  const openRequests = useRequests((s) => s.requests).filter(
+    (r) => r.status === 'new' || r.status === 'in_progress',
+  ).length;
+  const newComplaints = useComplaints((s) => s.complaints).filter((c) => c.status === 'new').length;
   const [logoutOpen, setLogoutOpen] = useState(false);
   return (
     <>
@@ -128,7 +134,14 @@ export function SidebarContent({
               </p>
             )}
             {section.items.map((item) => {
-              const badge = item.to === '/chat' ? chatUnread : item.badge;
+              const badge =
+                item.to === '/chat'
+                  ? chatUnread
+                  : item.to === '/requests'
+                    ? openRequests
+                    : item.to === '/complaints'
+                      ? newComplaints
+                      : item.badge;
               const showBadge = (badge ?? 0) > 0;
               return (
               <NavLink

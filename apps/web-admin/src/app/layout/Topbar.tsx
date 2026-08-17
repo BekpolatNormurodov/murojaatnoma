@@ -39,6 +39,13 @@ const NOTIF_META: Record<NotificationType, { icon: IconType; color: string }> = 
   system: { icon: InfoCircle, color: '#64748b' },
 };
 
+// Backend kelajakda yangi bildirishnoma turini qo'shishi mumkin — bunday
+// holatda `NOTIF_META` kaliti topilmay UI qulab tushmasligi uchun zaxira.
+const DEFAULT_NOTIF_META: { icon: IconType; color: string } = {
+  icon: InfoCircle,
+  color: '#64748b',
+};
+
 // Localized date names — Intl's uz-UZ data is unreliable across runtimes
 // (falls back to "M06 12, Fri"), so we format manually.
 const DATE_NAMES: Record<Lang, { months: string[]; days: string[] }> = {
@@ -259,7 +266,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                     <p className="px-4 py-8 text-center text-sm text-ink-muted">{t('topbar.empty')}</p>
                   )}
                   {items.map((n) => {
-                    const meta = NOTIF_META[n.type];
+                    const meta = NOTIF_META[n.type] ?? DEFAULT_NOTIF_META;
                     const Ic = meta.icon;
                     return (
                       <button
