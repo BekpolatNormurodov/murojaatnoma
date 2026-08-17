@@ -1,9 +1,14 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { ValidationError } from 'class-validator';
 import { AppModule } from './app.module';
 import { AppConfig } from './common/config/configuration';
+import {
+  flattenValidationErrors,
+  ValidationExceptionPayload,
+} from './common/i18n/validation-exception.types';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -17,6 +22,21 @@ async function bootstrap(): Promise<void> {
       forbidNonWhitelisted: true,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      // Preserve the structured, per-field class-validator errors (property
+      // + constraint key -> English message) instead of flattening them to
+      // English strings here. AllExceptionsFilter localizes this payload
+      // into the caller's language (uz default, ru via Accept-Language /
+      // X-Lang) before it reaches the client — see
+      // src/common/filters/all-exceptions.filter.ts and
+      // src/common/i18n/validation-messages.ts.
+      exceptionFactory: (errors: ValidationError[]) => {
+        const payload: ValidationExceptionPayload = {
+          message: 'Validation failed',
+          isValidationException: true,
+          validationErrors: flattenValidationErrors(errors),
+        };
+        return new BadRequestException(payload);
+      },
     }),
   );
 

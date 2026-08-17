@@ -7,6 +7,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { resolveLang } from '../i18n/lang.util';
+import { localizeValidationErrors } from '../i18n/validation-messages';
+import { isValidationExceptionPayload } from '../i18n/validation-exception.types';
 
 interface ErrorResponseBody {
   statusCode: number;
@@ -37,7 +40,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     const exceptionResponse = isHttpException ? exception.getResponse() : undefined;
 
-    const message = this.extractMessage(exceptionResponse, exception);
+    // The global ValidationPipe's exceptionFactory (main.ts) throws a
+    // BadRequestException whose body preserves structured, per-field
+    // class-validator errors instead of English strings. Detect that shape
+    // here and localize it into the caller's language; every other
+    // exception (including plain BadRequestExceptions thrown by app code)
+    // falls through to the unchanged default handling below.
+    const message = isValidationExceptionPayload(exceptionResponse)
+      ? localizeValidationErrors(exceptionResponse.validationErrors, resolveLang(request))
+      : this.extractMessage(exceptionResponse, exception);
     const error = isHttpException ? exception.name : 'InternalServerError';
 
     const body: ErrorResponseBody = {
