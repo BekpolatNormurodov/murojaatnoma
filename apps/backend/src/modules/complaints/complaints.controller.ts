@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Complaint } from '@prisma/client';
 import { Public } from '../../common/decorators/public.decorator';
@@ -43,5 +54,13 @@ export class ComplaintsController {
     @Body() dto: CreateComplaintResponseDto,
   ): Promise<Complaint> {
     return this.complaintsService.addResponse(id, dto);
+  }
+
+  @Public()
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Shikoyatni o'chirish" })
+  remove(@Param('id') id: string): Promise<void> {
+    return this.complaintsService.remove(id);
   }
 }

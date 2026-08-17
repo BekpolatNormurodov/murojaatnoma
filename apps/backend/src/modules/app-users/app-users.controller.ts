@@ -1,9 +1,10 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { AppUsersService } from './app-users.service';
 import { ListAppUsersQueryDto } from './dto/list-app-users-query.dto';
+import { UpdateAppUserDto } from './dto/update-app-user.dto';
 import {
   AppUserDauPoint,
   AppUserGrowthPoint,
@@ -55,5 +56,17 @@ export class AppUsersController {
   @ApiOperation({ summary: 'Get a single app user by id' })
   findOne(@Param('id') id: string): Promise<AppUserResponse> {
     return this.appUsersService.findOne(id);
+  }
+
+  @Public()
+  @Patch(':id')
+  @ApiOperation({
+    summary: "App user moderation: status (block/unblock/activate), verified, notificationsOn",
+  })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateAppUserDto,
+  ): Promise<AppUserResponse> {
+    return this.appUsersService.update(id, dto);
   }
 }

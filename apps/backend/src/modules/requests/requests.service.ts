@@ -137,6 +137,15 @@ export class RequestsService {
     return this.toResponse(updated);
   }
 
+  /** `DELETE /requests/:id` — hard delete (no soft-delete field on this model). */
+  async remove(id: string): Promise<void> {
+    const existing = await this.prisma.citizenRequest.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException(`Request ${id} not found`);
+    }
+    await this.prisma.citizenRequest.delete({ where: { id } });
+  }
+
   /** Aggregate counts for the requests dashboard (totals, by status/category/district). */
   async stats(): Promise<RequestStatsResponse> {
     const [total, statusGroups, categoryGroups, districtGroups] = await Promise.all([

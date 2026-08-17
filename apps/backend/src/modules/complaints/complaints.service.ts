@@ -102,4 +102,10 @@ export class ComplaintsService {
       },
     });
   }
+
+  /** `DELETE /complaints/:id` — hard delete (no soft-delete field on this model). */
+  async remove(id: string): Promise<void> {
+    await this.findOne(id);
+    await this.prisma.complaint.delete({ where: { id } });
+  }
 }

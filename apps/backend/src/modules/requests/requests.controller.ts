@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
@@ -57,5 +68,13 @@ export class RequestsController {
     @Body() dto: UpdateRequestDto,
   ): Promise<CitizenRequestResponse> {
     return this.requestsService.update(id, dto);
+  }
+
+  @Public()
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a citizen request' })
+  remove(@Param('id') id: string): Promise<void> {
+    return this.requestsService.remove(id);
   }
 }

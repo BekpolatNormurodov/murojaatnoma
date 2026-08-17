@@ -3,6 +3,7 @@ import { AppUser, Prisma } from '@prisma/client';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ListAppUsersQueryDto } from './dto/list-app-users-query.dto';
+import { UpdateAppUserDto } from './dto/update-app-user.dto';
 import {
   AppUserActivityPoint,
   AppUserDauPoint,
@@ -90,6 +91,29 @@ export class AppUsersService {
       throw new NotFoundException(`App user ${id} not found`);
     }
     return this.toResponse(row);
+  }
+
+  /**
+   * `PATCH /app-users/:id` — admin moderation: block/unblock/activate (via
+   * `status`), verify identity, or toggle push notifications on the user's
+   * behalf. Mirrors the "Bloklash / Blokdan chiqarish" action in the
+   * web-admin `AppUserDetail` drawer.
+   */
+  async update(id: string, dto: UpdateAppUserDto): Promise<AppUserResponse> {
+    await this.findOne(id);
+
+    const updated = await this.prisma.appUser.update({
+      where: { id },
+      data: {
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.verified !== undefined ? { verified: dto.verified } : {}),
+        ...(dto.notificationsOn !== undefined
+          ? { notificationsOn: dto.notificationsOn }
+          : {}),
+      },
+    });
+
+    return this.toResponse(updated);
   }
 
   async stats(): Promise<AppUserStats> {
