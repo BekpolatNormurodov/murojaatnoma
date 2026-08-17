@@ -18,6 +18,13 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
 }
 
+const DEFAULT_NEWS_META = { label: "Boshqa", color: '#64748b' };
+
+/** NEWS_META'da yo'q (kutilmagan) kategoriya uchun neytral fallback. */
+function newsMeta(category: NewsCategory) {
+  return NEWS_META[category] ?? DEFAULT_NEWS_META;
+}
+
 export function NewsPage() {
   const [cat, setCat] = useState<NewsCategory | 'all'>('all');
   const [onlyDrafts, setOnlyDrafts] = useState(false);
@@ -139,7 +146,7 @@ export function NewsPage() {
 }
 
 function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
-  const meta = NEWS_META[item.category];
+  const meta = newsMeta(item.category);
   return (
     <motion.article
       initial={{ opacity: 0, y: 16 }}
@@ -190,7 +197,7 @@ function HeroCard({ item, onClick }: { item: NewsItem; onClick: () => void }) {
 }
 
 function NewsCard({ item, index, onClick }: { item: NewsItem; index: number; onClick: () => void }) {
-  const meta = NEWS_META[item.category];
+  const meta = newsMeta(item.category);
   return (
     <motion.article
       initial={{ opacity: 0, y: 16 }}

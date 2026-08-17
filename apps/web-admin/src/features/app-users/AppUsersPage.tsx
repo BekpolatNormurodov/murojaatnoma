@@ -93,6 +93,17 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
 }
 
+const DEFAULT_APP_USER_STATUS_META = {
+  label: "Noma'lum",
+  tone: 'neutral' as const,
+  color: '#94a3b8',
+};
+
+/** APP_USER_STATUS_META'da yo'q (kutilmagan) holat uchun neytral fallback. */
+function appUserStatusMeta(status: AppUserStatus) {
+  return APP_USER_STATUS_META[status] ?? DEFAULT_APP_USER_STATUS_META;
+}
+
 export function AppUsersPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -465,7 +476,7 @@ export function AppUsersPage() {
                     </div>
                   ))
                 : filtered.map((u, i) => {
-                    const st = APP_USER_STATUS_META[u.status];
+                    const st = appUserStatusMeta(u.status);
                     return (
                       <motion.button
                         key={u.id}

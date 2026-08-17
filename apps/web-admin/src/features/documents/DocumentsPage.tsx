@@ -45,6 +45,30 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
 }
 
+const DEFAULT_TYPE_META = { label: "Boshqa", icon: DocumentText, color: '#94a3b8' };
+const DEFAULT_STATUS_META = { label: "Noma'lum", tone: 'neutral' as const };
+
+/** TYPE_META'da yo'q (kutilmagan) hujjat turi uchun neytral fallback. */
+function typeMeta(type: GovDocType) {
+  return TYPE_META[type] ?? DEFAULT_TYPE_META;
+}
+
+/** STATUS_META'da yo'q (kutilmagan) holat uchun neytral fallback. */
+function statusMeta(status: GovDocStatus) {
+  return STATUS_META[status] ?? DEFAULT_STATUS_META;
+}
+
+/**
+ * DOC_EXPORT_COLUMNS bilan bir xil, lekin Turi/Holati ustunlari
+ * xavfsiz (fallback'li) meta orqali o'qiladi — eksport kutilmagan
+ * qiymatda qulamasligi uchun.
+ */
+const SAFE_DOC_EXPORT_COLUMNS: typeof DOC_EXPORT_COLUMNS = DOC_EXPORT_COLUMNS.map((col) => {
+  if (col.header === 'Turi') return { ...col, value: (d: GovDocument) => typeMeta(d.type).label };
+  if (col.header === 'Holati') return { ...col, value: (d: GovDocument) => statusMeta(d.status).label };
+  return col;
+});
+
 export function DocumentsPage() {
   const { data, isLoading, isError, error, refetch } = useDocuments();
   const [docs, setDocs] = useState<GovDocument[]>([]);
@@ -124,16 +148,16 @@ export function DocumentsPage() {
                   label: 'Excel (.xls) yuklab olish',
                   icon: TaskSquare,
                   onClick: () =>
-                    exportToExcel(`hokimlik-hujjatlar_${fileStamp()}`, DOC_EXPORT_COLUMNS, filtered, {
+                    exportToExcel(`hokimlik-hujjatlar_${fileStamp()}`, SAFE_DOC_EXPORT_COLUMNS, filtered, {
                       title: 'Hujjatlar roʻyxati',
-                      subtitle: `Holat: ${status === 'all' ? 'barchasi' : STATUS_META[status].label} · ${filtered.length} ta`,
+                      subtitle: `Holat: ${status === 'all' ? 'barchasi' : statusMeta(status).label} · ${filtered.length} ta`,
                       sheet: 'Hujjatlar',
                     }),
                 },
                 {
                   label: 'CSV yuklab olish',
                   icon: DocumentDownload,
-                  onClick: () => exportToCSV(`hokimlik-hujjatlar_${fileStamp()}`, DOC_EXPORT_COLUMNS, filtered),
+                  onClick: () => exportToCSV(`hokimlik-hujjatlar_${fileStamp()}`, SAFE_DOC_EXPORT_COLUMNS, filtered),
                 },
                 {
                   label: 'Ro\u02bbyxatni chop etish',
@@ -332,9 +356,9 @@ function DocRow({
   onDownload: () => void;
   onPrint: () => void;
 }) {
-  const meta = TYPE_META[doc.type];
+  const meta = typeMeta(doc.type);
   const Ic = meta.icon;
-  const st = STATUS_META[doc.status];
+  const st = statusMeta(doc.status);
   return (
     <motion.tr
       initial={{ opacity: 0 }}
@@ -414,8 +438,8 @@ function printList(docs: GovDocument[]) {
       { header: '№', value: () => ++n, align: 'center' },
       { header: 'Kod', value: (d) => d.code },
       { header: 'Nomi', value: (d) => d.title },
-      { header: 'Turi', value: (d) => TYPE_META[d.type].label },
-      { header: 'Holati', value: (d) => STATUS_META[d.status].label },
+      { header: 'Turi', value: (d) => typeMeta(d.type).label },
+      { header: 'Holati', value: (d) => statusMeta(d.status).label },
       { header: 'Muallif', value: (d) => d.author },
       { header: 'Sana', value: (d) => formatDate(d.createdAt) },
     ],

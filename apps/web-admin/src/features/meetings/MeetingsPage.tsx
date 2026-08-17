@@ -42,6 +42,19 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
 }
 
+const DEFAULT_MEETING_TYPE_META = { label: "Boshqa", color: '#64748b' };
+const DEFAULT_MEETING_STATUS_META = { label: "Noma'lum", tone: 'neutral' as const };
+
+/** MEETING_TYPE_META'da yo'q (kutilmagan) tur uchun neytral fallback. */
+function meetingTypeMeta(type: MeetingType) {
+  return MEETING_TYPE_META[type] ?? DEFAULT_MEETING_TYPE_META;
+}
+
+/** MEETING_STATUS_META'da yo'q (kutilmagan) holat uchun neytral fallback. */
+function meetingStatusMeta(status: MeetingStatus) {
+  return MEETING_STATUS_META[status] ?? DEFAULT_MEETING_STATUS_META;
+}
+
 const TYPE_TABS: { key: MeetingType | 'all'; label: string }[] = [
   { key: 'all', label: 'Barchasi' },
   { key: 'apparat', label: 'Apparat' },
@@ -100,8 +113,8 @@ function MeetingCard({
   onEdit: (m: Meeting) => void;
   onJoin: (m: Meeting) => void;
 }) {
-  const type = MEETING_TYPE_META[m.type];
-  const st = MEETING_STATUS_META[m.status];
+  const type = meetingTypeMeta(m.type);
+  const st = meetingStatusMeta(m.status);
   const chair = getDeputy(m.chairDeputyId);
   const cancelled = m.status === 'cancelled';
   const canJoin = m.type === 'video' && (m.status === 'scheduled' || m.status === 'ongoing');

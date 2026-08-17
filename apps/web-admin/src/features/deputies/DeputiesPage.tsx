@@ -20,12 +20,19 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { CATEGORY_META, COMPLAINTS, MEETINGS, REQUESTS } from '@/shared/data/mock';
-import type { Deputy } from '@/shared/data/types';
+import type { Deputy, RequestCategory } from '@/shared/data/types';
 import { useDeputies } from './useDeputies';
 import { useStaff } from '../staff/useStaff';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
+}
+
+const DEFAULT_CATEGORY_META = { label: "Boshqa", color: '#94a3b8' };
+
+/** CATEGORY_META'da yo'q (kutilmagan) kategoriya uchun neytral fallback. */
+function categoryMeta(cat: RequestCategory) {
+  return CATEGORY_META[cat] ?? DEFAULT_CATEGORY_META;
 }
 
 function deputyStats(d: Deputy) {
@@ -105,18 +112,21 @@ function DeputyCard({ d, index }: { d: Deputy; index: number }) {
         </div>
         {d.categories.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
-            {d.categories.map((cat) => (
-              <span
-                key={cat}
-                className="rounded-full px-2.5 py-1 text-[11.5px] font-medium"
-                style={{
-                  background: `${CATEGORY_META[cat].color}1a`,
-                  color: CATEGORY_META[cat].color,
-                }}
-              >
-                {CATEGORY_META[cat].label}
-              </span>
-            ))}
+            {d.categories.map((cat) => {
+              const meta = categoryMeta(cat);
+              return (
+                <span
+                  key={cat}
+                  className="rounded-full px-2.5 py-1 text-[11.5px] font-medium"
+                  style={{
+                    background: `${meta.color}1a`,
+                    color: meta.color,
+                  }}
+                >
+                  {meta.label}
+                </span>
+              );
+            })}
           </div>
         ) : (
           <div className="flex flex-wrap gap-1.5">
