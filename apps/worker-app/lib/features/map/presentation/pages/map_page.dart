@@ -68,7 +68,17 @@ class _MapPageState extends State<MapPage> {
   bool _centeredOnFirstFix = false;
 
   /// Tuman + mahalla chegaralari (backend `/zones` dan) — bir marta yuklanadi.
-  List<Polygon> _boundaries = const [];
+  ZoneBoundaries _boundaries = ZoneBoundaries.empty;
+
+  /// Foydalanuvchi HOZIR ichida bo'lgan mahalla (lokal ray-casting natijasi) —
+  /// `null` bo'lsa tuman tashqarisida (yoki chegaralar hali yuklanmagan).
+  /// Faqat pozitsiya sezilarli o'zgarganda qayta hisoblanadi (qarang:
+  /// [_maybeUpdateMahalla]) — har build'da EMAS.
+  MahallaArea? _currentMahalla;
+
+  /// [_currentMahalla] oxirgi marta hisoblangan nuqta — juda kichik
+  /// siljishlarda (GPS titrashi) qayta hisoblamaslik uchun.
+  LatLng? _lastMahallaFix;
 
   @override
   void initState() {
@@ -81,8 +91,39 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _loadBoundaries() async {
-    final polygons = await ZoneBoundaryLoader(getIt<DioClient>().dio).load();
-    if (mounted) setState(() => _boundaries = polygons);
+    final boundaries = await ZoneBoundaryLoader(getIt<DioClient>().dio).load();
+    if (!mounted) return;
+    setState(() => _boundaries = boundaries);
+    // Chegaralar pozitsiyadan KEYIN kelishi mumkin — allaqachon ma'lum
+    // joylashuv bo'lsa, mahallani darhol hisoblaymiz (bo'sh chip ko'rinmasin).
+    final snapshot = _mapSnapshot(context.read<MapCubit>().state);
+    if (snapshot != null) {
+      _lastMahallaFix = null; // majburiy qayta hisob
+      _maybeUpdateMahalla(
+        LatLng(snapshot.position.latitude, snapshot.position.longitude),
+      );
+    }
+  }
+
+  /// Faqat pozitsiya oldingi hisobdan sezilarli (>~15 m) uzoqlashganda joriy
+  /// mahallani qayta aniqlaydi — ray-casting har GPS o'lchovida emas, faqat
+  /// haqiqiy harakatda ishlaydi (performance). O'zgarsa `setState` bilan chip
+  /// va urg'u qayta chiziladi.
+  static const double _mahallaRecomputeMeters = 15;
+
+  void _maybeUpdateMahalla(LatLng point) {
+    if (_boundaries.mahallas.isEmpty) return;
+    final last = _lastMahallaFix;
+    if (last != null &&
+        const Distance().as(LengthUnit.Meter, last, point) <
+            _mahallaRecomputeMeters) {
+      return;
+    }
+    _lastMahallaFix = point;
+    final match = mahallaAt(point, _boundaries.mahallas);
+    if (!identical(match, _currentMahalla)) {
+      setState(() => _currentMahalla = match);
+    }
   }
 
   @override
@@ -122,6 +163,14 @@ class _MapPageState extends State<MapPage> {
 
     return BlocConsumer<MapCubit, MapState>(
       listener: (context, state) {
+        // Har yangi pozitsiyada joriy mahallani (sezilarli siljish bo'lsa)
+        // yangilaymiz — hisob build'da emas, shu yerda bir marta bajariladi.
+        final snapshot = _mapSnapshot(state);
+        if (snapshot != null) {
+          _maybeUpdateMahalla(
+            LatLng(snapshot.position.latitude, snapshot.position.longitude),
+          );
+        }
         if (state is MapTracking && !_centeredOnFirstFix) {
           _centeredOnFirstFix = true;
           final position = state.position;
@@ -152,7 +201,8 @@ class _MapPageState extends State<MapPage> {
           MapStopped() => _TrackingScaffold(
             state: state,
             mapController: _mapController,
-            boundaries: _boundaries,
+            boundaries: _boundaries.polygons,
+            currentMahalla: _currentMahalla,
             onRecenter: () => _onRecenterPressed(cubit),
           ),
         };
@@ -185,6 +235,20 @@ class _MapPageState extends State<MapPage> {
   _ => null,
 };
 
+/// Joriy mahalla uchun yengil urg'u poligonlari — faint brend to'ldirish +
+/// biroz aniqroq chegara, shunda foydalanuvchi qaysi mahallada ekani darrov
+/// ko'rinadi. MultiPolygon mahalla uchun har bir qismga bittadan.
+List<Polygon> _highlightPolygons(MahallaArea mahalla) => [
+  for (final part in mahalla.parts)
+    Polygon<Object>(
+      points: part.outer,
+      holePointsList: part.holes.isEmpty ? null : part.holes,
+      color: AppColors.primary.withValues(alpha: 0.14),
+      borderColor: AppColors.primary.withValues(alpha: 0.6),
+      borderStrokeWidth: 1.5,
+    ),
+];
+
 /// "Yaxshi" holatlar (`MapInitial`/`MapLoading`/`MapTracking`/`MapStopped`)
 /// uchun asosiy ko'rinish — to'liq ekranli xarita (geofence doirasi doim
 /// ko'rinadi) + SafeArea ustidagi holat banneri va markazlashtirish FAB'i.
@@ -197,12 +261,18 @@ class _TrackingScaffold extends StatelessWidget {
     required this.state,
     required this.mapController,
     required this.boundaries,
+    required this.currentMahalla,
     required this.onRecenter,
   });
 
   final MapState state;
   final MapController mapController;
   final List<Polygon> boundaries;
+
+  /// Foydalanuvchi hozir ichida bo'lgan mahalla — yengil urg'u (faint fill) va
+  /// yuqoridagi chip uchun. `null` bo'lsa tuman tashqarisida.
+  final MahallaArea? currentMahalla;
+
   final VoidCallback onRecenter;
 
   @override
@@ -228,6 +298,10 @@ class _TrackingScaffold extends StatelessWidget {
                   urlTemplate: _osmTileUrlTemplate,
                   userAgentPackageName: _osmUserAgentPackageName,
                 ),
+                // Joriy mahalla urg'usi — chegaralar OSTIDA yengil to'ldirish,
+                // shunda ustidagi ingichka to'r ko'rinib turadi.
+                if (currentMahalla != null)
+                  PolygonLayer(polygons: _highlightPolygons(currentMahalla!)),
                 // Tuman + mahalla chegaralari (backend /zones) — hudud
                 // vizualizatsiyasi. Bo'sh bo'lsa (offline/URL yo'q) chizilmaydi.
                 if (boundaries.isNotEmpty) PolygonLayer(polygons: boundaries),
@@ -243,6 +317,20 @@ class _TrackingScaffold extends StatelessWidget {
                     ),
                   ],
                 ),
+                // "Breadcrumb" izi — xodim yaqinda yurgan yo'l. Marker OSTIDA,
+                // ingichka brend rangli chiziq (kamida 2 nuqta kerak).
+                if (snapshot != null && snapshot.trail.length >= 2)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline<Object>(
+                        points: snapshot.trail,
+                        strokeWidth: 4,
+                        color: AppColors.primary,
+                        borderStrokeWidth: 1.5,
+                        borderColor: AppColors.surface.withValues(alpha: 0.9),
+                      ),
+                    ],
+                  ),
                 if (snapshot != null)
                   MarkerLayer(
                     markers: [
@@ -274,6 +362,8 @@ class _TrackingScaffold extends StatelessWidget {
                       _GeofenceBanner(state: state),
                       const SizedBox(height: 10),
                       const _WorkZoneLegendChip(),
+                      const SizedBox(height: 8),
+                      _MahallaChip(mahalla: currentMahalla),
                     ],
                   ),
                 ),
@@ -530,6 +620,58 @@ class _WorkZoneLegendChip extends StatelessWidget {
           Flexible(
             child: Text(
               l10n.mapWorkZoneLegend,
+              style: AppTextStyles.caption.copyWith(
+                color: isDark ? AppColors.darkInk : AppColors.ink,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Joriy mahalla chipi — "📍 mahalla nomi", yoki tuman tashqarisida bo'lsa
+/// "Tuman tashqarisida". Nom lokal ray-casting orqali aniqlanadi (qarang:
+/// `mahallaAt`) — tarmoqqa murojaat qilmaydi. Mos l10n kaliti yo'q, shuning
+/// uchun matn oddiy o'zbekcha.
+class _MahallaChip extends StatelessWidget {
+  const _MahallaChip({required this.mahalla});
+
+  final MahallaArea? mahalla;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inside = mahalla != null && mahalla!.name.isNotEmpty;
+    final label = inside ? mahalla!.name : 'Tuman tashqarisida';
+    final accent = inside ? AppColors.primary : AppColors.inkMuted;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: isDark ? AppColors.darkLine : AppColors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(IconsaxPlusBold.location, size: 14, color: accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
               style: AppTextStyles.caption.copyWith(
                 color: isDark ? AppColors.darkInk : AppColors.ink,
                 fontWeight: FontWeight.w600,
