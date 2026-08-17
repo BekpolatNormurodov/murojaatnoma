@@ -1,22 +1,34 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Add, Speaker, Eye, Calendar, Star1, ArrowRight, Edit2 } from 'iconsax-react';
+import { Add, Speaker, Eye, Calendar, Star1, ArrowRight, Edit2, CloseCircle, RotateRight } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Badge } from '@/shared/ui/Badge';
+import { Card } from '@/shared/ui/Card';
+import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, formatCompact, timeAgo } from '@/shared/lib/format';
-import { NEWS, NEWS_META } from '@/shared/data/mock';
+import { NEWS_META } from '@/shared/data/mock';
 import type { NewsCategory, NewsItem } from '@/shared/data/types';
+import { useNews } from './useNews';
 import { AddNewsModal, NewsDetailDrawer } from './NewsModals';
 
 const CATEGORIES = Object.keys(NEWS_META) as NewsCategory[];
 
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
+}
+
 export function NewsPage() {
   const [cat, setCat] = useState<NewsCategory | 'all'>('all');
   const [onlyDrafts, setOnlyDrafts] = useState(false);
-  const [items, setItems] = useState<NewsItem[]>(NEWS);
+  const { data, isLoading, isError, error, refetch } = useNews();
+  const [items, setItems] = useState<NewsItem[]>([]);
   const [selected, setSelected] = useState<NewsItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  useEffect(() => {
+    if (data) setItems(data);
+  }, [data]);
 
   const hero = useMemo(
     () => items.find((n) => n.featured && n.status === 'published'),
@@ -47,50 +59,73 @@ export function NewsPage() {
         }
       />
 
-      {/* Hero */}
-      {hero && !onlyDrafts && cat === 'all' && (
-        <HeroCard item={hero} onClick={() => setSelected(hero)} />
-      )}
-
-      {/* Filters */}
-      <div className="mb-5 mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          <CatPill active={cat === 'all'} onClick={() => setCat('all')} label="Barchasi" />
-          {CATEGORIES.map((c) => (
-            <CatPill
-              key={c}
-              active={cat === c}
-              onClick={() => setCat(c)}
-              label={NEWS_META[c].label}
-              color={NEWS_META[c].color}
-            />
-          ))}
-        </div>
-        <button
-          onClick={() => setOnlyDrafts((v) => !v)}
-          className={cn(
-            'inline-flex items-center gap-2 self-start rounded-xl border px-3.5 py-2 text-[13px] font-medium transition-colors lg:self-auto',
-            onlyDrafts
-              ? 'border-amber-400 bg-warning-soft text-amber-700'
-              : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {error instanceof Error ? error.message : "Noma'lum xatolik yuz berdi"}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => refetch()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : (
+        <>
+          {/* Hero */}
+          {isLoading ? (
+            <Skeleton className="h-72 sm:h-80" />
+          ) : (
+            hero &&
+            !onlyDrafts &&
+            cat === 'all' && <HeroCard item={hero} onClick={() => setSelected(hero)} />
           )}
-        >
-          <Edit2 size={16} variant="Bulk" />
-          Qoralamalar
-        </button>
-      </div>
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {list.map((n, i) => (
-          <NewsCard key={n.id} item={n} index={i} onClick={() => setSelected(n)} />
-        ))}
-      </div>
+          {/* Filters */}
+          <div className="mb-5 mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <CatPill active={cat === 'all'} onClick={() => setCat('all')} label="Barchasi" />
+              {CATEGORIES.map((c) => (
+                <CatPill
+                  key={c}
+                  active={cat === c}
+                  onClick={() => setCat(c)}
+                  label={NEWS_META[c].label}
+                  color={NEWS_META[c].color}
+                />
+              ))}
+            </div>
+            <button
+              onClick={() => setOnlyDrafts((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-2 self-start rounded-xl border px-3.5 py-2 text-[13px] font-medium transition-colors lg:self-auto',
+                onlyDrafts
+                  ? 'border-amber-400 bg-warning-soft text-amber-700'
+                  : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
+              )}
+            >
+              <Edit2 size={16} variant="Bulk" />
+              Qoralamalar
+            </button>
+          </div>
 
-      {list.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-line py-16 text-center text-ink-muted">
-          {onlyDrafts ? 'Qoralamalar yo‘q' : 'Yangilik topilmadi'}
-        </div>
+          {/* Grid */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {isLoading
+              ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-80" />)
+              : list.map((n, i) => (
+                  <NewsCard key={n.id} item={n} index={i} onClick={() => setSelected(n)} />
+                ))}
+          </div>
+
+          {!isLoading && list.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-line py-16 text-center text-ink-muted">
+              {onlyDrafts ? 'Qoralamalar yo‘q' : 'Yangilik topilmadi'}
+            </div>
+          )}
+        </>
       )}
 
       <AddNewsModal

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { CAMERAS } from "@/shared/data/mock";
 import type { Camera } from "@/shared/data/types";
 
 /* ============================================================
@@ -34,14 +33,22 @@ function pickKind(): { kind: CamEventKind; label: string } {
   return EVENT_KINDS.find((e) => e.kind === k)!;
 }
 
-export function useLiveCameras(live: boolean) {
+export function useLiveCameras(baseCameras: Camera[], live: boolean) {
   const [cameras, setCameras] = useState<Camera[]>(() =>
-    CAMERAS.map((c) => ({ ...c })),
+    baseCameras.map((c) => ({ ...c })),
   );
   const [events, setEvents] = useState<CamEvent[]>([]);
   const camsRef = useRef(cameras);
   const seq = useRef(0);
   camsRef.current = cameras;
+
+  // Backend'dan ro'yxat (qayta) kelganda mahalliy holatni yangilaymiz —
+  // masalan sahifa ochilganda so'rov birinchi renderdan keyin tugaydi.
+  const baseIds = baseCameras.map((c) => c.id).join(",");
+  useEffect(() => {
+    setCameras(baseCameras.map((c) => ({ ...c })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseIds]);
 
   useEffect(() => {
     if (!live) return;

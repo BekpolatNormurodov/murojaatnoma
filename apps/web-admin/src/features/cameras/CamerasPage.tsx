@@ -12,6 +12,8 @@ import {
   Add,
   Play,
   Pause,
+  CloseCircle,
+  RotateRight,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -22,10 +24,15 @@ import { DISTRICTS } from '@/shared/data/mock';
 import type { Camera, CameraStatus } from '@/shared/data/types';
 import { formatNumber, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { useCameras } from './useCameras';
 import { useLiveCameras } from './useLiveCameras';
 import { EVENT_META, STATUS_LABEL, TYPE_LABEL } from './meta';
 import { CameraDetail } from './CameraDetail';
 import { AddCameraModal } from './AddCameraModal';
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
+}
 
 const DISTRICT_COLORS = DISTRICTS.reduce<Record<string, string>>((acc, d) => {
   acc[d.id] = d.color;
@@ -147,7 +154,8 @@ export function CamerasPage() {
   const [selected, setSelected] = useState<Camera | null>(null);
   const [addOpen, setAddOpen] = useState(false);
 
-  const { cameras, events, addCamera } = useLiveCameras(live);
+  const { data: baseCameras, isLoading, isError, error, refetch } = useCameras();
+  const { cameras, events, addCamera } = useLiveCameras(baseCameras ?? [], live);
 
   useEffect(() => {
     const fmt = () => {
@@ -167,7 +175,9 @@ export function CamerasPage() {
   const offline = cameras.filter((c) => c.status === 'offline').length;
   const maint = cameras.filter((c) => c.status === 'maintenance').length;
   const detections = cameras.reduce((s, c) => s + c.detections24h, 0);
-  const avgUptime = (cameras.reduce((s, c) => s + c.uptime, 0) / cameras.length).toFixed(1);
+  const avgUptime = cameras.length
+    ? (cameras.reduce((s, c) => s + c.uptime, 0) / cameras.length).toFixed(1)
+    : '0.0';
 
   const filtered = useMemo(
     () =>
@@ -224,13 +234,34 @@ export function CamerasPage() {
         }
       />
 
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {error instanceof Error ? error.message : "Noma'lum xatolik yuz berdi"}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => refetch()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : (
+        <>
       {/* KPI */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-        <StatCard icon={Video} label="Onlayn" value={`${online}/${cameras.length}`} tint="#10b981" index={0} />
-        <StatCard icon={VideoSlash} label="Oflayn" value={String(offline)} tint="#ef4444" index={1} />
-        <StatCard icon={Cpu} label="Texnik xizmat" value={String(maint)} tint="#f59e0b" index={2} />
-        <StatCard icon={Activity} label="Aniqlash (24s)" value={formatNumber(detections)} tint="#a855f7" index={3} />
-        <StatCard icon={Monitor} label="O'rtacha uptime" value={`${avgUptime}%`} tint="#3b82f6" index={4} />
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[104px]" />)
+        ) : (
+          <>
+            <StatCard icon={Video} label="Onlayn" value={`${online}/${cameras.length}`} tint="#10b981" index={0} />
+            <StatCard icon={VideoSlash} label="Oflayn" value={String(offline)} tint="#ef4444" index={1} />
+            <StatCard icon={Cpu} label="Texnik xizmat" value={String(maint)} tint="#f59e0b" index={2} />
+            <StatCard icon={Activity} label="Aniqlash (24s)" value={formatNumber(detections)} tint="#a855f7" index={3} />
+            <StatCard icon={Monitor} label="O'rtacha uptime" value={`${avgUptime}%`} tint="#3b82f6" index={4} />
+          </>
+        )}
       </div>
 
       {/* Filters */}
@@ -276,18 +307,20 @@ export function CamerasPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_330px]">
         <div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-3">
-            {filtered.map((cam, i) => (
-              <motion.div
-                key={cam.id}
-                initial={{ opacity: 0, y: 14 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i * 0.04, 0.4) }}
-              >
-                <CameraTile cam={cam} clock={clock} onOpen={() => setSelected(cam)} />
-              </motion.div>
-            ))}
+            {isLoading
+              ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="aspect-video" />)
+              : filtered.map((cam, i) => (
+                  <motion.div
+                    key={cam.id}
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(i * 0.04, 0.4) }}
+                  >
+                    <CameraTile cam={cam} clock={clock} onOpen={() => setSelected(cam)} />
+                  </motion.div>
+                ))}
           </div>
-          {filtered.length === 0 && (
+          {!isLoading && filtered.length === 0 && (
             <div className="py-20 text-center text-ink-muted">Kamera topilmadi</div>
           )}
         </div>
@@ -361,6 +394,8 @@ export function CamerasPage() {
           </Card>
         </aside>
       </div>
+        </>
+      )}
 
       <CameraDetail cam={selectedLive} clock={clock} events={events} onClose={() => setSelected(null)} />
       <AddCameraModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={addCamera} />

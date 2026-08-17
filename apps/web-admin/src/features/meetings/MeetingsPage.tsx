@@ -13,12 +13,14 @@ import {
   Edit2,
   AddCircle,
   CloseSquare,
+  RotateRight,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
+import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
 import { Select, type SelectOption } from '@/shared/ui/Select';
 import { DatePicker, TimePicker } from '@/shared/ui/DatePicker';
@@ -31,9 +33,14 @@ import {
   getDeputy,
 } from '@/shared/data/mock';
 import { useMeetings } from '@/shared/store/meetings';
+import { useMeetingsQuery } from './useMeetingsQuery';
 import type { Meeting, MeetingStatus, MeetingType } from '@/shared/data/types';
 import { formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
+}
 
 const TYPE_TABS: { key: MeetingType | 'all'; label: string }[] = [
   { key: 'all', label: 'Barchasi' },
@@ -211,10 +218,16 @@ function MeetingCard({
 
 export function MeetingsPage() {
   const meetings = useMeetings((s) => s.meetings);
+  const setMeetings = useMeetings((s) => s.setMeetings);
+  const { data, isLoading, isError, error, refetch } = useMeetingsQuery();
   const [type, setType] = useState<MeetingType | 'all'>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Meeting | null>(null);
   const [callTarget, setCallTarget] = useState<Meeting | null>(null);
+
+  useEffect(() => {
+    if (data) setMeetings(data);
+  }, [data, setMeetings]);
 
   const callParticipants = useMemo<CallParticipant[]>(() => {
     if (!callTarget) return [];
@@ -289,12 +302,33 @@ export function MeetingsPage() {
         }
       />
 
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {error instanceof Error ? error.message : "Noma'lum xatolik yuz berdi"}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => refetch()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : (
+        <>
       {/* KPIs */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Calendar} label="Jami yig'ilishlar" value={String(stats.total)} tint="#2563eb" index={0} />
-        <StatCard icon={Clock} label="Bugun" value={String(stats.today)} tint="#f59e0b" index={1} />
-        <StatCard icon={Calendar1} label="Rejalashtirilgan" value={String(stats.scheduled)} tint="#06b6d4" index={2} />
-        <StatCard icon={TickCircle} label="O'tkazilgan" value={String(stats.done)} tint="#10b981" index={3} />
+        {isLoading && meetings.length === 0 ? (
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[104px]" />)
+        ) : (
+          <>
+            <StatCard icon={Calendar} label="Jami yig'ilishlar" value={String(stats.total)} tint="#2563eb" index={0} />
+            <StatCard icon={Clock} label="Bugun" value={String(stats.today)} tint="#f59e0b" index={1} />
+            <StatCard icon={Calendar1} label="Rejalashtirilgan" value={String(stats.scheduled)} tint="#06b6d4" index={2} />
+            <StatCard icon={TickCircle} label="O'tkazilgan" value={String(stats.done)} tint="#10b981" index={3} />
+          </>
+        )}
       </div>
 
       {/* Type filter */}
@@ -326,43 +360,55 @@ export function MeetingsPage() {
         ))}
       </div>
 
-      {/* Upcoming */}
-      <div className="mb-3 flex items-center gap-2">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-500" />
-        </span>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-          Yaqin va joriy ({upcoming.length})
-        </h2>
-      </div>
-      {upcoming.length > 0 ? (
+      {isLoading && meetings.length === 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {upcoming.map((m, i) => (
-            <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-64" />
           ))}
         </div>
       ) : (
-        <Card className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-          <Calendar size={36} variant="Bulk" className="text-ink-muted" />
-          <p className="text-sm text-ink-muted">Yaqin yig'ilishlar yo'q</p>
-        </Card>
-      )}
-
-      {/* Past */}
-      {past.length > 0 && (
         <>
-          <div className="mb-3 mt-8 flex items-center gap-2">
-            <CloseCircle size={16} variant="Bulk" className="text-ink-muted" />
+          {/* Upcoming */}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-500" />
+            </span>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-              O'tkazilgan va bekor qilingan ({past.length})
+              Yaqin va joriy ({upcoming.length})
             </h2>
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {past.map((m, i) => (
-              <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
-            ))}
-          </div>
+          {upcoming.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {upcoming.map((m, i) => (
+                <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
+              ))}
+            </div>
+          ) : (
+            <Card className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+              <Calendar size={36} variant="Bulk" className="text-ink-muted" />
+              <p className="text-sm text-ink-muted">Yaqin yig'ilishlar yo'q</p>
+            </Card>
+          )}
+
+          {/* Past */}
+          {past.length > 0 && (
+            <>
+              <div className="mb-3 mt-8 flex items-center gap-2">
+                <CloseCircle size={16} variant="Bulk" className="text-ink-muted" />
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
+                  O'tkazilgan va bekor qilingan ({past.length})
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {past.map((m, i) => (
+                  <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
+                ))}
+              </div>
+            </>
+          )}
+        </>
+      )}
         </>
       )}
 

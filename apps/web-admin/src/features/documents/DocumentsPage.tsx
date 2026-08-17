@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   DocumentText,
@@ -15,6 +15,8 @@ import {
   Eye,
   Chart21,
   Sort,
+  CloseCircle,
+  RotateRight,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -23,11 +25,11 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { Dropdown } from '@/shared/ui/Dropdown';
 import { Select } from '@/shared/ui/Select';
-import { DOCUMENTS } from '@/shared/data/mock';
 import type { GovDocStatus, GovDocType, GovDocument } from '@/shared/data/types';
 import { formatDate } from '@/shared/lib/format';
 import { exportToCSV, exportToExcel, fileStamp, printHTML, printTable } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
+import { useDocuments } from './useDocuments';
 import { DOC_EXPORT_COLUMNS, STATUS_DOT, STATUS_META, TYPE_META, buildDocHTML, formatSize } from './meta';
 import { AddDocumentModal, DocumentPreviewModal, ReportsModal } from './DocumentModals';
 
@@ -39,8 +41,13 @@ const SORT_LABEL: Record<SortKey, string> = {
   size: 'Hajmi bo\u02bbyicha',
 };
 
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
+}
+
 export function DocumentsPage() {
-  const [docs, setDocs] = useState<GovDocument[]>(() => DOCUMENTS.map((d) => ({ ...d })));
+  const { data, isLoading, isError, error, refetch } = useDocuments();
+  const [docs, setDocs] = useState<GovDocument[]>([]);
   const [type, setType] = useState<GovDocType | 'all'>('all');
   const [status, setStatus] = useState<GovDocStatus | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -49,6 +56,10 @@ export function DocumentsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [preview, setPreview] = useState<GovDocument | null>(null);
+
+  useEffect(() => {
+    if (data) setDocs(data.map((d) => ({ ...d })));
+  }, [data]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -139,12 +150,33 @@ export function DocumentsPage() {
         }
       />
 
+      {isError ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {error instanceof Error ? error.message : "Noma'lum xatolik yuz berdi"}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => refetch()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : (
+        <>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-5">
-        <StatCard icon={Folder2} label="Jami hujjatlar" value={String(counts.total)} tint="#6366f1" index={0} />
-        <StatCard icon={TaskSquare} label="Imzolangan" value={String(counts.signed)} tint="#10b981" index={1} />
-        <StatCard icon={ClipboardText} label="Ko'rib chiqilmoqda" value={String(counts.review)} tint="#f59e0b" index={2} />
-        <StatCard icon={Note1} label="Qoralama" value={String(counts.draft)} tint="#94a3b8" index={3} />
-        <StatCard icon={DocumentText} label="Arxivda" value={String(counts.archived)} tint="#06b6d4" index={4} />
+        {isLoading ? (
+          Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[104px]" />)
+        ) : (
+          <>
+            <StatCard icon={Folder2} label="Jami hujjatlar" value={String(counts.total)} tint="#6366f1" index={0} />
+            <StatCard icon={TaskSquare} label="Imzolangan" value={String(counts.signed)} tint="#10b981" index={1} />
+            <StatCard icon={ClipboardText} label="Ko'rib chiqilmoqda" value={String(counts.review)} tint="#f59e0b" index={2} />
+            <StatCard icon={Note1} label="Qoralama" value={String(counts.draft)} tint="#94a3b8" index={3} />
+            <StatCard icon={DocumentText} label="Arxivda" value={String(counts.archived)} tint="#06b6d4" index={4} />
+          </>
+        )}
       </div>
 
       {/* Type quick filters */}
@@ -244,19 +276,27 @@ export function DocumentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((d, i) => (
-                <DocRow
-                  key={d.id}
-                  doc={d}
-                  index={i}
-                  onView={() => setPreview(d)}
-                  onDownload={() => setPreview(d)}
-                  onPrint={() => handlePrintDoc(d)}
-                />
-              ))}
+              {isLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={i} className="border-b border-line/70">
+                      <td className="px-5 py-3.5" colSpan={8}>
+                        <Skeleton className="h-8" />
+                      </td>
+                    </tr>
+                  ))
+                : filtered.map((d, i) => (
+                    <DocRow
+                      key={d.id}
+                      doc={d}
+                      index={i}
+                      onView={() => setPreview(d)}
+                      onDownload={() => setPreview(d)}
+                      onPrint={() => handlePrintDoc(d)}
+                    />
+                  ))}
             </tbody>
           </table>
-          {filtered.length === 0 && (
+          {!isLoading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Folder2 size={40} variant="Bulk" className="text-ink-muted" />
               <p className="mt-3 text-sm text-ink-soft">Hujjat topilmadi</p>
@@ -264,6 +304,8 @@ export function DocumentsPage() {
           )}
         </div>
       </Card>
+        </>
+      )}
 
       {/* Modals */}
       <AddDocumentModal

@@ -26,8 +26,8 @@ import { useTheme } from '@/shared/theme/ThemeProvider';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useAuth } from '@/shared/store/auth';
 import { LANGS, type Lang } from '@/shared/i18n/dict';
-import { NOTIFICATIONS, UNREAD_COUNT } from '@/shared/data/mock';
-import type { NotificationType } from '@/shared/data/types';
+import { useNotifications, useUnreadNotificationsCount } from '@/features/notifications/useNotifications';
+import type { NotificationItem, NotificationType } from '@/shared/data/types';
 import { timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 
@@ -86,7 +86,17 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [langOpen, setLangOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [items, setItems] = useState(NOTIFICATIONS);
+
+  // Ro'yxat backend'dan keladi, lekin "o'qildi" belgisi mahalliy holatda
+  // saqlanadi (bildirishnomani o'qilgan deb belgilash uchun alohida backend
+  // endpoint hozircha yo'q — shuning uchun bu UI-level optimistik holat).
+  const { data: notifData, isLoading: notifLoading } = useNotifications();
+  const { data: unreadData } = useUnreadNotificationsCount();
+  const [items, setItems] = useState<NotificationItem[]>([]);
+
+  useEffect(() => {
+    if (notifData) setItems(notifData);
+  }, [notifData]);
 
   const notifRef = useClickOutside<HTMLDivElement>(() => setNotifOpen(false));
   const langRef = useClickOutside<HTMLDivElement>(() => setLangOpen(false));
@@ -95,6 +105,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const today = formatToday(lang);
 
   const unread = items.filter((n) => !n.read).length;
+  const unreadFallback = unreadData?.count ?? 0;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-xl">
@@ -212,9 +223,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-soft transition-colors hover:text-ink"
           >
             <Notification size={20} variant="Bulk" />
-            {(notifOpen ? unread : unread || UNREAD_COUNT) > 0 && (
+            {(notifOpen ? unread : unread || unreadFallback) > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white ring-2 ring-surface">
-                {notifOpen ? unread : unread || UNREAD_COUNT}
+                {notifOpen ? unread : unread || unreadFallback}
               </span>
             )}
           </button>
@@ -237,7 +248,14 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                   </button>
                 </div>
                 <div className="max-h-96 overflow-y-auto">
-                  {items.length === 0 && (
+                  {notifLoading && items.length === 0 && (
+                    <div className="space-y-2 p-3">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="h-14 animate-pulse rounded-xl bg-surface-2" />
+                      ))}
+                    </div>
+                  )}
+                  {!notifLoading && items.length === 0 && (
                     <p className="px-4 py-8 text-center text-sm text-ink-muted">{t('topbar.empty')}</p>
                   )}
                   {items.map((n) => {
