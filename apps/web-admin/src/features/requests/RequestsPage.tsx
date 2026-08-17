@@ -22,6 +22,7 @@ import { Button } from '@/shared/ui/Button';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { RequestDetail } from './RequestDetail';
 import { AddRequestModal } from './RequestModals';
+import { RequestToastStack } from './RequestToasts';
 import { CATEGORY_META, STATUS_META } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
@@ -30,6 +31,7 @@ import { cn } from '@/shared/lib/cn';
 import { formatDate } from '@/shared/lib/format';
 import { DatePicker } from '@/shared/ui/DatePicker';
 import { getDeadline, isOpen, URGENCY_META, type Urgency } from './deadline';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
@@ -107,6 +109,7 @@ export function RequestsPage() {
   const selected = requests.find((r) => r.id === selectedId) ?? null;
   const addRequest = useRequests((s) => s.add);
   const [addOpen, setAddOpen] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
 
   // Tanlangan sana oralig'ining chegaralari (ms). null = filtrlanmaydi.
   const dateBounds = useMemo<{ from: number; to: number } | null>(() => {
@@ -227,14 +230,14 @@ export function RequestsPage() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setSortKey((s) => (s === 'urgency' ? 'newest' : 'urgency'))}
-              className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft transition-colors hover:border-primary-200"
+              className="flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink-soft transition-colors hover:border-primary-200"
             >
               <Sort size={18} />
               {sortKey === 'urgency' ? 'Muddat bo‘yicha' : 'Sana bo‘yicha'}
             </button>
             <button
               onClick={() => setAddOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
+              className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
             >
               <Add size={18} /> Murojaat qo'shish
             </button>
@@ -275,14 +278,18 @@ export function RequestsPage() {
           return (
             <motion.button
               key={k.key}
-              initial={{ opacity: 0, y: 16 }}
+              initial={reducedMotion ? false : { opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              transition={
+                reducedMotion
+                  ? { duration: 0 }
+                  : { delay: i * 0.06, duration: 0.4, ease: [0.22, 1, 0.36, 1] }
+              }
               onClick={() => setDeadlineFilter((f) => (f === k.key ? 'all' : k.key))}
               className={cn(
                 'rounded-2xl border bg-surface p-4 text-left shadow-card transition-all',
                 active ? 'border-transparent ring-2' : 'border-line hover:border-primary-200',
-                k.glow && !active && 'animate-pulse-danger',
+                k.glow && !active && !reducedMotion && 'animate-pulse-danger',
               )}
               style={active ? { boxShadow: `0 0 0 2px ${k.color}` } : undefined}
             >
@@ -427,15 +434,15 @@ export function RequestsPage() {
           return (
             <motion.div
               key={r.id}
-              initial={{ opacity: 0, y: 14 }}
+              initial={reducedMotion ? false : { opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(i * 0.03, 0.3) }}
+              transition={reducedMotion ? { duration: 0 } : { delay: Math.min(i * 0.03, 0.3) }}
             >
               <Card
                 onClick={() => setSelectedId(r.id)}
                 className={cn(
                   'group h-full cursor-pointer p-4 transition-shadow hover:shadow-pop',
-                  glowing && 'animate-pulse-danger',
+                  glowing && !reducedMotion && 'animate-pulse-danger',
                   glowing && meta.border,
                 )}
               >
@@ -518,13 +525,51 @@ export function RequestsPage() {
       </div>
 
       {filtered.length === 0 && (
-        <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500">
+            {requests.length === 0 ? (
+              <Add size={28} variant="Bulk" />
+            ) : (
+              <SearchNormal1 size={26} variant="Bulk" />
+            )}
+          </span>
+          <div>
+            <p className="font-semibold text-ink">
+              {requests.length === 0 ? "Hozircha murojaatlar yo'q" : 'Filtrga mos murojaat topilmadi'}
+            </p>
+            <p className="mt-1 text-sm text-ink-muted">
+              {requests.length === 0
+                ? "Birinchi murojaatni qo'shib, ishni boshlang."
+                : 'Qidiruv so‘zi yoki filtrlarni o‘zgartirib ko‘ring.'}
+            </p>
+          </div>
+          {requests.length === 0 ? (
+            <Button onClick={() => setAddOpen(true)}>
+              <Add size={18} /> Murojaat qo'shish
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setTab('all');
+                setQuery('');
+                setDeadlineFilter('all');
+                setDateRange('all');
+                setCustomFrom('');
+                setCustomTo('');
+              }}
+            >
+              <RotateRight size={16} /> Filtrlarni tozalash
+            </Button>
+          )}
+        </Card>
       )}
         </>
       )}
 
       <RequestDetail request={selected} onClose={() => setSelectedId(null)} />
       <AddRequestModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={addRequest} />
+      <RequestToastStack />
     </div>
   );
 }

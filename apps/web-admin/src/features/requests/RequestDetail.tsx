@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Location,
   Calendar,
@@ -16,11 +16,13 @@ import {
   CloseCircle,
   SearchNormal1,
   Buildings2,
+  Trash,
 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Modal } from '@/shared/ui/Modal';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import {
   CATEGORY_META,
   STATUS_META,
@@ -38,6 +40,8 @@ import type {
 import { formatSom, formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 import { getDeadline, URGENCY_META } from './deadline';
+import { pushRequestToast } from './toastStore';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 const PRIORITY_META: Record<Priority, { label: string; tone: 'danger' | 'warning' | 'neutral' }> = {
   high: { label: 'Yuqori', tone: 'danger' },
@@ -97,7 +101,67 @@ export function RequestDetail({
   const assignWorker = useRequests((s) => s.assignWorker);
   const unassignWorker = useRequests((s) => s.unassignWorker);
   const setStatus = useRequests((s) => s.setStatus);
+  const removeRequest = useRequests((s) => s.remove);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+
+  // Boshqa murojaat tanlanganda (yoki drawer yopilganda) — oldingi
+  // murojaatga tegishli lokal holatlarni (tanlagich, o'chirish tasdig'i)
+  // tozalaymiz.
+  useEffect(() => {
+    setPickerOpen(false);
+    setDeleteOpen(false);
+    setDeleteError(null);
+    setDeleting(false);
+  }, [r?.id]);
+
+  async function handleAssign(workerId: string) {
+    setPickerOpen(false);
+    try {
+      await assignWorker(r!.id, workerId);
+    } catch {
+      pushRequestToast('error', "Xodim biriktirishda xatolik yuz berdi. Qaytadan urining.");
+    }
+  }
+
+  async function handleUnassign() {
+    if (!r) return;
+    try {
+      await unassignWorker(r.id);
+    } catch {
+      pushRequestToast('error', "Xodimni olib tashlashda xatolik yuz berdi. Qaytadan urining.");
+    }
+  }
+
+  async function handleStatusChange(status: RequestStatus) {
+    if (!r) return;
+    try {
+      await setStatus(r.id, status);
+    } catch {
+      pushRequestToast('error', "Holatni o'zgartirishda xatolik yuz berdi. Qaytadan urining.");
+    }
+  }
+
+  async function handleDelete() {
+    if (!r) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await removeRequest(r.id);
+      setDeleteOpen(false);
+      pushRequestToast('success', "Murojaat o'chirildi");
+      onClose();
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Murojaatni o'chirib bo'lmadi. Qaytadan urining.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <Drawer open={!!r} onClose={onClose} title="Murojaat tafsilotlari" subtitle={r ? `#${r.id}` : undefined} width={500}>
@@ -127,7 +191,7 @@ export function RequestDetail({
               className={cn(
                 'rounded-2xl border p-4',
                 !dl.done && dl.urgency === 'overdue'
-                  ? 'animate-pulse-danger border-red-300 bg-danger-soft'
+                  ? cn('border-red-300 bg-danger-soft', !reducedMotion && 'animate-pulse-danger')
                   : !dl.done && dl.urgency === 'critical'
                     ? 'border-orange-300 bg-orange-100'
                     : 'border-line bg-surface',
@@ -322,7 +386,7 @@ export function RequestDetail({
                     <Star1 size={14} variant="Bold" /> {worker.rating.toFixed(1)}
                   </span>
                   <button
-                    onClick={() => unassignWorker(r.id)}
+                    onClick={handleUnassign}
                     className="flex items-center gap-1 text-[11.5px] font-medium text-ink-muted transition-colors hover:text-danger"
                   >
                     <CloseCircle size={13} variant="Bulk" /> Olib tashlash
@@ -348,7 +412,7 @@ export function RequestDetail({
                 return (
                   <button
                     key={s}
-                    onClick={() => setStatus(r.id, s)}
+                    onClick={() => handleStatusChange(s)}
                     className={cn(
                       'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
                       active
@@ -366,8 +430,14 @@ export function RequestDetail({
 
           {/* Actions */}
           <div className="flex gap-3">
-            <button className="flex-1 rounded-xl border border-line bg-surface py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2">
+            <button className="flex h-11 flex-1 items-center justify-center rounded-xl border border-line bg-surface text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2">
               Chop etish
+            </button>
+            <button
+              onClick={() => setDeleteOpen(true)}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-danger-soft px-4 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
+            >
+              <Trash size={17} variant="Bulk" /> O'chirish
             </button>
           </div>
 
@@ -377,10 +447,35 @@ export function RequestDetail({
             currentId={r.assignedWorkerId}
             workers={workers}
             onClose={() => setPickerOpen(false)}
-            onAssign={(workerId) => {
-              assignWorker(r.id, workerId);
-              setPickerOpen(false);
+            onAssign={handleAssign}
+          />
+
+          <ConfirmDialog
+            open={deleteOpen}
+            onClose={() => {
+              if (deleting) return;
+              setDeleteOpen(false);
+              setDeleteError(null);
             }}
+            onConfirm={handleDelete}
+            title="Murojaatni o'chirasizmi?"
+            message={
+              <>
+                <span>
+                  "{r.title}" nomli murojaat butunlay o'chiriladi. Bu amalni ortga qaytarib
+                  bo'lmaydi.
+                </span>
+                {deleteError && (
+                  <span role="alert" className="mt-2.5 block text-[12.5px] font-medium text-danger">
+                    {deleteError}
+                  </span>
+                )}
+              </>
+            }
+            confirmLabel="Ha, o'chirish"
+            tone="danger"
+            icon={Trash}
+            loading={deleting}
           />
         </div>
       )}

@@ -30,6 +30,8 @@ interface RequestsState {
   unassignWorker: (requestId: string) => Promise<void>;
   /** Murojaat holatini o'zgartirish. Hal qilinganda resolvedAt belgilanadi. */
   setStatus: (requestId: string, status: RequestStatus) => Promise<void>;
+  /** Murojaatni butunlay o'chirish (DELETE /requests/:id). */
+  remove: (requestId: string) => Promise<void>;
 }
 
 export const useRequests = create<RequestsState>((set, get) => ({
@@ -70,6 +72,10 @@ export const useRequests = create<RequestsState>((set, get) => ({
       // Backend qabul qilmasa — optimistik (soxta id'li) yozuvni olib
       // tashlaymiz, aks holda unga keyingi amallar 404 beradi.
       set((s) => ({ requests: s.requests.filter((x) => x.id !== tempId) }));
+      // Chaqiruvchiga (masalan, "Murojaat qo'shish" oynasiga) xatolikni
+      // bildiramiz — u inline xato ko'rsatib, foydalanuvchiga qayta
+      // urinish imkonini beradi.
+      throw err;
     }
   },
 
@@ -92,6 +98,7 @@ export const useRequests = create<RequestsState>((set, get) => ({
     } catch (err) {
       console.error("Xodim biriktirishda xatolik:", err);
       set({ requests: prev });
+      throw err;
     }
   },
 
@@ -107,6 +114,7 @@ export const useRequests = create<RequestsState>((set, get) => ({
     } catch (err) {
       console.error("Xodimni olib tashlashda xatolik:", err);
       set({ requests: prev });
+      throw err;
     }
   },
 
@@ -128,6 +136,22 @@ export const useRequests = create<RequestsState>((set, get) => ({
     } catch (err) {
       console.error("Holatni o'zgartirishda xatolik:", err);
       set({ requests: prev });
+      throw err;
+    }
+  },
+
+  remove: async (requestId) => {
+    // Optimistik: ro'yxatdan darhol olib tashlaymiz; backend rad etsa
+    // (masalan tarmoq xatosi) — orqaga qaytaramiz va xatolikni
+    // chaqiruvchiga uzatamiz (u tasdiqlash oynasida ko'rsatadi).
+    const prev = get().requests;
+    set((s) => ({ requests: s.requests.filter((r) => r.id !== requestId) }));
+    try {
+      await api.del<void>(`/requests/${requestId}`);
+    } catch (err) {
+      console.error("Murojaatni o'chirishda xatolik:", err);
+      set({ requests: prev });
+      throw err;
     }
   },
 }));
