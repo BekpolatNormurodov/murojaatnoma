@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   SearchNormal1,
@@ -96,6 +96,19 @@ export function RequestsPage() {
   const loading = useRequests((s) => s.loading);
   const error = useRequests((s) => s.error);
   const hydrate = useRequests((s) => s.hydrate);
+
+  // Sahifa ochilganda (login'dan keyin) ro'yxatni yuklaymiz. Do'kon endi
+  // modul import vaqtida emas — shu yerda, mount bo'lganda hydrate qiladi
+  // (admin-data endpointlari autentifikatsiya talab qiladi). StrictMode'da
+  // effekt ikki marta chaqirilishi mumkin bo'lgani uchun faqat ro'yxat
+  // hali bo'sh va yuklanmayotgan bo'lsa so'rov yuboramiz.
+  useEffect(() => {
+    if (useRequests.getState().requests.length === 0 && !useRequests.getState().loading) {
+      void hydrate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const { data: workersData } = useWorkers();
   const workers = workersData ?? [];
   const [tab, setTab] = useState<RequestStatus | 'all'>('all');

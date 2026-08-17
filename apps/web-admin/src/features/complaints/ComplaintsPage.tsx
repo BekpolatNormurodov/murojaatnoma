@@ -100,6 +100,19 @@ export function ComplaintsPage() {
   const loading = useComplaints((s) => s.loading);
   const error = useComplaints((s) => s.error);
   const fetchComplaints = useComplaints((s) => s.fetchComplaints);
+
+  // Sahifa ochilganda (login'dan keyin) ro'yxatni yuklaymiz. Do'kon endi
+  // modul import vaqtida emas — shu yerda, mount bo'lganda fetch qiladi
+  // (admin-data endpointlari autentifikatsiya talab qiladi). StrictMode'da
+  // effekt ikki marta chaqirilishi mumkin bo'lgani uchun faqat ro'yxat
+  // hali bo'sh va yuklanmayotgan bo'lsa so'rov yuboramiz.
+  useEffect(() => {
+    if (useComplaints.getState().complaints.length === 0 && !useComplaints.getState().loading) {
+      void fetchComplaints();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [tab, setTab] = useState<ComplaintStatus | 'all'>('all');
   const [severity, setSeverity] = useState<Complaint['severity'] | 'all'>('all');
   const [query, setQuery] = useState('');

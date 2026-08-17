@@ -156,7 +156,7 @@ export const useRequests = create<RequestsState>((set, get) => ({
   },
 }));
 
-// Do'kon yaratilishi bilan bir marta backend'dan yuklaymiz — sahifa hech
-// qanday o'zgarishsiz ishlayveradi (boshida bo'sh ro'yxat -> mavjud
-// "Hech narsa topilmadi" holati ko'rinadi, keyin ma'lumot kelib to'ladi).
-useRequests.getState().hydrate();
+// Eslatma: bu do'kon avval modul yuklanishi bilan (import vaqtida) darhol
+// hydrate() chaqirardi. Endi backend admin-data endpointlari autentifikatsiya
+// talab qilgani sababli, bu yerda emas — RequestsPage komponenti mount
+// bo'lganda (foydalanuvchi tizimga kirgandan keyin) chaqiriladi.

@@ -139,6 +139,8 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
   },
 }));
 
-// Do'kon yaratilishi bilan ro'yxatni backenddan yuklaymiz — ComplaintsPage
-// alohida hydration chaqirig'isiz, tayyor holatni o'qiydi.
-void useComplaints.getState().fetchComplaints();
+// Eslatma: bu do'kon avval modul yuklanishi bilan (import vaqtida) darhol
+// fetchComplaints() chaqirardi. Endi backend admin-data endpointlari
+// autentifikatsiya talab qilgani sababli, bu yerda emas — ComplaintsPage
+// komponenti mount bo'lganda (foydalanuvchi tizimga kirgandan keyin)
+// chaqiriladi.
