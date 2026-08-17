@@ -24,11 +24,10 @@ import { Modal } from '@/shared/ui/Modal';
 import {
   CATEGORY_META,
   STATUS_META,
-  WORKERS,
   deputyForCategory,
-  getWorker,
 } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
+import { useWorkers } from '@/features/workers/useWorkers';
 import type {
   CitizenRequest,
   Priority,
@@ -89,7 +88,9 @@ export function RequestDetail({
   onClose: () => void;
 }) {
   const r = request;
-  const worker = getWorker(r?.assignedWorkerId ?? null);
+  const { data: workersData } = useWorkers();
+  const workers = workersData ?? [];
+  const worker = workers.find((w) => w.id === r?.assignedWorkerId);
   const cat = r ? CATEGORY_META[r.category] : null;
   const deputy = r ? deputyForCategory(r.category) : undefined;
   const dl = r ? getDeadline(r) : null;
@@ -374,6 +375,7 @@ export function RequestDetail({
             open={pickerOpen}
             request={r}
             currentId={r.assignedWorkerId}
+            workers={workers}
             onClose={() => setPickerOpen(false)}
             onAssign={(workerId) => {
               assignWorker(r.id, workerId);
@@ -400,12 +402,14 @@ function WorkerPickerModal({
   open,
   request,
   currentId,
+  workers,
   onClose,
   onAssign,
 }: {
   open: boolean;
   request: CitizenRequest;
   currentId: string | null;
+  workers: Worker[];
   onClose: () => void;
   onAssign: (workerId: string) => void;
 }) {
@@ -417,15 +421,16 @@ function WorkerPickerModal({
     const score = (w: Worker) =>
       (w.specialization.includes(request.category) ? 2 : 0) +
       (w.districtId === request.districtId ? 1 : 0);
-    return WORKERS.filter(
-      (w) =>
-        !needle ||
-        w.name.toLowerCase().includes(needle) ||
-        w.position.toLowerCase().includes(needle),
-    )
+    return workers
+      .filter(
+        (w) =>
+          !needle ||
+          w.name.toLowerCase().includes(needle) ||
+          w.position.toLowerCase().includes(needle),
+      )
       .slice()
       .sort((a, b) => score(b) - score(a) || b.rating - a.rating);
-  }, [q, request.category, request.districtId]);
+  }, [workers, q, request.category, request.districtId]);
 
   return (
     <Modal

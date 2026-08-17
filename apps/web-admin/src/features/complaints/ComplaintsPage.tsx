@@ -14,6 +14,8 @@ import {
   Send2,
   Messages1,
   TickSquare,
+  CloseCircle,
+  RotateRight,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -21,6 +23,7 @@ import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Drawer } from '@/shared/ui/Drawer';
+import { Button } from '@/shared/ui/Button';
 import {
   COMPLAINT_SEVERITY_META,
   COMPLAINT_STATUS_META,
@@ -30,6 +33,10 @@ import { useComplaints } from '@/shared/store/complaints';
 import type { Complaint, ComplaintStatus } from '@/shared/data/types';
 import { formatDate, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
+}
 
 const STATUS_TABS: { key: ComplaintStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'Barchasi' },
@@ -69,6 +76,9 @@ function DeadlineChip({ c }: { c: Complaint }) {
 
 export function ComplaintsPage() {
   const complaints = useComplaints((s) => s.complaints);
+  const loading = useComplaints((s) => s.loading);
+  const error = useComplaints((s) => s.error);
+  const fetchComplaints = useComplaints((s) => s.fetchComplaints);
   const [tab, setTab] = useState<ComplaintStatus | 'all'>('all');
   const [severity, setSeverity] = useState<Complaint['severity'] | 'all'>('all');
   const [query, setQuery] = useState('');
@@ -123,6 +133,32 @@ export function ComplaintsPage() {
         }
       />
 
+      {error ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">{error}</p>
+          </div>
+          <Button variant="secondary" onClick={() => fetchComplaints()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : loading && complaints.length === 0 ? (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-[92px]" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[220px]" />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
       {/* KPIs */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={Danger} label="Jami shikoyatlar" value={String(stats.total)} tint="#ef4444" index={0} />
@@ -278,6 +314,8 @@ export function ComplaintsPage() {
           <Danger size={40} variant="Bulk" className="text-ink-muted" />
           <p className="text-sm text-ink-muted">Mos shikoyatlar topilmadi</p>
         </Card>
+      )}
+        </>
       )}
 
       <ComplaintDetail complaint={selected} onClose={() => setSelectedId(null)} />

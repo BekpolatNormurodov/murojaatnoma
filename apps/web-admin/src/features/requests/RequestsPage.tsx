@@ -12,20 +12,28 @@ import {
   Sort,
   TickCircle,
   Add,
+  CloseCircle,
+  RotateRight,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
+import { Button } from '@/shared/ui/Button';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { RequestDetail } from './RequestDetail';
 import { AddRequestModal } from './RequestModals';
-import { CATEGORY_META, STATUS_META, WORKERS } from '@/shared/data/mock';
+import { CATEGORY_META, STATUS_META } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
+import { useWorkers } from '@/features/workers/useWorkers';
 import type { RequestStatus } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
 import { formatDate } from '@/shared/lib/format';
 import { DatePicker } from '@/shared/ui/DatePicker';
 import { getDeadline, isOpen, URGENCY_META, type Urgency } from './deadline';
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
+}
 
 const STATUS_TABS: { key: RequestStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'Barchasi' },
@@ -83,6 +91,11 @@ function parseYmd(v: string): Date | null {
 
 export function RequestsPage() {
   const requests = useRequests((s) => s.requests);
+  const loading = useRequests((s) => s.loading);
+  const error = useRequests((s) => s.error);
+  const hydrate = useRequests((s) => s.hydrate);
+  const { data: workersData } = useWorkers();
+  const workers = workersData ?? [];
   const [tab, setTab] = useState<RequestStatus | 'all'>('all');
   const [query, setQuery] = useState('');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
@@ -229,8 +242,34 @@ export function RequestsPage() {
         }
       />
 
-      {/* KPI — muddat holati (bosib filtrlanadi) */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {error ? (
+        <Card className="flex flex-col items-center gap-3 p-14 text-center">
+          <CloseCircle size={40} variant="Bulk" className="text-danger" />
+          <div>
+            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="mt-1 text-sm text-ink-muted">{error}</p>
+          </div>
+          <Button variant="secondary" onClick={() => hydrate()}>
+            <RotateRight size={16} /> Qayta urinish
+          </Button>
+        </Card>
+      ) : loading && requests.length === 0 ? (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-[92px]" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[220px]" />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* KPI — muddat holati (bosib filtrlanadi) */}
+          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {kpis.map((k, i) => {
           const active = deadlineFilter === k.key;
           return (
@@ -379,7 +418,7 @@ export function RequestsPage() {
       {/* List */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map(({ r, dl }, i) => {
-          const worker = WORKERS.find((w) => w.id === r.assignedWorkerId);
+          const worker = workers.find((w) => w.id === r.assignedWorkerId);
           const cat = CATEGORY_META[r.category];
           const meta = URGENCY_META[dl.urgency];
           const glowing = !dl.done && meta.glow;
@@ -480,6 +519,8 @@ export function RequestsPage() {
 
       {filtered.length === 0 && (
         <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
+      )}
+        </>
       )}
 
       <RequestDetail request={selected} onClose={() => setSelectedId(null)} />
