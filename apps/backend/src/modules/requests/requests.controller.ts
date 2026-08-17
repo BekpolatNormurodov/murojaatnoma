@@ -11,7 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Public } from '../../common/decorators/public.decorator';
+import { RequireScope } from '../../common/decorators/scope.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { ListRequestsQueryDto } from './dto/list-requests-query.dto';
@@ -26,11 +26,11 @@ import { CitizenRequestResponse, RequestsService, RequestStatsResponse } from '.
  * (see `admin-auth` module) is a later step.
  */
 @ApiTags('requests')
+@RequireScope('admin')
 @Controller('requests')
 export class RequestsController {
   constructor(private readonly requestsService: RequestsService) {}
 
-  @Public()
   @Get()
   @ApiOperation({ summary: 'List citizen requests with category/district/status/priority filters' })
   findAll(@Query() query: ListRequestsQueryDto): Promise<Paginated<CitizenRequestResponse>> {
@@ -39,28 +39,24 @@ export class RequestsController {
 
   // Registered before ':id' so "/requests/stats" doesn't get swallowed by
   // the findOne route below.
-  @Public()
   @Get('stats')
   @ApiOperation({ summary: 'Aggregate counts for the requests dashboard' })
   stats(): Promise<RequestStatsResponse> {
     return this.requestsService.stats();
   }
 
-  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Get a single citizen request by id' })
   findOne(@Param('id') id: string): Promise<CitizenRequestResponse> {
     return this.requestsService.findOne(id);
   }
 
-  @Public()
   @Post()
   @ApiOperation({ summary: 'Create a new citizen request (murojaat)' })
   create(@Body() dto: CreateRequestDto): Promise<CitizenRequestResponse> {
     return this.requestsService.create(dto);
   }
 
-  @Public()
   @Patch(':id')
   @ApiOperation({ summary: 'Update a request status and/or its assigned worker' })
   update(
@@ -70,7 +66,6 @@ export class RequestsController {
     return this.requestsService.update(id, dto);
   }
 
-  @Public()
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a citizen request' })

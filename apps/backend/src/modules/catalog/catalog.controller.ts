@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminNotification, Camera, GovDocument, Meeting, NewsItem } from '@prisma/client';
-import { Public } from '../../common/decorators/public.decorator';
+import { RequireScope } from '../../common/decorators/scope.decorator';
 import { CatalogService, DistrictDto } from './catalog.service';
 import { CreateCameraDto } from './dto/create-camera.dto';
 import { CreateDocumentDto } from './dto/create-document.dto';
@@ -19,133 +19,133 @@ import { UpdateNewsDto } from './dto/update-news.dto';
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
 
-  @Public()
+  @RequireScope('admin')
   @Get('districts')
   @ApiOperation({ summary: "Tumanlar ro'yxati (markaz/chegara geometriyasi bilan)" })
   findDistricts(): Promise<DistrictDto[]> {
     return this.catalogService.findDistricts();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Get('cameras')
   @ApiOperation({ summary: "Video kuzatuv kameralari ro'yxati" })
   findCameras(): Promise<Camera[]> {
     return this.catalogService.findCameras();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Post('cameras')
   @ApiOperation({ summary: "Yangi kamera qo'shish" })
   createCamera(@Body() dto: CreateCameraDto): Promise<Camera> {
     return this.catalogService.createCamera(dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Patch('cameras/:id')
   @ApiOperation({ summary: 'Kamerani tahrirlash' })
   updateCamera(@Param('id') id: string, @Body() dto: UpdateCameraDto): Promise<Camera> {
     return this.catalogService.updateCamera(id, dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Delete('cameras/:id')
   @ApiOperation({ summary: "Kamerani o'chirish" })
   removeCamera(@Param('id') id: string): Promise<{ id: string }> {
     return this.catalogService.removeCamera(id);
   }
 
-  @Public()
+  @RequireScope('admin', 'employee')
   @Get('meetings')
   @ApiOperation({ summary: "Yig'ilishlar ro'yxati" })
   findMeetings(): Promise<Meeting[]> {
     return this.catalogService.findMeetings();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Post('meetings')
   @ApiOperation({ summary: "Yangi yig'ilish rejalashtirish" })
   createMeeting(@Body() dto: CreateMeetingDto): Promise<Meeting> {
     return this.catalogService.createMeeting(dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Patch('meetings/:id')
   @ApiOperation({ summary: "Yig'ilishni tahrirlash" })
   updateMeeting(@Param('id') id: string, @Body() dto: UpdateMeetingDto): Promise<Meeting> {
     return this.catalogService.updateMeeting(id, dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Delete('meetings/:id')
   @ApiOperation({ summary: "Yig'ilishni o'chirish" })
   removeMeeting(@Param('id') id: string): Promise<{ id: string }> {
     return this.catalogService.removeMeeting(id);
   }
 
-  @Public()
+  @RequireScope('admin', 'employee')
   @Get('news')
   @ApiOperation({ summary: "Yangiliklar va e'lonlar ro'yxati" })
   findNews(): Promise<NewsItem[]> {
     return this.catalogService.findNews();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Post('news')
   @ApiOperation({ summary: "Yangi yangilik/e'lon qo'shish" })
   createNews(@Body() dto: CreateNewsDto): Promise<NewsItem> {
     return this.catalogService.createNews(dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Patch('news/:id')
   @ApiOperation({ summary: "Yangilikni tahrirlash" })
   updateNews(@Param('id') id: string, @Body() dto: UpdateNewsDto): Promise<NewsItem> {
     return this.catalogService.updateNews(id, dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Delete('news/:id')
   @ApiOperation({ summary: "Yangilikni o'chirish" })
   removeNews(@Param('id') id: string): Promise<{ id: string }> {
     return this.catalogService.removeNews(id);
   }
 
-  @Public()
+  @RequireScope('admin', 'employee')
   @Get('documents')
   @ApiOperation({ summary: "Hokimiyat hujjatlari ro'yxati" })
   findDocuments(): Promise<GovDocument[]> {
     return this.catalogService.findDocuments();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Post('documents')
   @ApiOperation({ summary: "Yangi hujjat qo'shish" })
   createDocument(@Body() dto: CreateDocumentDto): Promise<GovDocument> {
     return this.catalogService.createDocument(dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Patch('documents/:id')
   @ApiOperation({ summary: 'Hujjatni tahrirlash' })
   updateDocument(@Param('id') id: string, @Body() dto: UpdateDocumentDto): Promise<GovDocument> {
     return this.catalogService.updateDocument(id, dto);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Delete('documents/:id')
   @ApiOperation({ summary: "Hujjatni o'chirish" })
   removeDocument(@Param('id') id: string): Promise<{ id: string }> {
     return this.catalogService.removeDocument(id);
   }
 
-  @Public()
+  @RequireScope('admin')
   @Get('notifications')
   @ApiOperation({ summary: "Admin panel bildirishnomalari ro'yxati" })
   findNotifications(): Promise<AdminNotification[]> {
     return this.catalogService.findNotifications();
   }
 
-  @Public()
+  @RequireScope('admin')
   @Get('notifications/unread-count')
   @ApiOperation({ summary: "O'qilmagan bildirishnomalar soni" })
   unreadNotificationsCount(): Promise<{ count: number }> {
