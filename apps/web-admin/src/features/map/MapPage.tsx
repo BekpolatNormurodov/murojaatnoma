@@ -1,17 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  CircleMarker,
   GeoJSON,
   MapContainer,
   Marker,
   Polyline,
-  Popup,
   TileLayer,
+  Tooltip,
   useMap,
 } from 'react-leaflet';
 import L from 'leaflet';
 import type { Layer } from 'leaflet';
 import type { Feature } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Buildings2,
+  CloseCircle,
+  Filter,
+  RotateRight,
+  SearchNormal1,
+} from 'iconsax-react';
 import { fetchZonesGeoJson, type ZoneProps } from '@/shared/api/zones';
 import {
   fetchLiveLocations,
@@ -19,64 +27,35 @@ import {
   fetchLocationStats,
   fetchTrack,
   type LiveLocation,
+  type TrackPoint,
 } from '@/shared/api/locations';
+import { cn } from '@/shared/lib/cn';
+import { EmployeeDetailDrawer } from './EmployeeDetailDrawer';
+import {
+  agoShort,
+  FILTER_ORDER,
+  initials,
+  LABELS,
+  relTime,
+  statusColor,
+  STATUS_COLORS,
+  statusKey,
+  trackRange,
+  type FilterKey,
+  type Lang,
+  type StatusKey,
+  type TrackWindow,
+} from './mapShared';
 
 // Mirzo Ulug'bek district centroid (WGS84) — [lat, lng] for Leaflet.
 const DISTRICT_CENTER: [number, number] = [41.3354, 69.3737];
 
-type Lang = 'uz' | 'ru';
-const LABELS: Record<Lang, Record<string, string>> = {
-  uz: {
-    title: 'Xodimlar joylashuvi',
-    live: 'Jonli',
-    total: 'Jami',
-    reporting: 'Faol',
-    inOffice: 'Ish hududida',
-    stale: "Aloqa yo'q",
-    search: 'Xodim qidirish...',
-    noLoc: "Joylashuv yo'q",
-    office: 'Ish hududida',
-    outDistrict: 'Tuman tashqarisida',
-    inDistrict: 'Tuman ichida',
-    lastSeen: 'Oxirgi aloqa',
-    alerts: 'Ogohlantirishlar',
-    mahallas: 'Mahallalar',
-    minAgo: 'daq. oldin',
-    never: 'hech qachon',
-    empty: 'Hali hech kim joylashuv yubormagan',
-  },
-  ru: {
-    title: 'Локация сотрудников',
-    live: 'Онлайн',
-    total: 'Всего',
-    reporting: 'Активны',
-    inOffice: 'На месте',
-    stale: 'Нет связи',
-    search: 'Поиск сотрудника...',
-    noLoc: 'Нет локации',
-    office: 'В рабочей зоне',
-    outDistrict: 'Вне района',
-    inDistrict: 'В районе',
-    lastSeen: 'Последняя связь',
-    alerts: 'Оповещения',
-    mahallas: 'Махалли',
-    minAgo: 'мин назад',
-    never: 'никогда',
-    empty: 'Пока никто не отправил локацию',
-  },
-};
-
-function statusColor(loc: LiveLocation): string {
-  if (!loc.hasLocation) return '#94a3b8';
-  if (loc.isStale) return '#ef4444';
-  if (loc.insideOffice) return '#10b981';
-  if (loc.insideDistrict) return '#3b82f6';
-  return '#f59e0b';
-}
+type MahallaFilter = { code: string; name: string };
+type FlyTarget = { pos: [number, number]; nonce: number };
 
 function markerIcon(loc: LiveLocation, selected: boolean): L.DivIcon {
   const color = statusColor(loc);
-  const initial = (loc.fullName || '?').charAt(0).toUpperCase();
+  const initial = initials(loc.fullName).charAt(0);
   const ring = selected ? 'box-shadow:0 0 0 4px rgba(16,185,129,0.35);' : '';
   return L.divIcon({
     className: 'emp-marker',
@@ -89,7 +68,7 @@ function markerIcon(loc: LiveLocation, selected: boolean): L.DivIcon {
   });
 }
 
-/** Flies the map to a position when the selected employee changes. */
+/** Flies to a position when the selected employee changes. */
 function FlyTo({ pos }: { pos: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
@@ -98,13 +77,13 @@ function FlyTo({ pos }: { pos: [number, number] | null }) {
   return null;
 }
 
-function relTime(iso: string | null, t: Record<string, string>): string {
-  if (!iso) return t.never;
-  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (mins < 1) return t.live;
-  if (mins < 60) return `${mins} ${t.minAgo}`;
-  const h = Math.floor(mins / 60);
-  return `${h} soat`;
+/** Flies to an explicit target (e.g. a clicked track point); re-fires per nonce. */
+function FlyToTarget({ target }: { target: FlyTarget | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (target) map.flyTo(target.pos, Math.max(map.getZoom(), 16), { duration: 0.6 });
+  }, [target, map]);
+  return null;
 }
 
 export function MapPage() {
@@ -115,6 +94,18 @@ export function MapPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [showMahallas, setShowMahallas] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
+  const [mahallaFilter, setMahallaFilter] = useState<MahallaFilter | null>(null);
+  const [trackWindow, setTrackWindow] = useState<TrackWindow>('today');
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile overlay
+  const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
+
+  // 1s tick so the auto-refresh pill counts up between polls.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const districtQ = useQuery({
     queryKey: ['zones', 'district'],
@@ -126,11 +117,13 @@ export function MapPage() {
     queryFn: () => fetchZonesGeoJson('mahalla'),
     staleTime: Infinity,
   });
-  const { data: locations = [] } = useQuery({
+  const locationsQ = useQuery({
     queryKey: ['locations', 'latest'],
     queryFn: fetchLiveLocations,
     refetchInterval: 15_000,
   });
+  const locations = useMemo(() => locationsQ.data ?? [], [locationsQ.data]);
+
   const { data: stats } = useQuery({
     queryKey: ['locations', 'stats'],
     queryFn: fetchLocationStats,
@@ -141,11 +134,15 @@ export function MapPage() {
     queryFn: fetchLocationAlerts,
     refetchInterval: 30_000,
   });
-  const { data: track } = useQuery({
-    queryKey: ['track', selectedId],
-    queryFn: () => fetchTrack(selectedId as string, { limit: 200 }),
+  const trackQ = useQuery({
+    queryKey: ['track', selectedId, trackWindow],
+    queryFn: () => {
+      const { from, to } = trackRange(trackWindow);
+      return fetchTrack(selectedId as string, { from, to, limit: 500 });
+    },
     enabled: !!selectedId,
   });
+  const track = trackQ.data;
 
   const selected = locations.find((l) => l.employeeId === selectedId) ?? null;
   const selectedPos: [number, number] | null =
@@ -153,48 +150,135 @@ export function MapPage() {
       ? [selected.latitude, selected.longitude]
       : null;
 
-  const filtered = locations.filter((l) =>
-    l.fullName.toLowerCase().includes(query.trim().toLowerCase()),
+  // Employees passing the search + mahalla filters (but NOT the status chip),
+  // so each chip can advertise how many rows it would show.
+  const base = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return locations.filter((l) => {
+      if (q) {
+        const hay = `${l.fullName} ${l.position ?? ''} ${l.mahallaName ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      if (mahallaFilter && l.mahallaCode !== mahallaFilter.code) return false;
+      return true;
+    });
+  }, [locations, query, mahallaFilter]);
+
+  const counts = useMemo(() => {
+    const c: Record<FilterKey, number> = {
+      all: base.length,
+      office: 0,
+      district: 0,
+      outside: 0,
+      stale: 0,
+      noloc: 0,
+    };
+    for (const l of base) c[statusKey(l)]++;
+    return c;
+  }, [base]);
+
+  const filtered = useMemo(
+    () =>
+      statusFilter === 'all'
+        ? base
+        : base.filter((l) => statusKey(l) === statusFilter),
+    [base, statusFilter],
   );
 
-  // Live per-mahalla headcount (employees whose last known mahalla is X),
-  // used to tint the mahalla polygons. Keyed so the GeoJSON restyles only
-  // when the distribution actually changes (an employee crosses a boundary).
+  // Markers = filtered rows that actually have coordinates. Memoized so the
+  // 15s poll doesn't rebuild the marker layer unless the visible set changes.
+  const markerLocs = useMemo(
+    () =>
+      filtered.filter(
+        (l) => l.hasLocation && l.latitude != null && l.longitude != null,
+      ),
+    [filtered],
+  );
+  const markers = useMemo(
+    () =>
+      markerLocs.map((loc) => (
+        <Marker
+          key={loc.employeeId}
+          position={[loc.latitude as number, loc.longitude as number]}
+          icon={markerIcon(loc, loc.employeeId === selectedId)}
+          eventHandlers={{ click: () => setSelectedId(loc.employeeId) }}
+        >
+          <Tooltip direction="top" offset={[0, -14]}>
+            {loc.fullName}
+          </Tooltip>
+        </Marker>
+      )),
+    [markerLocs, selectedId],
+  );
+
+  // Live per-mahalla headcount → polygon tint. Keyed so the GeoJSON restyles
+  // only when the distribution (or active mahalla filter) actually changes,
+  // never merely because the 15s poll returned a fresh array.
   const occupancy = useMemo(() => {
-    const counts = new Map<string, number>();
+    const c = new Map<string, number>();
     for (const l of locations) {
       if (l.mahallaCode && l.hasLocation) {
-        counts.set(l.mahallaCode, (counts.get(l.mahallaCode) ?? 0) + 1);
+        c.set(l.mahallaCode, (c.get(l.mahallaCode) ?? 0) + 1);
       }
     }
-    return counts;
+    return c;
   }, [locations]);
-  const occupancyKey = useMemo(
+  const mahallaLayerKey = useMemo(
     () =>
       [...occupancy.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map((e) => `${e[0]}:${e[1]}`)
-        .join(','),
-    [occupancy],
+        .join(',') +
+      `|f:${mahallaFilter?.code ?? ''}|${lang}`,
+    [occupancy, mahallaFilter, lang],
   );
 
   const trackLine: [number, number][] =
     track?.points.map((p) => [p.latitude, p.longitude]) ?? [];
+  const trackStart = track?.points[0];
+
+  function focusPoint(p: TrackPoint) {
+    setFlyTarget({ pos: [p.latitude, p.longitude], nonce: performance.now() });
+  }
+
+  const chipLabels: Record<FilterKey, string> = {
+    all: t.fAll,
+    office: t.fOffice,
+    district: t.fDistrict,
+    outside: t.fOutside,
+    stale: t.fStale,
+    noloc: t.fNoloc,
+  };
 
   return (
-    <div className="flex h-[calc(100dvh-5.5rem)] min-h-[520px] gap-4">
-      {/* Side panel */}
-      <aside className="flex w-80 shrink-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface">
+    <div className="relative flex h-[calc(100dvh-5.5rem)] min-h-[520px] gap-4">
+      {/* ── Sidebar (static ≥lg, slide-over overlay below lg) ── */}
+      <aside
+        className={cn(
+          'absolute inset-y-0 left-0 z-[1200] flex w-80 max-w-[86%] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-pop transition-transform duration-300',
+          'lg:static lg:z-auto lg:max-w-none lg:translate-x-0 lg:shadow-none',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-[112%] lg:translate-x-0',
+        )}
+      >
         <div className="border-b border-line p-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-ink">{t.title}</h2>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500" />
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500" />
+                </span>
+                {t.live}
               </span>
-              {t.live}
-            </span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                aria-label={t.close}
+                className="rounded-lg p-1 text-ink-muted hover:bg-surface-2 hover:text-ink lg:hidden"
+              >
+                <CloseCircle size={20} variant="Bold" />
+              </button>
+            </div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Stat label={t.total} value={stats?.totalActive ?? '—'} tone="ink" />
@@ -204,26 +288,88 @@ export function MapPage() {
           </div>
         </div>
 
-        <div className="p-3">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t.search}
-            className="h-9 w-full rounded-lg border border-line bg-surface-2 px-3 text-sm outline-none focus:border-primary-500"
-          />
+        {/* Search */}
+        <div className="px-3 pt-3">
+          <div className="relative">
+            <SearchNormal1
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t.search}
+              className="h-9 w-full rounded-lg border border-line bg-surface-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500"
+            />
+          </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+        {/* Status filter chips */}
+        <div className="flex flex-wrap gap-1.5 px-3 pt-3">
+          {FILTER_ORDER.map((key) => {
+            const active = statusFilter === key;
+            const color = key === 'all' ? '#0f172a' : STATUS_COLORS[key as StatusKey];
+            return (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors',
+                  active
+                    ? 'text-white'
+                    : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                )}
+                style={active ? { background: color } : undefined}
+              >
+                {key !== 'all' && (
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: active ? '#fff' : color }}
+                  />
+                )}
+                {chipLabels[key]}
+                <span className={cn('font-bold', active ? 'text-white' : 'text-ink-muted')}>
+                  {counts[key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Active mahalla filter chip */}
+        {mahallaFilter && (
+          <div className="px-3 pt-3">
+            <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary-50 py-1 pl-2.5 pr-1.5 text-[11px] font-semibold text-primary-700">
+              <Buildings2 size={13} variant="Bulk" />
+              <span className="truncate">
+                {t.mahallaChip}: {mahallaFilter.name}
+              </span>
+              <button
+                onClick={() => setMahallaFilter(null)}
+                aria-label={t.clear}
+                className="shrink-0 rounded-full p-0.5 hover:bg-primary-100"
+              >
+                <CloseCircle size={14} variant="Bold" />
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Employee list */}
+        <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
           {filtered.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-ink-muted">{t.empty}</p>
+            <p className="px-3 py-6 text-center text-sm text-ink-muted">
+              {locations.length === 0 ? t.empty : t.noneMatch}
+            </p>
           )}
           {filtered.map((loc) => (
             <button
               key={loc.employeeId}
               onClick={() => setSelectedId(loc.employeeId)}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors ${
-                selectedId === loc.employeeId ? 'bg-primary-50' : 'hover:bg-surface-2'
-              }`}
+              className={cn(
+                'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                selectedId === loc.employeeId ? 'bg-primary-50' : 'hover:bg-surface-2',
+              )}
             >
               <span
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -244,6 +390,7 @@ export function MapPage() {
           ))}
         </div>
 
+        {/* Alerts */}
         {alerts.length > 0 && (
           <div className="border-t border-line p-3">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-danger">
@@ -251,22 +398,32 @@ export function MapPage() {
             </div>
             <div className="max-h-32 space-y-1 overflow-y-auto">
               {alerts.slice(0, 20).map((a) => (
-                <div
+                <button
                   key={a.employeeId}
-                  className="flex items-center justify-between rounded-lg bg-danger-soft/60 px-2.5 py-1.5 text-xs"
+                  onClick={() => setSelectedId(a.employeeId)}
+                  className="flex w-full items-center justify-between rounded-lg bg-danger-soft/60 px-2.5 py-1.5 text-left text-xs hover:bg-danger-soft"
                 >
                   <span className="truncate font-medium text-danger">{a.fullName}</span>
                   <span className="shrink-0 text-danger/80">
                     {a.reason === 'never' ? t.never : relTime(a.lastLocationAt, t)}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
         )}
       </aside>
 
-      {/* Map */}
+      {/* Mobile backdrop when the sidebar is open */}
+      {sidebarOpen && (
+        <button
+          aria-label={t.close}
+          onClick={() => setSidebarOpen(false)}
+          className="absolute inset-0 z-[1150] cursor-default bg-black/30 lg:hidden"
+        />
+      )}
+
+      {/* ── Map ── */}
       <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-line">
         <MapContainer
           center={DISTRICT_CENTER}
@@ -275,24 +432,38 @@ export function MapPage() {
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer
-            attribution='&copy; OpenStreetMap, &copy; CARTO'
+            attribution="&copy; OpenStreetMap, &copy; CARTO"
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           />
 
           {districtQ.data && (
             <GeoJSON
               data={districtQ.data}
-              style={{ color: '#059669', weight: 2.5, fillColor: '#10b981', fillOpacity: 0.05 }}
+              style={{
+                color: '#059669',
+                weight: 2.5,
+                fillColor: '#10b981',
+                fillOpacity: 0.05,
+              }}
             />
           )}
 
           {showMahallas && mahallaQ.data && (
             <GeoJSON
-              key={`mahallas-${occupancyKey}`}
+              key={`mahallas-${mahallaLayerKey}`}
               data={mahallaQ.data}
               style={(feature) => {
                 const code = (feature?.properties as ZoneProps | undefined)?.code;
+                const isActive = !!code && code === mahallaFilter?.code;
                 const count = code ? occupancy.get(code) ?? 0 : 0;
+                if (isActive) {
+                  return {
+                    color: '#4f46e5',
+                    weight: 2.5,
+                    fillColor: '#6366f1',
+                    fillOpacity: 0.25,
+                  };
+                }
                 if (count > 0) {
                   return {
                     color: '#059669',
@@ -301,7 +472,12 @@ export function MapPage() {
                     fillOpacity: Math.min(0.18 + count * 0.12, 0.6),
                   };
                 }
-                return { color: '#94a3b8', weight: 1, fillColor: '#94a3b8', fillOpacity: 0.02 };
+                return {
+                  color: '#94a3b8',
+                  weight: 1,
+                  fillColor: '#94a3b8',
+                  fillOpacity: 0.02,
+                };
               }}
               onEachFeature={(feature: Feature, layer: Layer) => {
                 const p = feature.properties as ZoneProps | undefined;
@@ -311,74 +487,96 @@ export function MapPage() {
                 layer.bindTooltip(count > 0 ? `${name} — ${count} xodim` : name, {
                   sticky: true,
                 });
+                layer.on('click', () => {
+                  setMahallaFilter((prev) =>
+                    prev?.code === p.code ? null : { code: p.code, name },
+                  );
+                });
               }}
             />
           )}
 
           {trackLine.length > 1 && (
-            <Polyline positions={trackLine} pathOptions={{ color: '#6366f1', weight: 3, dashArray: '6 6' }} />
+            <Polyline
+              positions={trackLine}
+              pathOptions={{ color: '#6366f1', weight: 3, dashArray: '6 6' }}
+            />
+          )}
+          {trackStart && (
+            <CircleMarker
+              center={[trackStart.latitude, trackStart.longitude]}
+              radius={5}
+              pathOptions={{
+                color: '#fff',
+                weight: 2,
+                fillColor: '#6366f1',
+                fillOpacity: 1,
+              }}
+            />
           )}
 
-          {locations
-            .filter((l) => l.hasLocation && l.latitude != null && l.longitude != null)
-            .map((loc) => (
-              <Marker
-                key={loc.employeeId}
-                position={[loc.latitude as number, loc.longitude as number]}
-                icon={markerIcon(loc, loc.employeeId === selectedId)}
-                eventHandlers={{ click: () => setSelectedId(loc.employeeId) }}
-              >
-                <Popup>
-                  <div className="text-sm">
-                    <div className="font-semibold text-slate-900">{loc.fullName}</div>
-                    <div className="text-slate-500">{loc.position}</div>
-                    <div className="mt-1 text-slate-700">
-                      {loc.mahallaName ?? '—'}
-                    </div>
-                    <div className="mt-1">
-                      <span
-                        className="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium text-white"
-                        style={{ background: statusColor(loc) }}
-                      >
-                        {!loc.hasLocation
-                          ? t.noLoc
-                          : loc.insideOffice
-                            ? t.office
-                            : loc.insideDistrict
-                              ? t.inDistrict
-                              : t.outDistrict}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[11px] text-slate-400">
-                      {t.lastSeen}: {relTime(loc.lastLocationAt, t)}
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+          {markers}
 
           <FlyTo pos={selectedPos} />
+          <FlyToTarget target={flyTarget} />
         </MapContainer>
+
+        {/* Top-left cluster: mobile list toggle + auto-refresh pill */}
+        <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-soft shadow-sm lg:hidden"
+          >
+            <Filter size={15} variant="Bulk" />
+            {t.list}
+          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm backdrop-blur">
+            {locationsQ.isFetching ? (
+              <RotateRight size={13} className="animate-spin text-primary-600" />
+            ) : (
+              <span className="h-2 w-2 rounded-full bg-primary-500" />
+            )}
+            {t.updated}:{' '}
+            {locationsQ.dataUpdatedAt
+              ? agoShort(locationsQ.dataUpdatedAt, now, t)
+              : '—'}
+          </span>
+        </div>
 
         {/* Mahalla toggle */}
         <button
           onClick={() => setShowMahallas((s) => !s)}
-          className={`absolute right-3 top-3 z-[1000] rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+          className={cn(
+            'absolute right-3 top-3 z-[1000] rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm transition-colors',
             showMahallas
               ? 'border-primary-500 bg-primary-600 text-white'
-              : 'border-line bg-surface text-ink-soft'
-          }`}
+              : 'border-line bg-surface text-ink-soft',
+          )}
         >
           {t.mahallas}
         </button>
 
         {/* Legend */}
         <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-x-3 gap-y-1 rounded-lg border border-line bg-surface/90 px-3 py-2 text-[11px] text-ink-soft backdrop-blur">
-          <Legend color="#10b981" label={t.office} />
-          <Legend color="#3b82f6" label={t.inDistrict} />
-          <Legend color="#f59e0b" label={t.outDistrict} />
-          <Legend color="#ef4444" label={t.stale} />
+          <Legend color={STATUS_COLORS.office} label={t.office} />
+          <Legend color={STATUS_COLORS.district} label={t.inDistrict} />
+          <Legend color={STATUS_COLORS.outside} label={t.outDistrict} />
+          <Legend color={STATUS_COLORS.stale} label={t.stale} />
         </div>
+
+        {/* Detail drawer */}
+        {selected && (
+          <EmployeeDetailDrawer
+            loc={selected}
+            track={track}
+            trackLoading={trackQ.isFetching}
+            trackWindow={trackWindow}
+            onTrackWindow={setTrackWindow}
+            t={t}
+            onClose={() => setSelectedId(null)}
+            onFocusPoint={focusPoint}
+          />
+        )}
       </div>
     </div>
   );
