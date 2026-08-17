@@ -144,6 +144,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get faceContinue => 'Продолжить';
 
   @override
+  String get faceCheckoutTitle => 'Уход с работы';
+
+  @override
+  String get faceCheckoutDone => 'Отлично! Ваш рабочий день сегодня завершён.';
+
+  @override
   String get faceMatchFailedTitle => 'Лицо не распознано';
 
   @override
@@ -178,6 +184,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get checkinSuccess => 'Посещаемость подтверждена';
+
+  @override
+  String get checkoutSuccess => 'Уход подтверждён';
 
   @override
   String get home => 'Главная';

@@ -212,9 +212,9 @@ Future<void> configureDependencies() async {
     )
     // `FaceCubit` — sahifa ochilganda joriy sessiyaning `workerId`si bilan
     // yaratiladi: `getIt<FaceCubit>(param1: workerId)`. Bitta factory
-    // ENROLL (Vazifa 16) va CHECK-IN (Vazifa 17) sahifalari uchun ham
-    // ishlatiladi — rejimni sahifa o'zi tanlaydi (`startCamera()` vs
-    // `startLiveness()` + `startCamera()`).
+    // ENROLL (Vazifa 16), CHECK-IN va CHECK-OUT (Vazifa 17/19) sahifalari
+    // uchun ham ishlatiladi — rejimni sahifa o'zi tanlaydi (`startCamera()`
+    // vs `startLiveness(kind: ...)` + `startCamera()`).
     ..registerFactoryParam<FaceCubit, String, void>(
       (workerId, _) => FaceCubit(
         detector: getIt<FaceDetectorService>(),
@@ -222,6 +222,7 @@ Future<void> configureDependencies() async {
         enrollFace: getIt<EnrollFace>(),
         verifyFace: getIt<VerifyFace>(),
         checkIn: getIt<CheckIn>(),
+        checkOut: getIt<CheckOut>(),
         geofence: getIt<GeofenceService>(),
         workerId: workerId,
         facePhotoStore: getIt<FacePhotoStore>(),

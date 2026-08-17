@@ -362,6 +362,18 @@ abstract class AppLocalizations {
   /// **'Davom etish'**
   String get faceContinue;
 
+  /// No description provided for @faceCheckoutTitle.
+  ///
+  /// In uz, this message translates to:
+  /// **'Ishdan chiqish'**
+  String get faceCheckoutTitle;
+
+  /// No description provided for @faceCheckoutDone.
+  ///
+  /// In uz, this message translates to:
+  /// **'Ajoyib! Bugungi ish kuningiz yakunlandi.'**
+  String get faceCheckoutDone;
+
   /// No description provided for @faceMatchFailedTitle.
   ///
   /// In uz, this message translates to:
@@ -427,6 +439,12 @@ abstract class AppLocalizations {
   /// In uz, this message translates to:
   /// **'Davomat tasdiqlandi'**
   String get checkinSuccess;
+
+  /// No description provided for @checkoutSuccess.
+  ///
+  /// In uz, this message translates to:
+  /// **'Ketish tasdiqlandi'**
+  String get checkoutSuccess;
 
   /// No description provided for @home.
   ///

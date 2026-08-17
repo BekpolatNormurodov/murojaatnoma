@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
 import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
@@ -26,6 +27,8 @@ class _MockVerifyFace extends Mock implements VerifyFace {}
 
 class _MockCheckIn extends Mock implements CheckIn {}
 
+class _MockCheckOut extends Mock implements CheckOut {}
+
 class _MockGeofenceService extends Mock implements GeofenceService {}
 
 void main() {
@@ -41,6 +44,7 @@ void main() {
     late EnrollFace enrollFace;
     late VerifyFace verifyFace;
     late CheckIn checkIn;
+    late CheckOut checkOut;
     late GeofenceService geofence;
     late DateTime now;
 
@@ -66,6 +70,7 @@ void main() {
         enrollFace: enrollFace,
         verifyFace: verifyFace,
         checkIn: checkIn,
+        checkOut: checkOut,
         geofence: geofence,
         workerId: 'W-1042',
         clock: () => now,
@@ -78,6 +83,7 @@ void main() {
       enrollFace = _MockEnrollFace();
       verifyFace = _MockVerifyFace();
       checkIn = _MockCheckIn();
+      checkOut = _MockCheckOut();
       geofence = _MockGeofenceService();
       now = DateTime(2026);
       // `FaceCubit.close()` always disposes the detector, even when the

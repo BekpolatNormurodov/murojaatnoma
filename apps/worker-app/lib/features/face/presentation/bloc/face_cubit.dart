@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:app_core/app_core.dart';
 import 'package:camera/camera.dart';
+import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -18,9 +19,11 @@ import 'package:worker_app/features/attendance/domain/entities/check_scan_result
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
+import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
 import 'package:worker_app/features/face/domain/entities/face_match_result.dart';
 import 'package:worker_app/features/face/domain/entities/face_template.dart';
 import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
@@ -105,6 +108,7 @@ class FaceCubit extends Cubit<FaceState> {
     required EnrollFace enrollFace,
     required VerifyFace verifyFace,
     required CheckIn checkIn,
+    required CheckOut checkOut,
     required GeofenceService geofence,
     required String workerId,
     FacePhotoStore? facePhotoStore,
@@ -117,6 +121,7 @@ class FaceCubit extends Cubit<FaceState> {
        _enrollFace = enrollFace,
        _verifyFace = verifyFace,
        _checkIn = checkIn,
+       _checkOut = checkOut,
        _geofence = geofence,
        _workerId = workerId,
        _facePhotoStore = facePhotoStore,
@@ -131,6 +136,12 @@ class FaceCubit extends Cubit<FaceState> {
   final EnrollFace _enrollFace;
   final VerifyFace _verifyFace;
   final CheckIn _checkIn;
+
+  /// `startLiveness(kind: AttendanceScanKind.checkOut)` bilan ishga
+  /// tushirilgan urinishlarda [_checkIn] o'rniga shu chaqiriladi — qarang:
+  /// [_afterMatch]. Check-in oqimi (standart `kind`) buni HECH QACHON
+  /// chaqirmaydi, shuning uchun mavjud xatti-harakat o'zgarishsiz qoladi.
+  final CheckOut _checkOut;
   final GeofenceService _geofence;
   final String _workerId;
 
@@ -221,6 +232,12 @@ class FaceCubit extends Cubit<FaceState> {
   LivenessController? _livenessController;
   List<LivenessAction> _livenessActions = const [];
   DateTime? _livenessStartedAt;
+
+  /// `startLiveness(kind: ...)` orqali o'rnatiladi — [_afterMatch] shu
+  /// bayroqqa qarab `CheckIn`/`CheckOut`dan qaysi birini chaqirishni
+  /// tanlaydi. Standart holatda [AttendanceScanKind.checkIn] (mavjud
+  /// xatti-harakat o'zgarishsiz).
+  AttendanceScanKind _kind = AttendanceScanKind.checkIn;
 
   /// Ko'rib chiqish tuzatishi (Fix 1): joriy urinish uchun capture
   /// ALLAQACHON ishga tushirilganini bildiradi — `true` bo'lgach
@@ -621,14 +638,24 @@ class FaceCubit extends Cubit<FaceState> {
   /// [actions] — sahifa tomonidan deterministik tanlangan 2-3 ta
   /// `LivenessAction` (test esa aniq ro'yxat beradi).
   ///
+  /// [kind] — Vazifa 19: yakuniy urinish tugagach [_afterMatch] `CheckIn`
+  /// (standart, [AttendanceScanKind.checkIn]) yoki `CheckOut`
+  /// ([AttendanceScanKind.checkOut]) chaqirishini tanlaydi. Sahifa
+  /// (`FaceCheckinPage`) buni o'zining `kind` parametridan uzatadi —
+  /// `FaceCubit` boshqa hech narsani (matn/marshrut) bilishi shart emas.
+  ///
   /// Fix 2 (ko'rib chiqish): timeout soati SHU YERDA, darhol, o'rnatiladi
   /// — birinchi aniqlangan yuz kadrigacha KUTILMAYDI. Aks holda, agar
   /// foydalanuvchi umuman kadrga to'g'ri kelmasa (yorug'lik/burchak/joy),
   /// timeout hech qachon "qurollanmagan" bo'lib qolaverar va
   /// `FaceLivenessFailed` HECH QACHON emit qilinmas edi — foydalanuvchi
   /// `FaceSearching()`da abadiy qolib ketardi.
-  void startLiveness(List<LivenessAction> actions) {
+  void startLiveness(
+    List<LivenessAction> actions, {
+    AttendanceScanKind kind = AttendanceScanKind.checkIn,
+  }) {
     _livenessMode = true;
+    _kind = kind;
     _livenessActions = actions;
     _livenessController = LivenessController(actions);
     _livenessStartedAt = _clock();
@@ -859,9 +886,13 @@ class FaceCubit extends Cubit<FaceState> {
 
   /// `VerifyFace` muvaffaqiyatli qaytgandan keyingi davom: mos kelmasa
   /// [FaceMatchFailed]; mos kelsa joylashuv olinib (xato bo'lsa alohida,
-  /// aniqroq xabar bilan `FaceError`), `CheckIn` chaqiriladi —
-  /// `Left(GeofenceFailure)` [FaceGeofenceOutside]ga, boshqa `Left`
-  /// umumiy `FaceError`ga, `Right` esa [FaceCheckinSuccess]ga aylanadi.
+  /// aniqroq xabar bilan `FaceError`), [_kind]ga qarab `CheckIn` YOKI
+  /// `CheckOut` chaqiriladi — `Left(GeofenceFailure)`
+  /// [FaceGeofenceOutside]ga, boshqa `Left` (jumladan check-out'ga xos
+  /// `AlreadyCheckedOutFailure`/`NotCheckedInFailure` — ularning
+  /// backenddan kelgan o'zbekcha `.message`i to'g'ridan-to'g'ri
+  /// ko'rsatiladi) umumiy `FaceError`ga, `Right` esa [FaceCheckinSuccess]ga
+  /// aylanadi.
   Future<void> _afterMatch(
     FaceMatchResult match, {
     required List<double> probe,
@@ -887,13 +918,17 @@ class FaceCubit extends Cubit<FaceState> {
     // JWT'dan olinadi — yuborilmaydi). `screenshotPath` faqat mahalliy
     // davomat-isboti sifatida saqlanadi (backend kontraktida bunday maydon
     // yo'q). Mock oqimda embedding e'tiborga olinmaydi (backend yo'q).
-    final checkInEither = await _checkIn(
-      AttendanceScanParams(
-        embedding: probe,
-        latitude: position.latitude,
-        longitude: position.longitude,
-      ),
+    final params = AttendanceScanParams(
+      embedding: probe,
+      latitude: position.latitude,
+      longitude: position.longitude,
     );
+    final Either<Failure, CheckScanResult> checkInEither;
+    if (_kind == AttendanceScanKind.checkOut) {
+      checkInEither = await _checkOut(params);
+    } else {
+      checkInEither = await _checkIn(params);
+    }
 
     checkInEither.fold(
       (failure) {

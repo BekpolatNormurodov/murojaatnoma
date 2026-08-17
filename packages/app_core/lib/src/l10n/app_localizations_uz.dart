@@ -143,6 +143,12 @@ class AppLocalizationsUz extends AppLocalizations {
   String get faceContinue => 'Davom etish';
 
   @override
+  String get faceCheckoutTitle => 'Ishdan chiqish';
+
+  @override
+  String get faceCheckoutDone => 'Ajoyib! Bugungi ish kuningiz yakunlandi.';
+
+  @override
   String get faceMatchFailedTitle => 'Yuz mos kelmadi';
 
   @override
@@ -177,6 +183,9 @@ class AppLocalizationsUz extends AppLocalizations {
 
   @override
   String get checkinSuccess => 'Davomat tasdiqlandi';
+
+  @override
+  String get checkoutSuccess => 'Ketish tasdiqlandi';
 
   @override
   String get home => 'Bosh sahifa';

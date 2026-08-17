@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
 import 'package:worker_app/features/face/domain/usecases/enroll_face.dart';
@@ -23,6 +24,8 @@ class _MockVerifyFace extends Mock implements VerifyFace {}
 
 class _MockCheckIn extends Mock implements CheckIn {}
 
+class _MockCheckOut extends Mock implements CheckOut {}
+
 class _MockGeofenceService extends Mock implements GeofenceService {}
 
 /// `FaceCubit.startCamera()` haqiqiy kamera/ruxsat/model plaginlarini
@@ -38,6 +41,7 @@ class _FixedStateFaceCubit extends FaceCubit {
     required super.enrollFace,
     required super.verifyFace,
     required super.checkIn,
+    required super.checkOut,
     required super.geofence,
     super.workerId = 'W-1042',
   });
@@ -54,6 +58,7 @@ void main() {
   late EnrollFace enrollFace;
   late VerifyFace verifyFace;
   late CheckIn checkIn;
+  late CheckOut checkOut;
   late GeofenceService geofence;
 
   setUp(() {
@@ -62,6 +67,7 @@ void main() {
     enrollFace = _MockEnrollFace();
     verifyFace = _MockVerifyFace();
     checkIn = _MockCheckIn();
+    checkOut = _MockCheckOut();
     geofence = _MockGeofenceService();
     when(() => detector.dispose()).thenAnswer((_) async {});
   });
@@ -74,6 +80,7 @@ void main() {
       enrollFace: enrollFace,
       verifyFace: verifyFace,
       checkIn: checkIn,
+      checkOut: checkOut,
       geofence: geofence,
     );
     addTearDown(cubit.close);

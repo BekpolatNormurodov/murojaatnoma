@@ -17,6 +17,7 @@ import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart'
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
 import 'package:worker_app/features/chat/presentation/pages/chat_page.dart';
 import 'package:worker_app/features/chat/presentation/pages/conversation_page.dart';
+import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
 import 'package:worker_app/features/face/presentation/pages/face_checkin_page.dart';
 import 'package:worker_app/features/face/presentation/pages/face_enroll_page.dart';
@@ -121,6 +122,23 @@ class AppRouter {
             return BlocProvider(
               create: (_) => getIt<FaceCubit>(param1: workerId),
               child: const FaceCheckinPage(),
+            );
+          },
+        ),
+        // `/face/checkout` — Vazifa 19: ish kunini yakunlash ("ketdi")
+        // oqimi. `/face/checkin` bilan BIR XIL sahifa/cubit infratuzilmasi
+        // (`FaceCheckinPage`/`FaceCubit`) qayta ishlatiladi — faqat
+        // `kind: AttendanceScanKind.checkOut` uzatiladi, shu orqali sahifa
+        // "Ishdan chiqish" sarlavhasini ko'rsatadi va `FaceCubit`
+        // `_afterMatch`da `CheckIn` o'rniga `CheckOut` chaqiradi.
+        GoRoute(
+          path: '/face/checkout',
+          builder: (context, _) {
+            final workerId =
+                context.read<AuthCubit>().state.session?.workerId ?? '';
+            return BlocProvider(
+              create: (_) => getIt<FaceCubit>(param1: workerId),
+              child: const FaceCheckinPage(kind: AttendanceScanKind.checkOut),
             );
           },
         ),

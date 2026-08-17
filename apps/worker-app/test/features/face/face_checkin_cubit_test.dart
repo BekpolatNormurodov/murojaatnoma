@@ -5,12 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
-import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
-import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
+import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
+import 'package:worker_app/features/attendance/domain/errors/attendance_failures.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
+import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
+import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
 import 'package:worker_app/features/face/domain/entities/face_match_result.dart';
 import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
 import 'package:worker_app/features/face/domain/usecases/enroll_face.dart';
@@ -27,6 +30,8 @@ class _MockVerifyFace extends Mock implements VerifyFace {}
 
 class _MockCheckIn extends Mock implements CheckIn {}
 
+class _MockCheckOut extends Mock implements CheckOut {}
+
 class _MockGeofenceService extends Mock implements GeofenceService {}
 
 void main() {
@@ -34,12 +39,15 @@ void main() {
     // Task 17 (liveness check-in) qismi — Task 16 (enrollment) testlari
     // `face_cubit_test.dart`da qoladi, bu fayl faqat `startLiveness` /
     // `onLivenessFrame` / `verifyAndCheckIn` (post-liveness qaror-mantiq)
-    // ustida.
+    // ustida. Task 19 check-out ("ketdi") qismi — `kind:
+    // AttendanceScanKind.checkOut` bilan ishga tushirilgan urinishlarni
+    // qamrab oladigan alohida guruh (`verifyAndCheckIn (check-out mode)`).
     late FaceDetectorService detector;
     late FaceEmbedder embedder;
     late EnrollFace enrollFace;
     late VerifyFace verifyFace;
     late CheckIn checkIn;
+    late CheckOut checkOut;
     late GeofenceService geofence;
     late DateTime now;
 
@@ -47,7 +55,7 @@ void main() {
       // `checkIn(any())` / `verifyNever(() => checkIn(any()))` below need a
       // registered fallback for mocktail's argument matcher machinery.
       registerFallbackValue(
-        const CheckInParams(lat: 0, lng: 0, screenshotPath: ''),
+        const AttendanceScanParams(embedding: [], latitude: 0, longitude: 0),
       );
     });
 
@@ -67,6 +75,16 @@ void main() {
       speedAccuracy: 0,
     );
 
+    CheckScanResult validScanResult({String type = 'CHECK_IN'}) =>
+        CheckScanResult(
+          isValid: true,
+          faceScore: 0.94,
+          type: type,
+          isLate: false,
+          lateMinutes: 0,
+          recordedAt: DateTime(2026, 7, 23, 9),
+        );
+
     FaceCubit buildCubit() {
       return FaceCubit(
         detector: detector,
@@ -74,6 +92,7 @@ void main() {
         enrollFace: enrollFace,
         verifyFace: verifyFace,
         checkIn: checkIn,
+        checkOut: checkOut,
         geofence: geofence,
         workerId: 'W-1042',
         clock: () => now,
@@ -87,6 +106,7 @@ void main() {
       enrollFace = _MockEnrollFace();
       verifyFace = _MockVerifyFace();
       checkIn = _MockCheckIn();
+      checkOut = _MockCheckOut();
       geofence = _MockGeofenceService();
       now = DateTime(2026, 7, 23, 9);
       // `FaceCubit.close()` always disposes the detector (see
@@ -220,26 +240,13 @@ void main() {
           );
           when(
             () => checkIn(
-              CheckInParams(
-                lat: fakePosition.latitude,
-                lng: fakePosition.longitude,
-                screenshotPath: 'attendance/2026-07-23.jpg',
+              AttendanceScanParams(
+                embedding: testProbe,
+                latitude: fakePosition.latitude,
+                longitude: fakePosition.longitude,
               ),
             ),
-          ).thenAnswer(
-            (_) async => const Right(
-              AttendanceDay(
-                date: '2026-07-23',
-                checkIn: '09:15',
-                checkOut: null,
-                status: AttendanceStatus.present,
-                hours: 0,
-                insideGeofence: true,
-                selfConfirmed: true,
-                confirmedAt: '09:15',
-              ),
-            ),
-          );
+          ).thenAnswer((_) async => Right(validScanResult()));
         },
         act: (cubit) async {
           cubit
@@ -268,18 +275,21 @@ void main() {
           const FaceLivenessPrompt(action: null, done: 2, total: 2),
           const FaceVerifying(),
           const FaceCheckingIn(),
-          const FaceCheckinSuccess('09:15'),
+          const FaceCheckinSuccess('09:00'),
         ],
         verify: (_) {
           verify(
             () => checkIn(
-              CheckInParams(
-                lat: fakePosition.latitude,
-                lng: fakePosition.longitude,
-                screenshotPath: 'attendance/2026-07-23.jpg',
+              AttendanceScanParams(
+                embedding: testProbe,
+                latitude: fakePosition.latitude,
+                longitude: fakePosition.longitude,
               ),
             ),
           ).called(1);
+          // Check-out oqimi (standart `kind` — checkIn — bilan) HECH QACHON
+          // chaqirilmasligi kerak.
+          verifyNever(() => checkOut(any()));
         },
       );
 
@@ -367,6 +377,7 @@ void main() {
           enrollFace: enrollFace,
           verifyFace: verifyFace,
           checkIn: checkIn,
+          checkOut: checkOut,
           geofence: geofence,
           workerId: 'W-1042',
           clock: () => now,
@@ -381,6 +392,195 @@ void main() {
         expect: () => [const FaceVerifying(), isA<FaceError>()],
         verify: (_) {
           verifyNever(() => checkIn(any()));
+        },
+      );
+    });
+
+    group('verifyAndCheckIn (check-out mode — Vazifa 19)', () {
+      // `startLiveness(kind: AttendanceScanKind.checkOut)` orqali ishga
+      // tushirilgan urinishlarda `_afterMatch` `CheckIn` o'rniga `CheckOut`
+      // chaqirishi kerak — check-in yo'li (yuqoridagi guruh) 100%
+      // o'zgarishsiz qolgani esa alohida tekshirildi.
+      blocTest<FaceCubit, FaceState>(
+        'full flow: kind=checkOut -> VerifyFace passed=true -> CheckOut '
+        '(NOT CheckIn) called -> checkinSuccess',
+        build: buildCubit,
+        setUp: () {
+          when(() => verifyFace(const VerifyFaceParams(testProbe))).thenAnswer(
+            (_) async => const Right(FaceMatchResult(0.94, passed: true)),
+          );
+          when(
+            () => checkOut(
+              AttendanceScanParams(
+                embedding: testProbe,
+                latitude: fakePosition.latitude,
+                longitude: fakePosition.longitude,
+              ),
+            ),
+          ).thenAnswer(
+            (_) async => Right(validScanResult(type: 'CHECK_OUT')),
+          );
+        },
+        act: (cubit) async {
+          cubit.startLiveness(
+            const [LivenessAction.smile],
+            kind: AttendanceScanKind.checkOut,
+          );
+          await cubit.verifyAndCheckIn(testProbe);
+        },
+        expect: () => [
+          const FaceLivenessPrompt(
+            action: LivenessAction.smile,
+            done: 0,
+            total: 1,
+          ),
+          const FaceVerifying(),
+          const FaceCheckingIn(),
+          const FaceCheckinSuccess('09:00'),
+        ],
+        verify: (_) {
+          verify(
+            () => checkOut(
+              AttendanceScanParams(
+                embedding: testProbe,
+                latitude: fakePosition.latitude,
+                longitude: fakePosition.longitude,
+              ),
+            ),
+          ).called(1);
+          verifyNever(() => checkIn(any()));
+        },
+      );
+
+      blocTest<FaceCubit, FaceState>(
+        'kind=checkOut + CheckOut -> Left(GeofenceFailure) -> '
+        'geofenceOutside',
+        build: buildCubit,
+        setUp: () {
+          when(() => verifyFace(const VerifyFaceParams(testProbe))).thenAnswer(
+            (_) async => const Right(FaceMatchResult(0.9, passed: true)),
+          );
+          when(
+            () => checkOut(any()),
+          ).thenAnswer((_) async => const Left(GeofenceFailure()));
+          when(
+            () => geofence.distanceMeters(
+              kWorkplaceLat,
+              kWorkplaceLng,
+              fakePosition.latitude,
+              fakePosition.longitude,
+            ),
+          ).thenReturn(150);
+        },
+        act: (cubit) {
+          cubit.startLiveness(
+            const [LivenessAction.blink],
+            kind: AttendanceScanKind.checkOut,
+          );
+          return cubit.verifyAndCheckIn(testProbe);
+        },
+        expect: () => [
+          const FaceLivenessPrompt(
+            action: LivenessAction.blink,
+            done: 0,
+            total: 1,
+          ),
+          const FaceVerifying(),
+          const FaceCheckingIn(),
+          const FaceGeofenceOutside(distanceMeters: 150),
+        ],
+      );
+
+      blocTest<FaceCubit, FaceState>(
+        'kind=checkOut + CheckOut -> Left(AlreadyCheckedOutFailure) -> '
+        "generic FaceError surfacing the backend's uz message",
+        build: buildCubit,
+        setUp: () {
+          when(() => verifyFace(const VerifyFaceParams(testProbe))).thenAnswer(
+            (_) async => const Right(FaceMatchResult(0.9, passed: true)),
+          );
+          when(() => checkOut(any())).thenAnswer(
+            (_) async => const Left(AlreadyCheckedOutFailure()),
+          );
+        },
+        act: (cubit) {
+          cubit.startLiveness(
+            const [LivenessAction.blink],
+            kind: AttendanceScanKind.checkOut,
+          );
+          return cubit.verifyAndCheckIn(testProbe);
+        },
+        expect: () => [
+          const FaceLivenessPrompt(
+            action: LivenessAction.blink,
+            done: 0,
+            total: 1,
+          ),
+          const FaceVerifying(),
+          const FaceCheckingIn(),
+          const FaceError('Bugun allaqachon ketganingiz belgilangan'),
+        ],
+      );
+
+      blocTest<FaceCubit, FaceState>(
+        'kind=checkOut + CheckOut -> Left(NotCheckedInFailure) -> generic '
+        "FaceError surfacing the backend's uz message",
+        build: buildCubit,
+        setUp: () {
+          when(() => verifyFace(const VerifyFaceParams(testProbe))).thenAnswer(
+            (_) async => const Right(FaceMatchResult(0.9, passed: true)),
+          );
+          when(
+            () => checkOut(any()),
+          ).thenAnswer((_) async => const Left(NotCheckedInFailure()));
+        },
+        act: (cubit) {
+          cubit.startLiveness(
+            const [LivenessAction.blink],
+            kind: AttendanceScanKind.checkOut,
+          );
+          return cubit.verifyAndCheckIn(testProbe);
+        },
+        expect: () => [
+          const FaceLivenessPrompt(
+            action: LivenessAction.blink,
+            done: 0,
+            total: 1,
+          ),
+          const FaceVerifying(),
+          const FaceCheckingIn(),
+          const FaceError('Avval kelganingizni belgilashingiz kerak'),
+        ],
+      );
+
+      blocTest<FaceCubit, FaceState>(
+        'default kind (no kind passed to startLiveness) is checkIn -> '
+        'CheckOut is never called',
+        build: buildCubit,
+        setUp: () {
+          when(() => verifyFace(const VerifyFaceParams(testProbe))).thenAnswer(
+            (_) async => const Right(FaceMatchResult(0.9, passed: true)),
+          );
+          when(
+            () => checkIn(any()),
+          ).thenAnswer((_) async => Right(validScanResult()));
+        },
+        act: (cubit) {
+          cubit.startLiveness(const [LivenessAction.blink]);
+          return cubit.verifyAndCheckIn(testProbe);
+        },
+        expect: () => [
+          const FaceLivenessPrompt(
+            action: LivenessAction.blink,
+            done: 0,
+            total: 1,
+          ),
+          const FaceVerifying(),
+          const FaceCheckingIn(),
+          const FaceCheckinSuccess('09:00'),
+        ],
+        verify: (_) {
+          verifyNever(() => checkOut(any()));
         },
       );
     });
@@ -596,6 +796,7 @@ void main() {
           enrollFace: enrollFace,
           verifyFace: verifyFace,
           checkIn: checkIn,
+          checkOut: checkOut,
           geofence: geofence,
           workerId: 'W-1042',
           locate: () async => throw StateError('GPS off'),

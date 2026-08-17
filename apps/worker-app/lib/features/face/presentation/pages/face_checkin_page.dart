@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
+import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
 import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
 import 'package:worker_app/features/face/presentation/widgets/mirrored_camera_preview.dart';
@@ -24,8 +25,20 @@ import 'package:worker_app/injection.dart';
 ///
 /// Harakatlar ro'yxati DETERMINISTIK tanlanadi (`Math.random` YO'Q) —
 /// qarang: [_pickLivenessActions].
+///
+/// Vazifa 19: shu YAGONA sahifa CHECK-IN ("keldi", standart [kind]) VA
+/// CHECK-OUT ("ketdi") ikkalasi uchun ham qayta ishlatiladi — sahifa
+/// o'zi hech qanday yangi infratuzilma qo'shmaydi, faqat [kind]ga qarab
+/// `FaceCubit.startLiveness(kind: ...)`ni to'g'ri rejimda ishga tushiradi
+/// va sarlavha/muvaffaqiyat matnini tanlaydi (`FaceCubit`ning o'zi hech
+/// qanday UI matniga bog'liq emas — qarang: `AttendanceScanKind`).
 class FaceCheckinPage extends StatefulWidget {
-  const FaceCheckinPage({super.key});
+  const FaceCheckinPage({super.key, this.kind = AttendanceScanKind.checkIn});
+
+  /// Standart [AttendanceScanKind.checkIn] — mavjud check-in oqimi
+  /// o'zgarishsiz. `/face/checkout` marshruti buni
+  /// [AttendanceScanKind.checkOut] bilan beradi.
+  final AttendanceScanKind kind;
 
   @override
   State<FaceCheckinPage> createState() => _FaceCheckinPageState();
@@ -44,7 +57,7 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
     // `startCamera` qurilma-only (kamerani ishga tushiradi) — qarang:
     // `FaceCubit` klass hujjati.
     final cubit = context.read<FaceCubit>()
-      ..startLiveness(_pickLivenessActions());
+      ..startLiveness(_pickLivenessActions(), kind: widget.kind);
     unawaited(cubit.startCamera());
     unawaited(_refreshGeofence());
     _geofenceTimer = Timer.periodic(
@@ -96,19 +109,26 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
         listener: (context, state) {
           switch (state) {
             case FaceCheckinSuccess(:final time):
-              unawaited(_showSuccessDialog(context, time));
+              unawaited(_showSuccessDialog(context, time, widget.kind));
               unawaited(_navigateHomeAfterDelay());
-              // Haqiqiy (on-device) mahalliy bildirishnoma — check-in
-              // muvaffaqiyatli bo'lganini tasdiqlaydi. `NotificationService`
-              // DI'da ro'yxatdan o'tmagan bo'lsa (masalan widget testda)
-              // yoki ruxsat rad etilgan bo'lsa `show()` xotirjam hech
-              // narsa qilmaydi — bu yerda hech qachon uncaught bo'lmaydi.
+              // Haqiqiy (on-device) mahalliy bildirishnoma — check-in/
+              // check-out muvaffaqiyatli bo'lganini tasdiqlaydi.
+              // `NotificationService` DI'da ro'yxatdan o'tmagan bo'lsa
+              // (masalan widget testda) yoki ruxsat rad etilgan bo'lsa
+              // `show()` xotirjam hech narsa qilmaydi — bu yerda hech
+              // qachon uncaught bo'lmaydi.
               if (getIt.isRegistered<NotificationService>()) {
+                final isCheckout = widget.kind == AttendanceScanKind.checkOut;
                 unawaited(
                   getIt<NotificationService>().show(
-                    title: 'Davomat belgilandi',
-                    body: 'Bugungi ish kuni uchun check-in muvaffaqiyatli '
-                        'amalga oshirildi ($time).',
+                    title: isCheckout
+                        ? 'Ishdan chiqish qayd etildi'
+                        : 'Davomat belgilandi',
+                    body: isCheckout
+                        ? 'Bugungi ish kuni uchun check-out muvaffaqiyatli '
+                              'amalga oshirildi ($time).'
+                        : 'Bugungi ish kuni uchun check-in muvaffaqiyatli '
+                              'amalga oshirildi ($time).',
                   ),
                 );
               }
@@ -152,8 +172,11 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
               break;
           }
         },
-        builder: (context, state) =>
-            _CheckinBody(state: state, geofenceStatus: _geofenceStatus),
+        builder: (context, state) => _CheckinBody(
+          state: state,
+          geofenceStatus: _geofenceStatus,
+          kind: widget.kind,
+        ),
       ),
     );
   }
@@ -167,12 +190,18 @@ String _geofenceOutsideMessage(BuildContext context, double? distanceMeters) {
       '${distanceMeters.round()} ${l10n.meterSuffix}';
 }
 
-Future<void> _showSuccessDialog(BuildContext context, String time) {
+Future<void> _showSuccessDialog(
+  BuildContext context,
+  String time,
+  AttendanceScanKind kind,
+) {
   final l10n = context.l10n;
+  final isCheckout = kind == AttendanceScanKind.checkOut;
   return AppDialog.success(
     context: context,
-    title: l10n.checkinSuccess,
-    message: '${l10n.faceCheckinTimeLabel}: $time\n${l10n.faceCheckinDone}',
+    title: isCheckout ? l10n.checkoutSuccess : l10n.checkinSuccess,
+    message: '${l10n.faceCheckinTimeLabel}: $time\n'
+        '${isCheckout ? l10n.faceCheckoutDone : l10n.faceCheckinDone}',
     buttonLabel: l10n.faceContinue,
     onClose: () {
       if (context.mounted) context.go('/home');
@@ -232,10 +261,15 @@ List<LivenessAction> _pickLivenessActions() {
 /// bilan bo'lishilgan enrollment-only holatlar) qamrab olinganini
 /// tekshiradi.
 class _CheckinBody extends StatelessWidget {
-  const _CheckinBody({required this.state, required this.geofenceStatus});
+  const _CheckinBody({
+    required this.state,
+    required this.geofenceStatus,
+    required this.kind,
+  });
 
   final FaceState state;
   final GeofenceStatus? geofenceStatus;
+  final AttendanceScanKind kind;
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +317,7 @@ class _CheckinBody extends StatelessWidget {
       FaceError() => _CheckinLiveView(
         state: state,
         geofenceStatus: geofenceStatus,
+        kind: kind,
       ),
       // Enrollment-only holatlar — bu sahifada HECH QACHON emit qilinmaydi
       // (bu `FaceCubit` instansi `onDetection`/`capture()`ni liveness
@@ -306,10 +341,15 @@ class _CheckinBody extends StatelessWidget {
 /// sifatida qolaveradi — natija esa `FaceCheckinPage.listener` orqali
 /// ustiga chiquvchi `AppDialog` bilan ko'rsatiladi.
 class _CheckinLiveView extends StatelessWidget {
-  const _CheckinLiveView({required this.state, required this.geofenceStatus});
+  const _CheckinLiveView({
+    required this.state,
+    required this.geofenceStatus,
+    required this.kind,
+  });
 
   final FaceState state;
   final GeofenceStatus? geofenceStatus;
+  final AttendanceScanKind kind;
 
   /// `FaceState` -> `FaceScanOverlay.status`. Kontur rangi va nafas-olish/
   /// skaner-chiziq animatsiyalarini endi `FaceScanOverlay`ning o'zi shu
@@ -359,7 +399,9 @@ class _CheckinLiveView extends StatelessWidget {
     FaceLivenessPrompt(:final action) => _actionPrompt(l10n, action),
     FaceVerifying() => l10n.faceVerifyingStatus,
     FaceCheckingIn() => l10n.faceCheckingInStatus,
-    FaceCheckinSuccess() => l10n.checkinSuccess,
+    FaceCheckinSuccess() => kind == AttendanceScanKind.checkOut
+        ? l10n.checkoutSuccess
+        : l10n.checkinSuccess,
     FaceLivenessFailed() => l10n.faceLivenessFailedTitle,
     FaceMatchFailed() => l10n.faceMatchFailedTitle,
     FaceGeofenceOutside() => l10n.outsideGeofence,
@@ -421,7 +463,7 @@ class _CheckinLiveView extends StatelessWidget {
         SafeArea(
           child: Column(
             children: [
-              const _TopBar(),
+              _TopBar(kind: kind),
               const SizedBox(height: 10),
               _GeofenceBanner(status: geofenceStatus),
               const Spacer(),
@@ -497,10 +539,13 @@ class _GeofenceBanner extends StatelessWidget {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar();
+  const _TopBar({required this.kind});
+
+  final AttendanceScanKind kind;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 4, 20, 0),
       child: Row(
@@ -515,7 +560,9 @@ class _TopBar extends StatelessWidget {
             const SizedBox(width: 48),
           Expanded(
             child: Text(
-              context.l10n.faceCheckinTitle,
+              kind == AttendanceScanKind.checkOut
+                  ? l10n.faceCheckoutTitle
+                  : l10n.faceCheckinTitle,
               style: AppTextStyles.h3.copyWith(color: AppColors.surface),
               textAlign: TextAlign.center,
             ),
