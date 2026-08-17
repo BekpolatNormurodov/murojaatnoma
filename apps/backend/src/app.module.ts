@@ -23,6 +23,7 @@ import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { EmployeesModule } from './modules/employees/employees.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
+import { LeaveModule } from './modules/leave/leave.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PointsModule } from './modules/points/points.module';
@@ -63,6 +64,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     // Worker-app employee features (points/rating + suggestions)
     PointsModule,
     SuggestionsModule,
+    LeaveModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

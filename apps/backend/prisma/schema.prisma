@@ -142,6 +142,7 @@ model Employee {
   pointsEntries        PointsEntry[]
   suggestions          Suggestion[]
   suggestionVotes      SuggestionVote[]
+  leaveRequests        LeaveRequest[]
 
   @@map("employees")
 }
@@ -1037,4 +1038,34 @@ model SuggestionVote {
   @@unique([suggestionId, employeeId])
   @@index([suggestionId])
   @@map("suggestion_votes")
+}
+
+// ---------------------------------------------------------------------------
+// Employee leave requests (Ta'til / ruxsat so'rovi — worker-app)
+// ---------------------------------------------------------------------------
+
+enum LeaveType {
+  hours
+  days
+}
+
+enum LeaveStatus {
+  pending
+  approved
+  rejected
+}
+
+model LeaveRequest {
+  id         String      @id @default(uuid())
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type       LeaveType
+  amount     Int
+  startDate  DateTime
+  startTime  String?
+  reason     String
+  status     LeaveStatus @default(pending)
+  createdAt  DateTime    @default(now())
+
+  @@map("leave_requests")
 }

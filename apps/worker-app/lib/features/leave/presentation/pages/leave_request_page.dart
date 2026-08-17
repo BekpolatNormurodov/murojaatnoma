@@ -2,17 +2,22 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:worker_app/features/leave/domain/leave_request_validation.dart';
+import 'package:worker_app/features/leave/domain/usecases/submit_leave.dart';
 import 'package:worker_app/features/leave/presentation/widgets/amount_stepper.dart';
+import 'package:worker_app/injection.dart';
 
 /// "Javob so'rash" — xodim ish vaqtidan (soatlab yoki kunlab) ozod
 /// bo'lishni so'raydigan TO'LIQ EKRANLI sahifa.
 ///
-/// MOCK-FIRST: HAQIQIY backend/repository YO'Q — yuborish qisqa kechikish
-/// bilan simulyatsiya qilinadi (`SubmitSuggestionPage` bilan bir xil
-/// darajadagi "bitta martalik amal" — lekin u yerda usecase HAQIQIY,
-/// bu yerda esa hali yo'q, shuning uchun to'g'ridan-to'g'ri
-/// `Future.delayed`). Validatsiya mantig'i sof funksiyalarga
+/// `LeaveRepository.submit` HAQIQIY implementatsiyaga ega (Mock/Api seam —
+/// `AppConfig.useMock` tanlaydi) — shuning uchun yuborish tugmasi HAQIQIY
+/// `SubmitLeave` usecase'ini chaqiradi (stub/simulyatsiya EMAS).
+///
+/// Alohida Cubit shart emas — bitta martalik amal (`SubmitSuggestionPage`
+/// bilan bir xil naqsh): usecase to'g'ridan-to'g'ri `getIt` orqali
+/// chaqiriladi. Validatsiya mantig'i sof funksiyalarga
 /// ([LeaveRequestValidation]) ajratilgan — widget testlarisiz ham
 /// sinaladi.
 class LeaveRequestPage extends StatefulWidget {
@@ -76,19 +81,34 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
     if (!valid) return;
 
     setState(() => _submitting = true);
-    // Real backend hali yo'q — mock muvaffaqiyatli javobni simulyatsiya
-    // qilamiz (qisqa tarmoq-kechikishi kabi).
-    await Future<void>.delayed(const Duration(milliseconds: 900));
+    final startTime = _type == LeaveDurationType.hours && _startTime != null
+        ? '${_startTime!.hour.toString().padLeft(2, '0')}:'
+              '${_startTime!.minute.toString().padLeft(2, '0')}'
+        : null;
+    final result = await getIt<SubmitLeave>()(
+      SubmitLeaveParams(
+        type: _type,
+        amount: _amount,
+        startDate: DateFormat('yyyy-MM-dd').format(_startDate),
+        startTime: startTime,
+        reason: reasonText.trim(),
+      ),
+    );
     if (!mounted) return;
     setState(() => _submitting = false);
 
-    await AppDialog.success(
-      context: context,
-      title: l10n.leaveRequestSuccessTitle,
-      message: l10n.leaveRequestSuccessMessage,
-      buttonLabel: l10n.closeLabel,
+    result.fold(
+      (failure) => AppAlert.error(context, failure.message),
+      (_) async {
+        await AppDialog.success(
+          context: context,
+          title: l10n.leaveRequestSuccessTitle,
+          message: l10n.leaveRequestSuccessMessage,
+          buttonLabel: l10n.closeLabel,
+        );
+        if (mounted) context.pop();
+      },
     );
-    if (mounted) context.pop();
   }
 
   @override

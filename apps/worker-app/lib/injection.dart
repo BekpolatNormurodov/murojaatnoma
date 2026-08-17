@@ -55,6 +55,11 @@ import 'package:worker_app/features/documents/domain/usecases/get_document.dart'
 import 'package:worker_app/features/documents/domain/usecases/get_documents.dart';
 import 'package:worker_app/features/documents/presentation/bloc/document_detail_cubit.dart';
 import 'package:worker_app/features/documents/presentation/bloc/documents_cubit.dart';
+import 'package:worker_app/features/leave/data/datasources/leave_remote_data_source.dart';
+import 'package:worker_app/features/leave/data/repositories/leave_repository_impl.dart';
+import 'package:worker_app/features/leave/domain/repositories/leave_repository.dart';
+import 'package:worker_app/features/leave/domain/usecases/get_my_leave.dart';
+import 'package:worker_app/features/leave/domain/usecases/submit_leave.dart';
 import 'package:worker_app/features/news/data/datasources/news_remote_data_source.dart';
 import 'package:worker_app/features/news/data/repositories/news_repository_impl.dart';
 import 'package:worker_app/features/news/domain/repositories/news_repository.dart';
@@ -483,5 +488,20 @@ Future<void> configureDependencies() async {
         repository: getIt<NotificationsRepository>(),
         authCubit: getIt<AuthCubit>(),
       ),
+    )
+    // ---- Ta'til/Leave (xodim "javob so'rash" so'rovlari) ----
+    ..registerLazySingleton<LeaveRemoteDataSource>(
+      () => AppConfig.useMock
+          ? LeaveRemoteDataSourceMockImpl()
+          : LeaveRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<LeaveRepository>(
+      () => LeaveRepositoryImpl(remote: getIt<LeaveRemoteDataSource>()),
+    )
+    ..registerLazySingleton<SubmitLeave>(
+      () => SubmitLeave(getIt<LeaveRepository>()),
+    )
+    ..registerLazySingleton<GetMyLeave>(
+      () => GetMyLeave(getIt<LeaveRepository>()),
     );
 }
