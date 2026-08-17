@@ -24,6 +24,13 @@ export class RolesGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>();
 
-    return !!request.user && requiredRoles.includes(request.user.role);
+    // `request.user.role` is now `EmployeeRole | 'CITIZEN'`. A citizen's
+    // `'CITIZEN'` is never a member of the required `EmployeeRole[]`, so this
+    // correctly denies citizens every `@Roles(...)`-guarded route. The cast
+    // only satisfies the array element type; it never widens what matches.
+    return (
+      !!request.user &&
+      requiredRoles.includes(request.user.role as EmployeeRole)
+    );
   }
 }

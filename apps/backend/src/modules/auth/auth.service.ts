@@ -89,14 +89,29 @@ export class AuthService {
       where: { phone: dto.phone },
     });
 
-    if (!employee || !employee.isActive) {
-      throw new UnauthorizedException('No active employee for this phone number');
+    if (employee) {
+      if (!employee.isActive) {
+        throw new UnauthorizedException('Employee account is inactive');
+      }
+      return this.issueTokenPair({
+        sub: employee.id,
+        phone: employee.phone,
+        role: employee.role,
+        scope: 'employee',
+      });
     }
 
+    // No employee record for this OTP-verified phone → issue a CITIZEN token.
+    // Phone ownership is already proven by the consumed OTP above. A citizen
+    // is denied every @Roles(...) route (role:'CITIZEN' is never an
+    // EmployeeRole) and every @RequireScope('employee'|'admin') route
+    // (scope:'citizen'), so this token only reaches JwtAuthGuard-only,
+    // citizen-facing routes which scope results to token.phone downstream.
     return this.issueTokenPair({
-      sub: employee.id,
-      phone: employee.phone,
-      role: employee.role,
+      sub: dto.phone,
+      phone: dto.phone,
+      role: 'CITIZEN',
+      scope: 'citizen',
     });
   }
 
@@ -183,13 +198,19 @@ export class AuthService {
       }),
     ]);
 
-    await this.prisma.refreshToken.create({
-      data: {
-        employeeId: payload.sub,
-        tokenHash: this.hashToken(refreshToken),
-        expiresAt: this.addDuration(refreshTtl),
-      },
-    });
+    // Citizens have no employee row, so a refresh token cannot be persisted
+    // (refreshToken.employeeId is a required FK to employee). A citizen simply
+    // re-requests an OTP when the short-lived access token expires — acceptable
+    // for the citizen flow; long citizen sessions would need a schema change.
+    if (payload.role !== 'CITIZEN') {
+      await this.prisma.refreshToken.create({
+        data: {
+          employeeId: payload.sub,
+          tokenHash: this.hashToken(refreshToken),
+          expiresAt: this.addDuration(refreshTtl),
+        },
+      });
+    }
 
     return {
       accessToken,
