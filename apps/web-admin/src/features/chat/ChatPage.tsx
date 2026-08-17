@@ -66,15 +66,6 @@ function previewText(m: ChatMessage): string {
   return m.text ?? '';
 }
 
-const REPLIES = [
-  'Qabul qildim, rahmat!',
-  'Albatta, hoziroq bajaraman.',
-  "Ma'lumot uchun rahmat.",
-  'Tushunarli, ustida ishlayapman.',
-  "Yaxshi, tayyor bo'lgach xabar beraman.",
-  "Hammasi joyida, hujjatni ko'rib chiqaman.",
-];
-
 /* ---------------- Skeleton (yuklanmoqda) ---------------- */
 function RowSkeleton() {
   return (
@@ -107,7 +98,6 @@ export function ChatPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
   const [mobileThread, setMobileThread] = useState(false);
-  const [typingConv, setTypingConv] = useState<string | null>(null);
   const [callOpen, setCallOpen] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
@@ -145,7 +135,7 @@ export function ChatPage() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [activeId, activeMessages.length, typingConv]);
+  }, [activeId, activeMessages.length]);
 
   // Render uchun kunlar bo'yicha guruhlash
   const rendered = useMemo(() => {
@@ -189,32 +179,11 @@ export function ChatPage() {
     markRead(id);
   }
 
-  function scheduleReply(convId: string) {
-    const conv = conversations.find((c) => c.id === convId);
-    if (!conv || conv.kind !== 'direct' || !conv.online || !conv.staffId) return;
-    setTypingConv(convId);
-    const staffId = conv.staffId;
-    window.setTimeout(
-      () => {
-        setTypingConv((cur) => (cur === convId ? null : cur));
-        sendMessage.mutate({
-          conversationId: convId,
-          senderId: staffId,
-          kind: 'text',
-          text: REPLIES[Math.floor(Math.random() * REPLIES.length)],
-        });
-      },
-      1600 + Math.random() * 1400,
-    );
-  }
-
   function handleSendText(text: string) {
     sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'text', text });
-    scheduleReply(activeId);
   }
   function handleSendVoice(url: string, durationSec: number) {
     sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'voice', url, durationSec });
-    scheduleReply(activeId);
   }
   function handleSendFile(url: string, kind: 'image' | 'file', name: string, size: number) {
     sendMessage.mutate({
@@ -225,7 +194,6 @@ export function ChatPage() {
       fileName: name,
       fileSize: size,
     });
-    scheduleReply(activeId);
   }
 
   return (
@@ -327,9 +295,7 @@ export function ChatPage() {
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <span className={cn('truncate text-[12.5px]', unread ? 'text-ink-soft' : 'text-ink-muted')}>
-                          {typingConv === conv.id ? (
-                            <span className="text-primary-600">yozmoqda…</span>
-                          ) : last ? (
+                          {last ? (
                             <>
                               {last.senderId === ME_ID && <span className="text-ink-muted">Siz: </span>}
                               {conv.kind === 'group' && last.senderId !== ME_ID && (
@@ -394,9 +360,7 @@ export function ChatPage() {
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-[15px] font-bold text-ink">{activeConv.title}</h3>
                 <p className="truncate text-[12px] text-ink-muted">
-                  {typingConv === activeConv.id ? (
-                    <span className="text-primary-600">yozmoqda…</span>
-                  ) : activeConv.kind === 'group' ? (
+                  {activeConv.kind === 'group' ? (
                     activeConv.subtitle
                   ) : activeConv.online ? (
                     <span className="text-success">onlayn</span>
@@ -458,20 +422,6 @@ export function ChatPage() {
                     <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
                       <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
                       <p className="text-sm text-ink-muted">Hali xabar yo'q — birinchi bo'lib yozing</p>
-                    </div>
-                  )}
-                  {typingConv === activeConv.id && (
-                    <div className="flex items-center gap-1.5 px-1 pt-2">
-                      <span className="flex gap-1 rounded-2xl bg-surface px-3 py-2.5 shadow-card">
-                        {[0, 1, 2].map((i) => (
-                          <motion.span
-                            key={i}
-                            className="h-2 w-2 rounded-full bg-ink-muted"
-                            animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }}
-                            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
-                          />
-                        ))}
-                      </span>
                     </div>
                   )}
                 </>

@@ -19,6 +19,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
+import { useAuth } from '@/shared/store/auth';
 import { cn } from '@/shared/lib/cn';
 
 type TabId = 'profile' | 'notifications' | 'security' | 'system';
@@ -30,12 +31,62 @@ const TABS: { id: TabId; label: string; icon: IconType }[] = [
   { id: 'system', label: 'Tizim', icon: Monitor },
 ];
 
+/* ============================================================
+   Bildirishnoma sozlamalari — mahalliy (client-side) preferens.
+   Hozircha buning uchun backend endpoint yo'q, shuning uchun
+   qurilmada localStorage orqali saqlanadi.
+   ============================================================ */
+
+type NotificationPrefKey =
+  | 'newRequests'
+  | 'workerReports'
+  | 'geofenceAlerts'
+  | 'weeklyAnalytics'
+  | 'emailNotifications';
+
+type NotificationPrefs = Record<NotificationPrefKey, boolean>;
+
+const NOTIFICATION_PREFS_KEY = 'hkm-settings-notifications';
+
+const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  newRequests: true,
+  workerReports: true,
+  geofenceAlerts: true,
+  weeklyAnalytics: false,
+  emailNotifications: true,
+};
+
+function loadNotificationPrefs(): NotificationPrefs {
+  if (typeof window === 'undefined') return DEFAULT_NOTIFICATION_PREFS;
+  try {
+    const raw = window.localStorage.getItem(NOTIFICATION_PREFS_KEY);
+    if (!raw) return DEFAULT_NOTIFICATION_PREFS;
+    const parsed = JSON.parse(raw) as Partial<NotificationPrefs>;
+    return { ...DEFAULT_NOTIFICATION_PREFS, ...parsed };
+  } catch {
+    return DEFAULT_NOTIFICATION_PREFS;
+  }
+}
+
+function persistNotificationPrefs(prefs: NotificationPrefs) {
+  try {
+    window.localStorage.setItem(NOTIFICATION_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // localStorage mavjud bo'lmasa (masalan, maxfiy rejim) — jimgina o'tkazib yuboramiz.
+  }
+}
+
 export function SettingsPage() {
   const [tab, setTab] = useState<TabId>('profile');
   const [saved, setSaved] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPrefs>(loadNotificationPrefs);
 
   function handleSave() {
+    // Tizimda hozircha faqat bildirishnoma sozlamalari kabi mahalliy
+    // preferenslar bor — tema va til esa o'z provayderlari orqali
+    // o'zgargan zahoti avtomatik saqlanadi (Topbar'dagi tugmalar).
+    persistNotificationPrefs(notificationPrefs);
     setSaved(true);
     setTimeout(() => setSaved(false), 2200);
   }
@@ -92,7 +143,9 @@ export function SettingsPage() {
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           >
             {tab === 'profile' && <ProfileTab />}
-            {tab === 'notifications' && <NotificationsTab />}
+            {tab === 'notifications' && (
+              <NotificationsTab prefs={notificationPrefs} onChange={setNotificationPrefs} />
+            )}
             {tab === 'security' && <SecurityTab />}
             {tab === 'system' && <SystemTab onDelete={() => setDeleteOpen(true)} />}
           </motion.div>
@@ -178,13 +231,14 @@ function Field({
 function Toggle({
   label,
   description,
-  defaultOn = false,
+  checked,
+  onChange,
 }: {
   label: string;
   description?: string;
-  defaultOn?: boolean;
+  checked: boolean;
+  onChange: () => void;
 }) {
-  const [on, setOn] = useState(defaultOn);
   return (
     <div className="flex items-center justify-between gap-4 border-b border-line py-4 last:border-0">
       <div>
@@ -192,10 +246,10 @@ function Toggle({
         {description && <div className="mt-0.5 text-[13px] text-ink-muted">{description}</div>}
       </div>
       <button
-        onClick={() => setOn((o) => !o)}
+        onClick={onChange}
         className={cn(
           'relative h-6 w-11 shrink-0 rounded-full transition-colors',
-          on ? 'bg-primary-600' : 'bg-line',
+          checked ? 'bg-primary-600' : 'bg-line',
         )}
       >
         <motion.span
@@ -203,7 +257,7 @@ function Toggle({
           transition={{ type: 'spring', damping: 22, stiffness: 360 }}
           className={cn(
             'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm',
-            on ? 'left-5.5' : 'left-0.5',
+            checked ? 'left-5.5' : 'left-0.5',
           )}
         />
       </button>
@@ -215,68 +269,103 @@ function Toggle({
    Tabs
    ============================================================ */
 
+/** "Ism Familiya" ko'rinishidagi to'liq ismni ikki maydonga ajratadi. */
+function splitName(fullName: string | undefined): { first: string; last: string } {
+  const trimmed = fullName?.trim() ?? '';
+  if (!trimmed) return { first: '', last: '' };
+  const [first, ...rest] = trimmed.split(/\s+/);
+  return { first, last: rest.join(' ') };
+}
+
 function ProfileTab() {
+  const user = useAuth((s) => s.user);
+  const { first, last } = splitName(user?.name);
+
   return (
     <div className="space-y-6">
       <Section title="Shaxsiy ma'lumotlar" subtitle="Profil rasmi va asosiy ma'lumotlaringiz">
         <div className="mb-6 flex items-center gap-5">
           <div className="relative">
-            <Avatar name="Admin Hokim" color="#2563eb" size={76} />
+            <Avatar name={user?.name || 'Foydalanuvchi'} src={user?.avatar} color="#2563eb" size={76} />
             <button className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-xl border-2 border-surface bg-primary-600 text-white transition-colors hover:bg-primary-700">
               <Camera size={16} variant="Bulk" />
             </button>
           </div>
           <div>
-            <div className="text-lg font-bold text-ink">Admin Hokim</div>
-            <div className="text-[13px] text-ink-muted">Bosh administrator</div>
+            <div className="text-lg font-bold text-ink">{user?.name || 'Foydalanuvchi'}</div>
+            <div className="text-[13px] text-ink-muted">{user?.role || "Lavozim ko'rsatilmagan"}</div>
             <button className="mt-2 text-[13px] font-medium text-primary-600 hover:underline">
               Rasmni o'zgartirish
             </button>
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Ism" defaultValue="Admin" />
-          <Field label="Familiya" defaultValue="Hokim" />
-          <Field label="Email" icon={Sms} type="email" defaultValue="admin@hokimiyat.uz" />
-          <Field label="Telefon" icon={Call} defaultValue="+998 71 200 00 00" />
-          <Field label="Lavozim" icon={Profile} defaultValue="Bosh administrator" />
-          <Field label="Hudud" icon={Global} defaultValue="Toshkent shahri" />
+          <Field label="Ism" defaultValue={first} placeholder="Kiritilmagan" />
+          <Field label="Familiya" defaultValue={last} placeholder="Kiritilmagan" />
+          <Field label="Email" icon={Sms} type="email" defaultValue={user?.email} placeholder="Kiritilmagan" />
+          <Field label="Telefon" icon={Call} placeholder="Kiritilmagan" />
+          <Field label="Lavozim" icon={Profile} defaultValue={user?.role} placeholder="Kiritilmagan" />
+          <Field label="Hudud" icon={Global} placeholder="Kiritilmagan" />
         </div>
       </Section>
     </div>
   );
 }
 
-function NotificationsTab() {
+function NotificationsTab({
+  prefs,
+  onChange,
+}: {
+  prefs: NotificationPrefs;
+  onChange: (updater: (prev: NotificationPrefs) => NotificationPrefs) => void;
+}) {
+  function toggle(key: NotificationPrefKey) {
+    onChange((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   return (
     <div className="space-y-6">
       <Section title="Bildirishnomalar" subtitle="Qaysi hodisalar haqida xabar olishni tanlang">
         <Toggle
           label="Yangi murojaatlar"
           description="Fuqarolardan yangi murojaat kelganda xabar berish"
-          defaultOn
+          checked={prefs.newRequests}
+          onChange={() => toggle('newRequests')}
         />
         <Toggle
           label="Ishchi hisobotlari"
           description="Ishchilar vazifani yakunlaganda bildirish"
-          defaultOn
+          checked={prefs.workerReports}
+          onChange={() => toggle('workerReports')}
         />
         <Toggle
           label="Geofence ogohlantirishlari"
           description="Ishchi belgilangan hududdan chiqib ketganda"
-          defaultOn
+          checked={prefs.geofenceAlerts}
+          onChange={() => toggle('geofenceAlerts')}
         />
         <Toggle
           label="Haftalik analitika"
           description="Har dushanba kunlik umumiy hisobot"
+          checked={prefs.weeklyAnalytics}
+          onChange={() => toggle('weeklyAnalytics')}
         />
-        <Toggle label="Email orqali" description="Bildirishnomalarni emailga ham yuborish" defaultOn />
+        <Toggle
+          label="Email orqali"
+          description="Bildirishnomalarni emailga ham yuborish"
+          checked={prefs.emailNotifications}
+          onChange={() => toggle('emailNotifications')}
+        />
       </Section>
     </div>
   );
 }
 
 function SecurityTab() {
+  const [twoFactor, setTwoFactor] = useState(true);
+  const [newDeviceAlert, setNewDeviceAlert] = useState(true);
+  const [autoLogout, setAutoLogout] = useState(false);
+
   return (
     <div className="space-y-6">
       <Section title="Parolni o'zgartirish" subtitle="Hisobingiz xavfsizligini ta'minlang">
@@ -291,14 +380,21 @@ function SecurityTab() {
         <Toggle
           label="Ikki bosqichli autentifikatsiya (2FA)"
           description="Kirishda SMS orqali tasdiqlash kodi so'raladi"
-          defaultOn
+          checked={twoFactor}
+          onChange={() => setTwoFactor((v) => !v)}
         />
         <Toggle
           label="Yangi qurilmadan kirishni eslatish"
           description="Notanish qurilmadan kirilganda email yuborish"
-          defaultOn
+          checked={newDeviceAlert}
+          onChange={() => setNewDeviceAlert((v) => !v)}
         />
-        <Toggle label="Faol sessiyalarni avtomatik tugatish" description="30 daqiqa harakatsizlikdan keyin" />
+        <Toggle
+          label="Faol sessiyalarni avtomatik tugatish"
+          description="30 daqiqa harakatsizlikdan keyin"
+          checked={autoLogout}
+          onChange={() => setAutoLogout((v) => !v)}
+        />
       </Section>
     </div>
   );
