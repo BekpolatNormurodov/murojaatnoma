@@ -7,8 +7,8 @@ import type { Meeting } from '@/shared/data/types';
  * Javob shakli mock'dagi `MEETINGS: Meeting[]` bilan bir xil (drop-in).
  *
  * Natija `useMeetings` (Zustand) do'koniga yoziladi — sahifadagi
- * qo'shish/tahrirlash amallari o'sha do'kon ustida ishlaydi, chunki
- * bu amallar uchun hozircha backend endpoint mavjud emas.
+ * qo'shish/tahrirlash/o'chirish amallari o'sha do'kon ustida ishlaydi
+ * (POST/PATCH/DELETE /meetings orqali real backendga ulangan).
  */
 export function useMeetingsQuery() {
   return useQuery({

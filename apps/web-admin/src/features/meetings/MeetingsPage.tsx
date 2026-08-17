@@ -14,6 +14,7 @@ import {
   AddCircle,
   CloseSquare,
   RotateRight,
+  Trash,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -22,6 +23,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { Modal } from '@/shared/ui/Modal';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select, type SelectOption } from '@/shared/ui/Select';
 import { DatePicker, TimePicker } from '@/shared/ui/DatePicker';
 import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
@@ -106,11 +108,13 @@ function MeetingCard({
   m,
   index,
   onEdit,
+  onDelete,
   onJoin,
 }: {
   m: Meeting;
   index: number;
   onEdit: (m: Meeting) => void;
+  onDelete: (m: Meeting) => void;
   onJoin: (m: Meeting) => void;
 }) {
   const type = meetingTypeMeta(m.type);
@@ -148,6 +152,15 @@ function MeetingCard({
             className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-primary-200 hover:text-primary-600 group-hover:opacity-100"
           >
             <Edit2 size={15} variant="Bulk" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(m)}
+            title="O'chirish"
+            aria-label="Yig'ilishni o'chirish"
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-danger/40 hover:text-danger group-hover:opacity-100"
+          >
+            <Trash size={15} variant="Bulk" />
           </button>
         </div>
       </div>
@@ -232,15 +245,40 @@ function MeetingCard({
 export function MeetingsPage() {
   const meetings = useMeetings((s) => s.meetings);
   const setMeetings = useMeetings((s) => s.setMeetings);
+  const removeMeeting = useMeetings((s) => s.remove);
   const { data, isLoading, isError, error, refetch } = useMeetingsQuery();
   const [type, setType] = useState<MeetingType | 'all'>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Meeting | null>(null);
   const [callTarget, setCallTarget] = useState<Meeting | null>(null);
 
+  const [deleteTarget, setDeleteTarget] = useState<Meeting | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     if (data) setMeetings(data);
   }, [data, setMeetings]);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await removeMeeting(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Yig'ilishni o'chirib bo'lmadi");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteTarget(null);
+    setDeleteError(null);
+  }
 
   const callParticipants = useMemo<CallParticipant[]>(() => {
     if (!callTarget) return [];
@@ -394,7 +432,7 @@ export function MeetingsPage() {
           {upcoming.length > 0 ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {upcoming.map((m, i) => (
-                <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
+                <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onDelete={setDeleteTarget} onJoin={setCallTarget} />
               ))}
             </div>
           ) : (
@@ -415,7 +453,7 @@ export function MeetingsPage() {
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {past.map((m, i) => (
-                  <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onJoin={setCallTarget} />
+                  <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onDelete={setDeleteTarget} onJoin={setCallTarget} />
                 ))}
               </div>
             </>
@@ -438,6 +476,28 @@ export function MeetingsPage() {
         subtitle={callTarget ? `Video selektor · ${callTarget.location}` : undefined}
         participants={callParticipants}
         scheduledAt={callTarget?.startAt}
+      />
+
+      {/* O'chirish tasdiqi */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Yig'ilishni o'chirasizmi?"
+        message={
+          <>
+            {deleteTarget && <>"{deleteTarget.title}" yig'ilishi butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.</>}
+            {deleteError && (
+              <span role="alert" className="mt-2 block font-medium text-danger">
+                {deleteError}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleting}
       />
     </div>
   );
@@ -472,9 +532,13 @@ function MeetingFormModal({
   const [chairId, setChairId] = useState(DEPUTIES[0]?.id ?? '');
   const [participants, setParticipants] = useState('12');
   const [agenda, setAgenda] = useState<string[]>(['']);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setError(null);
+    setSaving(false);
     if (target) {
       const d = new Date(target.startAt);
       setTitle(target.title);
@@ -504,9 +568,14 @@ function MeetingFormModal({
 
   const valid = title.trim().length > 0 && !!date && !!time;
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleClose() {
+    if (saving) return;
+    onClose();
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid) return;
+    if (!valid || saving) return;
     const startAt = new Date(`${date}T${time}`).toISOString();
     const cleanAgenda = agenda.map((a) => a.trim()).filter(Boolean);
     const payload: Omit<Meeting, 'id'> = {
@@ -521,15 +590,29 @@ function MeetingFormModal({
       participants: Math.max(1, Number(participants) || 1),
       districtId: HOME_DISTRICT_ID,
     };
-    if (target) update(target.id, payload);
-    else add(payload);
-    onClose();
+    setSaving(true);
+    setError(null);
+    try {
+      if (target) await update(target.id, payload);
+      else await add(payload);
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : target
+            ? "Yig'ilishni yangilab bo'lmadi"
+            : "Yig'ilishni yaratib bo'lmadi",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
       title={target ? "Yig'ilishni tahrirlash" : "Yangi yig'ilish"}
       subtitle={target ? `#${target.id}` : "Jadvalga yangi tadbir qo'shish"}
       width={580}
@@ -636,18 +719,26 @@ function MeetingFormModal({
           </div>
         </div>
 
+        {error && (
+          <p role="alert" className="mt-3 text-[12.5px] font-medium text-danger">
+            {error}
+          </p>
+        )}
+
         <div className="mt-5 flex gap-3 border-t border-line pt-4">
           <button
             type="submit"
-            disabled={!valid}
-            className="flex-1 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
+            disabled={!valid || saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
           >
-            {target ? "O'zgarishlarni saqlash" : "Qo'shish"}
+            {saving && <RotateRight size={16} className="animate-spin" />}
+            {saving ? 'Saqlanmoqda...' : target ? "O'zgarishlarni saqlash" : "Qo'shish"}
           </button>
           <button
             type="button"
-            onClick={onClose}
-            className="rounded-xl border border-line bg-surface px-5 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
+            onClick={handleClose}
+            disabled={saving}
+            className="rounded-xl border border-line bg-surface px-5 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-50"
           >
             Bekor qilish
           </button>
