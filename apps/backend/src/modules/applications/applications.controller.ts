@@ -1,14 +1,20 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Application, ApplicationMessage, Attachment } from '@prisma/client';
+import { Application, ApplicationMessage, Attachment, EmployeeRole } from '@prisma/client';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { ApplicationsService } from './applications.service';
+import { AssignApplicationDto } from './dto/assign-application.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { CreateAttachmentDto } from './dto/create-attachment.dto';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ListApplicationsQueryDto } from './dto/list-applications-query.dto';
+import { ReplyApplicationDto } from './dto/reply-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
+import { ApplicationEventWithNames } from './interfaces/application-event-with-names.interface';
 
 @ApiTags('applications')
 @Controller('applications')
@@ -44,8 +50,46 @@ export class ApplicationsController {
   updateStatus(
     @Param('id') id: string,
     @Body() dto: UpdateApplicationStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Application> {
-    return this.applicationsService.updateStatus(id, dto);
+    return this.applicationsService.updateStatus(id, dto, user.employeeId);
+  }
+
+  @ApiBearerAuth()
+  @Post(':id/assign')
+  @Roles(EmployeeRole.ADMIN, EmployeeRole.EMPLOYEE)
+  @ApiOperation({
+    summary:
+      "Route/forward an application to an employee and/or department (aylantirish); notifies the assignee",
+  })
+  assign(
+    @Param('id') id: string,
+    @Body() dto: AssignApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Application> {
+    return this.applicationsService.assign(id, dto, user.employeeId);
+  }
+
+  @ApiBearerAuth()
+  @Get(':id/events')
+  @Roles(EmployeeRole.ADMIN, EmployeeRole.EMPLOYEE)
+  @ApiOperation({ summary: 'Ordered audit history (created/status/assigned/message events)' })
+  findEvents(@Param('id') id: string): Promise<ApplicationEventWithNames[]> {
+    return this.applicationsService.findEvents(id);
+  }
+
+  @ApiBearerAuth()
+  @Post(':id/reply')
+  @Roles(EmployeeRole.ADMIN, EmployeeRole.EMPLOYEE)
+  @ApiOperation({
+    summary: 'Staff reply on an application; auto-advances NEW -> IN_PROGRESS on first reply',
+  })
+  reply(
+    @Param('id') id: string,
+    @Body() dto: ReplyApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApplicationMessage> {
+    return this.applicationsService.reply(id, dto, user);
   }
 
   @Public()

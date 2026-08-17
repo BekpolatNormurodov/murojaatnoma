@@ -40,3 +40,10 @@ export class MonthlyReportQueryDto {
   @IsString()
   employeeId?: string;
 }
+
+export class TodayQueryDto {
+  @ApiPropertyOptional({ example: '2026-08-17', description: 'Defaults to today' })
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+}
