@@ -59,6 +59,15 @@ android {
             isShrinkResources = false
         }
     }
+
+    lint {
+        // The release lint task (lintVitalRelease) runs heavy Kotlin UAST
+        // analysis that exhausts the Gradle daemon's Metaspace on this
+        // low-RAM box. Lint is a quality gate, not required to build the APK
+        // (Dart-side `flutter analyze` already covers code quality) — skip it
+        // on release builds.
+        checkReleaseBuilds = false
+    }
 }
 
 flutter {
