@@ -25,6 +25,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { Dropdown } from '@/shared/ui/Dropdown';
 import { Select } from '@/shared/ui/Select';
+import { api } from '@/shared/api/client';
 import type { GovDocStatus, GovDocType, GovDocument } from '@/shared/data/types';
 import { formatDate } from '@/shared/lib/format';
 import { exportToCSV, exportToExcel, fileStamp, printHTML, printTable } from '@/shared/lib/export';
@@ -84,6 +85,26 @@ export function DocumentsPage() {
   useEffect(() => {
     if (data) setDocs(data.map((d) => ({ ...d })));
   }, [data]);
+
+  // POST /documents — yaratilgan yozuv backenddan qaytadi va ro'yxat
+  // boshiga qo'shiladi (mahalliy-only emas).
+  async function createDocument(payload: Omit<GovDocument, 'id'>) {
+    const created = await api.post<GovDocument>('/documents', payload);
+    setDocs((prev) => [created, ...prev]);
+    return created;
+  }
+
+  // DELETE /documents/:id — optimistik o'chirish, xato bo'lsa qaytariladi.
+  async function deleteDocument(id: string) {
+    const prev = docs;
+    setDocs((p) => p.filter((d) => d.id !== id));
+    try {
+      await api.del(`/documents/${id}`);
+    } catch (err) {
+      setDocs(prev);
+      throw err instanceof Error ? err : new Error("Hujjatni o'chirib bo'lmadi");
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -332,12 +353,8 @@ export function DocumentsPage() {
       )}
 
       {/* Modals */}
-      <AddDocumentModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onCreate={(doc) => setDocs((prev) => [doc, ...prev])}
-      />
-      <DocumentPreviewModal doc={preview} onClose={() => setPreview(null)} />
+      <AddDocumentModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={createDocument} />
+      <DocumentPreviewModal doc={preview} onClose={() => setPreview(null)} onDelete={deleteDocument} />
       <ReportsModal open={reportsOpen} onClose={() => setReportsOpen(false)} docs={docs} />
     </div>
   );

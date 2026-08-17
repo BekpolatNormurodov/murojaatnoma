@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Printer,
@@ -12,12 +12,15 @@ import {
   Copy,
   CopySuccess,
   Calendar,
+  Trash,
+  RotateRight,
 } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Badge } from '@/shared/ui/Badge';
 import { Select } from '@/shared/ui/Select';
 import { Dropdown } from '@/shared/ui/Dropdown';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { formatDate } from '@/shared/lib/format';
 import { copyToClipboard, exportToExcel, exportToWord, fileStamp, printHTML } from '@/shared/lib/export';
@@ -57,7 +60,8 @@ export function AddDocumentModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (doc: GovDocument) => void;
+  /** Backendga POST /documents yuboradigan va yaratilgan yozuvni qaytaradigan chaqiruvchi. */
+  onCreate: (doc: Omit<GovDocument, 'id'>) => Promise<GovDocument>;
 }) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState<GovDocType>('qaror');
@@ -65,6 +69,8 @@ export function AddDocumentModal({
   const [author, setAuthor] = useState('');
   const [region, setRegion] = useState(REGION_OPTIONS[0]);
   const [pages, setPages] = useState(4);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const valid = title.trim().length > 2 && author.trim().length > 1;
 
@@ -75,12 +81,18 @@ export function AddDocumentModal({
     setAuthor('');
     setRegion(REGION_OPTIONS[0]);
     setPages(4);
+    setError(null);
+    setSaving(false);
   }
 
-  function submit() {
-    if (!valid) return;
-    const doc: GovDocument = {
-      id: `D-${Date.now()}`,
+  function handleClose() {
+    if (saving) return;
+    onClose();
+  }
+
+  async function submit() {
+    if (!valid || saving) return;
+    const doc: Omit<GovDocument, 'id'> = {
       code: `${CODE_PREFIX[type]}-2026/${Math.floor(100 + Math.random() * 800)}`,
       title: title.trim(),
       type,
@@ -91,13 +103,21 @@ export function AddDocumentModal({
       sizeKb: pages * 120 + Math.floor(Math.random() * 200),
       pages,
     };
-    onCreate(doc);
-    reset();
-    onClose();
+    setSaving(true);
+    setError(null);
+    try {
+      await onCreate(doc);
+      reset();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hujjatni saqlab bo'lmadi");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Yangi hujjat" subtitle="Hujjat ma'lumotlarini kiriting" width={560}>
+    <Modal open={open} onClose={handleClose} title="Yangi hujjat" subtitle="Hujjat ma'lumotlarini kiriting" width={560}>
       <div className="space-y-4">
         <Field label="Hujjat nomi">
           <input
@@ -176,12 +196,19 @@ export function AddDocumentModal({
           </Field>
         </div>
 
+        {error && (
+          <p role="alert" className="text-[12.5px] font-medium text-danger">
+            {error}
+          </p>
+        )}
+
         <div className="flex justify-end gap-2 border-t border-line pt-4">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={handleClose} disabled={saving}>
             Bekor qilish
           </Button>
-          <Button onClick={submit} disabled={!valid}>
-            <Add size={18} /> Hujjat yaratish
+          <Button onClick={submit} disabled={!valid || saving}>
+            {saving ? <RotateRight size={18} className="animate-spin" /> : <Add size={18} />}
+            {saving ? 'Saqlanmoqda...' : 'Hujjat yaratish'}
           </Button>
         </div>
       </div>
@@ -204,11 +231,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function DocumentPreviewModal({
   doc,
   onClose,
+  onDelete,
 }: {
   doc: GovDocument | null;
   onClose: () => void;
+  /** Backendga DELETE /documents/:id yuboradigan chaqiruvchi. */
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [copied, setCopied] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDeleteOpen(false);
+    setDeleting(false);
+    setDeleteError(null);
+  }, [doc?.id]);
 
   function handlePrint() {
     if (doc) printHTML(buildDocHTML(doc), doc.code);
@@ -226,6 +265,27 @@ export function DocumentPreviewModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     }
+  }
+
+  async function confirmDelete() {
+    if (!doc) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete(doc.id);
+      setDeleteOpen(false);
+      onClose();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Hujjatni o'chirib bo'lmadi");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteOpen(false);
+    setDeleteError(null);
   }
 
   const step = doc ? statusStep(doc.status) : 0;
@@ -338,6 +398,9 @@ export function DocumentPreviewModal({
 
           {/* Actions */}
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-line pt-4">
+            <Button variant="danger" className="mr-auto" onClick={() => setDeleteOpen(true)}>
+              <Trash size={18} variant="Bulk" /> O'chirish
+            </Button>
             <Dropdown
               align="start"
               direction="up"
@@ -361,6 +424,28 @@ export function DocumentPreviewModal({
           </div>
         </div>
       )}
+
+      {/* O'chirish tasdiqi */}
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Hujjatni o'chirasizmi?"
+        message={
+          <>
+            {doc && <>"{doc.title}" ({doc.code}) hujjati butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.</>}
+            {deleteError && (
+              <span role="alert" className="mt-2 block font-medium text-danger">
+                {deleteError}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleting}
+      />
     </Modal>
   );
 }
