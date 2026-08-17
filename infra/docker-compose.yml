@@ -64,9 +64,18 @@ services:
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
       OTP_TTL_SECONDS: ${OTP_TTL_SECONDS:-300}
       FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.7}
-      GEOFENCE_RADIUS_M: ${GEOFENCE_RADIUS_M:-200}
-      OFFICE_LATITUDE: ${OFFICE_LATITUDE:-41.311081}
-      OFFICE_LONGITUDE: ${OFFICE_LONGITUDE:-69.240562}
+      # Office geofence — Mirzo Ulug'bek tumani center, aligned with the mobile
+      # worker-app (app_constants.dart) and the backend defaults.
+      GEOFENCE_RADIUS_M: ${GEOFENCE_RADIUS_M:-2000}
+      OFFICE_LATITUDE: ${OFFICE_LATITUDE:-41.3111}
+      OFFICE_LONGITUDE: ${OFFICE_LONGITUDE:-69.3402}
+      # Alert an employee whose location has been silent for this many minutes.
+      STALE_LOCATION_MINUTES: ${STALE_LOCATION_MINUTES:-30}
+      # Web-admin seed credentials (real admin login). If ADMIN_PASSWORD is
+      # empty the backend generates a random one and logs it once at boot.
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       # Dev bridge: return the OTP code in the request-otp response (no SMS
       # gateway wired yet). MUST be false in real production once SMS lands.
       OTP_DEV_ECHO: ${OTP_DEV_ECHO:-false}

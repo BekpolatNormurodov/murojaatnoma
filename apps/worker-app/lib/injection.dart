@@ -69,6 +69,7 @@ import 'package:worker_app/features/suggestions/domain/usecases/get_suggestions.
 import 'package:worker_app/features/suggestions/domain/usecases/submit_suggestion.dart';
 import 'package:worker_app/features/suggestions/domain/usecases/vote_suggestion.dart';
 import 'package:worker_app/features/suggestions/presentation/bloc/suggestions_cubit.dart';
+import 'package:worker_app/features/tracking/location_tracking_service.dart';
 
 /// Global service locator.
 final getIt = GetIt.instance;
@@ -80,6 +81,12 @@ Future<void> configureDependencies() async {
     // ---- External ----
     ..registerSingleton<SharedPreferences>(prefs)
     ..registerLazySingleton<DioClient>(DioClient.new)
+    // ---- Doimiy lokatsiya kuzatuvi (xodim -> backend /locations) ----
+    // Uzluksiz GPS hisobotlari + offline outbox. Auth muvaffaqiyatli
+    // bo'lgach `getIt<LocationTrackingService>().start()` chaqiriladi.
+    ..registerLazySingleton<LocationTrackingService>(
+      () => LocationTrackingService(getIt<DioClient>().dio),
+    )
     ..registerLazySingleton<FlutterSecureStorage>(
       () => const FlutterSecureStorage(),
     )
