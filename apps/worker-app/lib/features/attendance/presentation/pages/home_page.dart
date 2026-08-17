@@ -82,6 +82,30 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// "Ishdan chiqish" (ketdi) CTA — check-in bilan bir xil geofence
+  /// tekshiruvi, so'ng `/face/checkout` (FaceCubit check-out rejimi, face
+  /// lane). Faqat bugun kelgan, lekin hali ketmagan xodimga ko'rsatiladi.
+  Future<void> _onCheckOutPressed() async {
+    if (_checkingGeofence) return;
+    setState(() => _checkingGeofence = true);
+    bool? inside;
+    try {
+      inside = await context.read<AttendanceCubit>().checkGeofence();
+    } finally {
+      if (mounted) setState(() => _checkingGeofence = false);
+    }
+    if (!mounted) return;
+
+    final l10n = context.l10n;
+    if (inside ?? false) {
+      context.go('/face/checkout');
+    } else if (inside == false) {
+      AppAlert.error(context, l10n.outsideGeofence);
+    } else {
+      AppAlert.error(context, l10n.locationCheckFailed);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -144,15 +168,30 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 22),
               TodayStatusCard(today: today),
               const SizedBox(height: 16),
-              AppButton(
-                    label: l10n.homeCheckinCta,
-                    icon: AppIcons.camera,
-                    loading: _checkingGeofence,
-                    onPressed: _onCheckInPressed,
-                  )
-                  .animate(delay: 120.ms)
-                  .fadeIn(duration: 300.ms)
-                  .slideY(begin: 0.15, end: 0),
+              if (today?.checkIn == null)
+                AppButton(
+                      label: l10n.homeCheckinCta,
+                      icon: AppIcons.camera,
+                      loading: _checkingGeofence,
+                      onPressed: _onCheckInPressed,
+                    )
+                    .animate(delay: 120.ms)
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.15, end: 0)
+              else if (today?.checkOut == null)
+                // Ketdi (check-out) — bugun kelgan, hali ketmagan. Label
+                // hozircha uz; keyinroq app_core l10n `homeCheckoutCta`ga.
+                AppButton(
+                      label: 'Ishdan chiqish',
+                      icon: AppIcons.camera,
+                      loading: _checkingGeofence,
+                      onPressed: _onCheckOutPressed,
+                    )
+                    .animate(delay: 120.ms)
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.15, end: 0)
+              else
+                const SizedBox.shrink(),
               const SizedBox(height: 24),
               const _QuickActions(),
               const SizedBox(height: 24),
