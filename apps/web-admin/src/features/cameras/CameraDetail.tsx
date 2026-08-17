@@ -18,8 +18,10 @@ import {
   ArrowLeft2,
   ArrowRight2,
   CloseCircle,
+  Trash,
 } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
 import type { Camera } from '@/shared/data/types';
@@ -31,15 +33,21 @@ export function CameraDetail({
   clock,
   events,
   onClose,
+  onDelete,
 }: {
   cam: Camera | null;
   clock: string;
   events: CamEvent[];
   onClose: () => void;
+  /** Backendga DELETE /cameras/:id yuboradigan chaqiruvchi. */
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [fps, setFps] = useState(25);
   const [bitrate, setBitrate] = useState(4.2);
   const [zoom, setZoom] = useState(1);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Live jitter — FPS / bitrate o'zgarib turadi
   useEffect(() => {
@@ -53,10 +61,34 @@ export function CameraDetail({
 
   useEffect(() => {
     setZoom(1);
+    setDeleteOpen(false);
+    setDeleting(false);
+    setDeleteError(null);
   }, [cam]);
 
   const online = cam?.status === 'online';
   const camEvents = cam ? events.filter((e) => e.camId === cam.id).slice(0, 8) : [];
+
+  async function confirmDelete() {
+    if (!cam) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDelete(cam.id);
+      setDeleteOpen(false);
+      onClose();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Kamerani o'chirib bo'lmadi");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeleteOpen(false);
+    setDeleteError(null);
+  }
 
   return (
     <Modal open={!!cam} onClose={onClose} width={820} showClose={false}>
@@ -76,6 +108,14 @@ export function CameraDetail({
               >
                 {STATUS_LABEL[cam.status].label}
               </span>
+              <button
+                onClick={() => setDeleteOpen(true)}
+                title="O'chirish"
+                aria-label="Kamerani o'chirish"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-danger-soft hover:text-danger"
+              >
+                <Trash size={19} variant="Bulk" />
+              </button>
               <button
                 onClick={onClose}
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
@@ -280,6 +320,28 @@ export function CameraDetail({
           </div>
         </div>
       )}
+
+      {/* O'chirish tasdiqi */}
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={closeDeleteDialog}
+        onConfirm={confirmDelete}
+        title="Kamerani o'chirasizmi?"
+        message={
+          <>
+            {cam && <>"{cam.name}" kamerasi monitoring tarmog'idan butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.</>}
+            {deleteError && (
+              <span role="alert" className="mt-2 block font-medium text-danger">
+                {deleteError}
+              </span>
+            )}
+          </>
+        }
+        confirmLabel="Ha, o'chirish"
+        tone="danger"
+        icon={Trash}
+        loading={deleting}
+      />
     </Modal>
   );
 }

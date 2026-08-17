@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "@/shared/api/client";
 import type { Camera } from "@/shared/data/types";
 
 /* ============================================================
@@ -7,6 +8,12 @@ import type { Camera } from "@/shared/data/types";
    uchun hech qanday sonni "o'ylab topmaymiz": jonli hodisalar ro'yxati
    doim bo'sh (honest empty) qaytadi, kameralar esa backend qaytargan
    qiymatlar (masalan `detections24h`, `lastEvent`) bilan ko'rsatiladi.
+
+   addCamera/removeCamera POST/DELETE /cameras'ga ulangan (mahalliy-only
+   EMAS): addCamera backend qaytargan haqiqiy yozuvni ro'yxat boshiga
+   qo'shadi; removeCamera optimistik o'chiradi — xato bo'lsa oldingi
+   holatga qaytariladi va xatolik chaqiruvchi tarafga qayta uloqtiriladi
+   (throw), complaints do'konidagi deleteComplaint bilan bir xil naqsh.
    ============================================================ */
 export type CamEventKind = "motion" | "vehicle" | "person" | "anpr" | "alert";
 
@@ -37,8 +44,27 @@ export function useLiveCameras(baseCameras: Camera[], _live: boolean) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseIds]);
 
-  function addCamera(cam: Camera) {
-    setCameras((prev) => [cam, ...prev]);
+  // POST /cameras — backend qaytargan haqiqiy yozuv ro'yxat boshiga
+  // qo'shiladi.
+  async function addCamera(payload: Omit<Camera, "id">) {
+    const created = await api.post<Camera>("/cameras", payload);
+    setCameras((prev) => [created, ...prev]);
+    return created;
+  }
+
+  // DELETE /cameras/:id — optimistik o'chirish: ro'yxatdan darhol olib
+  // tashlanadi; backend rad etsa (yoki tarmoq xatosi) — o'sha o'rniga
+  // qaytarib qo'yiladi.
+  async function removeCamera(id: string) {
+    const prev = cameras;
+    setCameras((c) => c.filter((x) => x.id !== id));
+    try {
+      await api.del(`/cameras/${id}`);
+    } catch (err) {
+      console.error("Kamerani o'chirib bo'lmadi:", err);
+      setCameras(prev);
+      throw err instanceof Error ? err : new Error("Kamerani o'chirib bo'lmadi");
+    }
   }
 
   function toggleStatus(id: string) {
@@ -55,5 +81,5 @@ export function useLiveCameras(baseCameras: Camera[], _live: boolean) {
     );
   }
 
-  return { cameras, events, addCamera, toggleStatus };
+  return { cameras, events, addCamera, removeCamera, toggleStatus };
 }

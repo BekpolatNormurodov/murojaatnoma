@@ -155,7 +155,7 @@ export function CamerasPage() {
   const [addOpen, setAddOpen] = useState(false);
 
   const { data: baseCameras, isLoading, isError, error, refetch } = useCameras();
-  const { cameras, events, addCamera } = useLiveCameras(baseCameras ?? [], live);
+  const { cameras, events, addCamera, removeCamera } = useLiveCameras(baseCameras ?? [], live);
 
   useEffect(() => {
     const fmt = () => {
@@ -397,7 +397,13 @@ export function CamerasPage() {
         </>
       )}
 
-      <CameraDetail cam={selectedLive} clock={clock} events={events} onClose={() => setSelected(null)} />
+      <CameraDetail
+        cam={selectedLive}
+        clock={clock}
+        events={events}
+        onClose={() => setSelected(null)}
+        onDelete={removeCamera}
+      />
       <AddCameraModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={addCamera} />
     </div>
   );

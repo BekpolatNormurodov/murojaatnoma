@@ -24,13 +24,16 @@ export function AddCameraModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onCreate: (cam: Camera) => void;
+  /** Backendga POST /cameras yuboradigan va yaratilgan yozuvni qaytaradigan chaqiruvchi. */
+  onCreate: (cam: Omit<Camera, 'id'>) => Promise<Camera>;
 }) {
   const [name, setName] = useState('');
   const [districtId, setDistrictId] = useState(DISTRICTS[0]?.id ?? '');
   const [type, setType] = useState<CameraType>('fixed');
   const [resolution, setResolution] = useState('1080p');
   const [recording, setRecording] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const valid = name.trim().length > 2 && districtId;
 
@@ -40,15 +43,23 @@ export function AddCameraModal({
     setType('fixed');
     setResolution('1080p');
     setRecording(true);
+    setError(null);
+    setSaving(false);
   }
 
-  function submit() {
-    if (!valid) return;
+  function handleClose() {
+    if (saving) return;
+    onClose();
+  }
+
+  async function submit() {
+    if (!valid || saving) return;
     const district = DISTRICTS.find((d) => d.id === districtId);
     const [lat, lng] = district?.center ?? [41.31, 69.28];
     const jit = () => (Math.random() - 0.5) * 0.02;
-    const cam: Camera = {
-      id: `CAM-${Date.now().toString().slice(-5)}`,
+    // Uptime/aniqlash/oxirgi hodisa kabi maydonlarni o'ylab topmaymiz —
+    // backend ularga haqiqiy standart qiymatlarni qo'yadi (100%, 0, null).
+    const cam: Omit<Camera, 'id'> = {
       name: name.trim(),
       region: district?.name ?? '—',
       districtId,
@@ -58,18 +69,26 @@ export function AddCameraModal({
       lng: +(lng + jit()).toFixed(5),
       resolution,
       recording,
-      uptime: +(97 + Math.random() * 2.8).toFixed(1),
+      uptime: 100,
       detections24h: 0,
-      lastEvent: 'hozirgina',
+      lastEvent: null,
       installedAt: new Date().toISOString(),
     };
-    onCreate(cam);
-    reset();
-    onClose();
+    setSaving(true);
+    setError(null);
+    try {
+      await onCreate(cam);
+      reset();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kamerani saqlab bo'lmadi");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Yangi kamera qo'shish" subtitle="Monitoring tarmog'iga yangi qurilma ulang" width={560}>
+    <Modal open={open} onClose={handleClose} title="Yangi kamera qo'shish" subtitle="Monitoring tarmog'iga yangi qurilma ulang" width={560}>
       <div className="space-y-4">
         <Field label="Kamera nomi">
           <input
@@ -142,12 +161,19 @@ export function AddCameraModal({
         </label>
       </div>
 
+      {error && (
+        <p role="alert" className="mt-3 text-[12.5px] font-medium text-danger">
+          {error}
+        </p>
+      )}
+
       <div className="mt-6 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" onClick={handleClose} disabled={saving}>
           Bekor qilish
         </Button>
-        <Button onClick={submit} disabled={!valid}>
-          <Add size={18} /> Qo'shish
+        <Button onClick={submit} disabled={!valid || saving}>
+          {saving ? <RotateRight size={18} className="animate-spin" /> : <Add size={18} />}
+          {saving ? 'Saqlanmoqda...' : "Qo'shish"}
         </Button>
       </div>
     </Modal>
