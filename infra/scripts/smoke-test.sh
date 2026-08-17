@@ -60,7 +60,10 @@ print("\n".join(sorted(g)))
 ')
   while read -r p; do
     [ -z "$p" ] && continue
+    sleep 0.05   # pace under the api rate limit as the route list grows
     code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API$p")
+    # a 503 here is almost always our own limit_req kicking in on a burst — back off + retry once
+    if [ "$code" = 503 ]; then sleep 0.6; code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API$p"); fi
     case "$code" in
       2*)          pass "GET $p -> $code" ;;
       400|401|403) pass "GET $p -> $code (wired; needs auth/params)" ;;
