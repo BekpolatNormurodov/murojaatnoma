@@ -44,6 +44,20 @@ class AuthRemoteDataSourceMockImpl implements AuthRemoteDataSource {
 }
 
 /// Real backend implementatsiyasi — [DioClient] orqali.
+///
+/// Backend kontrakti (`murojaatnoma.uz`):
+/// - `POST /auth/request-otp {phone}` -> `{expiresInSeconds, devCode?}`
+/// - `POST /auth/verify-otp {phone, code}` ->
+///   `{accessToken, refreshToken, expiresIn}`
+/// - `GET /auth/me` (Bearer) ->
+///   `{id, fullName, phone, position, region, district, role, avatarUrl,
+///   hasFace}`
+///
+/// `verifyOtp` ikkala so'rovni (token olish + profilni o'qish) ICHKARIDA
+/// ketma-ket bajaradi va natijani BITTA `AuthSessionModel`ga birlashtiradi
+/// — chaqiruvchi (`AuthRepositoryImpl`) uchun bitta atomik operatsiya
+/// bo'lib qoladi (interfeys `sendOtp`/`verifyOtp`dan boshqa narsa talab
+/// qilmaydi, shuning uchun mock/api seam o'zgarishsiz qoladi).
 class AuthApiImpl implements AuthRemoteDataSource {
   AuthApiImpl(this._client);
 
@@ -52,7 +66,10 @@ class AuthApiImpl implements AuthRemoteDataSource {
   @override
   Future<void> sendOtp(String phone) async {
     try {
-      await _client.dio.post<dynamic>('/auth/send-otp', data: {'phone': phone});
+      await _client.dio.post<dynamic>(
+        '/auth/request-otp',
+        data: {'phone': phone},
+      );
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
     }
@@ -64,11 +81,40 @@ class AuthApiImpl implements AuthRemoteDataSource {
     required String code,
   }) async {
     try {
-      final response = await _client.dio.post<Map<String, dynamic>>(
-        '/auth/verify',
+      final verifyResponse = await _client.dio.post<Map<String, dynamic>>(
+        '/auth/verify-otp',
         data: {'phone': phone, 'code': code},
       );
-      return AuthSessionModel.fromJson(response.data ?? const {});
+      final tokens = verifyResponse.data ?? const <String, dynamic>{};
+      final accessToken = tokens['accessToken'] as String?;
+      if (accessToken == null || accessToken.isEmpty) {
+        throw AuthException('Server tokensiz javob qaytardi');
+      }
+      final refreshToken = tokens['refreshToken'] as String?;
+
+      // `AuthInterceptor` yangi tokenni hali bilmaydi — u faqat
+      // `SharedPreferences`dan o'qiydi va bu yerga ULGURMAYDI (token shu
+      // yerdan qaytgach, `AuthRepositoryImpl.verifyOtp` uni saqlaydi).
+      // Shuning uchun `/auth/me`ga Bearer sarlavhasi QO'LDA beriladi.
+      final meResponse = await _client.dio.get<Map<String, dynamic>>(
+        '/auth/me',
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+      final me = meResponse.data ?? const <String, dynamic>{};
+
+      return AuthSessionModel(
+        token: accessToken,
+        refreshToken: refreshToken,
+        workerId: me['id'] as String? ?? '',
+        name: me['fullName'] as String? ?? '',
+        position: me['position'] as String? ?? '',
+        region: me['region'] as String? ?? '',
+        phone: me['phone'] as String?,
+        district: me['district'] as String?,
+        role: me['role'] as String?,
+        avatarUrl: me['avatarUrl'] as String?,
+        hasFace: me['hasFace'] as bool? ?? false,
+      );
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
     }

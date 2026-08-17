@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:worker_app/features/face/data/datasources/face_local_data_source.dart';
+import 'package:worker_app/features/face/data/datasources/face_remote_data_source.dart';
 import 'package:worker_app/features/face/data/repositories/face_repository_impl.dart';
 import 'package:worker_app/features/face/domain/entities/face_template.dart';
 
@@ -25,6 +26,28 @@ class _FakeFaceLocalDataSource implements FaceLocalDataSource {
     final err = writeError;
     if (err != null) throw err;
     stored = template;
+  }
+}
+
+/// Chaqiruvlarni kuzatuvchi soxta (fake) masofaviy manba —
+/// `FaceRepositoryImpl._syncToBackend`ning `useMock`/xatolik-toqat qilish
+/// xatti-harakatini isbotlash uchun.
+class _FakeFaceRemoteDataSource implements FaceRemoteDataSource {
+  int uploadCallCount = 0;
+  String? lastEmployeeId;
+  List<double>? lastEmbedding;
+  Exception? uploadError;
+
+  @override
+  Future<void> uploadEmbedding(
+    String employeeId,
+    List<double> embedding,
+  ) async {
+    uploadCallCount++;
+    lastEmployeeId = employeeId;
+    lastEmbedding = embedding;
+    final err = uploadError;
+    if (err != null) throw err;
   }
 }
 
@@ -152,6 +175,82 @@ void main() {
             (l) => expect(l, isA<CacheFailure>()),
             (r) => fail('expected Left(CacheFailure), got Right: $r'),
           );
+        },
+      );
+    });
+
+    // Vazifa (jonli backend ulash): `enroll()` mahalliy shablon saqlangandan
+    // KEYIN, `AppConfig.useMock == false` bo'lganda backendga ham
+    // yuklashga urinadi (`FaceRemoteDataSource.uploadEmbedding`).
+    group('backend sync (useMock == false)', () {
+      late _FakeFaceRemoteDataSource remote;
+
+      setUp(() {
+        remote = _FakeFaceRemoteDataSource();
+      });
+
+      // Har bir testdan keyin global `AppConfig.useMock`ni standart
+      // (`true`) holatiga qaytaramiz — aks holda bu test guruhi shu
+      // fayldagi keyingi testlarga (masalan yuqoridagi `verify`/`enroll`
+      // guruhlari) holat "sizdirishi" mumkin edi.
+      tearDown(() => AppConfig.useMock = true);
+
+      test(
+        'useMock == false + remote provided -> uploads the embedding for '
+        "the template's workerId and still returns Right(unit)",
+        () async {
+          AppConfig.useMock = false;
+          subject = FaceRepositoryImpl(local: local, remote: remote);
+
+          final result = await subject.enroll(template);
+
+          expect(result, equals(const Right<Failure, Unit>(unit)));
+          expect(remote.uploadCallCount, 1);
+          expect(remote.lastEmployeeId, template.workerId);
+          expect(remote.lastEmbedding, template.embedding);
+        },
+      );
+
+      test(
+        'useMock == true (default/mock flow) -> never calls the remote '
+        'datasource, even when one is provided',
+        () async {
+          subject = FaceRepositoryImpl(local: local, remote: remote);
+
+          final result = await subject.enroll(template);
+
+          expect(result, equals(const Right<Failure, Unit>(unit)));
+          expect(remote.uploadCallCount, 0);
+        },
+      );
+
+      test(
+        'remote upload failing is swallowed as a soft warning — enroll() '
+        'still returns Right(unit) (local template already saved, offline '
+        'match keeps working)',
+        () async {
+          AppConfig.useMock = false;
+          remote.uploadError = ServerException('tarmoq xatosi');
+          subject = FaceRepositoryImpl(local: local, remote: remote);
+
+          final result = await subject.enroll(template);
+
+          expect(result, equals(const Right<Failure, Unit>(unit)));
+          expect(local.stored, equals(template));
+          expect(remote.uploadCallCount, 1);
+        },
+      );
+
+      test(
+        'no remote datasource provided -> sync is skipped, enroll() still '
+        'succeeds',
+        () async {
+          AppConfig.useMock = false;
+          subject = FaceRepositoryImpl(local: local);
+
+          final result = await subject.enroll(template);
+
+          expect(result, equals(const Right<Failure, Unit>(unit)));
         },
       );
     });

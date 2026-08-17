@@ -30,12 +30,32 @@ class CheckInParams extends Equatable {
     required this.lat,
     required this.lng,
     required this.screenshotPath,
+    this.employeeId,
+    this.embedding,
   });
 
   final double lat;
   final double lng;
   final String screenshotPath;
 
+  /// Ishchi ID — jonli backend (`useMock == false`) uchun: server
+  /// `/attendance/check-in`da moslikni shu ID bo'yicha saqlangan
+  /// shablon bilan hisoblaydi. Mock oqimda (standart) `null`.
+  final String? employeeId;
+
+  /// Liveness tekshiruvida hisoblangan probe yuz embeddingi — jonli
+  /// backendga yuboriladi (server o'zi >=0.7 moslikni hisoblaydi va
+  /// tekshiradi). Mock oqimda (standart) `null` — mahalliy moslik
+  /// (`FaceMatcher`) allaqachon `FaceCubit.verifyAndCheckIn`da tekshirib
+  /// bo'lgan.
+  final List<double>? embedding;
+
   @override
-  List<Object?> get props => [lat, lng, screenshotPath];
+  List<Object?> get props => [
+    lat,
+    lng,
+    screenshotPath,
+    employeeId,
+    embedding,
+  ];
 }

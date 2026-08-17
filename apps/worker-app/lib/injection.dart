@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/app/router/app_router.dart';
+import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
@@ -27,6 +28,7 @@ import 'package:worker_app/features/chat/domain/usecases/send_message.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
 import 'package:worker_app/features/face/data/datasources/face_local_data_source.dart';
+import 'package:worker_app/features/face/data/datasources/face_remote_data_source.dart';
 import 'package:worker_app/features/face/data/repositories/face_repository_impl.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
@@ -126,8 +128,22 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<FaceLocalDataSource>(
       () => FaceLocalDataSourceImpl(getIt<FlutterSecureStorage>()),
     )
+    // `FaceRemoteDataSource` — enrollmentda hisoblangan embeddingni
+    // backendga yuklash uchun (Mock/Api seam — boshqa modullar bilan bir
+    // xil naqsh). Mock implementatsiya no-op (backend umuman yo'q); real
+    // (`useMock == false`) rejimda `FaceRepositoryImpl` uni faqat
+    // mahalliy shablon MUVAFFAQIYATLI saqlangandan keyin, best-effort
+    // sifatida chaqiradi (qarang: `FaceRepositoryImpl._syncToBackend`).
+    ..registerLazySingleton<FaceRemoteDataSource>(
+      () => AppConfig.useMock
+          ? FaceRemoteDataSourceMockImpl()
+          : FaceRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
     ..registerLazySingleton<FaceRepository>(
-      () => FaceRepositoryImpl(local: getIt<FaceLocalDataSource>()),
+      () => FaceRepositoryImpl(
+        local: getIt<FaceLocalDataSource>(),
+        remote: getIt<FaceRemoteDataSource>(),
+      ),
     )
     ..registerLazySingleton<EnrollFace>(
       () => EnrollFace(getIt<FaceRepository>()),
@@ -191,6 +207,10 @@ Future<void> configureDependencies() async {
         geofence: getIt<GeofenceService>(),
         workerId: workerId,
         facePhotoStore: getIt<FacePhotoStore>(),
+        // Ataylab sekinroq (~3s) skaner: yuz ramkada barqaror ushlanib
+        // turgan holda progress yoyi 3 soniyada to'ladi — "tez o'qib
+        // qo'yish" o'rniga ishonchli, bosqichma-bosqich skaner hissi.
+        stableDuration: kFaceScanStableDuration,
       ),
     )
     // ---- Map/Xarita (hudud kuzatuvi: jonli joylashuv + breadcrumb + geofence) ----

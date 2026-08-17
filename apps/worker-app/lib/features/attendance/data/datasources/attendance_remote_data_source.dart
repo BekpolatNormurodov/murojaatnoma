@@ -50,15 +50,23 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
 
   final DioClient _client;
 
+  /// Backend kontrakti: `POST /attendance/check-in { employeeId,
+  /// embedding, latitude, longitude } -> AttendanceRecord`. Moslikni
+  /// (>=0.7 kosinus o'xshashlik) SERVER o'zi hisoblaydi — shuning uchun
+  /// `params.embedding`/`params.employeeId` (`FaceCubit._afterMatch`da
+  /// `useMock == false` bo'lganda to'ldiriladi) to'g'ridan-to'g'ri
+  /// yuboriladi. `screenshotPath` faqat mahalliy (davomat isboti) —
+  /// backend kontraktida yo'q, shuning uchun jonli so'rovga qo'shilmaydi.
   @override
   Future<AttendanceDay> checkIn(CheckInParams params) async {
     try {
       final response = await _client.dio.post<Map<String, dynamic>>(
         '/attendance/check-in',
         data: {
-          'lat': params.lat,
-          'lng': params.lng,
-          'screenshot_path': params.screenshotPath,
+          'employeeId': params.employeeId,
+          'embedding': params.embedding,
+          'latitude': params.lat,
+          'longitude': params.lng,
         },
       );
       return AttendanceDay.fromJson(response.data ?? const {});

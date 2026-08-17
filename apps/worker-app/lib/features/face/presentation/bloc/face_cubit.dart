@@ -845,7 +845,11 @@ class FaceCubit extends Cubit<FaceState> {
       );
       await matchEither.fold<Future<void>>(
         (failure) async => emit(FaceError(failure.message)),
-        (match) => _afterMatch(match, screenshotPath: screenshotPath),
+        (match) => _afterMatch(
+          match,
+          probe: probe,
+          screenshotPath: screenshotPath,
+        ),
       );
     } on Object catch (e) {
       emit(FaceError('Yuzni tekshirishda xatolik: $e'));
@@ -859,6 +863,7 @@ class FaceCubit extends Cubit<FaceState> {
   /// umumiy `FaceError`ga, `Right` esa [FaceCheckinSuccess]ga aylanadi.
   Future<void> _afterMatch(
     FaceMatchResult match, {
+    required List<double> probe,
     required String screenshotPath,
   }) async {
     if (!match.passed) {
@@ -880,6 +885,13 @@ class FaceCubit extends Cubit<FaceState> {
         lat: position.latitude,
         lng: position.longitude,
         screenshotPath: screenshotPath,
+        // Jonli backend (`useMock == false`) o'zi (>=0.7) moslikni
+        // hisoblaydi — shuning uchun probe embedding + ishchi ID ham
+        // yuboriladi. Mock oqimda (standart, `useMock == true`) bu ikki
+        // maydon `null` qoladi: mahalliy moslik yuqorida (`_verifyFace`)
+        // allaqachon tekshirilgan, backend esa umuman yo'q.
+        employeeId: AppConfig.useMock ? null : _workerId,
+        embedding: AppConfig.useMock ? null : probe,
       ),
     );
 

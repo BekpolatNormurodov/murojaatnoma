@@ -34,3 +34,13 @@ const int kFaceEmbeddingSize = 192; // modelga qarab moslang
 
 /// Model kirishi kutayotgan kvadrat rasm o'lchami (112x112 RGB).
 const int kFaceInputSize = 112;
+
+/// Yuz skaneri "barqarorlik" davomiyligi: sifat-gate'dan o'tgan yuz shu
+/// muddat davomida ramkada barqaror ushlab turilishi kerak — progress
+/// yoyi shu vaqt oralig'ida to'ladi va shundan keyingina kadr olinadi
+/// (enroll). Ataylab ~3 soniya: "sekin, ishonchli skaner" his-tuyg'usi
+/// uchun (900ms juda tez — bir zumda o'qib qo'yardi). Test'lar `FaceCubit`
+/// konstruktorining standart qiymatini (900ms) o'zgartirmasdan, aniq
+/// `clock` bilan deterministik ishlaydi — bu konstanta faqat productionda
+/// (DI, `injection.dart`) uzatiladi.
+const Duration kFaceScanStableDuration = Duration(seconds: 3);
