@@ -4,7 +4,9 @@ import {
   DEFAULT_OFFICE_LATITUDE,
   DEFAULT_OFFICE_LONGITUDE,
   DEFAULT_OTP_TTL_SECONDS,
+  DEFAULT_PUBLIC_BASE_URL,
   DEFAULT_STALE_LOCATION_MINUTES,
+  DEFAULT_UPLOADS_DIR,
   DEFAULT_WORK_START,
   DEFAULT_WORK_END,
   LATE_GRACE_MINUTES,
@@ -52,6 +54,12 @@ export interface AppConfig {
     seedPassword: string;
     seedFullName: string;
     seedDemoData: boolean;
+  };
+  uploads: {
+    /** On-disk directory attachment uploads (photo/video/voice) are written to. */
+    dir: string;
+    /** Public origin used to build the attachment URL returned to clients: `${publicBaseUrl}/uploads/<file>`. */
+    publicBaseUrl: string;
   };
 }
 
@@ -104,5 +112,9 @@ export default (): AppConfig => ({
     seedPassword: process.env.ADMIN_PASSWORD ?? '',
     seedFullName: process.env.ADMIN_FULL_NAME ?? 'Bosh administrator',
     seedDemoData: (process.env.SEED_DEMO_DATA ?? 'true').toLowerCase() === 'true',
+  },
+  uploads: {
+    dir: process.env.UPLOADS_DIR ?? DEFAULT_UPLOADS_DIR,
+    publicBaseUrl: process.env.PUBLIC_BASE_URL ?? DEFAULT_PUBLIC_BASE_URL,
   },
 });

@@ -1,6 +1,20 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Application, ApplicationMessage, Attachment, EmployeeRole } from '@prisma/client';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Application, ApplicationMessage, Attachment, AttachmentType, EmployeeRole } from '@prisma/client';
+import { AppConfig } from '../../common/config/configuration';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -16,10 +30,29 @@ import { ReplyApplicationDto } from './dto/reply-application.dto';
 import { UpdateApplicationStatusDto } from './dto/update-application-status.dto';
 import { ApplicationEventWithNames } from './interfaces/application-event-with-names.interface';
 
+/**
+ * Infers the Attachment `type` from an uploaded file's mimetype.
+ *
+ * NOTE: prisma/schema.prisma `enum AttachmentType` currently only defines
+ * PHOTO and VIDEO (no VOICE/AUDIO/DOCUMENT value). Until that enum is
+ * extended, voice/audio recordings are stored as VIDEO — the closer of the
+ * two existing values, since both are time-based recorded media rather than
+ * a static image. Revisit once a dedicated VOICE value is added.
+ */
+function inferAttachmentType(mimetype: string): AttachmentType {
+  if (mimetype.startsWith('image/')) return AttachmentType.PHOTO;
+  if (mimetype.startsWith('video/')) return AttachmentType.VIDEO;
+  if (mimetype.startsWith('audio/')) return AttachmentType.VIDEO;
+  throw new BadRequestException(`Unsupported file type: ${mimetype}`);
+}
+
 @ApiTags('applications')
 @Controller('applications')
 export class ApplicationsController {
-  constructor(private readonly applicationsService: ApplicationsService) {}
+  constructor(
+    private readonly applicationsService: ApplicationsService,
+    private readonly configService: ConfigService<AppConfig, true>,
+  ) {}
 
   @Public()
   @Post()
@@ -130,5 +163,42 @@ export class ApplicationsController {
   @ApiOperation({ summary: 'List attachments for an application' })
   findAttachments(@Param('id') id: string): Promise<Attachment[]> {
     return this.applicationsService.findAttachments(id);
+  }
+
+  @Public()
+  @Post(':id/attachments/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({
+    summary:
+      'Upload a device-local photo/video/voice file (multipart) and attach it to an application. ' +
+      'Field name "file", max 25MB, image/video/audio mimetypes only. ' +
+      'For pre-hosted media, use POST /applications/:id/attachments instead.',
+  })
+  async uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<Attachment> {
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+
+    const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
+    const type = inferAttachmentType(file.mimetype);
+    const url = `${publicBaseUrl}/uploads/${file.filename}`;
+
+    return this.applicationsService.createUploadedAttachment(id, {
+      type,
+      url,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+    });
   }
 }

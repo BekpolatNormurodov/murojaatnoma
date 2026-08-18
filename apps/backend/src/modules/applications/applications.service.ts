@@ -10,6 +10,7 @@ import {
   ApplicationMessage,
   ApplicationStatus,
   Attachment,
+  AttachmentType,
   MessageSenderRole,
   NotificationType,
 } from '@prisma/client';
@@ -171,6 +172,28 @@ export class ApplicationsService {
     return this.prisma.attachment.findMany({
       where: { applicationId },
       orderBy: { uploadedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Persists an Attachment row for a file that was actually uploaded via
+   * POST /applications/:id/attachments/upload (multipart), as opposed to
+   * {@link addAttachment} which records a pre-hosted URL supplied by the
+   * caller. Verifies the application exists, same as addAttachment.
+   */
+  async createUploadedAttachment(
+    applicationId: string,
+    data: {
+      type: AttachmentType;
+      url: string;
+      fileName?: string;
+      mimeType?: string;
+      sizeBytes?: number;
+    },
+  ): Promise<Attachment> {
+    await this.findOne(applicationId);
+    return this.prisma.attachment.create({
+      data: { applicationId, ...data },
     });
   }
 

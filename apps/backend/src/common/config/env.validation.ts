@@ -5,7 +5,9 @@ import {
   DEFAULT_OFFICE_LATITUDE,
   DEFAULT_OFFICE_LONGITUDE,
   DEFAULT_OTP_TTL_SECONDS,
+  DEFAULT_PUBLIC_BASE_URL,
   DEFAULT_STALE_LOCATION_MINUTES,
+  DEFAULT_UPLOADS_DIR,
   DEFAULT_WORK_START,
   DEFAULT_WORK_END,
   LATE_GRACE_MINUTES,
@@ -58,4 +60,10 @@ export const envValidationSchema = Joi.object({
   ADMIN_PASSWORD: Joi.string().allow('').default(''),
   ADMIN_FULL_NAME: Joi.string().default('Bosh administrator'),
   SEED_DEMO_DATA: Joi.boolean().truthy('true').falsy('false').default(true),
+
+  // Attachment uploads (photo/video/voice) for applications — see
+  // modules/applications/applications.module.ts (MulterModule.registerAsync)
+  // and POST /applications/:id/attachments/upload.
+  UPLOADS_DIR: Joi.string().default(DEFAULT_UPLOADS_DIR),
+  PUBLIC_BASE_URL: Joi.string().default(DEFAULT_PUBLIC_BASE_URL),
 });

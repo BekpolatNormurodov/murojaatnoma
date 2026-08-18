@@ -37,3 +37,9 @@ export const DEFAULT_WORK_END = '18:00';
 
 /** Grace period (minutes) after work start before a CHECK_IN is counted as late. */
 export const LATE_GRACE_MINUTES = 5;
+
+/** Default on-disk directory where uploaded application attachments (photo/video/voice) are stored. */
+export const DEFAULT_UPLOADS_DIR = '/app/uploads';
+
+/** Default public origin used to build attachment URLs served back to clients (e.g. `${PUBLIC_BASE_URL}/uploads/<file>`). */
+export const DEFAULT_PUBLIC_BASE_URL = 'https://murojaatnoma.uz';
