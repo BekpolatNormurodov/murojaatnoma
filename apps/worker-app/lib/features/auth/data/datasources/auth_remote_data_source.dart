@@ -13,6 +13,14 @@ abstract class AuthRemoteDataSource {
     required String phone,
     required String code,
   });
+
+  /// Xodim login+parol bilan kirish (`POST /auth/employee/login`). Token
+  /// olib, `/auth/me`dan profilni o'qiydi va bitta `AuthSessionModel`ga
+  /// birlashtiradi (`verifyOtp` bilan bir xil naqsh).
+  Future<AuthSessionModel> employeeLogin({
+    required String username,
+    required String password,
+  });
 }
 
 /// Mock implementatsiya (backend tayyor bo'lguncha) — [AppConfig.useMock]
@@ -38,6 +46,25 @@ class AuthRemoteDataSourceMockImpl implements AuthRemoteDataSource {
     // Demo: "1111" har doim to'g'ri.
     if (code != '1111') {
       throw AuthException('Kod noto‘g‘ri kiritildi');
+    }
+    return AuthSessionModel(
+      token: 'demo-jwt-${DateTime.now().millisecondsSinceEpoch}',
+      workerId: 'W-1042',
+      name: 'Sardor Karimov',
+      position: 'Kommunal xizmat mutaxassisi',
+      region: 'Chilonzor tumani',
+    );
+  }
+
+  @override
+  Future<AuthSessionModel> employeeLogin({
+    required String username,
+    required String password,
+  }) async {
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    // Mock oqim: bo'sh bo'lmagan login/parol qabul qilinadi (demo).
+    if (username.trim().isEmpty || password.isEmpty) {
+      throw AuthException('Login yoki parol xato');
     }
     return AuthSessionModel(
       token: 'demo-jwt-${DateTime.now().millisecondsSinceEpoch}',
@@ -129,6 +156,55 @@ class AuthApiImpl implements AuthRemoteDataSource {
       );
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
+    }
+  }
+
+  @override
+  Future<AuthSessionModel> employeeLogin({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      final loginResponse = await _client.dio.post<Map<String, dynamic>>(
+        '/auth/employee/login',
+        data: {'username': username.trim(), 'password': password},
+      );
+      final tokens = loginResponse.data ?? const <String, dynamic>{};
+      final accessToken = tokens['accessToken'] as String?;
+      if (accessToken == null || accessToken.isEmpty) {
+        throw AuthException('Server tokensiz javob qaytardi');
+      }
+      final refreshToken = tokens['refreshToken'] as String?;
+
+      // Token hali `AuthInterceptor`ga saqlanmagan (`AuthRepositoryImpl`
+      // buni javobdan keyin qiladi), shuning uchun Bearer QO'LDA beriladi.
+      final meResponse = await _client.dio.get<Map<String, dynamic>>(
+        '/auth/me',
+        options: Options(headers: {'Authorization': 'Bearer $accessToken'}),
+      );
+      final me = meResponse.data ?? const <String, dynamic>{};
+
+      return AuthSessionModel(
+        token: accessToken,
+        refreshToken: refreshToken,
+        workerId: me['id'] as String? ?? '',
+        name: me['fullName'] as String? ?? '',
+        position: me['position'] as String? ?? '',
+        region: me['region'] as String? ?? '',
+        phone: me['phone'] as String?,
+        district: me['district'] as String?,
+        role: me['role'] as String?,
+        avatarUrl: me['avatarUrl'] as String?,
+        hasFace: me['hasFace'] as bool? ?? false,
+      );
+    } on DioException catch (e) {
+      // 401 (noto'g'ri login/parol) — backend "Login yoki parol xato" xabarini
+      // qaytaradi; foydalanuvchiga aynan shu ko'rsatiladi.
+      final data = e.response?.data;
+      final message = (data is Map && data['message'] is String)
+          ? data['message'] as String
+          : (e.message ?? 'Server xatosi');
+      throw AuthException(message);
     }
   }
 }

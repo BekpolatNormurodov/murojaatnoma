@@ -18,6 +18,24 @@ class AppLocalizationsRu extends AppLocalizations {
   String get login => 'Вход';
 
   @override
+  String get loginSubtitle => 'Войдите в учётную запись сотрудника';
+
+  @override
+  String get usernameLabel => 'Логин';
+
+  @override
+  String get usernameHint => 'Имя пользователя';
+
+  @override
+  String get passwordLabel => 'Пароль';
+
+  @override
+  String get passwordHint => 'Ваш пароль';
+
+  @override
+  String get fieldRequired => 'Это поле обязательно для заполнения';
+
+  @override
   String get phoneNumber => 'Ваш номер телефона';
 
   @override

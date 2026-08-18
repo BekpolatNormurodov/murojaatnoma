@@ -67,6 +67,28 @@ class AuthRepositoryImpl implements AuthRepository {
     }
   }
 
+  @override
+  Future<Either<Failure, AuthSession>> login({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      final session = await remote.employeeLogin(
+        username: username,
+        password: password,
+      );
+      // Sessiya/token saqlash — `verifyOtp` bilan bir xil (yagona seam).
+      await prefs.setString(AuthInterceptor.tokenKey, session.token);
+      await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
+      await _persistSecureTokens(session);
+      return Right(session);
+    } on AuthException catch (e) {
+      return Left(AuthFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
+
   /// Access/refresh tokenlarni xavfsiz xotiraga yozadi — BEST-EFFORT:
   /// platform kanali xato bersa ham (masalan testlarda yoki keychain
   /// mavjud bo'lmagan muhitda) kirish jarayoni HECH QACHON shu sabab

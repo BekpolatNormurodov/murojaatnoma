@@ -14,6 +14,7 @@ import 'package:worker_app/features/attendance/presentation/pages/home_page.dart
 import 'package:worker_app/features/attendance/presentation/widgets/today_status_card.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
+import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
@@ -24,6 +25,8 @@ class _MockAttendanceRepository extends Mock implements AttendanceRepository {}
 class _MockSendOtp extends Mock implements SendOtp {}
 
 class _MockVerifyOtp extends Mock implements VerifyOtp {}
+
+class _MockLoginEmployee extends Mock implements LoginEmployee {}
 
 class _MockRestoreSession extends Mock implements RestoreSession {}
 
@@ -82,6 +85,7 @@ void main() {
     authCubit = AuthCubit(
       sendOtp: _MockSendOtp(),
       verifyOtp: verifyOtp,
+      loginEmployee: _MockLoginEmployee(),
       restoreSession: _MockRestoreSession(),
     );
     // Haqiqiy ommaviy API orqali "authenticated + session" holatiga

@@ -17,6 +17,13 @@ abstract class AuthRepository {
     required String code,
   });
 
+  /// Xodim login+parol bilan kirish — muvaffaqiyatli bo'lsa sessiya
+  /// qaytaradi va tokenni saqlaydi.
+  Future<Either<Failure, AuthSession>> login({
+    required String username,
+    required String password,
+  });
+
   /// Joriy saqlangan sessiyani o'qish (agar mavjud bo'lsa).
   Future<AuthSession?> currentSession();
 

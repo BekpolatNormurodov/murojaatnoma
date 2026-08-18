@@ -18,6 +18,24 @@ class AppLocalizationsUz extends AppLocalizations {
   String get login => 'Kirish';
 
   @override
+  String get loginSubtitle => 'Xodim hisobingizga kiring';
+
+  @override
+  String get usernameLabel => 'Login';
+
+  @override
+  String get usernameHint => 'Foydalanuvchi nomi';
+
+  @override
+  String get passwordLabel => 'Parol';
+
+  @override
+  String get passwordHint => 'Parolingiz';
+
+  @override
+  String get fieldRequired => 'Bu maydon to\'ldirilishi shart';
+
+  @override
   String get phoneNumber => 'Telefon raqamingiz';
 
   @override

@@ -116,6 +116,42 @@ abstract class AppLocalizations {
   /// **'Kirish'**
   String get login;
 
+  /// No description provided for @loginSubtitle.
+  ///
+  /// In uz, this message translates to:
+  /// **'Xodim hisobingizga kiring'**
+  String get loginSubtitle;
+
+  /// No description provided for @usernameLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Login'**
+  String get usernameLabel;
+
+  /// No description provided for @usernameHint.
+  ///
+  /// In uz, this message translates to:
+  /// **'Foydalanuvchi nomi'**
+  String get usernameHint;
+
+  /// No description provided for @passwordLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Parol'**
+  String get passwordLabel;
+
+  /// No description provided for @passwordHint.
+  ///
+  /// In uz, this message translates to:
+  /// **'Parolingiz'**
+  String get passwordHint;
+
+  /// No description provided for @fieldRequired.
+  ///
+  /// In uz, this message translates to:
+  /// **'Bu maydon to\'ldirilishi shart'**
+  String get fieldRequired;
+
   /// No description provided for @phoneNumber.
   ///
   /// In uz, this message translates to:

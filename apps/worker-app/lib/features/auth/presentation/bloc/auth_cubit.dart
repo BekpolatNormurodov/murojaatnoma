@@ -2,19 +2,27 @@ import 'package:app_core/app_core.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
+import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 
 part 'auth_state.dart';
 
-/// Ishchi avtorizatsiyasini boshqaruvchi Cubit — telefon/OTP oqimi.
+/// Ishchi avtorizatsiyasini boshqaruvchi Cubit.
+///
+/// Xodimlar login+parol bilan kiradi (`login`); OTP metodlari
+/// (`requestOtp`/`verifyOtp`) fuqaro-oqimidan meros bo'lib qolgan va
+/// worker-app'da endi ishlatilmaydi (deprecated — keyingi tozalashda
+/// olib tashlanadi).
 class AuthCubit extends Cubit<AuthState> {
   AuthCubit({
     required this.sendOtp,
     required VerifyOtp verifyOtp,
+    required LoginEmployee loginEmployee,
     required RestoreSession restoreSession,
   }) : _verifyOtp = verifyOtp,
+       _loginEmployee = loginEmployee,
        _restoreSession = restoreSession,
        super(const AuthState());
 
@@ -25,9 +33,30 @@ class AuthCubit extends Cubit<AuthState> {
   /// uchun xususiy maydonda saqlanadi).
   final VerifyOtp _verifyOtp;
 
+  /// Xodim login+parol bilan kirish UseCase'i.
+  final LoginEmployee _loginEmployee;
+
   /// Ilova ishga tushganda saqlangan sessiyani tiklash (auto-login)
   /// UseCase'i.
   final RestoreSession _restoreSession;
+
+  /// Xodim login+parol bilan kirishi. Muvaffaqiyatli bo'lsa sessiya
+  /// o'rnatiladi (`AuthStatus.authenticated`) — GoRouter `resolveAuthRedirect`
+  /// keyingi bosqichga (`/face/enroll` yoki `/home`) yo'naltiradi.
+  Future<void> login(String username, String password) async {
+    emit(state.copyWith(status: AuthStatus.loading));
+    final result = await _loginEmployee(
+      LoginEmployeeParams(username: username, password: password),
+    );
+    result.fold(
+      (failure) => emit(
+        state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
+      ),
+      (session) => emit(
+        state.copyWith(status: AuthStatus.authenticated, session: session),
+      ),
+    );
+  }
 
   /// Telefon raqamiga SMS-OTP tasdiqlash kodini yuborish.
   ///

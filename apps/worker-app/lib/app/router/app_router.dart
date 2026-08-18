@@ -10,8 +10,8 @@ import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubi
 import 'package:worker_app/features/attendance/presentation/pages/home_page.dart';
 import 'package:worker_app/features/attendance/presentation/pages/work_schedule_page.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/auth/presentation/pages/login_page.dart';
 import 'package:worker_app/features/auth/presentation/pages/otp_page.dart';
-import 'package:worker_app/features/auth/presentation/pages/phone_input_page.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
@@ -105,7 +105,7 @@ class AppRouter {
         ),
         GoRoute(
           path: '/login',
-          builder: (context, _) => const PhoneInputPage(),
+          builder: (context, _) => const LoginPage(),
         ),
         GoRoute(
           path: '/otp',

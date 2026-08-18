@@ -17,6 +17,7 @@ import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubi
 import 'package:worker_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:worker_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
@@ -143,6 +144,9 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<SendOtp>(() => SendOtp(getIt<AuthRepository>()))
     ..registerLazySingleton<VerifyOtp>(() => VerifyOtp(getIt<AuthRepository>()))
+    ..registerLazySingleton<LoginEmployee>(
+      () => LoginEmployee(getIt<AuthRepository>()),
+    )
     ..registerLazySingleton<RestoreSession>(
       () => RestoreSession(getIt<AuthRepository>()),
     )
@@ -157,6 +161,7 @@ Future<void> configureDependencies() async {
       () => AuthCubit(
         sendOtp: getIt<SendOtp>(),
         verifyOtp: getIt<VerifyOtp>(),
+        loginEmployee: getIt<LoginEmployee>(),
         restoreSession: getIt<RestoreSession>(),
       ),
     )

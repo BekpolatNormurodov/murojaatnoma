@@ -4,6 +4,7 @@ import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
+import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
@@ -13,12 +14,15 @@ class _MockSendOtp extends Mock implements SendOtp {}
 
 class _MockVerifyOtp extends Mock implements VerifyOtp {}
 
+class _MockLoginEmployee extends Mock implements LoginEmployee {}
+
 class _MockRestoreSession extends Mock implements RestoreSession {}
 
 void main() {
   group(AuthCubit, () {
     late SendOtp sendOtp;
     late VerifyOtp verifyOtp;
+    late LoginEmployee loginEmployee;
     late RestoreSession restoreSession;
 
     const phone = '901234567';
@@ -33,6 +37,7 @@ void main() {
     AuthCubit buildCubit() => AuthCubit(
       sendOtp: sendOtp,
       verifyOtp: verifyOtp,
+      loginEmployee: loginEmployee,
       restoreSession: restoreSession,
     );
 
@@ -45,6 +50,7 @@ void main() {
     setUp(() {
       sendOtp = _MockSendOtp();
       verifyOtp = _MockVerifyOtp();
+      loginEmployee = _MockLoginEmployee();
       restoreSession = _MockRestoreSession();
       // Default: no persisted session — individual tests override this
       // where a restored session matters.

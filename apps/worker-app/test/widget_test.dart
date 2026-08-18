@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
@@ -21,6 +22,12 @@ class _FakeRepo implements AuthRepository {
   Future<Either<Failure, AuthSession>> verifyOtp({
     required String phone,
     required String code,
+  }) async => const Left(AuthFailure());
+
+  @override
+  Future<Either<Failure, AuthSession>> login({
+    required String username,
+    required String password,
   }) async => const Left(AuthFailure());
 
   @override
@@ -41,6 +48,7 @@ void main() {
           create: (_) => AuthCubit(
             sendOtp: SendOtp(repo),
             verifyOtp: VerifyOtp(repo),
+            loginEmployee: LoginEmployee(repo),
             restoreSession: RestoreSession(repo),
           ),
           child: const PhoneInputPage(),
