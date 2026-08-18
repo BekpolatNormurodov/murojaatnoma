@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   Application,
   ApplicationEventType,
@@ -51,9 +56,18 @@ export class ApplicationsService {
     });
   }
 
-  async findAll(query: ListApplicationsQueryDto): Promise<Paginated<Application>> {
+  async findAll(
+    query: ListApplicationsQueryDto,
+    user?: AuthenticatedUser,
+  ): Promise<Paginated<Application>> {
     const { page, limit, status } = query;
-    const where = status ? { status } : {};
+    const where = {
+      ...(status ? { status } : {}),
+      // A CITIZEN principal (a phone with no employee record) may ONLY ever
+      // see their own applications, scoped server-side by the phone in their
+      // token — never the whole inbox. Staff (employee/admin) see all.
+      ...(user?.role === 'CITIZEN' ? { applicantPhone: user.phone } : {}),
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.application.findMany({
@@ -68,12 +82,18 @@ export class ApplicationsService {
     return { data, total, page, limit };
   }
 
-  async findOne(id: string): Promise<Application> {
+  async findOne(id: string, user?: AuthenticatedUser): Promise<Application> {
     const application = await this.prisma.application.findUnique({
       where: { id },
     });
     if (!application) {
       throw new NotFoundException(`Application ${id} not found`);
+    }
+    // Ownership: a CITIZEN may only read their own murojaat (matched by the
+    // phone in their token). Staff and internal callers (no `user` passed)
+    // are unrestricted.
+    if (user?.role === 'CITIZEN' && application.applicantPhone !== user.phone) {
+      throw new ForbiddenException('Bu murojaat sizga tegishli emas');
     }
     return application;
   }

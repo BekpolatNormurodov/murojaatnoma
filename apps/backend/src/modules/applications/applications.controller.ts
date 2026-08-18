@@ -31,15 +31,21 @@ export class ApplicationsController {
   @ApiBearerAuth()
   @Get()
   @ApiOperation({ summary: 'List applications, optionally filtered by status' })
-  findAll(@Query() query: ListApplicationsQueryDto): Promise<Paginated<Application>> {
-    return this.applicationsService.findAll(query);
+  findAll(
+    @Query() query: ListApplicationsQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Paginated<Application>> {
+    return this.applicationsService.findAll(query, user);
   }
 
   @ApiBearerAuth()
   @Get(':id')
   @ApiOperation({ summary: 'Get a single application' })
-  findOne(@Param('id') id: string): Promise<Application> {
-    return this.applicationsService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Application> {
+    return this.applicationsService.findOne(id, user);
   }
 
   @ApiBearerAuth()
