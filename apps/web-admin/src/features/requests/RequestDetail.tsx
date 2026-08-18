@@ -17,6 +17,7 @@ import {
   CloseCircle,
   SearchNormal1,
   Buildings2,
+  Sms,
   Trash,
 } from 'iconsax-react';
 import { useNavigate } from 'react-router-dom';
@@ -47,6 +48,7 @@ import { getDeadline, urgencyMeta } from './deadline';
 import { pushRequestToast } from './toastStore';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 import { useRequestAttachments, type Attachment } from './useRequestAttachments';
+import { useRequestEvents, type RequestEvent } from './useRequestEvents';
 
 /** Bitta biriktirilgan faylni turiga qarab chizadi: rasm inline, video <video>,
  *  ovoz <audio>, boshqasi — yuklab olish havolasi. */
@@ -86,6 +88,77 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  new: 'Yangi', NEW: 'Yangi',
+  in_progress: 'Jarayonda', IN_PROGRESS: 'Jarayonda',
+  resolved: 'Hal qilindi', RESOLVED: 'Hal qilindi', done: 'Hal qilindi', DONE: 'Hal qilindi',
+  rejected: 'Rad etildi', REJECTED: 'Rad etildi',
+  assigned: 'Biriktirildi', ASSIGNED: 'Biriktirildi',
+};
+function statusLabel(s: string | null): string {
+  if (!s) return '—';
+  return STATUS_LABELS[s] ?? s;
+}
+
+/** Bitta hodisa uchun ikonka + rang + sarlavha. */
+function eventMeta(e: RequestEvent) {
+  switch (e.type) {
+    case 'CREATED':
+      return { Icon: DocumentText, color: '#3b82f6', label: 'Murojaat yaratildi' };
+    case 'ASSIGNED':
+      return {
+        Icon: UserTick,
+        color: '#10b981',
+        label: e.toEmployeeName ? `Xodim biriktirildi: ${e.toEmployeeName}` : 'Xodim biriktirildi',
+      };
+    case 'STATUS_CHANGED':
+      return {
+        Icon: ArrowRight,
+        color: '#f59e0b',
+        label: `Holat: ${statusLabel(e.fromStatus)} → ${statusLabel(e.toStatus)}`,
+      };
+    case 'MESSAGE':
+      return { Icon: Sms, color: '#6366f1', label: 'Izoh qo\'shildi' };
+    default:
+      return { Icon: TickCircle, color: '#94a3b8', label: 'Hodisa' };
+  }
+}
+
+/** Murojaat harakatlar tarixi — vertikal timeline (audit). */
+function RequestTimeline({ events }: { events: RequestEvent[] }) {
+  return (
+    <div>
+      {events.map((e, i) => {
+        const { Icon, color, label } = eventMeta(e);
+        const isLast = i === events.length - 1;
+        return (
+          <div key={e.id} className="relative flex gap-3 pb-4 last:pb-0">
+            {!isLast && <span className="absolute left-[13px] top-7 h-[calc(100%-1rem)] w-px bg-line" />}
+            <span
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+              style={{ background: `${color}1a`, color }}
+            >
+              <Icon size={15} variant="Bulk" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium leading-snug text-ink">{label}</p>
+              {e.type === 'MESSAGE' && e.note && (
+                <p className="mt-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] leading-relaxed text-ink-soft">
+                  {e.note}
+                </p>
+              )}
+              <p className="mt-0.5 text-[11px] text-ink-muted">
+                {e.actorName ? `${e.actorName} · ` : ''}
+                {formatDate(e.createdAt)}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 const PRIORITY_META: Record<Priority, { tone: 'danger' | 'warning' | 'neutral' }> = {
@@ -154,6 +227,7 @@ export function RequestDetail({
     : null;
   // Mobil ilovadan / fuqaro tomonidan yuklangan media (rasm/video/ovoz/hujjat).
   const { data: attachments } = useRequestAttachments(r?.id ?? null);
+  const { data: events } = useRequestEvents(r?.id ?? null);
   const dl = r ? getDeadline(r, t) : null;
   const meta = dl ? urgencyMeta(dl.urgency, t) : null;
   const assignWorker = useRequests((s) => s.assignWorker);
@@ -556,6 +630,16 @@ export function RequestDetail({
               })}
             </div>
           </div>
+
+          {/* Harakatlar tarixi (audit) — murojaat hayotiy sikli */}
+          {events && events.length > 0 && (
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <Clock size={16} variant="Bulk" className="text-ink-muted" /> Harakatlar tarixi
+              </p>
+              <RequestTimeline events={events} />
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3">
