@@ -23,7 +23,10 @@ backend only relays signaling and persists history.
     convention for the admin) OR the admin user id; employee → their `staffId`
     (the id used in `ChatConversation.staffId` / `dm-<staffId>`). One canonical
     id per user is used for `user:<id>` rooms and call routing.
-  - Invalid/absent token → connection refused (`connect_error`).
+  - Invalid/absent token → server emits `auth:error` `{ message }` then
+    disconnects. (NOT `connect_error` — that is a Socket.IO **reserved** event
+    and throws if emitted server-side; clients still get the native
+    `connect_error` from the transport on a refused connection.)
 - **Rooms:** each socket auto-joins `user:<id>`. Chat rooms are
   `conv:<conversationId>` (joined on demand).
 
@@ -134,6 +137,36 @@ Requires `FIREBASE_SERVICE_ACCOUNT_B64` on the server (already wired in
 ## Config (env) — additive
 - `TURN_URL`, `TURN_USERNAME`, `TURN_CREDENTIAL` (optional; STUN-only if unset).
 - `CALL_RING_TIMEOUT_SEC` (default 35).
+
+## Meeting rooms (multi-party mesh WebRTC — "yig'ilish / selektor")
+Ephemeral **in-memory** rooms keyed by `meetingId` (no persistence, no
+meetings-backend change). Participant id = the socket's identity id (`me` for
+any admin, employeeId for employees). Mesh convention: the **newcomer offers**
+to each existing participant. Demo scope = one admin (`me`) + distinct employees
+(two admin browsers share id `me`, so they can't be distinct peers — fine for an
+admin-led selektor where employees join from mobile).
+
+### Client → server
+| event | payload | effect |
+|---|---|---|
+| `meeting:join` | `{ meetingId }` | join; **ack** `{ participants: [{id,name,avatar?}] }` (existing, distinct) + broadcast `meeting:participant-joined` to the room |
+| `meeting:leave` | `{ meetingId }` | leave; broadcast `meeting:participant-left` (also fires automatically on socket disconnect) |
+| `meeting:sdp` | `{ meetingId, toUserId, description }` | relay to that participant's socket(s) as `{ meetingId, fromUserId, description }` |
+| `meeting:ice` | `{ meetingId, toUserId, candidate }` | relay as `{ meetingId, fromUserId, candidate }` |
+
+### Server → client
+| event | payload |
+|---|---|
+| `meeting:participant-joined` | `{ meetingId, participant: { id, name, avatar? } }` |
+| `meeting:participant-left` | `{ meetingId, userId }` |
+| `meeting:sdp` | `{ meetingId, fromUserId, description }` |
+| `meeting:ice` | `{ meetingId, fromUserId, candidate }` |
+
+Flow: on join, the ack gives the newcomer the existing participants; it creates
+an offer to each (`meeting:sdp`), each answers. Current members learn of the
+newcomer via `meeting:participant-joined` and expect its offer. ICE trickles via
+`meeting:ice`. Reuses the same JWT-authed socket + `/rt/ice-servers` (STUN/TURN)
+as 1:1 calls.
 
 ## Message-level ops (delete any / edit while unread)
 User ask: delete each message; edit a message **while it is still unread**

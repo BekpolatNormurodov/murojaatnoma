@@ -26,6 +26,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { PushService } from '../push/push.service';
 import { ChatService } from '../chat/chat.service';
 import { CallsService } from './calls.service';
+import { MeetingRoomService } from './meetings-room.service';
 import { RealtimeService } from './realtime.service';
 import { CallMedia, SocketIdentity } from './interfaces/socket-identity.interface';
 
@@ -52,6 +53,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly chat: ChatService,
     private readonly presence: RealtimeService,
     private readonly calls: CallsService,
+    private readonly meetings: MeetingRoomService,
     private readonly push: PushService,
   ) {}
 
@@ -87,6 +89,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const identity = this.identityOf(client);
     if (!identity) return;
     await this.endCallsFor(identity.id);
+    for (const meetingId of this.meetings.meetingsOf(client.id)) {
+      this.leaveMeeting(client, meetingId);
+    }
     const nowOffline = this.presence.removeSocket(identity.id, client.id);
     if (nowOffline) {
       this.broadcastPresence(identity.id, false);
@@ -381,6 +386,78 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const other = call.callerId === identity.id ? call.calleeId : call.callerId;
     this.server.to(`user:${other}`).emit('call:ended', { callId: body.callId, durationSec });
     return { ok: true };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Meetings — multi-party mesh WebRTC rooms (yig'ilish / "selektor")
+  // ---------------------------------------------------------------------------
+  @SubscribeMessage('meeting:join')
+  async onMeetingJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string },
+  ) {
+    const me = this.requireIdentity(client);
+    const existing = this.meetings.join(body.meetingId, client.id, me);
+    await client.join(`meeting:${body.meetingId}`);
+    // Tell those already in the room that a newcomer arrived.
+    client.to(`meeting:${body.meetingId}`).emit('meeting:participant-joined', {
+      meetingId: body.meetingId,
+      participant: { id: me.id, name: me.name, avatar: me.avatar },
+    });
+    // Ack the joiner with the existing participants (it mesh-offers to each).
+    return {
+      participants: existing.map((p) => ({ id: p.id, name: p.name, avatar: p.avatar })),
+    };
+  }
+
+  @SubscribeMessage('meeting:leave')
+  onMeetingLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string },
+  ) {
+    this.requireIdentity(client);
+    this.leaveMeeting(client, body.meetingId);
+    return { ok: true };
+  }
+
+  @SubscribeMessage('meeting:sdp')
+  onMeetingSdp(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string; toUserId: string; description: unknown },
+  ) {
+    const me = this.requireIdentity(client);
+    for (const sid of this.meetings.socketsFor(body.meetingId, body.toUserId)) {
+      this.server.to(sid).emit('meeting:sdp', {
+        meetingId: body.meetingId,
+        fromUserId: me.id,
+        description: body.description,
+      });
+    }
+  }
+
+  @SubscribeMessage('meeting:ice')
+  onMeetingIce(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string; toUserId: string; candidate: unknown },
+  ) {
+    const me = this.requireIdentity(client);
+    for (const sid of this.meetings.socketsFor(body.meetingId, body.toUserId)) {
+      this.server.to(sid).emit('meeting:ice', {
+        meetingId: body.meetingId,
+        fromUserId: me.id,
+        candidate: body.candidate,
+      });
+    }
+  }
+
+  private leaveMeeting(client: Socket, meetingId: string): void {
+    const res = this.meetings.leave(meetingId, client.id);
+    void client.leave(`meeting:${meetingId}`);
+    if (res?.gone) {
+      this.server
+        .to(`meeting:${meetingId}`)
+        .emit('meeting:participant-left', { meetingId, userId: res.identity.id });
+    }
   }
 
   private async onRingTimeout(callId: string): Promise<void> {

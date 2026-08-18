@@ -4,6 +4,7 @@ import { ChatModule } from '../chat/chat.module';
 import { CallsController } from './calls.controller';
 import { CallsService } from './calls.service';
 import { IceController } from './ice.controller';
+import { MeetingRoomService } from './meetings-room.service';
 import { RealtimeGateway } from './realtime.gateway';
 import { RealtimeService } from './realtime.service';
 
@@ -18,6 +19,6 @@ import { RealtimeService } from './realtime.service';
 @Module({
   imports: [ChatModule, JwtModule.register({})],
   controllers: [IceController, CallsController],
-  providers: [RealtimeGateway, RealtimeService, CallsService],
+  providers: [RealtimeGateway, RealtimeService, CallsService, MeetingRoomService],
 })
 export class RealtimeModule {}
