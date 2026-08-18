@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './common/config/configuration';
 import { envValidationSchema } from './common/config/env.validation';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { CitizenAccessGuard } from './common/guards/citizen-access.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ScopeGuard } from './common/guards/scope.guard';
@@ -68,6 +69,10 @@ import { ZonesModule } from './modules/zones/zones.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Runs after JwtAuthGuard: denies CITIZEN-scope tokens every route not
+    // marked @AllowCitizen() (secure-by-default). Inert until citizen tokens
+    // are re-enabled in AuthService.verifyOtp.
+    { provide: APP_GUARD, useClass: CitizenAccessGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: ScopeGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

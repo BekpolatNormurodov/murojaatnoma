@@ -89,22 +89,29 @@ export class AuthService {
       where: { phone: dto.phone },
     });
 
-    if (!employee || !employee.isActive) {
-      throw new UnauthorizedException('No active employee for this phone number');
+    if (employee) {
+      if (!employee.isActive) {
+        throw new UnauthorizedException('Employee account is inactive');
+      }
+      return this.issueTokenPair({
+        sub: employee.id,
+        phone: employee.phone,
+        role: employee.role,
+        scope: 'employee',
+      });
     }
 
-    // NOTE: citizen tokens are intentionally NOT issued here yet. A citizen
-    // principal reaches every JwtAuthGuard-only route (e.g. GET /employees
-    // exposes the staff roster) unless the app is secure-by-default for the
-    // 'citizen' scope. That global guard (deny scope:'citizen' unless a route
-    // opts in via @AllowCitizen) must land BEFORE re-enabling the citizen
-    // branch — see plan A. The PrincipalRole/'citizen' scope types are kept
-    // in place for that follow-up.
+    // No employee record for this OTP-verified phone → issue a CITIZEN token.
+    // Now SAFE (secure-by-default): the global CitizenAccessGuard denies
+    // scope:'citizen' on every route NOT marked @AllowCitizen(), so a citizen
+    // reaches only @Public routes + explicitly citizen-facing endpoints (which
+    // must scope their results to token.phone). Phone ownership is proven by
+    // the consumed OTP above. Access-token-only (no refresh row — no employee FK).
     return this.issueTokenPair({
-      sub: employee.id,
-      phone: employee.phone,
-      role: employee.role,
-      scope: 'employee',
+      sub: dto.phone,
+      phone: dto.phone,
+      role: 'CITIZEN',
+      scope: 'citizen',
     });
   }
 
