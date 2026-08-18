@@ -21,6 +21,14 @@ export interface PersonRef {
   kind: PersonKind;
 }
 
+/** Odam turi bo'yicha yorliq (badge) — ism yonida ko'rsatiladi. */
+const KIND_META: Record<PersonKind, { label: string; color: string }> = {
+  worker: { label: 'Ishchi', color: '#10b981' },
+  staff: { label: 'Xodim', color: '#3b82f6' },
+  deputy: { label: "O'rinbosar", color: '#a855f7' },
+  citizen: { label: 'Fuqaro', color: '#64748b' },
+};
+
 /** Bitta tezkor amal tugmasi — WorkerDetail "Tezkor amallar" uslubida. */
 function ActionButton({
   icon,
@@ -87,9 +95,20 @@ export function PersonProfileModal({
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4">
             <Avatar name={person.name} src={person.photo} color={person.color} size={64} />
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-ink">{person.name}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-bold text-ink">{person.name}</h3>
+                <span
+                  className="rounded-md px-2 py-0.5 text-[11px] font-semibold"
+                  style={{
+                    background: `${KIND_META[person.kind].color}1a`,
+                    color: KIND_META[person.kind].color,
+                  }}
+                >
+                  {KIND_META[person.kind].label}
+                </span>
+              </div>
               {person.position && (
-                <p className="text-[13px] text-ink-muted">{person.position}</p>
+                <p className="mt-0.5 text-[13px] text-ink-muted">{person.position}</p>
               )}
               {person.phone && (
                 <a
