@@ -23,6 +23,10 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Local notifications (Android 13+ runtime permission) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Full-screen incoming-call notification (heads-up ring on the lock
+         screen). USE_FULL_SCREEN_INTENT is REQUIRED on Android 14+ for the
+         incoming_call FCM push to surface as a full-screen ring. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <application
         android:label="Hokimiyat Ishchi"
         android:name="${applicationName}"

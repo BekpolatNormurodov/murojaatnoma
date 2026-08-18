@@ -25,6 +25,10 @@ import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/calls/data/datasources/call_remote_data_source.dart';
+import 'package:worker_app/features/calls/data/repositories/call_repository_impl.dart';
+import 'package:worker_app/features/calls/domain/repositories/call_repository.dart';
+import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/chat/data/datasources/chat_remote_data_source.dart';
 import 'package:worker_app/features/chat/data/repositories/chat_repository_impl.dart';
 import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
@@ -369,6 +373,28 @@ Future<void> configureDependencies() async {
         socket: getIt<RealtimeSocketService>(),
         uploads: getIt<UploadsService>(),
         authCubit: getIt<AuthCubit>(),
+      ),
+    )
+    // ---- Qo'ng'iroqlar/Calls (1:1 WebRTC ovozli/video — admin<->xodim) ----
+    // Signalizatsiya `RealtimeSocketService` (call:*), media `flutter_webrtc`.
+    ..registerLazySingleton<CallRemoteDataSource>(
+      () => AppConfig.useMock
+          ? CallRemoteDataSourceMockImpl()
+          : CallRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<CallRepository>(
+      () => CallRepositoryImpl(remote: getIt<CallRemoteDataSource>()),
+    )
+    // `CallCubit` — GLOBAL (lazy singleton, factory EMAS): ilova ildizida
+    // (`app.dart`) `BlocProvider` orqali ta'minlanadi, kiruvchi qo'ng'iroq
+    // tinglovchisi VA FCM bildirishnoma bosilishi (`acceptFromPush`) XUDDI
+    // SHU instansiyani ishlatishi shart (bitta RTCPeerConnection). Socket
+    // call:* oqimlariga konstruktorda obuna bo'ladi (mock rejimda oqim
+    // bo'sh — zararsiz).
+    ..registerLazySingleton<CallCubit>(
+      () => CallCubit(
+        socket: getIt<RealtimeSocketService>(),
+        repository: getIt<CallRepository>(),
       ),
     )
     // ---- Majlislar/Meetings (Zoom-uslubidagi ichki yig'ilishlar) ----

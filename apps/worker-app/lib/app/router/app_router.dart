@@ -11,6 +11,8 @@ import 'package:worker_app/features/attendance/presentation/pages/home_page.dart
 import 'package:worker_app/features/attendance/presentation/pages/work_schedule_page.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/auth/presentation/pages/login_page.dart';
+import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
+import 'package:worker_app/features/calls/presentation/pages/call_page.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
@@ -212,6 +214,24 @@ class AppRouter {
                 conversationId: id,
                 conversation: conversation,
               ),
+            );
+          },
+        ),
+        // `/call/:id` — to'liq ekranli 1:1 WebRTC qo'ng'iroq sahifasi
+        // (`/chat/:id` bilan bir xil naqsh: shell darajasidan TASHQARIDA,
+        // pastki navigatsiya yashiriladi). `CallCubit` GLOBAL lazy singleton
+        // (ilova ildizida `app.dart`da allaqachon `BlocProvider` orqali
+        // ta'minlangan) — bu yerda XUDDI SHU instansiya `BlocProvider.value`
+        // bilan uzatiladi (kiruvchi tinglovchi/FCM ham shu instansiyani
+        // ishlatadi). Navigatsiya sahifaning O'ZI emas, `app.dart`dagi
+        // global tinglovchi tomonidan boshqariladi.
+        GoRoute(
+          path: '/call/:id',
+          builder: (context, state) {
+            final id = state.pathParameters['id']!;
+            return BlocProvider.value(
+              value: getIt<CallCubit>(),
+              child: CallPage(callId: id),
             );
           },
         ),

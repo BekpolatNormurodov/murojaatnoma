@@ -10,6 +10,8 @@ import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/calls/domain/entities/call.dart';
+import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
 import 'package:worker_app/firebase_options.dart';
 import 'package:worker_app/injection.dart';
@@ -89,8 +91,27 @@ Future<void> _initPush() async {
 /// ikki qavatli qo'shimcha kafolat: bildirishnoma xizmati muvaffaqiyatsiz
 /// bo'lsa ham ilova ishga tushishi HECH QACHON to'xtamaydi.
 Future<void> _initNotifications() async {
+  // Kiruvchi qo'ng'iroq bildirishnomasi bosilganda: socketni ulaymiz
+  // (idempotent) va qo'ng'iroqni qabul qilamiz. `/call/:id`ga navigatsiya
+  // `app.dart`dagi global tinglovchi orqali (holat `incoming`ga o'tishi
+  // bilan) amalga oshadi. Mock rejimda socket/backend yo'q — o'tkazamiz.
+  final notifications = getIt<NotificationService>()
+    ..onIncomingCallTap = (callId, callerName, media) {
+      if (AppConfig.useMock) return;
+      unawaited(getIt<RealtimeSocketService>().connect());
+      unawaited(
+        getIt<CallCubit>().acceptFromPush(
+          callId: callId,
+          callerName: callerName,
+          media: CallMedia.fromWire(media),
+        ),
+      );
+    };
   try {
-    await getIt<NotificationService>().init();
+    await notifications.init();
+    // Bildirishnoma bosilishi orqali SOVUQ ishga tushirilgan bo'lsa — o'sha
+    // qo'ng'iroqni qabul qilamiz (init launch payload'ni ushlab qo'ygan).
+    notifications.dispatchLaunchTap();
   } on Object {
     // Jim o'tkazib yuboriladi — bildirishnomalar shunchaki ishlamaydi.
   }

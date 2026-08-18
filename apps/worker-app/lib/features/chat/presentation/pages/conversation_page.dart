@@ -5,6 +5,8 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:worker_app/features/calls/domain/entities/call.dart';
+import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
@@ -167,6 +169,44 @@ class _ConversationPageState extends State<ConversationPage> {
             ),
           ],
         ),
+        // Shaxsiy (admin<->xodim) suhbatda 1:1 qo'ng'iroq tugmalari — faqat
+        // jonli rejimda (socket kerak). Bosilганда global `CallCubit`
+        // chiquvchi qo'ng'iroqni boshlaydi (`toUserId: 'me'` = admin), va
+        // `app.dart`dagi tinglovchi `/call/:id` ekranini ochadi.
+        actions: [
+          if (!AppConfig.useMock &&
+              conversation != null &&
+              conversation.type == ConversationType.shaxsiy) ...[
+            IconButton(
+              icon: const Icon(
+                IconsaxPlusLinear.call,
+                color: AppColors.primary,
+              ),
+              tooltip: "Ovozli qo'ng'iroq",
+              onPressed: () => unawaited(
+                context.read<CallCubit>().startCall(
+                  toUserId: 'me',
+                  toName: conversation.title,
+                  media: CallMedia.audio,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(
+                IconsaxPlusLinear.video,
+                color: AppColors.primary,
+              ),
+              tooltip: "Video qo'ng'iroq",
+              onPressed: () => unawaited(
+                context.read<CallCubit>().startCall(
+                  toUserId: 'me',
+                  toName: conversation.title,
+                  media: CallMedia.video,
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
       body: SafeArea(
         child: DecoratedBox(

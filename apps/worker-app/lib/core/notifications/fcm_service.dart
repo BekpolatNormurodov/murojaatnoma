@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:dio/dio.dart';
@@ -92,6 +93,25 @@ class FcmService {
   }
 
   void _onForegroundMessage(RemoteMessage message) {
+    // Kiruvchi qo'ng'iroq (data-push) — socket ulanmagan holat uchun
+    // fallback: to'liq-ekran jiringlash bildirishnomasini ko'rsatamiz
+    // (socket ulangan bo'lsa `call:incoming` allaqachon in-app ekranni
+    // ochadi — bildirishnoma qo'shimcha zarar qilmaydi).
+    if (message.data['type'] == 'incoming_call') {
+      final callId = message.data['callId'] as String?;
+      if (callId != null) {
+        unawaited(
+          _local.showIncomingCall(
+            callId: callId,
+            callerName:
+                (message.data['callerName'] as String?) ?? 'Nomaʼlum',
+            media: (message.data['media'] as String?) ?? 'audio',
+          ),
+        );
+      }
+      return;
+    }
+
     final notification = message.notification;
     if (notification == null) {
       return;
@@ -103,12 +123,28 @@ class FcmService {
   }
 }
 
-/// Ilova FONDA/YOPIQ holatda kelgan push uchun top-level handler. FCM tizim
-/// bildirishnomasini AVTOMATIK ko'rsatadi, shuning uchun bu yerda qo'shimcha
-/// ish shart emas — lekin handler RO'YXATDAN O'TKAZILISHI shart
+/// Ilova FONDA/YOPIQ holatda kelgan push uchun top-level handler. Oddiy
+/// (notification) push'ni FCM tizim o'zi ko'rsatadi; lekin kiruvchi
+/// qo'ng'iroq DATA-push (`type == 'incoming_call'`) uchun bu yerda
+/// to'liq-ekran jiringlash bildirishnomasini QO'LDA ko'rsatamiz (background
+/// isolate o'z plagin nusxasini yaratadi). Bosilганда ilova ochilib
+/// `/call/:callId`ga o'tadi va qo'ng'iroqni qabul qiladi
+/// (`NotificationService.dispatchLaunchTap` -> `acceptFromPush`).
+///
+/// Handler RO'YXATDAN O'TKAZILISHI shart
 /// (`FirebaseMessaging.onBackgroundMessage`), aks holda ba'zi platformalarda
 /// data-message umuman yetkazilmaydi.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Tizim push'ni o'zi ko'rsatadi; alohida ish talab qilinmaydi.
+  if (message.data['type'] == 'incoming_call') {
+    final callId = message.data['callId'] as String?;
+    if (callId != null) {
+      await showIncomingCallNotificationBackground(
+        callId: callId,
+        callerName: (message.data['callerName'] as String?) ?? 'Nomaʼlum',
+        media: (message.data['media'] as String?) ?? 'audio',
+      );
+    }
+  }
+  // Boshqa push'larni tizim o'zi ko'rsatadi; alohida ish talab qilinmaydi.
 }

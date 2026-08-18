@@ -53,9 +53,14 @@ dependencies:
   dio: ^5.7.0
 
   # Realtime chat transport (Socket.IO) — jonli xabar yetkazish
-  # (chat:message/chat:read/chat:typing) uchun. Qo'ng'iroqlar (WebRTC) BU
-  # modul doirasidan tashqarida (flutter_webrtc ATAYLAB qo'shilmagan).
+  # (chat:message/chat:read/chat:typing) VA 1:1 WebRTC qo'ng'iroq signalizatsiyasi
+  # (call:* eventlari) uchun bir xil ulanish (qarang: realtime_socket_service).
   socket_io_client: ^2.0.3
+
+  # 1:1 WebRTC ovozli/video qo'ng'iroq (admin<->xodim) — haqiqiy peer-to-peer
+  # media (getUserMedia + RTCPeerConnection + RTCVideoView). Signalizatsiya
+  # Socket.IO orqali (call:* eventlari), ICE serverlar `GET /rt/ice-servers`.
+  flutter_webrtc: ^0.12.5
 
   # Routing
   go_router: ^14.8.1
