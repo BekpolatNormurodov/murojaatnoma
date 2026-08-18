@@ -99,12 +99,18 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
 }
 
 /// Enroll uchun liveness harakatlar ro'yxati: bitta tasodifiy anti-spoof
-/// yetakchi (blink/turnLeft/turnRight) + DOIM frontal `smile` bilan yakun.
-/// Challenge tugagan (va aynan `capture()` saqlaydigan) freym frontal +
-/// ko'zi ochiq bo'lishini kafolatlaydi — enroll SHABLONI shu kadrdan
-/// olinadi, shuning uchun kadr sifati muhim. Check-in'ning
+/// yetakchi (blink/turnLeft/turnRight) + DOIM frontal `smile` bilan yakun,
+/// shunda saqlanadigan kadr frontal + ko'zi ochiq bo'ladi. Check-in'ning
 /// `_pickLivenessActions`idan ATAY farq qiladi (`smile` bilan yakunlanadi),
 /// shuning uchun umumiylashtirilmaydi.
+///
+/// XAVFSIZLIK CHEKLOVI (ataylab hujjatlashtirilgan): bu FAOL (active) liveness
+/// FAQAT statik fotosuratni bloklaydi — ekranda ijro etilgan VIDEO replay'ni
+/// EMAS (ML Kit jonli yuz bilan qayta ijro etilgan videoni ajrata olmaydi;
+/// passiv anti-spoof — ekran porlashi/moire/chuqurlik — yo'q). Ishlab
+/// chiqarish uchun haqiqiy identifikatsiya kafolati: maxsus liveness SDK
+/// (passiv/depth) yoki nazoratchi ishtirokidagi enrollment kerak — bu MAHSULOT
+/// qarori. Ayni cheklov check-in'da ham bor (bir xil liveness dvigateli).
 List<LivenessAction> _pickEnrollLivenessActions() {
   const lead = [
     LivenessAction.blink,

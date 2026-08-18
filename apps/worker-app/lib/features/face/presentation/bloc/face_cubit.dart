@@ -485,27 +485,19 @@ class FaceCubit extends Cubit<FaceState> {
           _lastFace = face;
           onLivenessFrame(face.signal);
           if (canTriggerCapture) {
-            if (_enrollWithLiveness) {
-              // Enroll: liveness ISBOTLANDI — endi SHABLONNI saqlashdan oldin
-              // kadr sifatini ham talab qilamiz (frontal/markazda/yaqinlik/
-              // ko'z ochiq). Bu shablon har bir kelgusi check-in
-              // solishtiradigan ETALON bo'lgani uchun sifat MUHIM. Liveness
-              // tarmog'i onDetection sifat-gate'ini ishlatmaydi, AYNAN o'sha
-              // sof `_evaluateQuality` qayta ishlatiladi: kadr yaxshi bo'lmasa
-              // `FacePoorQuality` bilan yo'naltiramiz (liveness timeouti bilan
-              // chegaralangan), yaxshi bo'lsa saqlaymiz. Check-in bu shoxga
-              // HECH QACHON kirmaydi (`_enrollWithLiveness` doim false).
-              final reason = _evaluateQuality(face);
-              if (reason == null) {
-                _captureConsumed = true;
-                unawaited(capture());
-              } else {
-                emit(FacePoorQuality(reason));
-              }
-            } else {
-              _captureConsumed = true;
-              unawaited(_captureAndVerify());
-            }
+            _captureConsumed = true;
+            // Liveness ISBOTLANGACH shu (challenge tugagan) kadrda capture
+            // qilamiz: enroll -> EnrollFace (yangi shablon), check-in ->
+            // VerifyFace+CheckIn. Enroll uchun QO'SHIMCHA sifat-gate ATAY
+            // QO'YILMADI: (a) u check-in bilan bir xil bo'lmagan taqsimot
+            // yaratardi (enroll qat'iy frontal, check-in probe'i gate'siz) —
+            // moslik pasayardi; (b) umumiy 20s timeout ichida qayta-gate qilib
+            // bo'lmay, foydalanuvchini butun challenge'ni qaytadan boshlashga
+            // majburlardi. Ikkala oqim ham liveness-tugash kadrini oladi ->
+            // izchil. Enroll challenge'i `smile` bilan tugaydi -> frontal +
+            // ko'z ochiq (fotosurat bilan enroll'ni bloklaydi; VIDEO replay'ni
+            // EMAS — qarang: `_pickEnrollLivenessActions` izohi).
+            unawaited(_enrollWithLiveness ? capture() : _captureAndVerify());
           }
         } else {
           onNoFace();
