@@ -111,6 +111,11 @@ class _MessageComposerState extends State<MessageComposer> {
           AppListTile(
             title: l10n.chatAttachRoundVideo,
             leadingIcon: IconsaxPlusLinear.video_circle,
+            // Boshqa qatorlardagi qisqa nomlardan farqli — bu yorliq
+            // uzunroq ("Dumaloq video xabar"), shuning uchun bitta qatorga
+            // kesib-ellipsis qilib qo'yish o'rniga 2 qatorga o'ralishiga
+            // ruxsat beriladi (`titleMaxLines` aynan shu holat uchun).
+            titleMaxLines: 2,
             onTap: () => Navigator.of(context).pop(_AttachOption.roundVideo),
           ),
           AppListTile(

@@ -354,14 +354,27 @@ String _defaultSenderName(String senderRole) {
   };
 }
 
-/// Fayl kengaytmasiga qarab biriktirmani rasm/fayl deb taxmin qiladi —
-/// backend `attachmentUrl` uchun mime-tur bermaydi.
+/// Fayl kengaytmasiga qarab biriktirma turini (rasm/ovozli/doiraviy video/
+/// oddiy fayl) taxmin qiladi — backend `attachmentUrl` uchun mime-tur ham,
+/// asl xabar turini ham bermaydi, faqat manzilning o'zini qaytaradi.
+///
+/// MUHIM: aynan shu funksiya orqali suhbat tarixi qayta yuklanganda
+/// (`GET /applications/:id/messages`) ovozli/doiraviy video xabarlar to'g'ri
+/// pufakchaga (`VoiceBubble`/`RoundVideoBubble`) yo'naltiriladi. Faqat
+/// rasm/fayl kengaytmalarini bilgan eski versiyada audio/video kengaytmalari
+/// "fayl"ga tushib qolardi (yoki `attachmentUrl` yo'q bo'lsa — pastdagi
+/// [_messageFromApi]da `MessageType.text`ga), va natijada xabar tanasida
+/// yuborishda ishlatilgan [_fallbackText] yorlig'i ("Ovozli xabar" / "Video
+/// xabar") harfma-harf matn sifatida ko'rinardi.
 MessageType _inferAttachmentType(String url) {
   final lower = url.toLowerCase();
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
-  return imageExtensions.any(lower.contains)
-      ? MessageType.image
-      : MessageType.file;
+  const audioExtensions = ['.m4a', '.mp3', '.aac', '.wav', '.ogg', '.opus'];
+  const videoExtensions = ['.mp4', '.mov', '.m4v', '.webm', '.3gp'];
+  if (imageExtensions.any(lower.contains)) return MessageType.image;
+  if (audioExtensions.any(lower.contains)) return MessageType.voice;
+  if (videoExtensions.any(lower.contains)) return MessageType.roundVideo;
+  return MessageType.file;
 }
 
 /// URL manzilidan fayl nomini ajratib oladi (muvaffaqiyatsiz bo'lsa

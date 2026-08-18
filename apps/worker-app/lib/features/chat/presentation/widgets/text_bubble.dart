@@ -15,22 +15,29 @@ class TextBubble extends StatelessWidget {
     final isMine = message.isMine;
     return BubbleShell(
       isMine: isMine,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            message.text ?? '',
-            style: AppTextStyles.body.copyWith(
-              color: bubbleContentColor(isMine: isMine, isDark: isDark),
+      // Vaqt/holat matn OQIMI ICHIDA, oxirgi so'zga "yopishtirilgan"
+      // `WidgetSpan` sifatida — Telegram/WhatsApp uslubi: qisqa xabarda bir
+      // qatorda matn bilan yonma-yon, uzun xabarda esa oxirgi qatorga o'zi
+      // o'ralib tushadi. ATAYLAB alohida `Column`+`Align` EMAS — `Align`
+      // cheksiz (loose) kenglik konstraintida har doim MAKSIMAL kenglikka
+      // cho'zilib, pufakchani (hatto bir necha harfli xabarda ham) butun
+      // qator bo'ylab yoyib yuborardi.
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: message.text ?? '',
+              style: AppTextStyles.body.copyWith(
+                color: bubbleContentColor(isMine: isMine, isDark: isDark),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: MessageMeta(message: message),
-          ),
-        ],
+            const WidgetSpan(child: SizedBox(width: 8)),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: MessageMeta(message: message),
+            ),
+          ],
+        ),
       ),
     );
   }

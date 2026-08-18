@@ -144,11 +144,13 @@ class BubbleShell extends StatelessWidget {
               bottomLeft: big,
               bottomRight: tail,
             ),
+            // Yengil, tekis soya — avvalgi qattiq yashil "porlash" (glow)
+            // zamonaviy messenjer UI'lariga mos emas edi.
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.28),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
+                color: AppColors.primary.withValues(alpha: 0.10),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
           )
