@@ -1,10 +1,20 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Sidebar, SidebarContent } from './Sidebar';
 import { Topbar } from './Topbar';
 import { useUI } from '@/shared/store/ui';
 import { cn } from '@/shared/lib/cn';
+
+/** Lazy sahifa chunk'i yuklanayotganda ko'rinadigan yengil yuklovchi
+ *  (sidebar/topbar joyida qoladi — faqat kontent maydoni ko'rsatiladi). */
+function PageLoader() {
+  return (
+    <div className="flex min-h-[55vh] items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-line border-t-primary-500" />
+    </div>
+  );
+}
 
 export function AdminLayout() {
   const location = useLocation();
@@ -55,7 +65,9 @@ export function AdminLayout() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Outlet />
+              <Suspense fallback={<PageLoader />}>
+                <Outlet />
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>

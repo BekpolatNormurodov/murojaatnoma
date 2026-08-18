@@ -1,26 +1,33 @@
+import { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AdminLayout } from './layout/AdminLayout';
 import { ProtectedRoute, GuestRoute, RoleRoute } from './guards';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { DashboardPage } from '@/features/dashboard/DashboardPage';
-import { RequestsPage } from '@/features/requests/RequestsPage';
-import { ComplaintsPage } from '@/features/complaints/ComplaintsPage';
-import { MeetingsPage } from '@/features/meetings/MeetingsPage';
-import { DeputiesPage } from '@/features/deputies/DeputiesPage';
-import { ChatPage } from '@/features/chat/ChatPage';
-import { WorkersPage } from '@/features/workers/WorkersPage';
-import { MapPage } from '@/features/map/MapPage';
-import { AppUsersPage } from '@/features/app-users/AppUsersPage';
-import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
-import { AttendancePage } from '@/features/attendance/AttendancePage';
-import { CamerasPage } from '@/features/cameras/CamerasPage';
-import { FinancePage } from '@/features/finance/FinancePage';
-import { DocumentsPage } from '@/features/documents/DocumentsPage';
-import { StaffPage } from '@/features/staff/StaffPage';
-import { BonusesPage } from '@/features/bonuses/BonusesPage';
-import { NewsPage } from '@/features/news/NewsPage';
-import { SettingsPage } from '@/features/settings/SettingsPage';
-import { AdminsPage } from '@/features/admins/AdminsPage';
+
+// Route-darajasidagi code-splitting: har bir sahifa alohida chunk sifatida
+// kerak bo'lganda yuklanadi — boshlang'ich bundle keskin kichrayadi, sahifalar
+// tezroq ochiladi (immutable-kesh tufayli birinchi tashrifdan keyin darhol).
+// Named export'lar React.lazy uchun { default: ... }'ga o'giriladi. Suspense
+// fallback AdminLayout ichida — Outlet atrofida (sidebar/topbar joyida qoladi).
+const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const RequestsPage = lazy(() => import('@/features/requests/RequestsPage').then((m) => ({ default: m.RequestsPage })));
+const ComplaintsPage = lazy(() => import('@/features/complaints/ComplaintsPage').then((m) => ({ default: m.ComplaintsPage })));
+const MeetingsPage = lazy(() => import('@/features/meetings/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
+const DeputiesPage = lazy(() => import('@/features/deputies/DeputiesPage').then((m) => ({ default: m.DeputiesPage })));
+const ChatPage = lazy(() => import('@/features/chat/ChatPage').then((m) => ({ default: m.ChatPage })));
+const WorkersPage = lazy(() => import('@/features/workers/WorkersPage').then((m) => ({ default: m.WorkersPage })));
+const MapPage = lazy(() => import('@/features/map/MapPage').then((m) => ({ default: m.MapPage })));
+const AppUsersPage = lazy(() => import('@/features/app-users/AppUsersPage').then((m) => ({ default: m.AppUsersPage })));
+const AnalyticsPage = lazy(() => import('@/features/analytics/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })));
+const AttendancePage = lazy(() => import('@/features/attendance/AttendancePage').then((m) => ({ default: m.AttendancePage })));
+const CamerasPage = lazy(() => import('@/features/cameras/CamerasPage').then((m) => ({ default: m.CamerasPage })));
+const FinancePage = lazy(() => import('@/features/finance/FinancePage').then((m) => ({ default: m.FinancePage })));
+const DocumentsPage = lazy(() => import('@/features/documents/DocumentsPage').then((m) => ({ default: m.DocumentsPage })));
+const StaffPage = lazy(() => import('@/features/staff/StaffPage').then((m) => ({ default: m.StaffPage })));
+const BonusesPage = lazy(() => import('@/features/bonuses/BonusesPage').then((m) => ({ default: m.BonusesPage })));
+const NewsPage = lazy(() => import('@/features/news/NewsPage').then((m) => ({ default: m.NewsPage })));
+const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const AdminsPage = lazy(() => import('@/features/admins/AdminsPage').then((m) => ({ default: m.AdminsPage })));
 
 export const router = createBrowserRouter([
   {

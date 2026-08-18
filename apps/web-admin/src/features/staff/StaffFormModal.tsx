@@ -45,7 +45,7 @@ export function StaffFormModal({
   onClose: () => void;
   /** `createLogin` — "Login yaratish (telefon orqali)" belgilangan bo'lsa true;
    *  chaqiruvchi (StaffPage) xodim yaratilgandan so'ng buni ishlatib alohida
-   *  POST /employees yuboradi (worker-app OTP-login uchun). */
+   *  POST /employees yuboradi (worker-app login/parol hisobi uchun). */
   onSubmit: (input: StaffFormInput, createLogin: boolean) => Promise<void>;
 }) {
   const [name, setName] = useState('');
@@ -63,8 +63,8 @@ export function StaffFormModal({
   const [twoFactor, setTwoFactor] = useState(false);
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]);
   const [photo, setPhoto] = useState('');
-  // worker-app'ga shu telefon raqami bilan OTP orqali kirish uchun /employees
-  // yozuvi ham yaratilsinmi (staff yozuvidan mustaqil, xatosi alohida ushlanadi).
+  // worker-app hisobini (login/parol) yaratish uchun /employees yozuvi ham
+  // yaratilsinmi (staff yozuvidan mustaqil, xatosi alohida ushlanadi).
   const [createLogin, setCreateLogin] = useState(false);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -374,9 +374,9 @@ export function StaffFormModal({
             className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-600"
           />
           <span className="text-[13px]">
-            <span className="block font-medium text-ink">Login yaratish (telefon orqali)</span>
+            <span className="block font-medium text-ink">Worker-app hisobini yaratish</span>
             <span className="mt-0.5 block text-ink-muted">
-              Xodim worker-app'ga yuqoridagi telefon raqami bilan SMS-kod (OTP) orqali kira oladi
+              Xodim uchun worker-app hisobi yaratiladi — u login va parol bilan kiradi (SMS/OTP emas).
             </span>
           </span>
         </label>

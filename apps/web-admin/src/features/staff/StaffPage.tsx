@@ -165,8 +165,8 @@ export function StaffPage() {
       return;
     }
 
-    // "Login yaratish (telefon orqali)" belgilangan — worker-app'da shu
-    // telefon raqami bilan OTP-login qila olishi uchun /employees'ga
+    // "Worker-app hisobini yaratish" belgilangan — xodim worker-app'ga
+    // login/parol bilan kira olishi uchun /employees'ga
     // ALOHIDA yozuv yaratamiz. Staff yaratish allaqachon muvaffaqiyatli
     // bo'lgani uchun bu yerdagi xato staff yaratishni bekor qilmaydi —
     // faqat mustaqil tarzda ushlanadi va alohida xabar bilan ko'rsatiladi.
