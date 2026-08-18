@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Buildings2,
   CloseCircle,
   Gps,
   LocationTick,
+  Messages,
   Routing2,
   Timer1,
 } from 'iconsax-react';
@@ -15,7 +17,10 @@ import {
   fmtDistance,
   haversineM,
   initials,
+  isOnline,
   OFFICE_CENTER,
+  OFFLINE_COLOR,
+  ONLINE_COLOR,
   relTime,
   statusColor,
   type Labels,
@@ -56,6 +61,9 @@ export function EmployeeDetailDrawer({
   onClose,
   onFocusPoint,
 }: Props) {
+  const navigate = useNavigate();
+  const online = isOnline(loc);
+
   // Enter transition: mount off-screen, then slide in on the next frame.
   const [shown, setShown] = useState(false);
   useEffect(() => {
@@ -140,6 +148,40 @@ export function EmployeeDetailDrawer({
             className="shrink-0 rounded-lg p-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <CloseCircle size={22} variant="Bold" />
+          </button>
+        </div>
+
+        {/* Freshness (online/offline) + prominent last-update + message CTA.
+            This is a separate axis from the geofence status badges below. */}
+        <div className="border-b border-line px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+                online ? 'bg-emerald-50 text-emerald-700' : 'bg-surface-2 text-ink-muted',
+              )}
+            >
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: online ? ONLINE_COLOR : OFFLINE_COLOR }}
+              />
+              {online ? t.online : t.offline}
+            </span>
+            <span className="text-[11px] text-ink-soft">
+              {t.lastUpdate}:{' '}
+              <span className="font-semibold text-ink">
+                {relTime(loc.lastLocationAt, t)}
+              </span>
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate(`/chat?to=${loc.employeeId}`)}
+            aria-label={`${t.message} — ${loc.fullName}`}
+            className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
+          >
+            <Messages size={18} variant="Bold" />
+            {t.message}
           </button>
         </div>
 

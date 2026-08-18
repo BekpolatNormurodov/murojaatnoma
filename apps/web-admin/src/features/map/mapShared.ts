@@ -28,6 +28,34 @@ export const STATUS_COLORS: Record<StatusKey, string> = {
   noloc: '#94a3b8',
 };
 
+/**
+ * Freshness (online/offline) is a *separate* axis from the geofence status
+ * color above: an employee can be "online" (reporting) yet "outside", or
+ * "offline" yet last-seen "in office". Fixes newer than this many minutes
+ * count as online. See {@link isOnline}.
+ */
+export const ONLINE_THRESHOLD_MIN = 5;
+
+/** Green (online) / grey (offline) dot color — the freshness indicator. */
+export const ONLINE_COLOR = '#22c55e';
+export const OFFLINE_COLOR = '#94a3b8';
+
+/**
+ * True when the employee's last location fix is within
+ * {@link ONLINE_THRESHOLD_MIN} minutes of now. Prefers the server-supplied
+ * `ageMinutes`; otherwise derives the age from `lastLocationAt`. No timestamp
+ * at all ⇒ offline.
+ */
+export function isOnline(loc: LiveLocation): boolean {
+  const age =
+    loc.ageMinutes != null
+      ? loc.ageMinutes
+      : loc.lastLocationAt != null
+        ? (Date.now() - new Date(loc.lastLocationAt).getTime()) / 60_000
+        : null;
+  return age != null && age <= ONLINE_THRESHOLD_MIN;
+}
+
 export const FILTER_ORDER: FilterKey[] = [
   'all',
   'office',
@@ -84,6 +112,11 @@ export const LABELS: Record<Lang, Labels> = {
     stale: "Aloqa yo'q",
     search: 'Xodim qidirish...',
     noLoc: "Joylashuv yo'q",
+    // online/offline freshness (separate from geofence status)
+    online: 'Onlayn',
+    offline: 'Oflayn',
+    lastUpdate: 'Oxirgi yangilanish',
+    message: 'Xabar yozish',
     office: 'Ish hududida',
     outDistrict: 'Tuman tashqarisida',
     inDistrict: 'Tuman ichida',
@@ -138,6 +171,11 @@ export const LABELS: Record<Lang, Labels> = {
     stale: 'Нет связи',
     search: 'Поиск сотрудника...',
     noLoc: 'Нет локации',
+    // online/offline freshness (separate from geofence status)
+    online: 'В сети',
+    offline: 'Не в сети',
+    lastUpdate: 'Последнее обновление',
+    message: 'Написать',
     office: 'В рабочей зоне',
     outDistrict: 'Вне района',
     inDistrict: 'В районе',

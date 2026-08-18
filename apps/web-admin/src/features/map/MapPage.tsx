@@ -35,7 +35,10 @@ import {
   agoShort,
   FILTER_ORDER,
   initials,
+  isOnline,
   LABELS,
+  OFFLINE_COLOR,
+  ONLINE_COLOR,
   relTime,
   statusColor,
   STATUS_COLORS,
@@ -71,14 +74,23 @@ function markerIcon(
   const color = statusColor(loc);
   const initial = initials(loc.fullName).charAt(0);
   const ring = selected ? 'box-shadow:0 0 0 4px rgba(16,185,129,0.35);' : '';
-  // role="img" + aria-label carry the "name — status" cue so the status is not
-  // conveyed by the dot color alone (a11y for color-blind / screen-reader use).
+  // Freshness dot in the top-right corner — GREEN online / GREY offline — a
+  // separate axis from the status-color body. The aria-label (built by the
+  // caller) already spells out online/offline, so this dot is not the sole cue.
+  const dotColor = isOnline(loc) ? ONLINE_COLOR : OFFLINE_COLOR;
+  // role="img" + aria-label carry the "name — status · online/offline" cue so
+  // neither status nor freshness is conveyed by color alone (a11y for
+  // color-blind / screen-reader use).
   return L.divIcon({
     className: 'emp-marker',
     html: `<div role="img" aria-label="${escapeAttr(ariaLabel)}"
-      style="width:32px;height:32px;border-radius:50%;background:${color};color:#fff;
-      display:flex;align-items:center;justify-content:center;font:600 13px system-ui;
-      border:2px solid #fff;${ring}">${initial}</div>`,
+      style="position:relative;width:32px;height:32px;">
+      <div style="width:32px;height:32px;border-radius:50%;background:${color};color:#fff;
+        display:flex;align-items:center;justify-content:center;font:600 13px system-ui;
+        border:2px solid #fff;${ring}">${initial}</div>
+      <span style="position:absolute;top:-1px;right:-1px;width:10px;height:10px;
+        border-radius:50%;background:${dotColor};border:2px solid #fff;"></span>
+    </div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 16],
     popupAnchor: [0, -16],
@@ -214,8 +226,11 @@ export function MapPage() {
   const markers = useMemo(
     () =>
       markerLocs.map((loc) => {
-        // "Name — Status": a text cue that mirrors the marker's dot color.
-        const label = `${loc.fullName} — ${statusLabel(loc, lang)}`;
+        // "Name — Status · Online/Offline": a text cue that mirrors both the
+        // marker's body color and its freshness corner dot.
+        const label = `${loc.fullName} — ${statusLabel(loc, lang)} · ${
+          isOnline(loc) ? t.online : t.offline
+        }`;
         return (
           <Marker
             key={loc.employeeId}
@@ -232,7 +247,7 @@ export function MapPage() {
           </Marker>
         );
       }),
-    [markerLocs, selectedId, lang],
+    [markerLocs, selectedId, lang, t],
   );
 
   // Live per-mahalla headcount → polygon tint. Keyed so the GeoJSON restyles
@@ -396,8 +411,12 @@ export function MapPage() {
               )}
             >
               <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: statusColor(loc) }}
+                role="img"
+                aria-label={isOnline(loc) ? t.online : t.offline}
+                className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white"
+                style={{
+                  background: isOnline(loc) ? ONLINE_COLOR : OFFLINE_COLOR,
+                }}
               />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-ink">
@@ -407,7 +426,7 @@ export function MapPage() {
                   {loc.mahallaName ?? loc.position}
                 </span>
               </span>
-              <span className="shrink-0 text-[11px] text-ink-muted">
+              <span className="shrink-0 text-right text-[11px] text-ink-muted">
                 {relTime(loc.lastLocationAt, t)}
               </span>
             </button>
