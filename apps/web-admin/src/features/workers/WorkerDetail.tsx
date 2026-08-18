@@ -18,6 +18,7 @@ import {
   Edit2,
   Trash,
 } from 'iconsax-react';
+import { useNavigate } from 'react-router-dom';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -73,6 +74,7 @@ export function WorkerDetail({
   onEdit?: (worker: Worker) => void;
   onDelete?: (worker: Worker) => void;
 }) {
+  const navigate = useNavigate();
   return (
     <Drawer
       open={!!worker}
@@ -105,6 +107,30 @@ export function WorkerDetail({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Tezkor amallar: qo'ng'iroq / chat / tahrirlash */}
+          <div className="grid grid-cols-3 gap-2">
+            <a
+              href={`tel:${worker.phone}`}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2"
+            >
+              <Call size={16} variant="Bulk" className="text-primary-500" /> Qo'ng'iroq
+            </a>
+            <button
+              type="button"
+              onClick={() => navigate(`/chat?to=${worker.id}`)}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2"
+            >
+              <Sms size={16} variant="Bulk" className="text-accent-500" /> Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => onEdit?.(worker)}
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2"
+            >
+              <Edit2 size={16} variant="Bulk" className="text-warning" /> Tahrirlash
+            </button>
           </div>
 
           {/* Geofence */}
