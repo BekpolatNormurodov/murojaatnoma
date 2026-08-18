@@ -1,5 +1,11 @@
-import { CATEGORY_META, COMPLAINTS, MEETINGS, REQUESTS } from '@/shared/data/mock';
-import type { Deputy, RequestCategory } from '@/shared/data/types';
+import { CATEGORY_META } from '@/shared/data/mock';
+import type {
+  CitizenRequest,
+  Complaint,
+  Deputy,
+  Meeting,
+  RequestCategory,
+} from '@/shared/data/types';
 
 const FALLBACK_CATEGORY_META = { label: 'Boshqa', color: '#94a3b8' };
 
@@ -12,12 +18,22 @@ export function categoryMeta(cat: RequestCategory) {
 }
 
 /** Bitta o'rinbosarga tegishli murojaat/shikoyat/yig'ilish statistikasi. */
-export function deputyStats(d: Deputy) {
-  const requests = REQUESTS.filter((r) => d.categories.includes(r.category));
-  const openRequests = requests.filter(
+export function deputyStats(
+  d: Deputy,
+  requests: CitizenRequest[],
+  complaints: Complaint[],
+  meetings: Meeting[],
+) {
+  const deputyRequests = requests.filter((r) => d.categories.includes(r.category));
+  const openRequests = deputyRequests.filter(
     (r) => r.status === 'new' || r.status === 'in_progress',
   ).length;
-  const complaints = COMPLAINTS.filter((c) => c.deputyId === d.id).length;
-  const meetings = MEETINGS.filter((m) => m.chairDeputyId === d.id).length;
-  return { requests: requests.length, openRequests, complaints, meetings };
+  const deputyComplaints = complaints.filter((c) => c.deputyId === d.id).length;
+  const deputyMeetings = meetings.filter((m) => m.chairDeputyId === d.id).length;
+  return {
+    requests: deputyRequests.length,
+    openRequests,
+    complaints: deputyComplaints,
+    meetings: deputyMeetings,
+  };
 }

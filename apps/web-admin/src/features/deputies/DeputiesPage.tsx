@@ -26,8 +26,17 @@ import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
-import { CATEGORY_META, COMPLAINTS, REQUESTS } from '@/shared/data/mock';
-import type { Deputy, RequestCategory } from '@/shared/data/types';
+import { CATEGORY_META } from '@/shared/data/mock';
+import type {
+  CitizenRequest,
+  Complaint,
+  Deputy,
+  Meeting,
+  RequestCategory,
+} from '@/shared/data/types';
+import { useRequests } from '@/shared/store/requests';
+import { useComplaints } from '@/shared/store/complaints';
+import { useMeetingsQuery } from '@/features/meetings/useMeetingsQuery';
 import { useDeputies } from './useDeputies';
 import { DeputyFormModal } from './DeputyFormModal';
 import { DeputyDetail } from './DeputyDetail';
@@ -66,6 +75,9 @@ function DeputyCard({
   d,
   index,
   reducedMotion,
+  requests,
+  complaints,
+  meetings,
   onSelect,
   onEdit,
   onDelete,
@@ -73,11 +85,14 @@ function DeputyCard({
   d: Deputy;
   index: number;
   reducedMotion: boolean;
+  requests: CitizenRequest[];
+  complaints: Complaint[];
+  meetings: Meeting[];
   onSelect: (d: Deputy) => void;
   onEdit: (d: Deputy) => void;
   onDelete: (d: Deputy) => void;
 }) {
-  const s = deputyStats(d);
+  const s = deputyStats(d, requests, complaints, meetings);
   return (
     <motion.div
       initial={reducedMotion ? false : { opacity: 0, y: 16 }}
@@ -229,6 +244,19 @@ export function DeputiesPage() {
   const { data: staffData } = useStaff();
   const deputies = useMemo(() => data ?? [], [data]);
 
+  // Per-deputy va sarlavha statistikasi uchun jonli (real) ma'lumot:
+  // murojaatlar/shikoyatlar zustand do'konlaridan, yig'ilishlar react-query'dan.
+  const requests = useRequests((s) => s.requests);
+  const hydrateRequests = useRequests((s) => s.hydrate);
+  const complaints = useComplaints((s) => s.complaints);
+  const fetchComplaints = useComplaints((s) => s.fetchComplaints);
+  const { data: meetings } = useMeetingsQuery();
+
+  useEffect(() => {
+    hydrateRequests();
+    fetchComplaints();
+  }, [hydrateRequests, fetchComplaints]);
+
   const hokim = useMemo(() => staffData?.find((s) => s.role === 'hokim'), [staffData]);
 
   const [query, setQuery] = useState('');
@@ -308,13 +336,12 @@ export function DeputiesPage() {
   }
 
   const totals = useMemo(() => {
-    const routed = REQUESTS.filter((r) =>
+    const routed = requests.filter((r) =>
       deputies.some((d) => d.categories.includes(r.category)),
     ).length;
     const directions = deputies.length;
-    const complaints = COMPLAINTS.length;
-    return { deputies: deputies.length, directions, routed, complaints };
-  }, [deputies]);
+    return { deputies: deputies.length, directions, routed, complaints: complaints.length };
+  }, [deputies, requests, complaints]);
 
   return (
     <div>
@@ -468,6 +495,9 @@ export function DeputiesPage() {
                   d={d}
                   index={i}
                   reducedMotion={reducedMotion}
+                  requests={requests}
+                  complaints={complaints}
+                  meetings={meetings ?? []}
                   onSelect={setSelected}
                   onEdit={(dep) => {
                     setSelected(null);

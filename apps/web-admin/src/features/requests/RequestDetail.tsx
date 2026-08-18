@@ -27,10 +27,10 @@ import { useI18n } from '@/shared/i18n/I18nProvider';
 import {
   CATEGORY_META,
   STATUS_META,
-  deputyForCategory,
 } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
+import { useDeputies } from '@/features/deputies/useDeputies';
 import type {
   CitizenRequest,
   Priority,
@@ -103,7 +103,11 @@ export function RequestDetail({
   const workers = workersData ?? [];
   const worker = workers.find((w) => w.id === r?.assignedWorkerId);
   const cat = r ? CATEGORY_META[r.category] : null;
-  const deputy = r ? deputyForCategory(r.category) : undefined;
+  // Mas'ul o'rinbosar yo'nalish (category) bo'yicha jonli /deputies ro'yxatidan olinadi
+  const { data: deputies } = useDeputies();
+  const deputy = r
+    ? deputies?.find((d) => d.categories.includes(r.category)) ?? null
+    : null;
   const dl = r ? getDeadline(r, t) : null;
   const meta = dl ? urgencyMeta(dl.urgency, t) : null;
   const assignWorker = useRequests((s) => s.assignWorker);

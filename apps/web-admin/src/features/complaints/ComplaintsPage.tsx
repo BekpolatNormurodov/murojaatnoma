@@ -31,9 +31,9 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import {
   COMPLAINT_SEVERITY_META,
   COMPLAINT_STATUS_META,
-  getDeputy,
 } from '@/shared/data/mock';
 import { useComplaints } from '@/shared/store/complaints';
+import { useDeputies } from '@/features/deputies/useDeputies';
 import type { Complaint, ComplaintStatus } from '@/shared/data/types';
 import { formatDate, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
@@ -107,6 +107,7 @@ export function ComplaintsPage() {
   const loading = useComplaints((s) => s.loading);
   const error = useComplaints((s) => s.error);
   const fetchComplaints = useComplaints((s) => s.fetchComplaints);
+  const { data: deputies } = useDeputies();
 
   // Sahifa ochilganda (login'dan keyin) ro'yxatni yuklaymiz. Do'kon endi
   // modul import vaqtida emas — shu yerda, mount bo'lganda fetch qiladi
@@ -291,7 +292,7 @@ export function ComplaintsPage() {
       {/* List */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((c, i) => {
-          const deputy = getDeputy(c.deputyId);
+          const deputy = deputies?.find((d) => d.id === c.deputyId) ?? undefined;
           const sev = severityMeta(c.severity, t);
           const st = statusMeta(c.status, t);
           return (
@@ -431,7 +432,8 @@ function ComplaintDetail({
 }) {
   const { t } = useI18n();
   const c = complaint;
-  const deputy = c ? getDeputy(c.deputyId) : undefined;
+  const { data: deputies } = useDeputies();
+  const deputy = c ? deputies?.find((d) => d.id === c.deputyId) ?? undefined : undefined;
   const author = deputy?.name ?? t('app.org');
   const addResponse = useComplaints((s) => s.addResponse);
   const setStatus = useComplaints((s) => s.setStatus);

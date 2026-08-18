@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   Hierarchy,
   CallCalling,
@@ -12,6 +13,9 @@ import {
 import { Drawer } from '@/shared/ui/Drawer';
 import { Avatar } from '@/shared/ui/Avatar';
 import type { Deputy } from '@/shared/data/types';
+import { useRequests } from '@/shared/store/requests';
+import { useComplaints } from '@/shared/store/complaints';
+import { useMeetingsQuery } from '@/features/meetings/useMeetingsQuery';
 import { categoryMeta, deputyStats } from './deputyMeta';
 
 function MiniStat({
@@ -45,6 +49,19 @@ export function DeputyDetail({
   onEdit?: (deputy: Deputy) => void;
   onDelete?: (deputy: Deputy) => void;
 }) {
+  // Statistika kartlari uchun jonli (real) ma'lumot — drawer alohida ochilsa
+  // ham do'konlar bo'sh qolmasligi uchun mount'da bir marta yuklaymiz.
+  const requests = useRequests((s) => s.requests);
+  const hydrateRequests = useRequests((s) => s.hydrate);
+  const complaints = useComplaints((s) => s.complaints);
+  const fetchComplaints = useComplaints((s) => s.fetchComplaints);
+  const { data: meetings } = useMeetingsQuery();
+
+  useEffect(() => {
+    hydrateRequests();
+    fetchComplaints();
+  }, [hydrateRequests, fetchComplaints]);
+
   return (
     <Drawer
       open={!!deputy}
@@ -131,7 +148,7 @@ export function DeputyDetail({
             </h4>
             <div className="grid grid-cols-3 gap-2">
               {(() => {
-                const s = deputyStats(deputy);
+                const s = deputyStats(deputy, requests, complaints, meetings ?? []);
                 return (
                   <>
                     <MiniStat icon={MessageQuestion} label="Murojaat" value={s.requests} color="#f59e0b" />
