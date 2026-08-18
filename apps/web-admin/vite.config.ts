@@ -11,4 +11,23 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // DEV-ONLY: proxy the API + realtime socket to the live backend so local dev
+  // is same-origin (no CORS) and the WebSocket upgrades. Set REMOTE_API to
+  // point elsewhere. Has no effect on the production build. Do NOT rely on this
+  // in prod — there the gateway serves /api and /socket.io same-origin.
+  server: {
+    proxy: {
+      "/api": {
+        target: process.env.REMOTE_API || "https://murojaatnoma.uz",
+        changeOrigin: true,
+        secure: true,
+      },
+      "/socket.io": {
+        target: process.env.REMOTE_API || "https://murojaatnoma.uz",
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+      },
+    },
+  },
 });

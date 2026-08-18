@@ -22,11 +22,14 @@ export function ChatComposer({
   onSendText,
   onSendVoice,
   onSendFile,
+  onTyping,
   disabled = false,
 }: {
   onSendText: (text: string) => void;
   onSendVoice: (url: string, durationSec: number) => void;
   onSendFile: (url: string, kind: 'image' | 'file', name: string, size: number) => void;
+  /** Jonli "yozmoqda…" — matn o'zgarganda chaqiriladi (debounce ichkarida). */
+  onTyping?: (isTyping: boolean) => void;
   disabled?: boolean;
 }) {
   const [text, setText] = useState('');
@@ -76,11 +79,24 @@ export function ChatComposer({
     streamRef.current = null;
   };
 
+  const typingStopRef = useRef<number | undefined>(undefined);
+  // Matn o'zgarganda "yozmoqda" signalini yuboramiz; 1.5s tinchlikdan so'ng
+  // "to'xtadi" signalini yuboramiz (debounce).
+  const handleTextChange = (v: string) => {
+    setText(v);
+    if (!onTyping) return;
+    onTyping(true);
+    window.clearTimeout(typingStopRef.current);
+    typingStopRef.current = window.setTimeout(() => onTyping(false), 1500);
+  };
+
   const sendText = () => {
     const t = text.trim();
     if (!t) return;
     onSendText(t);
     setText('');
+    onTyping?.(false);
+    window.clearTimeout(typingStopRef.current);
   };
 
   const pickFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'image' | 'file') => {
@@ -256,7 +272,7 @@ export function ChatComposer({
 
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => handleTextChange(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();

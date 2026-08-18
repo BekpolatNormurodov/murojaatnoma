@@ -33,6 +33,7 @@ import {
   useLiveEmployees,
 } from './useChat';
 import { pickAvatarColor } from './chatAvatar';
+import { useRealtimeChat } from './useRealtimeChat';
 import type { LiveLocation } from '@/shared/api/locations';
 import { ME_ID, GROUP_ID, useChatUi, type ChatMessage } from '@/shared/store/chat';
 import { STAFF } from '@/shared/data/mock';
@@ -123,6 +124,10 @@ export function ChatPage() {
 
   const sendMessage = useSendMessage();
   const { mutate: markRead } = useMarkRead();
+
+  // Jonli (realtime) suhbat: yangi xabarlar, o'qildi, "yozmoqda…" va onlayn
+  // holati socket orqali darhol keladi (86436 gateway kontrakti).
+  const { typing, emitTyping } = useRealtimeChat(activeId);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -488,7 +493,9 @@ export function ChatPage() {
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-[15px] font-bold text-ink">{activeConv.title}</h3>
                 <p className="truncate text-[12px] text-ink-muted">
-                  {activeConv.kind === 'group' ? (
+                  {typing ? (
+                    <span className="font-medium text-primary-600">yozmoqda…</span>
+                  ) : activeConv.kind === 'group' ? (
                     activeConv.subtitle
                   ) : activeConv.online ? (
                     <span className="text-success">onlayn</span>
@@ -559,6 +566,7 @@ export function ChatPage() {
                       <p className="text-sm text-ink-muted">Hali xabarlar yo'q — birinchi bo'lib yozing</p>
                     </div>
                   )}
+                  {typing && <TypingBubble />}
                   <div ref={bottomRef} />
                 </>
               )}
@@ -569,6 +577,9 @@ export function ChatPage() {
               onSendText={handleSendText}
               onSendVoice={handleSendVoice}
               onSendFile={handleSendFile}
+              onTyping={(isTyping) => {
+                if (activeId) emitTyping(activeId, isTyping);
+              }}
             />
           </>
         ) : conversationsQuery.isLoading ? (
@@ -740,6 +751,25 @@ function MessageRow({
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/* ---------------- "Yozmoqda…" ko'rsatkichi ---------------- */
+function TypingBubble() {
+  return (
+    <div className="mt-3 flex items-end gap-2 justify-start">
+      <div className="w-8 shrink-0" />
+      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md border border-line bg-surface px-3.5 py-3 shadow-card">
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="h-1.5 w-1.5 rounded-full bg-ink-muted"
+            animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
+            transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.15 }}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
 
