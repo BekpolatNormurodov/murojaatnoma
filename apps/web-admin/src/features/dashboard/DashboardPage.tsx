@@ -42,6 +42,7 @@ import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import {
   CATEGORY_META,
+  HOME_DISTRICT,
   LOAD_COLOR,
   LOAD_LABEL,
   NEWS_META,
@@ -108,8 +109,9 @@ export function DashboardPage() {
   const summary = summaryQuery.data;
   const kpiTrend = kpiTrendQuery.data ?? [];
   const categoryDistribution = categoryQuery.data ?? [];
-  const regionStats = regionQuery.data ?? [];
-  const districtLoads = districtLoadsQuery.data ?? [];
+  // Ilova faqat Mirzo Ulug'bek tumani uchun — analitikada boshqa tumanlar ko'rinmasin.
+  const regionStats = (regionQuery.data ?? []).filter((r) => r.region === HOME_DISTRICT.name);
+  const districtLoads = (districtLoadsQuery.data ?? []).filter((dl) => dl.district.name === HOME_DISTRICT.name);
   const news = newsQuery.data ?? [];
   const workers = workersQuery.data ?? [];
 

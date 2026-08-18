@@ -25,7 +25,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
-import { CATEGORY_META } from '@/shared/data/mock';
+import { CATEGORY_META, HOME_DISTRICT } from '@/shared/data/mock';
 import { formatNumber } from '@/shared/lib/format';
 import {
   useCategoryDistribution,
@@ -78,7 +78,8 @@ export function AnalyticsPage() {
 
   const kpiTrend = kpiTrendQuery.data ?? [];
   const categoryDistribution = categoryQuery.data ?? [];
-  const regionStats = regionQuery.data ?? [];
+  // Faqat Mirzo Ulug'bek tumani (ilova bitta tuman uchun) — boshqa tumanlarsiz.
+  const regionStats = (regionQuery.data ?? []).filter((r) => r.region === HOME_DISTRICT.name);
   const hourlyActivity = hourlyQuery.data ?? [];
   const requestStats = requestStatsQuery.data;
 
