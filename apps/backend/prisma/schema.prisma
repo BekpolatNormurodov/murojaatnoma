@@ -967,6 +967,8 @@ enum ChatMsgKind {
   image
   file
   voice
+  // Telegram-style round video note (has url + durationSec, like voice).
+  video
 }
 
 enum ChatMsgStatus {

@@ -38,7 +38,11 @@ backend only relays signaling and persists history.
 | `chat:read` | `{ conversationId }` | persist `markRead`, broadcast `chat:read` |
 | `chat:typing` | `{ conversationId, isTyping }` | broadcast `chat:typing` (not persisted) |
 
-`kind ∈ 'text' | 'image' | 'file' | 'voice'` (matches `ChatMsgKind`).
+`kind ∈ 'text' | 'image' | 'file' | 'voice' | 'video'` (matches `ChatMsgKind`).
+`'video'` = Telegram-style **round video note** (carries `url` + `durationSec`,
+same shape as `voice`): client records via `getUserMedia({video,audio})` →
+`MediaRecorder` → **POST /uploads** (mp4/webm) → `chat:send { kind:'video', url,
+durationSec }`. Rendered as a circular player on both clients (client lane).
 
 ### Server → client
 | event | payload |
