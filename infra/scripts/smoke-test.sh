@@ -45,9 +45,11 @@ echo "$h" | grep -q '"status":"ok"' && pass "health ok" || bad "health: ${h:-<no
 
 echo "== enumerate + probe routes from OpenAPI =="
 spec=$($CURL $RES_API "$BASE_API/api/docs-json" 2>/dev/null)
-if ! printf '%s' "$spec" | head -c1 | grep -q '{'; then
-  warn "no OpenAPI JSON at /api/docs-json (Swagger disabled?) — skipping route probe"
-else
+# Fixed core-route list — probed when Swagger's OpenAPI is disabled in prod
+# (the NODE_ENV guard), so this stays thorough without the spec. Paths are
+# slash-less; the loop prefixes them.
+FIXED_ROUTES="health workers staff deputies complaints requests requests/stats app-users cameras news meetings documents districts notifications notifications/unread-count analytics/summary finance/monthly utility/payments zones zones/geojson chat/conversations leave points suggestions bonuses"
+if printf '%s' "$spec" | head -c1 | grep -q '{'; then
   gets=$(printf '%s' "$spec" | python3 -c '
 import sys, json
 try:
@@ -55,23 +57,28 @@ try:
 except Exception as e:
     sys.stderr.write("json parse error: %s\n" % e); sys.exit(0)
 paths = spec.get("paths", {})
-g = [p for p, ms in paths.items() if "get" in {k.lower() for k in ms} and "{" not in p]
+g = [p.lstrip("/") for p, ms in paths.items() if "get" in {k.lower() for k in ms} and "{" not in p]
 print("\n".join(sorted(g)))
 ')
-  while read -r p; do
-    [ -z "$p" ] && continue
-    sleep 0.05   # pace under the api rate limit as the route list grows
-    code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API$p")
-    # a 503 here is almost always our own limit_req kicking in on a burst — back off + retry once
-    if [ "$code" = 503 ]; then sleep 0.6; code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API$p"); fi
-    case "$code" in
-      2*)          pass "GET $p -> $code" ;;
-      400|401|403) pass "GET $p -> $code (wired; needs auth/params)" ;;
-      000)         bad  "GET $p -> connection failed" ;;
-      *)           bad  "GET $p -> $code" ;;
-    esac
-  done <<< "$gets"
+else
+  warn "no OpenAPI JSON (Swagger off in prod) — probing fixed core-route list instead"
+  gets=$(printf '%s\n' $FIXED_ROUTES)
 fi
+while read -r p; do
+  [ -z "$p" ] && continue
+  sleep 0.05   # pace under the api rate limit as the route list grows
+  code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API/$p")
+  # a 503 here is almost always our own limit_req kicking in on a burst — back off + retry once
+  if [ "$code" = 503 ]; then sleep 0.6; code=$($CURL $RES_API -o /dev/null -w '%{http_code}' "$BASE_API/$p"); fi
+  case "$code" in
+    2*)          pass "GET /$p -> $code" ;;
+    400|401|403) pass "GET /$p -> $code (wired; needs auth/params)" ;;
+    404)         warn "GET /$p -> 404 (not deployed / feature-gated?)" ;;
+    5*)          bad  "GET /$p -> $code (server error!)" ;;
+    000)         bad  "GET /$p -> connection failed" ;;
+    *)           warn "GET /$p -> $code" ;;
+  esac
+done <<< "$gets"
 
 fails=$(cat "$FAILFILE"); rm -f "$FAILFILE"
 echo "== RESULT =="
