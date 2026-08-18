@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { TickCircle, CloseCircle } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { dismissRequestToast, useRequestToastStore } from './toastStore';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
@@ -11,6 +12,7 @@ import { usePrefersReducedMotion } from './usePrefersReducedMotion';
  * chaqiruvi bilan qo'shiladi.
  */
 export function RequestToastStack() {
+  const { t } = useI18n();
   const toasts = useRequestToastStore((s) => s.toasts);
   const reducedMotion = usePrefersReducedMotion();
 
@@ -19,11 +21,11 @@ export function RequestToastStack() {
   return (
     <div className="pointer-events-none fixed right-4 top-4 z-[70] flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-2">
       <AnimatePresence initial={false}>
-        {toasts.map((t) => (
+        {toasts.map((toast) => (
           <motion.div
-            key={t.id}
-            role={t.tone === 'error' ? 'alert' : 'status'}
-            aria-live={t.tone === 'error' ? 'assertive' : 'polite'}
+            key={toast.id}
+            role={toast.tone === 'error' ? 'alert' : 'status'}
+            aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}
             initial={reducedMotion ? false : { opacity: 0, y: -12, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.96 }}
@@ -33,19 +35,19 @@ export function RequestToastStack() {
             <span
               className={cn(
                 'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl',
-                t.tone === 'success' ? 'bg-success-soft text-primary-600' : 'bg-danger-soft text-danger',
+                toast.tone === 'success' ? 'bg-success-soft text-primary-600' : 'bg-danger-soft text-danger',
               )}
             >
-              {t.tone === 'success' ? (
+              {toast.tone === 'success' ? (
                 <TickCircle size={18} variant="Bulk" />
               ) : (
                 <CloseCircle size={18} variant="Bulk" />
               )}
             </span>
-            <p className="flex-1 pt-1 text-[13px] font-medium leading-snug text-ink">{t.message}</p>
+            <p className="flex-1 pt-1 text-[13px] font-medium leading-snug text-ink">{toast.message}</p>
             <button
-              onClick={() => dismissRequestToast(t.id)}
-              aria-label="Xabarni yopish"
+              onClick={() => dismissRequestToast(toast.id)}
+              aria-label={t('requests.toast.closeAria')}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
             >
               <span aria-hidden="true">✕</span>

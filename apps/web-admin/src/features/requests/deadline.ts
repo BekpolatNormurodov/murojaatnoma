@@ -45,6 +45,7 @@ export interface DeadlineInfo {
 /** Murojaatning muddat holatini hisoblaydi. */
 export function getDeadline(
   r: CitizenRequest,
+  t: (key: string) => string,
   now: number = Date.now(),
 ): DeadlineInfo {
   const slaDays = CATEGORY_SLA[r.category] ?? DEFAULT_SLA;
@@ -64,7 +65,7 @@ export function getDeadline(
       overdue: !onTime,
       urgency: "done",
       progress: 1,
-      label: onTime ? "Muddatida bajarildi" : "Kechikib bajarildi",
+      label: onTime ? t("common.deadline.onTime") : t("common.deadline.lateDone"),
       done: true,
     };
   }
@@ -82,10 +83,10 @@ export function getDeadline(
   else urgency = "ok";
 
   const label = overdue
-    ? `${Math.abs(daysLeft)} kun kechikdi`
+    ? t("common.deadline.overdueTemplate").replace("{days}", String(Math.abs(daysLeft)))
     : daysLeft <= 0
-      ? "Bugun tugaydi"
-      : `${daysLeft} kun qoldi`;
+      ? t("common.deadline.dueToday")
+      : t("common.deadline.remainingTemplate").replace("{days}", String(daysLeft));
 
   return {
     slaDays,
@@ -100,11 +101,10 @@ export function getDeadline(
   };
 }
 
-/** Shoshilinchlik darajasi uchun rang va stillar. */
-export const URGENCY_META: Record<
+/** Shoshilinchlik darajasi uchun rang va stillar (til-mustaqil qism). */
+const URGENCY_STYLE: Record<
   Urgency,
   {
-    label: string;
     color: string;
     /** Matn rangi (tailwind). */
     text: string;
@@ -117,7 +117,6 @@ export const URGENCY_META: Record<
   }
 > = {
   overdue: {
-    label: "Muddati o'tgan",
     color: "#ef4444",
     text: "text-red-700",
     soft: "bg-danger-soft",
@@ -125,7 +124,6 @@ export const URGENCY_META: Record<
     glow: true,
   },
   critical: {
-    label: "Shoshilinch",
     color: "#f97316",
     text: "text-orange-600",
     soft: "bg-orange-100",
@@ -133,7 +131,6 @@ export const URGENCY_META: Record<
     glow: true,
   },
   warning: {
-    label: "Yaqinlashmoqda",
     color: "#f59e0b",
     text: "text-amber-700",
     soft: "bg-warning-soft",
@@ -141,7 +138,6 @@ export const URGENCY_META: Record<
     glow: false,
   },
   ok: {
-    label: "Muddatida",
     color: "#10b981",
     text: "text-primary-700",
     soft: "bg-success-soft",
@@ -149,7 +145,6 @@ export const URGENCY_META: Record<
     glow: false,
   },
   done: {
-    label: "Yakunlangan",
     color: "#64748b",
     text: "text-ink-soft",
     soft: "bg-surface-2",
@@ -157,6 +152,19 @@ export const URGENCY_META: Record<
     glow: false,
   },
 };
+
+const URGENCY_LABEL_KEY: Record<Urgency, string> = {
+  overdue: "common.deadline.overdueStatus",
+  critical: "common.deadline.critical",
+  warning: "common.deadline.approaching",
+  ok: "common.deadline.onTimeStatus",
+  done: "common.deadline.finished",
+};
+
+/** Shoshilinchlik darajasi uchun rang, stil va tarjima qilingan label. */
+export function urgencyMeta(u: Urgency, t: (key: string) => string) {
+  return { ...URGENCY_STYLE[u], label: t(URGENCY_LABEL_KEY[u]) };
+}
 
 /** Faqat ochiq (hal qilinmagan) murojaatlar uchun true. */
 export function isOpen(r: CitizenRequest): boolean {

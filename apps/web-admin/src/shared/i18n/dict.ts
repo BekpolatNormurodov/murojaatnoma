@@ -303,6 +303,8 @@ export const DICT: Record<Lang, Dict> = {
     "requests.dateRange.7d": "7 kun",
     "requests.dateRange.30d": "30 kun",
     "requests.dateRange.custom": "Sana oralig'i",
+    "requests.dateRange.from": "Dan",
+    "requests.dateRange.to": "Gacha",
 
     "requests.kpi.open": "Ochiq murojaatlar",
     "requests.kpi.critical": "Shoshilinch (≤2 kun)",
@@ -760,6 +762,8 @@ export const DICT: Record<Lang, Dict> = {
     "requests.dateRange.7d": "7 дней",
     "requests.dateRange.30d": "30 дней",
     "requests.dateRange.custom": "Диапазон дат",
+    "requests.dateRange.from": "От",
+    "requests.dateRange.to": "До",
 
     "requests.kpi.open": "Открытые обращения",
     "requests.kpi.critical": "Срочно (≤2 дней)",

@@ -20,6 +20,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { RequestDetail } from './RequestDetail';
 import { AddRequestModal } from './RequestModals';
 import { RequestToastStack } from './RequestToasts';
@@ -30,25 +31,25 @@ import type { RequestStatus } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
 import { formatDate } from '@/shared/lib/format';
 import { DatePicker } from '@/shared/ui/DatePicker';
-import { getDeadline, isOpen, URGENCY_META, type Urgency } from './deadline';
+import { getDeadline, isOpen, urgencyMeta, type Urgency } from './deadline';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
 
-const STATUS_TABS: { key: RequestStatus | 'all'; label: string }[] = [
-  { key: 'all', label: 'Barchasi' },
-  { key: 'new', label: 'Yangi' },
-  { key: 'in_progress', label: 'Jarayonda' },
-  { key: 'resolved', label: 'Hal qilingan' },
-  { key: 'rejected', label: 'Rad etilgan' },
+const STATUS_TABS: { key: RequestStatus | 'all'; labelKey: string }[] = [
+  { key: 'all', labelKey: 'common.all' },
+  { key: 'new', labelKey: 'common.new' },
+  { key: 'in_progress', labelKey: 'common.inProgress' },
+  { key: 'resolved', labelKey: 'common.resolved' },
+  { key: 'rejected', labelKey: 'common.rejected' },
 ];
 
-const PRIORITY_DOT: Record<string, { label: string; color: string }> = {
-  high: { label: 'Yuqori', color: '#ef4444' },
-  medium: { label: "O'rta", color: '#f59e0b' },
-  low: { label: 'Past', color: '#94a3b8' },
+const PRIORITY_DOT: Record<string, { labelKey: string; color: string }> = {
+  high: { labelKey: 'common.priorityHigh', color: '#ef4444' },
+  medium: { labelKey: 'common.priorityMedium', color: '#f59e0b' },
+  low: { labelKey: 'common.priorityLow', color: '#94a3b8' },
 };
 
 type DeadlineFilter = 'all' | 'open' | 'overdue' | 'critical' | 'soon';
@@ -63,12 +64,12 @@ const URGENCY_ORDER: Record<Urgency, number> = {
   done: 4,
 };
 
-const DATE_RANGE_TABS: { key: DateRangeKey; label: string }[] = [
-  { key: 'all', label: 'Butun davr' },
-  { key: 'today', label: 'Bugun' },
-  { key: '7d', label: '7 kun' },
-  { key: '30d', label: '30 kun' },
-  { key: 'custom', label: "Sana oralig'i" },
+const DATE_RANGE_TABS: { key: DateRangeKey; labelKey: string }[] = [
+  { key: 'all', labelKey: 'requests.dateRange.all' },
+  { key: 'today', labelKey: 'requests.dateRange.today' },
+  { key: '7d', labelKey: 'requests.dateRange.7d' },
+  { key: '30d', labelKey: 'requests.dateRange.30d' },
+  { key: 'custom', labelKey: 'requests.dateRange.custom' },
 ];
 
 const MS_DAY = 86_400_000;
@@ -92,6 +93,7 @@ function parseYmd(v: string): Date | null {
 }
 
 export function RequestsPage() {
+  const { t } = useI18n();
   const requests = useRequests((s) => s.requests);
   const loading = useRequests((s) => s.loading);
   const error = useRequests((s) => s.error);
@@ -135,19 +137,19 @@ export function RequestsPage() {
       return { from: startOfDay(new Date(now.getTime() - 29 * MS_DAY)), to: endOfDay(now) };
     // custom — biror chegara bo'sh bo'lsa cheksiz deb olinadi
     const f = parseYmd(customFrom);
-    const t = parseYmd(customTo);
-    if (!f && !t) return null;
+    const toDate = parseYmd(customTo);
+    if (!f && !toDate) return null;
     return {
       from: f ? startOfDay(f) : -Infinity,
-      to: t ? endOfDay(t) : Infinity,
+      to: toDate ? endOfDay(toDate) : Infinity,
     };
   }, [dateRange, customFrom, customTo]);
 
   // Har bir murojaat uchun muddatni hisoblaymiz
   const items = useMemo(() => {
     const now = Date.now();
-    return requests.map((r) => ({ r, dl: getDeadline(r, now) }));
-  }, [requests]);
+    return requests.map((r) => ({ r, dl: getDeadline(r, t, now) }));
+  }, [requests, t]);
 
   // Muddat bo'yicha statistika (faqat ochiq murojaatlar)
   const stats = useMemo(() => {
@@ -206,9 +208,9 @@ export function RequestsPage() {
   }, [items, tab, query, deadlineFilter, sortKey, dateBounds]);
 
   const counts = useMemo(() => {
-    return STATUS_TABS.reduce<Record<string, number>>((acc, t) => {
-      acc[t.key] =
-        t.key === 'all' ? requests.length : requests.filter((r) => r.status === t.key).length;
+    return STATUS_TABS.reduce<Record<string, number>>((acc, tab) => {
+      acc[tab.key] =
+        tab.key === 'all' ? requests.length : requests.filter((r) => r.status === tab.key).length;
       return acc;
     }, {});
   }, [requests]);
@@ -221,24 +223,24 @@ export function RequestsPage() {
     color: string;
     glow?: boolean;
   }[] = [
-    { key: 'open', label: 'Ochiq murojaatlar', value: stats.open, icon: Timer1, color: '#3b82f6' },
+    { key: 'open', label: t('requests.kpi.open'), value: stats.open, icon: Timer1, color: '#3b82f6' },
     {
       key: 'overdue',
-      label: "Muddati o'tgan",
+      label: t('common.deadline.overdueStatus'),
       value: stats.overdue,
       icon: Danger,
       color: '#ef4444',
       glow: stats.overdue > 0,
     },
-    { key: 'critical', label: 'Shoshilinch (≤2 kun)', value: stats.critical, icon: Warning2, color: '#f97316' },
-    { key: 'soon', label: 'Yaqin muddat (≤5 kun)', value: stats.soon, icon: Clock, color: '#f59e0b' },
+    { key: 'critical', label: t('requests.kpi.critical'), value: stats.critical, icon: Warning2, color: '#f97316' },
+    { key: 'soon', label: t('requests.kpi.soon'), value: stats.soon, icon: Clock, color: '#f59e0b' },
   ];
 
   return (
     <div>
       <PageHeader
-        title="Murojaatlar"
-        subtitle="Fuqaro murojaatlari turiga qarab belgilangan muddatda hal qilinishi shart"
+        title={t('nav.requests')}
+        subtitle={t('requests.subtitle')}
         action={
           <div className="flex items-center gap-2.5">
             <button
@@ -246,13 +248,13 @@ export function RequestsPage() {
               className="flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink-soft transition-colors hover:border-primary-200"
             >
               <Sort size={18} />
-              {sortKey === 'urgency' ? 'Muddat bo‘yicha' : 'Sana bo‘yicha'}
+              {sortKey === 'urgency' ? t('requests.sort.byDeadline') : t('requests.sort.byDate')}
             </button>
             <button
               onClick={() => setAddOpen(true)}
               className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
             >
-              <Add size={18} /> Murojaat qo'shish
+              <Add size={18} /> {t('requests.addButton')}
             </button>
           </div>
         }
@@ -262,11 +264,11 @@ export function RequestsPage() {
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
-            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="font-semibold text-ink">{t('common.loadError')}</p>
             <p className="mt-1 text-sm text-ink-muted">{error}</p>
           </div>
           <Button variant="secondary" onClick={() => hydrate()}>
-            <RotateRight size={16} /> Qayta urinish
+            <RotateRight size={16} /> {t('common.retry')}
           </Button>
         </Card>
       ) : loading && requests.length === 0 ? (
@@ -326,25 +328,25 @@ export function RequestsPage() {
       {/* Tabs + search */}
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-1.5">
-          {STATUS_TABS.map((t) => (
+          {STATUS_TABS.map((st) => (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
+              key={st.key}
+              onClick={() => setTab(st.key)}
               className={cn(
                 'flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
-                tab === t.key
+                tab === st.key
                   ? 'bg-ink text-white'
                   : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
               )}
             >
-              {t.label}
+              {t(st.labelKey)}
               <span
                 className={cn(
                   'rounded-full px-1.5 text-[11px]',
-                  tab === t.key ? 'bg-white/20' : 'bg-surface-2 text-ink-muted',
+                  tab === st.key ? 'bg-white/20' : 'bg-surface-2 text-ink-muted',
                 )}
               >
-                {counts[t.key]}
+                {counts[st.key]}
               </span>
             </button>
           ))}
@@ -358,7 +360,7 @@ export function RequestsPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Qidirish..."
+            placeholder={t('common.searchPlaceholder')}
             className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
           />
         </div>
@@ -370,7 +372,7 @@ export function RequestsPage() {
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
             <Calendar size={17} variant="Bulk" />
           </span>
-          Sana bo'yicha
+          {t('requests.dateFilterHeading')}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {DATE_RANGE_TABS.map((d) => (
@@ -384,17 +386,17 @@ export function RequestsPage() {
                   : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
               )}
             >
-              {d.label}
+              {t(d.labelKey)}
             </button>
           ))}
           {dateRange === 'custom' && (
             <div className="flex items-center gap-2 pl-1">
               <div className="w-40">
-                <DatePicker value={customFrom} onChange={setCustomFrom} placeholder="Dan" block />
+                <DatePicker value={customFrom} onChange={setCustomFrom} placeholder={t('requests.dateRange.from')} block />
               </div>
               <span className="text-ink-muted">—</span>
               <div className="w-40">
-                <DatePicker value={customTo} onChange={setCustomTo} placeholder="Gacha" block />
+                <DatePicker value={customTo} onChange={setCustomTo} placeholder={t('requests.dateRange.to')} block />
               </div>
             </div>
           )}
@@ -403,13 +405,13 @@ export function RequestsPage() {
 
       {(deadlineFilter !== 'all' || dateBounds) && (
         <div className="mb-4 flex flex-wrap items-center gap-2 text-[13px] text-ink-soft">
-          <span>Faol filtr:</span>
+          <span>{t('requests.activeFilterLabel')}</span>
           {deadlineFilter !== 'all' && (
             <button
               onClick={() => setDeadlineFilter('all')}
               className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 font-medium text-ink transition-opacity hover:opacity-80"
             >
-              {kpis.find((k) => k.key === deadlineFilter)?.label ?? 'Ochiq'}
+              {kpis.find((k) => k.key === deadlineFilter)?.label ?? t('requests.openFallback')}
               <span className="text-ink-muted">✕</span>
             </button>
           )}
@@ -422,7 +424,10 @@ export function RequestsPage() {
               }}
               className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 font-medium text-ink transition-opacity hover:opacity-80"
             >
-              {DATE_RANGE_TABS.find((d) => d.key === dateRange)?.label}
+              {(() => {
+                const dr = DATE_RANGE_TABS.find((d) => d.key === dateRange);
+                return dr ? t(dr.labelKey) : null;
+              })()}
               {dateRange === 'custom' && (customFrom || customTo) && (
                 <span className="text-ink-muted">
                   ({customFrom ? formatDate(customFrom) : '…'} – {customTo ? formatDate(customTo) : '…'})
@@ -431,7 +436,7 @@ export function RequestsPage() {
               <span className="text-ink-muted">✕</span>
             </button>
           )}
-          <span className="text-ink-muted">· {filtered.length} ta natija</span>
+          <span className="text-ink-muted">· {filtered.length} {t('requests.resultsCountSuffix')}</span>
         </div>
       )}
 
@@ -440,7 +445,7 @@ export function RequestsPage() {
         {filtered.map(({ r, dl }, i) => {
           const worker = workers.find((w) => w.id === r.assignedWorkerId);
           const cat = CATEGORY_META[r.category];
-          const meta = URGENCY_META[dl.urgency];
+          const meta = urgencyMeta(dl.urgency, t);
           const glowing = !dl.done && meta.glow;
           const lateDone = dl.done && dl.overdue;
           const prio = PRIORITY_DOT[r.priority];
@@ -482,7 +487,7 @@ export function RequestsPage() {
                   <span>#{r.id}</span>
                   <span className="inline-flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: prio.color }} />
-                    {prio.label}
+                    {t(prio.labelKey)}
                   </span>
                 </div>
 
@@ -503,7 +508,7 @@ export function RequestsPage() {
                     <span className="font-semibold" style={{ color: dl.done ? undefined : meta.color }}>
                       {dl.done ? meta.label : dl.label}
                     </span>
-                    <span className="text-ink-muted">{dl.slaDays} kun muddat</span>
+                    <span className="text-ink-muted">{dl.slaDays} {t('requests.card.slaDaysSuffix')}</span>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
                     <div
@@ -524,7 +529,7 @@ export function RequestsPage() {
                     </div>
                   ) : (
                     <button className="flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline">
-                      Biriktirish <ArrowRight size={14} />
+                      {t('requests.assignButton')} <ArrowRight size={14} />
                     </button>
                   )}
                   <Badge tone={STATUS_META[r.status].tone} dot>
@@ -548,17 +553,17 @@ export function RequestsPage() {
           </span>
           <div>
             <p className="font-semibold text-ink">
-              {requests.length === 0 ? "Hozircha murojaatlar yo'q" : 'Filtrga mos murojaat topilmadi'}
+              {requests.length === 0 ? t('requests.empty.none') : t('requests.empty.noMatch')}
             </p>
             <p className="mt-1 text-sm text-ink-muted">
               {requests.length === 0
-                ? "Birinchi murojaatni qo'shib, ishni boshlang."
-                : 'Qidiruv so‘zi yoki filtrlarni o‘zgartirib ko‘ring.'}
+                ? t('requests.empty.noneHint')
+                : t('requests.empty.noMatchHint')}
             </p>
           </div>
           {requests.length === 0 ? (
             <Button onClick={() => setAddOpen(true)}>
-              <Add size={18} /> Murojaat qo'shish
+              <Add size={18} /> {t('requests.addButton')}
             </Button>
           ) : (
             <Button
@@ -572,7 +577,7 @@ export function RequestsPage() {
                 setCustomTo('');
               }}
             >
-              <RotateRight size={16} /> Filtrlarni tozalash
+              <RotateRight size={16} /> {t('common.clearFilters')}
             </Button>
           )}
         </Card>

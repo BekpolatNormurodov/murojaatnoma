@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Add, Location, Profile, Call, Warning2, CloseCircle } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Select } from '@/shared/ui/Select';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { CATEGORY_META, DISTRICTS } from '@/shared/data/mock';
 import type { CitizenRequest, Priority, RequestCategory } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
@@ -15,10 +16,10 @@ const CATEGORY_OPTIONS = (Object.keys(CATEGORY_META) as RequestCategory[]).map((
 
 const DISTRICT_OPTIONS = DISTRICTS.map((d) => ({ value: d.id, label: d.name, dot: d.color }));
 
-const PRIORITY_OPTIONS: { value: Priority; label: string; dot: string }[] = [
-  { value: 'high', label: 'Yuqori', dot: '#ef4444' },
-  { value: 'medium', label: "O'rta", dot: '#f59e0b' },
-  { value: 'low', label: 'Past', dot: '#94a3b8' },
+const PRIORITY_OPTION_META: { value: Priority; labelKey: string; dot: string }[] = [
+  { value: 'high', labelKey: 'common.priorityHigh', dot: '#ef4444' },
+  { value: 'medium', labelKey: 'common.priorityMedium', dot: '#f59e0b' },
+  { value: 'low', labelKey: 'common.priorityLow', dot: '#94a3b8' },
 ];
 
 const fieldCls =
@@ -39,38 +40,42 @@ interface TextValues {
   citizenPhone: string;
 }
 
-function validateField(key: TextFieldKey, values: TextValues): string | undefined {
+function validateField(
+  key: TextFieldKey,
+  values: TextValues,
+  t: (key: string) => string,
+): string | undefined {
   switch (key) {
     case 'title': {
       const v = values.title.trim();
-      if (!v) return 'Sarlavhani kiriting';
-      if (v.length < 4) return "Sarlavha kamida 4 ta belgidan iborat bo'lsin";
+      if (!v) return t('requests.validation.titleRequired');
+      if (v.length < 4) return t('requests.validation.titleMinLen');
       return undefined;
     }
     case 'description': {
       const v = values.description.trim();
-      if (!v) return 'Muammo tavsifini kiriting';
-      if (v.length < 10) return "Tavsif kamida 10 ta belgidan iborat bo'lsin";
+      if (!v) return t('requests.validation.descriptionRequired');
+      if (v.length < 10) return t('requests.validation.descriptionMinLen');
       return undefined;
     }
     case 'address': {
       const v = values.address.trim();
-      if (!v) return 'Manzilni kiriting';
-      if (v.length < 3) return "Manzil kamida 3 ta belgidan iborat bo'lsin";
+      if (!v) return t('requests.validation.addressRequired');
+      if (v.length < 3) return t('requests.validation.addressMinLen');
       return undefined;
     }
     case 'citizenName': {
       const v = values.citizenName.trim();
-      if (!v) return "Fuqaro F.I.O. sini kiriting";
-      if (v.length < 2) return "F.I.O. kamida 2 ta belgidan iborat bo'lsin";
+      if (!v) return t('requests.validation.nameRequired');
+      if (v.length < 2) return t('requests.validation.nameMinLen');
       return undefined;
     }
     case 'citizenPhone': {
       const v = values.citizenPhone.trim();
-      if (!v) return 'Telefon raqamni kiriting';
+      if (!v) return t('requests.validation.phoneRequired');
       const digits = v.replace(/\D/g, '');
       if (digits.length < 9 || digits.length > 13) {
-        return "Telefon raqam noto'g'ri (masalan: +998 90 123 45 67)";
+        return t('requests.validation.phoneInvalid');
       }
       return undefined;
     }
@@ -90,6 +95,10 @@ export function AddRequestModal({
   onClose: () => void;
   onCreate: (r: Omit<CitizenRequest, 'id'>) => Promise<void>;
 }) {
+  const { t } = useI18n();
+  const priorityOptions: { value: Priority; label: string; dot: string }[] = PRIORITY_OPTION_META.map(
+    (p) => ({ value: p.value, label: t(p.labelKey), dot: p.dot }),
+  );
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<RequestCategory>('kommunal');
   const [districtId, setDistrictId] = useState(DISTRICTS[0].id);
@@ -109,7 +118,7 @@ export function AddRequestModal({
   const values = (): TextValues => ({ title, description, address, citizenName, citizenPhone });
 
   const liveErrors = TEXT_FIELD_KEYS.reduce<Partial<Record<TextFieldKey, string>>>((acc, k) => {
-    const err = validateField(k, values());
+    const err = validateField(k, values(), t);
     if (err) acc[k] = err;
     return acc;
   }, {});
@@ -138,13 +147,13 @@ export function AddRequestModal({
   }, [open, reset]);
 
   function handleBlur(key: TextFieldKey) {
-    setTouched((t) => ({ ...t, [key]: true }));
-    setErrors((e) => ({ ...e, [key]: validateField(key, values()) }));
+    setTouched((prev) => ({ ...prev, [key]: true }));
+    setErrors((e) => ({ ...e, [key]: validateField(key, values(), t) }));
   }
 
   function revalidateIfTouched(key: TextFieldKey, nextValues: TextValues) {
     if (touched[key] || submitAttempted) {
-      setErrors((e) => ({ ...e, [key]: validateField(key, nextValues) }));
+      setErrors((e) => ({ ...e, [key]: validateField(key, nextValues, t) }));
     }
   }
 
@@ -191,12 +200,12 @@ export function AddRequestModal({
     setSubmitting(true);
     try {
       await onCreate(payload);
-      pushRequestToast('success', "Murojaat muvaffaqiyatli qo'shildi");
+      pushRequestToast('success', t('requests.toast.created'));
       reset();
       onClose();
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : "Murojaatni saqlab bo'lmadi. Qaytadan urining.",
+        err instanceof Error ? err.message : t('requests.toast.createError'),
       );
       setSubmitting(false);
     }
@@ -208,8 +217,8 @@ export function AddRequestModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Murojaat qo'shish"
-      subtitle="Fuqaro murojaatini tizimga kiriting"
+      title={t('requests.addButton')}
+      subtitle={t('requests.addModal.subtitle')}
       width={560}
     >
       <div className="space-y-4">
@@ -223,9 +232,9 @@ export function AddRequestModal({
             <Warning2 size={18} variant="Bulk" className="mt-0.5 shrink-0" />
             <span>
               {errorCount === 1
-                ? "1 ta maydonni to'g'irlang."
-                : `${errorCount} ta maydonni to'g'irlang.`}{' '}
-              Pastdagi maydonlarga qarang.
+                ? t('requests.addModal.fixOneField')
+                : t('requests.addModal.fixFieldsTemplate').replace('{count}', String(errorCount))}{' '}
+              {t('requests.addModal.checkFieldsBelow')}
             </span>
           </div>
         )}
@@ -240,7 +249,7 @@ export function AddRequestModal({
           </div>
         )}
 
-        <Field label="Sarlavha" required error={errors.title} errorId="req-title-error">
+        <Field label={t('requests.addModal.titleLabel')} required error={errors.title} errorId="req-title-error">
           <input
             id="req-title"
             value={title}
@@ -249,7 +258,7 @@ export function AddRequestModal({
               revalidateIfTouched('title', { ...values(), title: e.target.value });
             }}
             onBlur={() => handleBlur('title')}
-            placeholder="Muammo qisqacha nomi"
+            placeholder={t('requests.addModal.titlePlaceholder')}
             aria-required="true"
             aria-invalid={!!errors.title}
             aria-describedby={errors.title ? 'req-title-error' : undefined}
@@ -258,15 +267,15 @@ export function AddRequestModal({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Kategoriya" required>
+          <Field label={t('requests.addModal.categoryLabel')} required>
             <Select value={category} onChange={setCategory} options={CATEGORY_OPTIONS} block />
           </Field>
-          <Field label="Tuman" required>
+          <Field label={t('requests.addModal.districtLabel')} required>
             <Select value={districtId} onChange={setDistrictId} options={DISTRICT_OPTIONS} block />
           </Field>
         </div>
 
-        <Field label="Manzil" required error={errors.address} errorId="req-address-error">
+        <Field label={t('common.address')} required error={errors.address} errorId="req-address-error">
           <div className="relative">
             <Location
               size={16}
@@ -281,7 +290,7 @@ export function AddRequestModal({
                 revalidateIfTouched('address', { ...values(), address: e.target.value });
               }}
               onBlur={() => handleBlur('address')}
-              placeholder="Ko'cha, uy raqami"
+              placeholder={t('requests.addModal.addressPlaceholder')}
               aria-required="true"
               aria-invalid={!!errors.address}
               aria-describedby={errors.address ? 'req-address-error' : undefined}
@@ -291,7 +300,7 @@ export function AddRequestModal({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Fuqaro F.I.O." required error={errors.citizenName} errorId="req-name-error">
+          <Field label={t('requests.addModal.citizenNameLabel')} required error={errors.citizenName} errorId="req-name-error">
             <div className="relative">
               <Profile
                 size={16}
@@ -306,7 +315,7 @@ export function AddRequestModal({
                   revalidateIfTouched('citizenName', { ...values(), citizenName: e.target.value });
                 }}
                 onBlur={() => handleBlur('citizenName')}
-                placeholder="Ism familiya"
+                placeholder={t('requests.addModal.namePlaceholder')}
                 aria-required="true"
                 aria-invalid={!!errors.citizenName}
                 aria-describedby={errors.citizenName ? 'req-name-error' : undefined}
@@ -314,7 +323,7 @@ export function AddRequestModal({
               />
             </div>
           </Field>
-          <Field label="Telefon" required error={errors.citizenPhone} errorId="req-phone-error">
+          <Field label={t('requests.addModal.phoneLabel')} required error={errors.citizenPhone} errorId="req-phone-error">
             <div className="relative">
               <Call
                 size={16}
@@ -331,7 +340,7 @@ export function AddRequestModal({
                   revalidateIfTouched('citizenPhone', { ...values(), citizenPhone: e.target.value });
                 }}
                 onBlur={() => handleBlur('citizenPhone')}
-                placeholder="+998 90 123 45 67"
+                placeholder={t('requests.addModal.phonePlaceholder')}
                 aria-required="true"
                 aria-invalid={!!errors.citizenPhone}
                 aria-describedby={errors.citizenPhone ? 'req-phone-error' : undefined}
@@ -341,11 +350,11 @@ export function AddRequestModal({
           </Field>
         </div>
 
-        <Field label="Muhimlik darajasi" required>
-          <Select value={priority} onChange={setPriority} options={PRIORITY_OPTIONS} block />
+        <Field label={t('requests.addModal.priorityLabel')} required>
+          <Select value={priority} onChange={setPriority} options={priorityOptions} block />
         </Field>
 
-        <Field label="Tavsif" required error={errors.description} errorId="req-description-error">
+        <Field label={t('requests.addModal.descriptionLabel')} required error={errors.description} errorId="req-description-error">
           <textarea
             id="req-description"
             value={description}
@@ -355,7 +364,7 @@ export function AddRequestModal({
             }}
             onBlur={() => handleBlur('description')}
             rows={3}
-            placeholder="Muammo tafsiloti..."
+            placeholder={t('requests.addModal.descriptionPlaceholder')}
             aria-required="true"
             aria-invalid={!!errors.description}
             aria-describedby={errors.description ? 'req-description-error' : undefined}
@@ -380,10 +389,10 @@ export function AddRequestModal({
             )}
           >
             {submitting ? (
-              'Yuborilmoqda...'
+              t('common.sending')
             ) : (
               <>
-                <Add size={18} /> Qo'shish
+                <Add size={18} /> {t('common.add')}
               </>
             )}
           </button>
@@ -393,7 +402,7 @@ export function AddRequestModal({
             disabled={submitting}
             className="h-11 rounded-xl border border-line bg-surface px-5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Bekor qilish
+            {t('common.cancel')}
           </button>
         </div>
       </div>
