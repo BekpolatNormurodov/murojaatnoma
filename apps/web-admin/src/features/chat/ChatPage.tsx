@@ -16,6 +16,7 @@ import {
   MessageAdd1,
   DocumentDownload,
   RotateRight,
+  Clock,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
@@ -66,10 +67,25 @@ function fmtBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/**
+ * Guruh suhbatidagi jo'natuvchi ismi uchun — barqaror, uyg'un va "pro"
+ * ko'rinadigan palitra (bir xil xodim doim bir xil rang). Avvalgi yorqin
+ * tasodifiy ranglar o'rniga chuqurroq -600 tonli, o'zaro mos ranglar.
+ */
+const SENDER_COLORS = [
+  '#2563eb', '#7c3aed', '#0891b2', '#c026d3', '#0d9488',
+  '#4f46e5', '#db2777', '#ea580c', '#0284c7', '#9333ea',
+];
+function senderColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i += 1) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return SENDER_COLORS[h % SENDER_COLORS.length];
+}
+
 function senderInfo(senderId: string) {
-  if (senderId === ME_ID) return { name: 'Siz', color: '#10b981', photo: undefined as string | undefined };
+  if (senderId === ME_ID) return { name: 'Siz', color: '#059669', photo: undefined as string | undefined };
   const st = STAFF.find((s) => s.id === senderId);
-  return { name: st?.name ?? 'Xodim', color: st?.avatarColor ?? '#64748b', photo: st?.photo };
+  return { name: st?.name ?? 'Xodim', color: senderColor(senderId), photo: st?.photo };
 }
 
 function previewText(m: ChatMessage): string {
@@ -532,6 +548,7 @@ export function ChatPage() {
                         msg={item.msg}
                         first={item.first}
                         isGroup={activeConv.kind === 'group'}
+                        reduce={prefersReducedMotion}
                         onImageClick={setLightbox}
                       />
                     ),
@@ -621,18 +638,26 @@ function MessageRow({
   msg,
   first,
   isGroup,
+  reduce,
   onImageClick,
 }: {
   msg: ChatMessage;
   first: boolean;
   isGroup: boolean;
+  reduce: boolean;
   onImageClick: (url: string) => void;
 }) {
   const mine = msg.senderId === ME_ID;
   const info = senderInfo(msg.senderId);
+  const sending = msg.status === 'sending';
 
   return (
-    <div className={cn('flex items-end gap-2', mine ? 'justify-end' : 'justify-start', first ? 'mt-3' : 'mt-0.5')}>
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduce ? 0 : 0.18, ease: 'easeOut' }}
+      className={cn('flex items-end gap-2', mine ? 'justify-end' : 'justify-start', first ? 'mt-3' : 'mt-0.5')}
+    >
       {!mine && (
         <div className="w-8 shrink-0">
           {first && <Avatar name={info.name} src={info.photo} color={info.color} size={32} />}
@@ -647,11 +672,12 @@ function MessageRow({
       >
         <div
           className={cn(
-            'overflow-hidden shadow-card',
+            'overflow-hidden shadow-card transition-opacity',
             msg.kind === 'image' ? 'rounded-2xl' : 'px-3.5 py-2.5',
             mine
               ? 'rounded-2xl rounded-br-md bg-primary-600 text-white'
-              : 'rounded-2xl rounded-bl-md bg-surface text-ink',
+              : 'rounded-2xl rounded-bl-md border border-line bg-surface text-ink',
+            sending && 'opacity-70',
           )}
         >
           {!mine && first && isGroup && msg.kind !== 'image' && (
@@ -701,16 +727,19 @@ function MessageRow({
         </div>
         <div className={cn('mt-0.5 flex items-center gap-1 px-1 text-[10.5px] text-ink-muted')}>
           <span>{timeHM(msg.createdAt)}</span>
-          {mine && (
-            <TickCircle
-              size={12}
-              variant={msg.status === 'read' ? 'Bold' : 'Linear'}
-              className={msg.status === 'read' ? 'text-primary-500' : 'text-ink-muted'}
-            />
-          )}
+          {mine &&
+            (sending ? (
+              <Clock size={11} variant="Linear" className="text-ink-muted/70" />
+            ) : (
+              <TickCircle
+                size={12}
+                variant={msg.status === 'read' ? 'Bold' : 'Linear'}
+                className={msg.status === 'read' ? 'text-primary-500' : 'text-ink-muted'}
+              />
+            ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

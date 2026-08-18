@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Paperclip, Gallery, Microphone2, Send2, Trash } from 'iconsax-react';
+import { Paperclip, Gallery, Microphone2, Send2, Trash, InfoCircle } from 'iconsax-react';
 import { usePrefersReducedMotion } from './useChat';
+import { api } from '@/shared/api/client';
 
 /* Suhbat uchun xabar yozish paneli: matn, fayl, rasm va ovozli xabar. */
 
 const fmtRec = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+/** POST /uploads javobi — mahalliy faylni doimiy (durable) URL'ga aylantiradi. */
+type UploadResult = { url: string; fileName: string; fileSize: number; mimeType: string; durationSec?: number };
+
+/** Fayl kengaytmasini MediaRecorder mimeType'idan chiqaradi (voice fayl nomi uchun). */
+function voiceExt(mime: string): string {
+  if (mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac')) return 'm4a';
+  if (mime.includes('ogg')) return 'ogg';
+  return 'webm';
+}
 
 export function ChatComposer({
   onSendText,
@@ -21,8 +32,21 @@ export function ChatComposer({
   const [text, setText] = useState('');
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  // Faylni serverga yuklash holati — yuklanayotganda tugmalar bloklanadi va
+  // xatolik bo'lsa qisqa ogohlantirish ko'rsatiladi (blob: URL o'rniga endi
+  // POST /uploads orqali doimiy URL olamiz — shunda rasm/ovoz boshqa
+  // qurilmalarda ham ochiladi).
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
   const panelTransition = { duration: prefersReducedMotion ? 0 : 0.2 };
+
+  // Xatolik xabarini bir necha soniyadan so'ng avtomatik yashiramiz.
+  useEffect(() => {
+    if (!uploadError) return;
+    const t = window.setTimeout(() => setUploadError(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [uploadError]);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const imageRef = useRef<HTMLInputElement | null>(null);
@@ -59,13 +83,23 @@ export function ChatComposer({
     setText('');
   };
 
-  const pickFile = (e: React.ChangeEvent<HTMLInputElement>, kind: 'image' | 'file') => {
+  const pickFile = async (e: React.ChangeEvent<HTMLInputElement>, kind: 'image' | 'file') => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    const url = URL.createObjectURL(file);
     const resolved: 'image' | 'file' = file.type.startsWith('image/') ? 'image' : kind;
-    onSendFile(url, resolved, file.name, file.size);
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      const res = await api.upload<UploadResult>('/uploads', fd);
+      onSendFile(res.url, resolved, res.fileName, res.fileSize);
+    } catch {
+      setUploadError('Faylni yuklab bo‘lmadi. Qayta urinib ko‘ring.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const startRecording = async () => {
@@ -83,8 +117,20 @@ export function ChatComposer({
         const dur = Math.max(1, Math.round((Date.now() - startRef.current) / 1000));
         stopStream();
         if (cancelledRef.current) return;
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || 'audio/webm' });
-        onSendVoice(URL.createObjectURL(blob), dur);
+        const mime = rec.mimeType || 'audio/webm';
+        const blob = new Blob(chunksRef.current, { type: mime });
+        // Ovozli xabarni ham serverga yuklaymiz (durable URL) — aks holda u
+        // faqat yuboruvchining brauzerida eshitilardi.
+        setUploading(true);
+        setUploadError(null);
+        const fd = new FormData();
+        fd.append('file', blob, `voice-${dur}s.${voiceExt(mime)}`);
+        fd.append('durationSec', String(dur));
+        api
+          .upload<UploadResult>('/uploads', fd)
+          .then((res) => onSendVoice(res.url, res.durationSec ?? dur))
+          .catch(() => setUploadError('Ovozli xabarni yuklab bo‘lmadi.'))
+          .finally(() => setUploading(false));
       };
       recorderRef.current = rec;
       startRef.current = Date.now();
@@ -114,6 +160,22 @@ export function ChatComposer({
     <div className="border-t border-line bg-surface px-3 py-3 sm:px-4">
       <input ref={fileRef} type="file" hidden onChange={(e) => pickFile(e, 'file')} />
       <input ref={imageRef} type="file" accept="image/*" hidden onChange={(e) => pickFile(e, 'image')} />
+
+      {(uploading || uploadError) && (
+        <div className="mb-2 flex items-center gap-2 px-1">
+          {uploading ? (
+            <>
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-200 border-t-primary-600" />
+              <span className="text-[12.5px] font-medium text-ink-soft">Yuklanmoqda…</span>
+            </>
+          ) : (
+            <>
+              <InfoCircle size={16} variant="Bulk" className="text-danger" />
+              <span className="text-[12.5px] font-medium text-danger">{uploadError}</span>
+            </>
+          )}
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {recording ? (
@@ -177,15 +239,17 @@ export function ChatComposer({
           >
             <button
               onClick={() => fileRef.current?.click()}
+              disabled={uploading}
               title="Fayl biriktirish"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Paperclip size={21} />
             </button>
             <button
               onClick={() => imageRef.current?.click()}
+              disabled={uploading}
               title="Rasm biriktirish"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Gallery size={21} />
             </button>
@@ -215,8 +279,9 @@ export function ChatComposer({
             ) : (
               <button
                 onClick={startRecording}
+                disabled={uploading}
                 title="Ovozli xabar"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-glow transition-colors hover:bg-primary-700"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-glow transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Microphone2 size={19} variant="Bold" />
               </button>

@@ -45,7 +45,40 @@ export function useSendMessage() {
       ...body
     }: { conversationId: string } & CreateChatMessageInput) =>
       api.post<ChatMessage>(`/chat/conversations/${conversationId}/messages`, body),
-    onSuccess: (_message, variables) => {
+    // Optimistik yuborish: xabar darhol "yuborilmoqda" holatida ko'rinadi
+    // (server javobini kutmasdan), xatolik bo'lsa orqaga qaytariladi. Shu
+    // tufayli sekin tarmoqda ham UI darhol javob beradi va yozgan matn
+    // yo'qolmaydi.
+    onMutate: async ({ conversationId, ...body }) => {
+      await queryClient.cancelQueries({ queryKey: ['chat', 'messages', conversationId] });
+      const previous = queryClient.getQueryData<ChatMessage[]>(['chat', 'messages', conversationId]);
+      const optimistic: ChatMessage = {
+        id: `optimistic-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+        conversationId,
+        senderId: body.senderId ?? 'me',
+        kind: body.kind,
+        text: body.text,
+        fileName: body.fileName,
+        fileSize: body.fileSize,
+        url: body.url,
+        durationSec: body.durationSec,
+        createdAt: new Date().toISOString(),
+        status: 'sending',
+      };
+      queryClient.setQueryData<ChatMessage[]>(['chat', 'messages', conversationId], (old) => [
+        ...(old ?? []),
+        optimistic,
+      ]);
+      return { previous, conversationId };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['chat', 'messages', context.conversationId], context.previous);
+      }
+    },
+    // Har holatda (muvaffaqiyat/xato) serverdan haqiqiy holatni qayta so'raymiz —
+    // optimistik xabar server qaytargan asl xabar bilan almashadi.
+    onSettled: (_message, _err, variables) => {
       void queryClient.invalidateQueries({
         queryKey: ['chat', 'messages', variables.conversationId],
       });
