@@ -8,6 +8,7 @@ import { extname } from 'path';
 import { AppConfig } from '../../common/config/configuration';
 import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
+import { UploadsController } from './uploads.controller';
 
 /** Max size accepted for a single application attachment upload (photo/video/voice). */
 const MAX_ATTACHMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -59,7 +60,7 @@ const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
       inject: [ConfigService],
     }),
   ],
-  controllers: [ApplicationsController],
+  controllers: [ApplicationsController, UploadsController],
   providers: [ApplicationsService],
   exports: [ApplicationsService],
 })
