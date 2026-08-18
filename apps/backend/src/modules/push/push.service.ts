@@ -29,18 +29,26 @@ export class PushService {
   async registerToken(
     employeeId: string,
     token: string,
-    platform: DevicePlatform,
+    platform: DevicePlatform | null | undefined,
   ): Promise<void> {
+    // Tolerate an explicit null/undefined platform (a client sending
+    // platform:null bypasses the DTO's field default) — never let it reach
+    // the non-nullable Prisma column.
+    const plat = platform ?? DevicePlatform.ANDROID;
     await this.prisma.deviceToken.upsert({
       where: { token },
-      create: { employeeId, token, platform },
-      update: { employeeId, platform },
+      create: { employeeId, token, platform: plat },
+      update: { employeeId, platform: plat },
     });
   }
 
-  /** Remove a token (e.g. on logout). Idempotent — unknown tokens are a no-op. */
-  async unregisterToken(token: string): Promise<void> {
-    await this.prisma.deviceToken.deleteMany({ where: { token } });
+  /**
+   * Remove a token (e.g. on logout). Scoped to the owning employee so one
+   * employee can never unregister another's device by supplying its token.
+   * Idempotent — an unknown or non-owned token is a no-op.
+   */
+  async unregisterToken(employeeId: string, token: string): Promise<void> {
+    await this.prisma.deviceToken.deleteMany({ where: { token, employeeId } });
   }
 
   /** Fan a single push out to every device an employee owns. */

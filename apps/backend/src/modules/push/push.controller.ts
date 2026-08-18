@@ -38,7 +38,10 @@ export class PushController {
   @Delete()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Unregister an FCM token (on logout)' })
-  async unregister(@Body() dto: RegisterDeviceTokenDto): Promise<void> {
-    await this.pushService.unregisterToken(dto.token);
+  async unregister(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RegisterDeviceTokenDto,
+  ): Promise<void> {
+    await this.pushService.unregisterToken(user.employeeId, dto.token);
   }
 }

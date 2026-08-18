@@ -86,13 +86,19 @@ export class FcmService implements OnModuleInit {
     try {
       const res = await admin.messaging(this.app).sendEachForMulticast(message);
       const invalid: string[] = [];
+      // A whole-batch failure (every token) points to a message-level problem
+      // (e.g. a malformed payload), NOT dead tokens — so we must NOT mass-prune
+      // valid tokens then. 'invalid-argument' is returned for both bad tokens
+      // and bad payloads, so treat it as a dead token only when at least one
+      // send succeeded.
+      const allFailed = res.failureCount === tokens.length;
       res.responses.forEach((r, i) => {
         if (!r.success) {
           const code = r.error?.code ?? '';
           if (
             code === 'messaging/registration-token-not-registered' ||
             code === 'messaging/invalid-registration-token' ||
-            code === 'messaging/invalid-argument'
+            (code === 'messaging/invalid-argument' && !allFailed)
           ) {
             invalid.push(tokens[i]);
           }
