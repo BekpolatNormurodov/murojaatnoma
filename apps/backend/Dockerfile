@@ -6,7 +6,9 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+# BuildKit cache mount: persist npm's download cache across builds so repeated
+# deploys don't re-download the whole dependency tree — much faster rebuilds.
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 ##
 ## 2) build - generate the Prisma client and compile TypeScript

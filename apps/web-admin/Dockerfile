@@ -9,9 +9,10 @@
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Install deps first for better layer caching.
+# Install deps first for better layer caching. BuildKit cache mount persists
+# npm's download cache across builds so repeated deploys are much faster.
 COPY package.json package-lock.json* ./
-RUN npm ci || npm install
+RUN --mount=type=cache,target=/root/.npm npm ci || npm install
 
 COPY . .
 RUN npm run build
