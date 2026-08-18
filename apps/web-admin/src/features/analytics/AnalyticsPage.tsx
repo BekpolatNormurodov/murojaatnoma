@@ -19,7 +19,7 @@ import {
   LineChart,
   Legend,
 } from 'recharts';
-import { TrendUp, Timer1, Chart2, PercentageSquare, RotateRight } from 'iconsax-react';
+import { PercentageSquare, RotateRight } from 'iconsax-react';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -127,25 +127,21 @@ export function AnalyticsPage() {
         subtitle="Chuqur tahlil — trendlar, taqsimotlar va samaradorlik ko'rsatkichlari"
       />
 
-      {/* KPI */}
+      {/* KPI — faqat jonli DB agregatidan hisoblangan haqiqiy ko'rsatkich. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={TrendUp} label="O'sish sur'ati" value="+18.2%" delta={18.2} tint="#10b981" index={0} />
         <StatCard
           icon={PercentageSquare}
           label="Hal qilish darajasi"
+          // Xato yoki ma'lumot yo'q bo'lsa — soxta foiz emas, '—' ko'rsatamiz.
           value={
-            requestStatsQuery.isLoading
-              ? '—'
-              : resolutionRate !== null
-                ? `${resolutionRate}%`
-                : '94.6%'
+            !requestStatsQuery.isError && resolutionRate !== null
+              ? `${resolutionRate}%`
+              : '—'
           }
           delta={2.4}
           tint="#3b82f6"
-          index={1}
+          index={0}
         />
-        <StatCard icon={Timer1} label="O'rtacha javob vaqti" value="4.2 soat" delta={-12.5} tint="#f59e0b" index={2} />
-        <StatCard icon={Chart2} label="Qoniqish indeksi" value="4.7/5" delta={3.1} tint="#a855f7" index={3} />
       </div>
 
       {/* Composed chart — full width */}

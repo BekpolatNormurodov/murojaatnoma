@@ -129,6 +129,9 @@ export const LABELS: Record<Lang, Labels> = {
     never: 'hech qachon',
     empty: 'Hali hech kim joylashuv yubormagan',
     noneMatch: 'Filtrga mos xodim topilmadi',
+    // Bo'sh holatdan ajratish uchun — yuklash xatosi (aloqa/server muammosi)
+    loadError: "Joylashuvlarni yuklab bo'lmadi",
+    retry: 'Qayta urinish',
     // filter chips
     fAll: 'Hammasi',
     fOffice: 'Ish hududida',
@@ -188,6 +191,9 @@ export const LABELS: Record<Lang, Labels> = {
     never: 'никогда',
     empty: 'Пока никто не отправил локацию',
     noneMatch: 'Нет сотрудников по фильтру',
+    // Отличить от пустого состояния — ошибка загрузки (связь/сервер)
+    loadError: 'Не удалось загрузить локации',
+    retry: 'Повторить',
     // filter chips
     fAll: 'Все',
     fOffice: 'В зоне',

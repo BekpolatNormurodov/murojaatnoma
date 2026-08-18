@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -105,6 +106,14 @@ export function DashboardPage() {
   const newsQuery = useNews();
   const workersQuery = useWorkers();
   const requests = useRequests((s) => s.requests);
+  const hydrate = useRequests((s) => s.hydrate);
+
+  // Index sahifada do'kon modul import vaqtida hydrate qilinmaydi, shuning
+  // uchun "So'nggi murojaatlar" kartasi bo'sh qolmasligi uchun mount'da
+  // ro'yxatni yuklaymiz (RequestsPage.tsx bilan bir xil).
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   const summary = summaryQuery.data;
   const kpiTrend = kpiTrendQuery.data ?? [];
@@ -537,9 +546,12 @@ export function DashboardPage() {
             title="So'nggi murojaatlar"
             subtitle="Eng yangi kelgan murojaatlar"
             action={
-              <button className="flex items-center gap-1 text-[13px] font-medium text-primary-600 hover:underline">
+              <Link
+                to="/requests"
+                className="flex items-center gap-1 text-[13px] font-medium text-primary-600 hover:underline"
+              >
                 Barchasi <ArrowRight size={15} />
-              </button>
+              </Link>
             }
           />
           <div className="p-3">

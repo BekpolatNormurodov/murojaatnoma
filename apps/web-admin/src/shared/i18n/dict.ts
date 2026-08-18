@@ -350,6 +350,7 @@ export const DICT: Record<Lang, Dict> = {
     "requests.detail.responsibleWorker": "Mas'ul xodim",
     "requests.detail.unassign": "Olib tashlash",
     "requests.detail.assignWorker": "Xodim biriktirish",
+    "requests.detail.noWorker": "Biriktirilmagan",
 
     "requests.confirmDelete.title": "Murojaatni o'chirasizmi?",
     "requests.confirmDelete.message":
@@ -816,6 +817,7 @@ export const DICT: Record<Lang, Dict> = {
     "requests.detail.responsibleWorker": "Ответственный сотрудник",
     "requests.detail.unassign": "Убрать",
     "requests.detail.assignWorker": "Назначить сотрудника",
+    "requests.detail.noWorker": "Не назначено",
 
     "requests.confirmDelete.title": "Удалить обращение?",
     "requests.confirmDelete.message":

@@ -56,7 +56,6 @@ import {
   type ChatMessage,
   type ChatConversation,
 } from '@/shared/store/chat';
-import { STAFF } from '@/shared/data/mock';
 import { formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 
@@ -103,10 +102,32 @@ function senderColor(seed: string): string {
   return SENDER_COLORS[h % SENDER_COLORS.length];
 }
 
-function senderInfo(senderId: string) {
-  if (senderId === ME_ID) return { name: 'Siz', color: '#059669', photo: undefined as string | undefined };
-  const st = STAFF.find((s) => s.id === senderId);
-  return { name: st?.name ?? 'Xodim', color: senderColor(senderId), photo: st?.photo };
+interface SenderIdentity {
+  name: string;
+  color: string;
+  photo?: string;
+}
+
+/**
+ * Guruh suhbatidagi jo'natuvchining ismi/rasmi/rangi. Backend `senderId` —
+ * haqiqiy xodim id'si, shuning uchun identifikatsiya xarita ishlatadigan aynan
+ * o'sha jonli xodimlar manbasidan (`useLiveEmployees` / GET /locations/latest)
+ * `employeeId` bo'yicha olinadi. Ro'yxatda topilmasa — xabar bilan kelgan nom
+ * (agar bo'lsa), aks holda neytral "Xodim". Rang har doim id'dan barqaror
+ * hosil qilinadi (bir xil xodim doim bir xil rangda).
+ */
+function senderInfo(
+  msg: ChatMessage,
+  employeesById: Map<string, LiveLocation>,
+): SenderIdentity {
+  if (msg.senderId === ME_ID) return { name: 'Siz', color: '#059669', photo: undefined };
+  const emp = employeesById.get(msg.senderId);
+  const fromMsg = (msg as { senderName?: string }).senderName?.trim();
+  return {
+    name: emp?.fullName.trim() || fromMsg || 'Xodim',
+    color: senderColor(msg.senderId),
+    photo: emp?.avatarUrl ?? undefined,
+  };
 }
 
 function previewText(m: ChatMessage): string {
@@ -291,6 +312,12 @@ export function ChatPage() {
   const openDirect = useOpenDirectConversation();
   const employeesQuery = useLiveEmployees();
   const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+  // Guruh chatida jo'natuvchini `senderId` (haqiqiy xodim id'si) bo'yicha tez
+  // topish uchun — ism/rasm shu jonli ro'yxatdan olinadi.
+  const employeesById = useMemo(
+    () => new Map(employees.map((e) => [e.employeeId, e])),
+    [employees],
+  );
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
@@ -731,7 +758,7 @@ export function ChatPage() {
                             <>
                               {last.senderId === ME_ID && <span className="text-ink-muted">Siz: </span>}
                               {conv.kind === 'group' && last.senderId !== ME_ID && (
-                                <span className="text-ink-muted">{senderInfo(last.senderId).name.split(' ')[0]}: </span>
+                                <span className="text-ink-muted">{senderInfo(last, employeesById).name.split(' ')[0]}: </span>
                               )}
                               {previewText(last)}
                             </>
@@ -879,6 +906,7 @@ export function ChatPage() {
                         msg={item.msg}
                         first={item.first}
                         isGroup={activeConv.kind === 'group'}
+                        employeesById={employeesById}
                         reduce={prefersReducedMotion}
                         onImageClick={setLightbox}
                         isEditing={editing?.id === item.msg.id}
@@ -1009,6 +1037,7 @@ function MessageRow({
   msg,
   first,
   isGroup,
+  employeesById,
   reduce,
   onImageClick,
   isEditing,
@@ -1024,6 +1053,8 @@ function MessageRow({
   msg: ChatMessage;
   first: boolean;
   isGroup: boolean;
+  /** Jonli xodimlar (jo'natuvchini `senderId` bo'yicha topish uchun). */
+  employeesById: Map<string, LiveLocation>;
   reduce: boolean;
   onImageClick: (url: string) => void;
   /** Shu xabar hozir tahrirlanmoqda (inline editor ko'rsatiladi). */
@@ -1038,7 +1069,7 @@ function MessageRow({
   onDelete: () => void;
 }) {
   const mine = msg.senderId === ME_ID;
-  const info = senderInfo(msg.senderId);
+  const info = senderInfo(msg, employeesById);
   const sending = msg.status === 'sending';
   // Tahrirlash faqat: o'zimizniki + matn + hali o'qilmagan (backend 409 bermasin).
   const canEdit = mine && msg.kind === 'text' && msg.status !== 'read';

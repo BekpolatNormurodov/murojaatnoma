@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import {
   Crown1,
-  Eye,
-  EyeSlash,
   Key,
-  Refresh2,
   SecurityUser,
   ShieldTick,
   Clock,
@@ -28,11 +25,6 @@ import type { ModuleKey, StaffMember, StaffRole, StaffStatus } from '@/shared/da
 import { ROLE_ICON, roleMeta, staffStatusMeta } from './staffMeta';
 
 const STATUS_ORDER: StaffStatus[] = ['active', 'inactive', 'suspended'];
-
-function randomPassword() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-}
 
 export function StaffDetail({
   member,
@@ -84,8 +76,6 @@ function StaffEditor({
   const [permissions, setPermissions] = useState<ModuleKey[]>(member.permissions);
   const [schedule, setSchedule] = useState(member.schedule);
   const [twoFactor, setTwoFactor] = useState(member.twoFactor);
-  const [password, setPassword] = useState('');
-  const [showPass, setShowPass] = useState(false);
   const [loginTouched, setLoginTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -235,37 +225,6 @@ function StaffEditor({
             {loginError}
           </span>
         )}
-
-        <label className="mb-1.5 mt-3 block text-[13px] font-medium text-ink-soft">Parol</label>
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Key size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
-            <input
-              type={showPass ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Yangi parol o'rnatish"
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 pl-11 pr-11 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-primary-300 focus:bg-surface"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPass((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
-            >
-              {showPass ? <EyeSlash size={18} /> : <Eye size={18} />}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setPassword(randomPassword());
-              setShowPass(true);
-            }}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-[13px] font-medium text-ink-soft hover:bg-surface-2"
-          >
-            <Refresh2 size={16} /> Generatsiya
-          </button>
-        </div>
 
         <div className="mt-4 flex items-center justify-between rounded-xl bg-surface-2 px-4 py-3">
           <span className="flex items-center gap-2 text-sm text-ink-soft">

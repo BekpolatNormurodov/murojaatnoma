@@ -419,11 +419,24 @@ export function MapPage() {
 
         {/* Employee list */}
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {filtered.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-ink-muted">
-              {locations.length === 0 ? t.empty : t.noneMatch}
-            </p>
-          )}
+          {filtered.length === 0 &&
+            (locationsQ.isError && locations.length === 0 ? (
+              // Xatoni "hech kim joylashuv yubormagan"dan ajratamiz: bo'sh
+              // ro'yxat aslida yuklash muvaffaqiyatsizligi bo'lishi mumkin.
+              <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
+                <p className="text-sm font-medium text-danger">{t.loadError}</p>
+                <button
+                  onClick={() => locationsQ.refetch()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-ink-soft hover:bg-surface-2"
+                >
+                  <RotateRight size={13} /> {t.retry}
+                </button>
+              </div>
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-ink-muted">
+                {locations.length === 0 ? t.empty : t.noneMatch}
+              </p>
+            ))}
           {filtered.map((loc) => (
             <button
               key={loc.employeeId}

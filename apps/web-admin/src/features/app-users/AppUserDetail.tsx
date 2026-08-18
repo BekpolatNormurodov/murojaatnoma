@@ -10,7 +10,6 @@ import {
   TickCircle,
   Verify,
   Activity,
-  Send2,
   Slash,
   ShieldTick,
   Cup,
@@ -247,12 +246,9 @@ export function AppUserDetail({
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
-            <button className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700">
-              <Send2 size={16} variant="Bulk" /> {t('appUsers.detail.sendMessage')}
-            </button>
             <a
               href={`tel:${u.phone}`}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
             >
               <Sms size={16} variant="Bulk" /> {t('appUsers.detail.contact')}
             </a>

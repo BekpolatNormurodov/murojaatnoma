@@ -44,6 +44,7 @@ import { useDeputies } from '@/features/deputies/useDeputies';
 import type { Complaint, ComplaintStatus, RequestCategory } from '@/shared/data/types';
 import { formatDate, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import {
   useComplaintMessages,
   useSendComplaintMessage,
@@ -532,6 +533,8 @@ function ComplaintDetail({
 }) {
   const { t } = useI18n();
   const c = complaint;
+  // VIEWER faqat o'qiy oladi — o'chirish/holat/javob/yo'nalish amallari yashiriladi.
+  const { canWrite } = usePermissions();
   const { data: deputies } = useDeputies();
   const deputy = c ? deputies?.find((d) => d.id === c.deputyId) ?? undefined : undefined;
   const author = deputy?.name ?? t('app.org');
@@ -709,14 +712,16 @@ function ComplaintDetail({
                   </Badge>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setDeleteOpen(true)}
-                aria-label={t('complaints.detail.deleteAria')}
-                className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-danger-soft bg-danger-soft px-3 text-[12.5px] font-medium text-red-700 transition-colors hover:brightness-95"
-              >
-                <Trash size={16} variant="Bulk" /> {t('common.delete')}
-              </button>
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={() => setDeleteOpen(true)}
+                  aria-label={t('complaints.detail.deleteAria')}
+                  className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-danger-soft bg-danger-soft px-3 text-[12.5px] font-medium text-red-700 transition-colors hover:brightness-95"
+                >
+                  <Trash size={16} variant="Bulk" /> {t('common.delete')}
+                </button>
+              )}
             </div>
             <h3 className="mt-3 text-lg font-bold text-ink">{c.title}</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{c.description}</p>
@@ -742,14 +747,16 @@ function ComplaintDetail({
                 <span className="text-[11.5px] text-ink-muted">Belgilanmagan</span>
               )}
             </div>
-            <Select<RequestCategory>
-              value={(c.category ?? '') as RequestCategory}
-              onChange={handleCategoryChange}
-              options={COMPLAINT_CATEGORY_OPTIONS}
-              placeholder={catBusy ? 'Saqlanmoqda…' : "Yo'nalishni tanlang"}
-              icon={Category}
-              block
-            />
+            {canWrite && (
+              <Select<RequestCategory>
+                value={(c.category ?? '') as RequestCategory}
+                onChange={handleCategoryChange}
+                options={COMPLAINT_CATEGORY_OPTIONS}
+                placeholder={catBusy ? 'Saqlanmoqda…' : "Yo'nalishni tanlang"}
+                icon={Category}
+                block
+              />
+            )}
           </div>
 
           {/* Responsible deputy */}
@@ -822,33 +829,35 @@ function ComplaintDetail({
             )}
           </div>
 
-          {/* Holatni o'zgartirish */}
-          <div className="rounded-2xl border border-line bg-surface p-4">
-            <p className="mb-2.5 text-[13px] font-semibold text-ink">{t('common.changeStatus')}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(['reviewing', 'resolved', 'rejected'] as TransitionStatus[]).map((s) => {
-                const meta = statusMeta(s, t);
-                const active = c.status === s;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => requestStatus(s)}
-                    aria-pressed={active}
-                    className={cn(
-                      'flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
-                      active
-                        ? 'bg-ink text-white'
-                        : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
-                    )}
-                  >
-                    {s === 'resolved' && <TickSquare size={15} variant="Bulk" />}
-                    {meta.label}
-                  </button>
-                );
-              })}
+          {/* Holatni o'zgartirish — faqat yozish huquqi bor rollar uchun */}
+          {canWrite && (
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="mb-2.5 text-[13px] font-semibold text-ink">{t('common.changeStatus')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(['reviewing', 'resolved', 'rejected'] as TransitionStatus[]).map((s) => {
+                  const meta = statusMeta(s, t);
+                  const active = c.status === s;
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => requestStatus(s)}
+                      aria-pressed={active}
+                      className={cn(
+                        'flex min-h-11 items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
+                        active
+                          ? 'bg-ink text-white'
+                          : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                      )}
+                    >
+                      {s === 'resolved' && <TickSquare size={15} variant="Bulk" />}
+                      {meta.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Rasmiy javoblar */}
           <div className="rounded-2xl border border-line bg-surface p-4">
@@ -877,7 +886,8 @@ function ComplaintDetail({
               </p>
             )}
 
-            {/* Javob yozish */}
+            {/* Javob yozish — faqat yozish huquqi bor rollar uchun */}
+            {canWrite && (
             <div className="mt-3">
               <label htmlFor="complaint-reply" className="sr-only">
                 {t('complaints.detail.replyLabel')}
@@ -941,6 +951,7 @@ function ComplaintDetail({
                 </button>
               </div>
             </div>
+            )}
           </div>
 
           {/* Suhbat — media almashinuvi (rasm/video/ovoz/fayl) */}
@@ -979,7 +990,8 @@ function ComplaintDetail({
               </p>
             )}
 
-            {/* Composer — matn + fayl biriktirish */}
+            {/* Composer — matn + fayl biriktirish (faqat yozish huquqi bor rollar) */}
+            {canWrite && (
             <div className="mt-3 rounded-xl border border-line bg-canvas p-2">
               {msgFile && (
                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px]">
@@ -1046,6 +1058,7 @@ function ComplaintDetail({
                 </p>
               )}
             </div>
+            )}
           </div>
         </div>
       )}

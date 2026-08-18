@@ -44,6 +44,7 @@ import type {
 } from '@/shared/data/types';
 import { formatSom, formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { getDeadline, urgencyMeta } from './deadline';
 import { pushRequestToast } from './toastStore';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
@@ -240,6 +241,8 @@ export function RequestDetail({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const navigate = useNavigate();
+  // VIEWER faqat o'qiy oladi — biriktirish/holat/o'chirish amallari yashiriladi.
+  const { canWrite } = usePermissions();
   // Avatar bosilganda ochiladigan umumiy profil oynasi uchun tanlangan odam.
   const [person, setPerson] = useState<PersonRef | null>(null);
 
@@ -551,7 +554,7 @@ export function RequestDetail({
           <div className="rounded-2xl border border-line bg-surface p-4">
             <div className="mb-3 flex items-center justify-between">
               <p className="text-[13px] font-semibold text-ink">{t('requests.detail.responsibleWorker')}</p>
-              {worker && (
+              {worker && canWrite && (
                 <button
                   onClick={() => setPickerOpen(true)}
                   className="text-[12px] font-medium text-primary-600 hover:underline"
@@ -588,48 +591,54 @@ export function RequestDetail({
                   <span className="flex items-center gap-1 text-[13px] font-semibold text-amber-500">
                     <Star1 size={14} variant="Bold" /> {worker.rating.toFixed(1)}
                   </span>
-                  <button
-                    onClick={handleUnassign}
-                    className="flex items-center gap-1 text-[11.5px] font-medium text-ink-muted transition-colors hover:text-danger"
-                  >
-                    <CloseCircle size={13} variant="Bulk" /> {t('requests.detail.unassign')}
-                  </button>
+                  {canWrite && (
+                    <button
+                      onClick={handleUnassign}
+                      className="flex items-center gap-1 text-[11.5px] font-medium text-ink-muted transition-colors hover:text-danger"
+                    >
+                      <CloseCircle size={13} variant="Bulk" /> {t('requests.detail.unassign')}
+                    </button>
+                  )}
                 </div>
               </div>
-            ) : (
+            ) : canWrite ? (
               <button
                 onClick={() => setPickerOpen(true)}
                 className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-line py-2.5 text-[13px] font-medium text-primary-600 hover:bg-primary-50"
               >
                 <UserTick size={16} variant="Bulk" /> {t('requests.detail.assignWorker')} <ArrowRight size={14} />
               </button>
+            ) : (
+              <p className="text-[13px] text-ink-muted">{t('requests.detail.noWorker')}</p>
             )}
           </div>
 
-          {/* Holatni o'zgartirish */}
-          <div className="rounded-2xl border border-line bg-surface p-4">
-            <p className="mb-2.5 text-[13px] font-semibold text-ink">{t('common.changeStatus')}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(['in_progress', 'resolved', 'rejected'] as RequestStatus[]).map((s) => {
-                const active = r.status === s;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => handleStatusChange(s)}
-                    className={cn(
-                      'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
-                      active
-                        ? 'bg-ink text-white'
-                        : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
-                    )}
-                  >
-                    {s === 'resolved' && <TickCircle size={15} variant="Bulk" />}
-                    {STATUS_META[s].label}
-                  </button>
-                );
-              })}
+          {/* Holatni o'zgartirish — faqat yozish huquqi bor rollar uchun */}
+          {canWrite && (
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="mb-2.5 text-[13px] font-semibold text-ink">{t('common.changeStatus')}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(['in_progress', 'resolved', 'rejected'] as RequestStatus[]).map((s) => {
+                  const active = r.status === s;
+                  return (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(s)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
+                        active
+                          ? 'bg-ink text-white'
+                          : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                      )}
+                    >
+                      {s === 'resolved' && <TickCircle size={15} variant="Bulk" />}
+                      {STATUS_META[s].label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Harakatlar tarixi (audit) — murojaat hayotiy sikli */}
           {events && events.length > 0 && (
@@ -646,12 +655,14 @@ export function RequestDetail({
             <button className="flex h-11 flex-1 items-center justify-center rounded-xl border border-line bg-surface text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2">
               {t('common.print')}
             </button>
-            <button
-              onClick={() => setDeleteOpen(true)}
-              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-danger-soft px-4 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
-            >
-              <Trash size={17} variant="Bulk" /> {t('common.delete')}
-            </button>
+            {canWrite && (
+              <button
+                onClick={() => setDeleteOpen(true)}
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-danger-soft px-4 text-sm font-medium text-danger transition-colors hover:bg-danger/10"
+              >
+                <Trash size={17} variant="Bulk" /> {t('common.delete')}
+              </button>
+            )}
           </div>
 
           <WorkerPickerModal
