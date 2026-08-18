@@ -82,12 +82,15 @@ class _AppButtonState extends State<AppButton> {
               border: widget.variant == AppButtonVariant.secondary
                   ? Border.all(color: line)
                   : null,
+              // Tight, low-spread elevation — a subtle lift, NOT a wide glow.
+              // (A blurRadius:24 halo bled far past the button and read as a
+              // rendering artifact across premya/leave/news/chat CTAs.)
               boxShadow: isPrimary || isDanger
                   ? [
                       BoxShadow(
-                        color: bg.withValues(alpha: 0.3),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
+                        color: bg.withValues(alpha: 0.22),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ]
                   : null,

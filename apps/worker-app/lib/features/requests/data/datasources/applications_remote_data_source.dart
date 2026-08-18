@@ -315,9 +315,9 @@ class ApplicationsRemoteDataSourceApiImpl
     // `findOne`/`updateStatus`/`assign`/`events`/`reply`/`messages`/
     // `attachments` mavjud). Shu sababli bu amal hozircha real backendda
     // qo'llab-quvvatlanmaydi — mock rejimda ishlashda davom etadi.
-    throw ServerException(
-      "Ball qo'yish hozircha real serverda mavjud emas",
-    );
+    // Foydalanuvchiga ichki tafsilot ("real serverda") ko'rsatilmaydi —
+    // neytral xabar (idealda bu amal real rejimda UI'dan yashiriladi).
+    throw ServerException('Baholash hozircha mavjud emas');
   }
 }
 

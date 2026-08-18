@@ -131,21 +131,35 @@ class _DetailContent extends StatelessWidget {
         _SectionTitle(
           l10n.meetingParticipantsCount(meeting.participants.length),
         ),
-        const SizedBox(height: 8),
-        AppCard(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-          child: Column(
-            children: [
-              for (var i = 0; i < meeting.participants.length; i++) ...[
-                if (i > 0) const Divider(height: 1),
-                AppListTile(
-                  title: meeting.participants[i],
-                  leading: AppAvatar(name: meeting.participants[i], size: 36),
-                  showChevron: false,
+        // Backend ba'zan faqat ishtirokchilar SONINI beradi (ismlarsiz).
+        // Bunday holda bo'sh avatarlar "devori"ni ko'rsatmaymiz — sarlavhadagi
+        // son yetarli. Faqat HAQIQIY (bo'sh bo'lmagan) ismlar ro'yxat bo'lib
+        // chiqadi.
+        Builder(
+          builder: (context) {
+            final named = meeting.participants
+                .where((p) => p.trim().isNotEmpty)
+                .toList();
+            if (named.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: AppCard(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < named.length; i++) ...[
+                      if (i > 0) const Divider(height: 1),
+                      AppListTile(
+                        title: named[i],
+                        leading: AppAvatar(name: named[i], size: 36),
+                        showChevron: false,
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ],
-          ),
+              ),
+            );
+          },
         ),
         const SizedBox(height: 28),
         if (canJoin) ...[
