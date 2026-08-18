@@ -234,6 +234,15 @@ export function CamerasPage() {
         }
       />
 
+      {/* CCTV oqimi hali real ulanmagan — foydalanuvchini chalg'itmaslik uchun test belgisi */}
+      <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+        <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+        <span>
+          <span className="font-semibold">Test rejimi</span> — kamera tasvirlari va
+          hodisalar namoyish maqsadida. Jonli CCTV oqimi hozircha ulanmagan.
+        </span>
+      </div>
+
       {isError ? (
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
