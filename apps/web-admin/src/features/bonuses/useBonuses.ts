@@ -17,6 +17,7 @@ export interface Bonus {
   month: string; // "YYYY-MM"
   type: string; // "premya" (standart)
   createdAt: string; // ISO-8601
+  updatedAt: string; // ISO-8601 (tahrirlangan bo'lsa createdAt'dan farq qiladi)
 }
 
 /**

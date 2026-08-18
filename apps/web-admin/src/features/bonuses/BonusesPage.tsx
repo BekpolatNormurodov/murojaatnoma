@@ -4,6 +4,7 @@ import {
   Add,
   Calculator,
   CloseCircle,
+  Edit2,
   MedalStar,
   Moneys,
   Profile2User,
@@ -22,7 +23,12 @@ import { formatDate, formatSom, formatSomShort } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { useBonuses, type Bonus } from './useBonuses';
-import { useCreateBonus, useDeleteBonus, type CreateBonusInput } from './useBonusMutations';
+import {
+  useCreateBonus,
+  useDeleteBonus,
+  useUpdateBonus,
+  type CreateBonusInput,
+} from './useBonusMutations';
 import { bonusSource, formatMonthLabel, SOURCE_META } from './meta';
 import { BonusFormModal } from './BonusFormModal';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
@@ -40,10 +46,12 @@ export function BonusesPage() {
 
   const [query, setQuery] = useState('');
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Bonus | null>(null);
   const [deleting, setDeleting] = useState<Bonus | null>(null);
   const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
 
   const createBonus = useCreateBonus();
+  const updateBonus = useUpdateBonus();
   const deleteBonus = useDeleteBonus();
 
   useEffect(() => {
@@ -68,9 +76,21 @@ export function BonusesPage() {
     return { total, sum, avg, recipients };
   }, [filtered]);
 
-  async function handleCreate(input: CreateBonusInput) {
-    await createBonus.mutateAsync(input);
-    setToast({ tone: 'success', msg: `${input.recipientName} uchun premya yozildi` });
+  const modalOpen = formOpen || !!editing;
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditing(null);
+  }
+
+  async function handleSubmit(input: CreateBonusInput) {
+    if (editing) {
+      await updateBonus.mutateAsync({ id: editing.id, ...input });
+      setToast({ tone: 'success', msg: `${input.recipientName} premyasi yangilandi` });
+    } else {
+      await createBonus.mutateAsync(input);
+      setToast({ tone: 'success', msg: `${input.recipientName} uchun premya yozildi` });
+    }
   }
 
   async function confirmDelete() {
@@ -196,6 +216,7 @@ export function BonusesPage() {
                           bonus={b}
                           index={i}
                           reducedMotion={reducedMotion}
+                          onEdit={() => setEditing(b)}
                           onDelete={() => setDeleting(b)}
                         />
                       ))}
@@ -219,7 +240,12 @@ export function BonusesPage() {
         </>
       )}
 
-      <BonusFormModal open={formOpen} onClose={() => setFormOpen(false)} onSubmit={handleCreate} />
+      <BonusFormModal
+        open={modalOpen}
+        onClose={closeForm}
+        onSubmit={handleSubmit}
+        initial={editing}
+      />
 
       <ConfirmDialog
         open={!!deleting}
@@ -267,11 +293,13 @@ function BonusRow({
   bonus,
   index,
   reducedMotion,
+  onEdit,
   onDelete,
 }: {
   bonus: Bonus;
   index: number;
   reducedMotion: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const src = bonusSource(bonus);
@@ -302,16 +330,26 @@ function BonusRow({
       <td className="px-3 py-3 text-ink-soft">{formatMonthLabel(bonus.month)}</td>
       <td className="px-3 py-3 text-ink-muted">{formatDate(bonus.createdAt)}</td>
       <td className="px-5 py-3">
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-1">
           {canWrite && (
-            <button
-              onClick={onDelete}
-              title="O'chirish"
-              aria-label={`${bonus.recipientName} premyasini o'chirish`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-danger-soft hover:text-red-600"
-            >
-              <Trash size={17} />
-            </button>
+            <>
+              <button
+                onClick={onEdit}
+                title="Tahrirlash"
+                aria-label={`${bonus.recipientName} premyasini tahrirlash`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600"
+              >
+                <Edit2 size={17} />
+              </button>
+              <button
+                onClick={onDelete}
+                title="O'chirish"
+                aria-label={`${bonus.recipientName} premyasini o'chirish`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-danger-soft hover:text-red-600"
+              >
+                <Trash size={17} />
+              </button>
+            </>
           )}
         </div>
       </td>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Add, CloseCircle, RotateRight, SearchNormal1 } from 'iconsax-react';
+import { Add, CloseCircle, RotateRight, SearchNormal1, TickCircle } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -8,6 +8,7 @@ import { cn } from '@/shared/lib/cn';
 import { useWorkers } from '@/features/workers/useWorkers';
 import { useStaff } from '@/features/staff/useStaff';
 import type { CreateBonusInput } from './useBonusMutations';
+import type { Bonus } from './useBonuses';
 import { SOURCE_META, currentMonthValue, type RecipientSource } from './meta';
 
 const SOURCE_KEYS: RecipientSource[] = ['worker', 'staff', 'custom'];
@@ -34,12 +35,16 @@ export function BonusFormModal({
   open,
   onClose,
   onSubmit,
+  initial,
 }: {
   open: boolean;
   onClose: () => void;
-  /** Backendga POST /bonuses yuboradigan chaqiruvchi (parent'da mutatsiya). */
+  /** Backendga (POST yoki PATCH) yuboradigan chaqiruvchi (parent'da mutatsiya). */
   onSubmit: (input: CreateBonusInput) => Promise<unknown>;
+  /** Berilsa — tahrirlash rejimi: forma shu premya bilan to'ldiriladi. */
+  initial?: Bonus | null;
 }) {
+  const editing = !!initial;
   const workersQuery = useWorkers();
   const staffQuery = useStaff();
   const workers = workersQuery.data ?? [];
@@ -59,30 +64,48 @@ export function BonusFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const reset = useCallback(() => {
-    setSource('worker');
-    setRecipientId(null);
-    setCustomName('');
+  const initForm = useCallback(() => {
+    if (initial) {
+      // Tahrirlash — mavjud premya bilan to'ldiriladi.
+      const src: RecipientSource = initial.employeeId
+        ? 'staff'
+        : initial.workerId
+          ? 'worker'
+          : 'custom';
+      setSource(src);
+      setRecipientId(initial.employeeId ?? initial.workerId ?? null);
+      setCustomName(src === 'custom' ? initial.recipientName : '');
+      setAmount(String(initial.amount));
+      setReason(initial.reason);
+      setMonth(/^\d{4}-\d{2}$/.test(initial.month) ? initial.month : currentMonthValue());
+    } else {
+      // Yangi premya — bo'sh forma.
+      setSource('worker');
+      setRecipientId(null);
+      setCustomName('');
+      setAmount('');
+      setReason('');
+      setMonth(currentMonthValue());
+    }
     setPersonQuery('');
-    setAmount('');
-    setReason('');
-    setMonth(currentMonthValue());
     setTouched({});
     setSubmitAttempted(false);
     setError(null);
     setSaving(false);
-  }, []);
+  }, [initial]);
 
-  // Har safar ochilganda forma tozalanadi (avvalgi seans qoldiqlari qolmasin).
+  // Har safar ochilganda forma qayta tayyorlanadi (yangi = bo'sh, tahrir = to'ldirilgan).
   useEffect(() => {
-    if (open) reset();
-  }, [open, reset]);
+    if (open) initForm();
+  }, [open, initForm]);
 
   const selectedWorker = source === 'worker' ? workers.find((w) => w.id === recipientId) : undefined;
   const selectedStaff = source === 'staff' ? staffList.find((s) => s.id === recipientId) : undefined;
 
   const recipientName =
-    source === 'custom' ? customName.trim() : (selectedWorker?.name ?? selectedStaff?.name ?? '');
+    source === 'custom'
+      ? customName.trim()
+      : (selectedWorker?.name ?? selectedStaff?.name ?? (editing ? initial!.recipientName : ''));
 
   const amountValue = Number(amount);
   const amountValid = amount.trim() !== '' && Number.isFinite(amountValue) && amountValue > 0;
@@ -108,8 +131,10 @@ export function BonusFormModal({
       amount: Math.round(amountValue),
       reason: reason.trim(),
       month,
-      ...(source === 'worker' && selectedWorker ? { workerId: selectedWorker.id } : {}),
-      ...(source === 'staff' && selectedStaff ? { employeeId: selectedStaff.id } : {}),
+      // Faol manba id'si (tahrirda oldindan tanlangan); qolganlari null — PATCH
+      // ularni tozalaydi (masalan xodimdan erkin nomga o'tkazilganda).
+      employeeId: source === 'staff' ? recipientId : null,
+      workerId: source === 'worker' ? recipientId : null,
     };
     setSaving(true);
     setError(null);
@@ -137,7 +162,13 @@ export function BonusFormModal({
   const peopleLoading = source === 'worker' ? workersQuery.isLoading : source === 'staff' ? staffQuery.isLoading : false;
 
   return (
-    <Modal open={open} onClose={handleClose} title="Premya yozish" subtitle="Xodim yoki ishchiga premya (bonus) belgilang" width={560}>
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title={editing ? 'Premyani tahrirlash' : 'Premya yozish'}
+      subtitle={editing ? "Premya ma'lumotlarini yangilang" : 'Xodim yoki ishchiga premya (bonus) belgilang'}
+      width={560}
+    >
       <div className="space-y-4">
         {error && (
           <div
@@ -318,8 +349,14 @@ export function BonusFormModal({
             Bekor qilish
           </Button>
           <Button onClick={submit} disabled={saving}>
-            {saving ? <RotateRight size={18} className="animate-spin" /> : <Add size={18} />}
-            {saving ? 'Saqlanmoqda...' : 'Premya yaratish'}
+            {saving ? (
+              <RotateRight size={18} className="animate-spin" />
+            ) : editing ? (
+              <TickCircle size={18} />
+            ) : (
+              <Add size={18} />
+            )}
+            {saving ? 'Saqlanmoqda...' : editing ? 'Saqlash' : 'Premya yaratish'}
           </Button>
         </div>
       </div>

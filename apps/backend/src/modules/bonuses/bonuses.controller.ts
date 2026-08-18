@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.in
 import { BonusesService, BonusResponse } from './bonuses.service';
 import { CreateBonusDto } from './dto/create-bonus.dto';
 import { ListBonusesQueryDto } from './dto/list-bonuses-query.dto';
+import { UpdateBonusDto } from './dto/update-bonus.dto';
 
 /**
  * Employee bonuses (premya). Admins grant bonuses (web-admin); an employee
@@ -62,6 +64,15 @@ export class BonusesController {
   ): Promise<BonusResponse[]> {
     this.assertCanView(user, employeeId);
     return this.bonusesService.findByEmployee(employeeId);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Edit a bonus (amount/reason/month/recipient)' })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBonusDto,
+  ): Promise<BonusResponse> {
+    return this.bonusesService.update(id, dto);
   }
 
   @Delete(':id')
