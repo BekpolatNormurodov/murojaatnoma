@@ -16,6 +16,8 @@
  *     matter what day the script is executed).
  *   - Applications / ApplicationMessages / ApplicationEvents / Attachments
  *     upsert by deterministic ids ("seed-app-01", "seed-app-01-msg-1", ...).
+ *   - Notifications have no natural stable key, so all Notification rows for
+ *     the seeded employee ids are deleted and recreated fresh on every run.
  */
 import {
   PrismaClient,
@@ -25,6 +27,7 @@ import {
   MessageSenderRole,
   ApplicationEventType,
   AttachmentType,
+  NotificationType,
 } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -309,6 +312,9 @@ const app09Created = daysAgo(1, 9, 50);
 const app10Created = daysAgo(7, 10, 0);
 const app11Created = daysAgo(5, 15, 30);
 const app12Created = daysAgo(6, 12, 0);
+const app13Created = daysAgo(2, 10, 30);
+const app14Created = daysAgo(4, 9, 0);
+const app15Created = daysAgo(1, 11, 15);
 
 const applicationsSeed: AppSeed[] = [
   {
@@ -530,6 +536,65 @@ const applicationsSeed: AppSeed[] = [
     ],
     attachment: { idSuffix: 'att-1', fileName: 'axlat.jpg', mimeType: 'image/jpeg', sizeBytes: 198_000 },
   },
+  // --- Added to make sure every seeded employee has at least one assigned
+  //     murojaat (malika and bekzod had none before; nodira gets a second). ---
+  {
+    id: 'seed-app-13',
+    subject: "Ko'p bolali oilaga moddiy yordam ko'rsatish so'ralmoqda",
+    description:
+      "Mahallamizda yashovchi 6 farzandli oilaning boshlig'i ishsiz qolgan, ijtimoiy yordam zarur.",
+    applicantFullName: 'Zilola Ahmedova',
+    applicantPhone: '+998901556677',
+    status: ApplicationStatus.NEW,
+    deptCode: 'IJT',
+    employeeKey: 'malika',
+    createdAt: app13Created,
+    events: [
+      { idSuffix: 'evt-1', type: ApplicationEventType.CREATED, createdAt: app13Created, toStatus: ApplicationStatus.NEW, note: "Fuqaro tomonidan yuborildi" },
+      { idSuffix: 'evt-2', type: ApplicationEventType.ASSIGNED, createdAt: hoursAfter(app13Created, 2), toEmployeeKey: 'malika', deptCode: 'IJT', actorKey: 'bekzod' },
+    ],
+    messages: [
+      { idSuffix: 'msg-1', senderRole: MessageSenderRole.CITIZEN, senderName: 'Zilola Ahmedova', text: "Oilaga yordam qachon ko'rib chiqiladi?", createdAt: app13Created },
+    ],
+  },
+  {
+    id: 'seed-app-14',
+    subject: 'Murojaatga javob kechikkani haqida shikoyat',
+    description: "Ikki hafta oldin yuborilgan murojaatimga hali ham javob kelmadi, holatni tekshirib bering.",
+    applicantFullName: 'Sanjar Rustamov',
+    applicantPhone: '+998977889900',
+    status: ApplicationStatus.IN_PROGRESS,
+    deptCode: 'MUR',
+    employeeKey: 'bekzod',
+    createdAt: app14Created,
+    events: [
+      { idSuffix: 'evt-1', type: ApplicationEventType.CREATED, createdAt: app14Created, toStatus: ApplicationStatus.NEW, note: "Fuqaro tomonidan yuborildi" },
+      { idSuffix: 'evt-2', type: ApplicationEventType.ASSIGNED, createdAt: hoursAfter(app14Created, 1), toEmployeeKey: 'bekzod', deptCode: 'MUR', actorKey: 'bekzod', note: "Bo'lim boshlig'i shaxsan ko'rib chiqmoqda" },
+      { idSuffix: 'evt-3', type: ApplicationEventType.STATUS_CHANGED, createdAt: daysAgo(3, 10, 0), fromStatus: ApplicationStatus.NEW, toStatus: ApplicationStatus.IN_PROGRESS, actorKey: 'bekzod' },
+    ],
+    messages: [
+      { idSuffix: 'msg-1', senderRole: MessageSenderRole.CITIZEN, senderName: 'Sanjar Rustamov', text: 'Murojaatim yo\'qolib qoldimikan, javob kelmayapti.', createdAt: app14Created },
+      { idSuffix: 'msg-2', senderRole: MessageSenderRole.EMPLOYEE, senderName: 'Bekzod Nortojiyev', text: "Uzr so'raymiz, holatingiz qayta ko'rib chiqilmoqda.", createdAt: daysAgo(3, 10, 10) },
+    ],
+  },
+  {
+    id: 'seed-app-15',
+    subject: 'Bolalar maydonchasi atrofidagi panjara shikastlangan',
+    description: "Mahalla bog'chasi yonidagi bolalar maydonchasi panjarasi buzilgan, bolalar uchun xavfli.",
+    applicantFullName: 'Nilufar Qosimova',
+    applicantPhone: '+998935566778',
+    status: ApplicationStatus.NEW,
+    deptCode: 'OBD',
+    employeeKey: 'nodira',
+    createdAt: app15Created,
+    events: [
+      { idSuffix: 'evt-1', type: ApplicationEventType.CREATED, createdAt: app15Created, toStatus: ApplicationStatus.NEW, note: "Fuqaro tomonidan yuborildi" },
+      { idSuffix: 'evt-2', type: ApplicationEventType.ASSIGNED, createdAt: hoursAfter(app15Created, 2), toEmployeeKey: 'nodira', deptCode: 'OBD', actorKey: 'bekzod' },
+    ],
+    messages: [
+      { idSuffix: 'msg-1', senderRole: MessageSenderRole.CITIZEN, senderName: 'Nilufar Qosimova', text: "Panjara tuzatilmasa, bolalar jarohat olishi mumkin.", createdAt: app15Created },
+    ],
+  },
 ];
 
 async function seedApplications(
@@ -658,6 +723,96 @@ async function seedApplications(
 }
 
 // ---------------------------------------------------------------------------
+// 5) Employee notifications (worker-app "Bildirishnomalar" screen). Keyed by
+//    employeeId on the Prisma `Notification` model. ~3-6 per seeded
+//    employee, mixing NotificationType values and read/unread state, spread
+//    across the last ~week so the list looks lived-in rather than freshly
+//    dumped.
+// ---------------------------------------------------------------------------
+interface NotificationSeed {
+  employeeKey: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  isRead: boolean;
+  createdAt: Date;
+}
+
+const notificationsSeed: NotificationSeed[] = [
+  // --- aziz (assigned seed-app-04, IN_PROGRESS) ---
+  { employeeKey: 'aziz', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Yolgʻiz keksa fuqaro uchun ijtimoiy yordam\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(4, 11, 20) },
+  { employeeKey: 'aziz', type: NotificationType.ATTENDANCE, title: 'Davomat qayd etildi', body: "Bugungi kelganingiz muvaffaqiyatli qayd etildi. Kun davomida omad!", isRead: false, createdAt: todayAt(9, 3) },
+  { employeeKey: 'aziz', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+
+  // --- malika (assigned seed-app-13, NEW) ---
+  { employeeKey: 'malika', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Ko'p bolali oilaga moddiy yordam ko'rsatish so'ralmoqda\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(2, 12, 35) },
+  { employeeKey: 'malika', type: NotificationType.ATTENDANCE, title: 'Davomat qayd etildi', body: "Bugungi kelganingiz muvaffaqiyatli qayd etildi. Kun davomida omad!", isRead: true, createdAt: todayAt(9, 7) },
+  { employeeKey: 'malika', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: true, createdAt: daysAgo(1, 18, 0) },
+
+  // --- sardor (assigned seed-app-01 RESOLVED and seed-app-10 REJECTED) ---
+  { employeeKey: 'sardor', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Ko'cha yoritilmayapti\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(6, 11, 15) },
+  { employeeKey: 'sardor', type: NotificationType.APPLICATION, title: 'Murojaat yakunlandi', body: "\"Ko'cha yoritilmayapti\" murojaati muvaffaqiyatli yopildi va hisobotga qo'shildi.", isRead: true, createdAt: daysAgo(4, 16, 10) },
+  { employeeKey: 'sardor', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Hovli tozalash ishlari bajarilmadi\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(7, 12, 5) },
+  { employeeKey: 'sardor', type: NotificationType.APPLICATION, title: 'Murojaat rad etildi', body: "\"Hovli tozalash ishlari bajarilmadi\" murojaati bo'yicha qaror qabul qilindi va rad etildi sifatida yopildi.", isRead: true, createdAt: daysAgo(5, 14, 10) },
+  { employeeKey: 'sardor', type: NotificationType.ATTENDANCE, title: 'Davomat qayd etildi', body: "Bugungi kelganingiz muvaffaqiyatli qayd etildi. Kun davomida omad!", isRead: false, createdAt: todayAt(8, 29) },
+  { employeeKey: 'sardor', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+
+  // --- nodira (assigned seed-app-02 IN_PROGRESS and seed-app-15 NEW) ---
+  { employeeKey: 'nodira', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Yo'lda katta chuqur paydo bo'lgan\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(3, 14, 5) },
+  { employeeKey: 'nodira', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Bolalar maydonchasi atrofidagi panjara shikastlangan\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: false, createdAt: daysAgo(1, 13, 20) },
+  { employeeKey: 'nodira', type: NotificationType.ATTENDANCE, title: 'Kech qolish qayd etildi', body: "Bugun ish vaqtidan kech keldingiz. Iltimos, davomat tartibiga rioya qiling.", isRead: false, createdAt: todayAt(9, 40) },
+  { employeeKey: 'nodira', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+
+  // --- jasur (assigned seed-app-06 RESOLVED) ---
+  { employeeKey: 'jasur', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Yer uchastkasini rasmiylashtirish so'rovi\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(8, 11, 45) },
+  { employeeKey: 'jasur', type: NotificationType.APPLICATION, title: 'Murojaat yakunlandi', body: "\"Yer uchastkasini rasmiylashtirish so'rovi\" murojaati muvaffaqiyatli yopildi va hisobotga qo'shildi.", isRead: true, createdAt: daysAgo(5, 11, 5) },
+  { employeeKey: 'jasur', type: NotificationType.ATTENDANCE, title: 'Davomat qayd etildi', body: "Bugungi kelganingiz muvaffaqiyatli qayd etildi. Kun davomida omad!", isRead: true, createdAt: todayAt(9, 0) },
+  { employeeKey: 'jasur', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: true, createdAt: daysAgo(1, 18, 0) },
+
+  // --- gulnora (assigned seed-app-07 IN_PROGRESS) ---
+  { employeeKey: 'gulnora', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Noqonuniy qurilish haqida shikoyat\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(3, 17, 10) },
+  { employeeKey: 'gulnora', type: NotificationType.ATTENDANCE, title: 'Davomat qayd etildi', body: "Bugungi kelganingiz muvaffaqiyatli qayd etildi. Kun davomida omad!", isRead: false, createdAt: todayAt(8, 33) },
+  { employeeKey: 'gulnora', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+  { employeeKey: 'gulnora', type: NotificationType.LOCATION, title: 'Joylashuv tekshiruvi', body: "So'nggi joylashuv ma'lumotingiz eskirgan, ilovada joylashuv xizmatini yoqib qo'ying.", isRead: false, createdAt: todayAt(12, 0) },
+
+  // --- bekzod (assigned seed-app-14 IN_PROGRESS; absent today) ---
+  { employeeKey: 'bekzod', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Murojaatga javob kechikkani haqida shikoyat\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(4, 10, 5) },
+  { employeeKey: 'bekzod', type: NotificationType.ATTENDANCE, title: 'Davomat belgilanmagan', body: "Bugun hali kelganingizni belgilamadingiz. Iltimos, ilova orqali davomatni tasdiqlang.", isRead: false, createdAt: todayAt(10, 0) },
+  { employeeKey: 'bekzod', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+  { employeeKey: 'bekzod', type: NotificationType.LOCATION, title: 'Joylashuv aniqlanmadi', body: "Bugun joylashuvingiz aniqlanmadi. Ilovada GPS xizmatini tekshirib ko'ring.", isRead: false, createdAt: todayAt(11, 0) },
+
+  // --- dilnoza (assigned seed-app-12 RESOLVED) ---
+  { employeeKey: 'dilnoza', type: NotificationType.APPLICATION, title: 'Yangi murojaat biriktirildi', body: "\"Ko'p qavatli uy hovlisida axlat yig'ilib qolgan\" mavzusidagi murojaat sizga biriktirildi. Iltimos, ko'rib chiqing.", isRead: true, createdAt: daysAgo(6, 14, 5) },
+  { employeeKey: 'dilnoza', type: NotificationType.APPLICATION, title: 'Murojaat yakunlandi', body: "\"Ko'p qavatli uy hovlisida axlat yig'ilib qolgan\" murojaati muvaffaqiyatli yopildi va hisobotga qo'shildi.", isRead: true, createdAt: daysAgo(3, 15, 5) },
+  { employeeKey: 'dilnoza', type: NotificationType.ATTENDANCE, title: 'Kech qolish qayd etildi', body: "Bugun ish vaqtidan kech keldingiz. Iltimos, davomat tartibiga rioya qiling.", isRead: false, createdAt: todayAt(9, 45) },
+  { employeeKey: 'dilnoza', type: NotificationType.GENERAL, title: "Apparat yig'ilishi", body: "Ertaga soat 9:00da apparat yig'ilishi bo'lib o'tadi, barcha bo'lim xodimlari qatnashishi so'raladi.", isRead: false, createdAt: daysAgo(1, 18, 0) },
+];
+
+async function seedNotifications(employees: Record<string, SeededEmployee>): Promise<number> {
+  const employeeIds = Object.values(employees).map((e) => e.id);
+
+  // Idempotency: notifications have no natural unique business key, so wipe
+  // every notification belonging to these seeded employees and recreate the
+  // full set fresh on every run.
+  await prisma.notification.deleteMany({
+    where: { employeeId: { in: employeeIds } },
+  });
+
+  await prisma.notification.createMany({
+    data: notificationsSeed.map((n) => ({
+      employeeId: employees[n.employeeKey].id,
+      type: n.type,
+      title: n.title,
+      body: n.body,
+      isRead: n.isRead,
+      createdAt: n.createdAt,
+    })),
+  });
+
+  return notificationsSeed.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main(): Promise<void> {
@@ -674,6 +829,9 @@ async function main(): Promise<void> {
   console.log(
     `Applications upserted: ${appStats.apps} (messages: ${appStats.messages}, events: ${appStats.events}, attachments: ${appStats.attachments})`,
   );
+
+  const notificationCount = await seedNotifications(employees);
+  console.log(`Notifications recreated: ${notificationCount}`);
 
   console.log('Mobile/dashboard demo data seed complete.');
 }
