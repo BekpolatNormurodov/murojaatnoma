@@ -437,6 +437,8 @@ export interface Complaint {
   isRepeat: boolean; // takroriy shikoyatmi
   escalated: boolean; // yuqoriga ko'tarilganmi
   responses: ComplaintResponse[]; // rasmiy javoblar tarixi
+  /** Yo'nalish (category) — eski yozuvlarda bo'lmasligi mumkin (nullable). */
+  category?: RequestCategory | null;
 }
 
 /* ------------------------------------------------------------

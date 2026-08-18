@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -18,6 +18,9 @@ import {
   CloseCircle,
   RotateRight,
   Trash,
+  Paperclip,
+  Category,
+  DocumentText,
   type Icon as IconType,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -29,16 +32,23 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { PersonProfileModal, type PersonRef } from '@/shared/ui/PersonProfileModal';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Button } from '@/shared/ui/Button';
+import { Select } from '@/shared/ui/Select';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import {
+  CATEGORY_META,
   COMPLAINT_SEVERITY_META,
   COMPLAINT_STATUS_META,
 } from '@/shared/data/mock';
 import { useComplaints } from '@/shared/store/complaints';
 import { useDeputies } from '@/features/deputies/useDeputies';
-import type { Complaint, ComplaintStatus } from '@/shared/data/types';
+import type { Complaint, ComplaintStatus, RequestCategory } from '@/shared/data/types';
 import { formatDate, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import {
+  useComplaintMessages,
+  useSendComplaintMessage,
+  type ComplaintAttachment,
+} from './useComplaintMessages';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
@@ -465,6 +475,54 @@ const STATUS_CONFIRM: Record<
 
 const MIN_REPLY_LEN = 3;
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Suhbat xabariga biriktirilgan bitta media — murojaat (RequestDetail)
+ *  AttachmentItem bilan bir xil ko'rinish: rasm inline, video <video>,
+ *  ovoz <audio>, boshqasi — yuklab olish havolasi. */
+function MessageAttachment({ a }: { a: ComplaintAttachment }) {
+  const mime = a.mimeType ?? '';
+  const isImage = a.type === 'PHOTO' || mime.startsWith('image/');
+  const isVideo = mime.startsWith('video/');
+  const isAudio = mime.startsWith('audio/');
+  if (isImage) {
+    return (
+      <a href={a.url} target="_blank" rel="noreferrer" className="block max-h-56 overflow-hidden rounded-xl border border-line bg-surface-2">
+        <img src={a.url} alt={a.fileName ?? ''} className="h-full w-full object-cover" loading="lazy" />
+      </a>
+    );
+  }
+  if (isVideo) {
+    return <video src={a.url} controls preload="metadata" className="w-full rounded-xl border border-line bg-black" />;
+  }
+  if (isAudio) {
+    return <audio src={a.url} controls preload="metadata" className="w-full" />;
+  }
+  return (
+    <a
+      href={a.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-ink transition-colors hover:bg-surface"
+    >
+      <DocumentText size={18} variant="Bulk" className="shrink-0 text-ink-muted" />
+      <span className="min-w-0 flex-1 truncate">{a.fileName ?? a.url.split('/').pop() ?? 'Fayl'}</span>
+      {a.sizeBytes ? <span className="shrink-0 text-[11px] text-ink-muted">{formatBytes(a.sizeBytes)}</span> : null}
+    </a>
+  );
+}
+
+/** RequestCategory qiymatlari — CATEGORY_META (label + rang) asosida Select uchun. */
+const COMPLAINT_CATEGORY_OPTIONS = (Object.keys(CATEGORY_META) as RequestCategory[]).map((k) => ({
+  value: k,
+  label: CATEGORY_META[k].label,
+  dot: CATEGORY_META[k].color,
+}));
+
 function ComplaintDetail({
   complaint,
   onClose,
@@ -479,7 +537,16 @@ function ComplaintDetail({
   const author = deputy?.name ?? t('app.org');
   const addResponse = useComplaints((s) => s.addResponse);
   const setStatus = useComplaints((s) => s.setStatus);
+  const setCategory = useComplaints((s) => s.setCategory);
   const deleteComplaint = useComplaints((s) => s.deleteComplaint);
+
+  // Suhbat (media almashinuvi) — GET/POST /complaints/:id/messages.
+  const { data: messages } = useComplaintMessages(c?.id ?? null);
+  const sendMessage = useSendComplaintMessage(c?.id ?? null);
+  const [msgText, setMsgText] = useState('');
+  const [msgFile, setMsgFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [catBusy, setCatBusy] = useState(false);
 
   const [reply, setReply] = useState('');
   const [touched, setTouched] = useState(false);
@@ -504,7 +571,37 @@ function ComplaintDetail({
     setStatusError(null);
     setDeleteOpen(false);
     setDeleteError(null);
+    setMsgText('');
+    setMsgFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [c?.id]);
+
+  // Yo'nalishni (category) o'zgartirish — store optimistik PATCH qiladi.
+  async function handleCategoryChange(cat: RequestCategory) {
+    if (!c || c.category === cat) return;
+    setCatBusy(true);
+    try {
+      await setCategory(c.id, cat);
+    } catch {
+      // Optimistik qaytarish store ichida bajariladi.
+    } finally {
+      setCatBusy(false);
+    }
+  }
+
+  // Suhbatga xabar yuborish — matn va/yoki fayl (multipart).
+  async function sendThreadMessage() {
+    if (!c) return;
+    if (msgText.trim().length === 0 && !msgFile) return;
+    try {
+      await sendMessage.mutateAsync({ text: msgText, file: msgFile });
+      setMsgText('');
+      setMsgFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch {
+      // Xato holati sendMessage.isError orqali ko'rsatiladi.
+    }
+  }
 
   const trimmedReply = reply.trim();
   const replyEmpty = touched && trimmedReply.length === 0;
@@ -623,6 +720,36 @@ function ComplaintDetail({
             </div>
             <h3 className="mt-3 text-lg font-bold text-ink">{c.title}</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{c.description}</p>
+          </div>
+
+          {/* Yo'nalish (category) — mavjud bo'lsa ko'rsatiladi, Select orqali belgilanadi */}
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <div className="mb-2.5 flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <Category size={16} variant="Bulk" className="text-primary-600" /> Yo'nalish
+              </p>
+              {c.category && CATEGORY_META[c.category] ? (
+                <span
+                  className="rounded-lg px-2 py-1 text-[11px] font-semibold"
+                  style={{
+                    background: `${CATEGORY_META[c.category].color}1a`,
+                    color: CATEGORY_META[c.category].color,
+                  }}
+                >
+                  {CATEGORY_META[c.category].label}
+                </span>
+              ) : (
+                <span className="text-[11.5px] text-ink-muted">Belgilanmagan</span>
+              )}
+            </div>
+            <Select<RequestCategory>
+              value={(c.category ?? '') as RequestCategory}
+              onChange={handleCategoryChange}
+              options={COMPLAINT_CATEGORY_OPTIONS}
+              placeholder={catBusy ? 'Saqlanmoqda…' : "Yo'nalishni tanlang"}
+              icon={Category}
+              block
+            />
           </div>
 
           {/* Responsible deputy */}
@@ -813,6 +940,111 @@ function ComplaintDetail({
                   {sending ? t('common.sending') : t('complaints.detail.sendReply')}
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Suhbat — media almashinuvi (rasm/video/ovoz/fayl) */}
+          <div className="rounded-2xl border border-line bg-surface p-4">
+            <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+              <Messages1 size={16} variant="Bulk" className="text-primary-600" /> Suhbat
+              <span className="rounded-full bg-surface-2 px-1.5 text-[11px] text-ink-muted">
+                {messages?.length ?? 0}
+              </span>
+            </p>
+
+            {messages && messages.length > 0 ? (
+              <div className="space-y-3">
+                {messages.map((m) => (
+                  <div key={m.id} className="rounded-xl bg-surface-2 p-3">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[12.5px] font-semibold text-ink">{m.authorName}</span>
+                      <span className="text-[11px] text-ink-muted">{timeAgo(m.createdAt)}</span>
+                    </div>
+                    {m.text && (
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-ink-soft">{m.text}</p>
+                    )}
+                    {m.attachments.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {m.attachments.map((a) => (
+                          <MessageAttachment key={a.id} a={a} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[12.5px] text-ink-muted">
+                Hozircha xabar yo'q
+              </p>
+            )}
+
+            {/* Composer — matn + fayl biriktirish */}
+            <div className="mt-3 rounded-xl border border-line bg-canvas p-2">
+              {msgFile && (
+                <div className="mb-2 flex items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px]">
+                  <Paperclip size={14} variant="Bulk" className="shrink-0 text-ink-muted" />
+                  <span className="min-w-0 flex-1 truncate text-ink-soft">{msgFile.name}</span>
+                  <span className="shrink-0 text-[11px] text-ink-muted">{formatBytes(msgFile.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMsgFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    aria-label="Faylni olib tashlash"
+                    className="shrink-0 text-ink-muted transition-colors hover:text-danger"
+                  >
+                    <CloseCircle size={16} variant="Bulk" />
+                  </button>
+                </div>
+              )}
+              <div className="flex items-end gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,video/*,audio/*"
+                  className="hidden"
+                  onChange={(e) => setMsgFile(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sendMessage.isPending}
+                  aria-label="Fayl biriktirish"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-ink-soft transition-colors hover:bg-surface-2 disabled:opacity-50"
+                >
+                  <Paperclip size={18} variant="Bulk" />
+                </button>
+                <textarea
+                  value={msgText}
+                  onChange={(e) => setMsgText(e.target.value)}
+                  rows={1}
+                  placeholder="Xabar yozing…"
+                  disabled={sendMessage.isPending}
+                  className="min-h-10 flex-1 resize-none rounded-xl border border-line bg-surface px-3.5 py-2 text-sm text-ink outline-none transition-colors focus:border-primary-300 disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  onClick={sendThreadMessage}
+                  disabled={sendMessage.isPending || (msgText.trim().length === 0 && !msgFile)}
+                  className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-primary-600 px-4 text-[13px] font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  {sendMessage.isPending ? (
+                    <RotateRight size={16} className="animate-spin" />
+                  ) : (
+                    <Send2 size={16} variant="Bulk" />
+                  )}
+                  {sendMessage.isPending ? 'Yuborilmoqda' : 'Yuborish'}
+                </button>
+              </div>
+              {sendMessage.isError && (
+                <p role="alert" className="mt-2 text-[11.5px] font-medium text-danger">
+                  {sendMessage.error instanceof Error
+                    ? sendMessage.error.message
+                    : "Xabarni yuborib bo'lmadi"}
+                </p>
+              )}
             </div>
           </div>
         </div>

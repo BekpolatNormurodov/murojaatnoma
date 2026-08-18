@@ -4,6 +4,7 @@ import type {
   Complaint,
   ComplaintResponse,
   ComplaintStatus,
+  RequestCategory,
 } from "@/shared/data/types";
 
 /* ============================================================
@@ -33,6 +34,8 @@ interface ComplaintsState {
   addResponse: (id: string, text: string, author: string) => Promise<void>;
   /** Shikoyat holatini o'zgartirish (hal qilindi / rad etildi / ...). */
   setStatus: (id: string, status: ComplaintStatus) => Promise<void>;
+  /** Shikoyat yo'nalishini (category) belgilash / o'zgartirish. */
+  setCategory: (id: string, category: RequestCategory) => Promise<void>;
   /** Shikoyatni butunlay o'chirish. */
   deleteComplaint: (id: string) => Promise<void>;
 }
@@ -117,6 +120,30 @@ export const useComplaints = create<ComplaintsState>((set, get) => ({
         }));
       }
       throw err instanceof Error ? err : new Error("Holatni yangilab bo'lmadi");
+    }
+  },
+
+  // Yo'nalish (category) PATCH /complaints/:id ga { category } bilan yuboriladi.
+  // setStatus kabi optimistik: UI darhol yangilanadi, xato bo'lsa orqaga qaytadi.
+  setCategory: async (id, category) => {
+    const prev = get().complaints.find((c) => c.id === id) ?? null;
+
+    set((s) => ({
+      complaints: s.complaints.map((c) =>
+        c.id === id ? { ...c, category } : c,
+      ),
+    }));
+
+    try {
+      await api.patch<Complaint>(`/complaints/${id}`, { category });
+    } catch (err) {
+      console.error("Shikoyat yo'nalishini yangilab bo'lmadi:", err);
+      if (prev) {
+        set((s) => ({
+          complaints: s.complaints.map((c) => (c.id === id ? prev : c)),
+        }));
+      }
+      throw err instanceof Error ? err : new Error("Yo'nalishni yangilab bo'lmadi");
     }
   },
 

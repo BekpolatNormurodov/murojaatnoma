@@ -777,10 +777,49 @@ model Complaint {
   isRepeat     Boolean
   escalated    Boolean
   responses    Json // ComplaintResponse[]
+  // Nullable: existing rows predate this column, so it stays optional with no
+  // default (a required default would break `prisma db push` on old data).
+  category     RequestCategory?
+
+  messages ComplaintMessage[]
 
   @@index([status])
   @@index([deputyId])
   @@map("complaints")
+}
+
+// ---- ComplaintMessage / ComplaintAttachment (admin<->citizen media thread) --
+// Mirrors the Application `messages`/`attachments` shape so mobile/web clients
+// can reuse the same rendering code across murojaat and complaints.
+
+model ComplaintMessage {
+  id          String   @id @default(cuid())
+  complaintId String
+  authorType  String   @default("ADMIN") // "ADMIN" | "CITIZEN" | "STAFF"
+  authorName  String
+  text        String?
+  createdAt   DateTime @default(now())
+
+  complaint   Complaint             @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  attachments ComplaintAttachment[]
+
+  @@index([complaintId])
+  @@map("complaint_messages")
+}
+
+model ComplaintAttachment {
+  id        String         @id @default(cuid())
+  messageId String
+  type      AttachmentType
+  url       String
+  fileName  String?
+  mimeType  String?
+  sizeBytes Int?
+
+  message ComplaintMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@map("complaint_attachments")
 }
 
 // ---- AppUser (Mobil ilova foydalanuvchisi) — activity[] as Json ------------

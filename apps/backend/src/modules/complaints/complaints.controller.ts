@@ -9,11 +9,15 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { Complaint } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Complaint, ComplaintMessage } from '@prisma/client';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { ComplaintsService } from './complaints.service';
+import { CreateComplaintMessageDto } from './dto/create-complaint-message.dto';
 import { CreateComplaintResponseDto } from './dto/create-complaint-response.dto';
 import { ListComplaintsQueryDto } from './dto/list-complaints-query.dto';
 import { UpdateComplaintDto } from './dto/update-complaint.dto';
@@ -51,6 +55,42 @@ export class ComplaintsController {
     @Body() dto: CreateComplaintResponseDto,
   ): Promise<Complaint> {
     return this.complaintsService.addResponse(id, dto);
+  }
+
+  @Post(':id/messages')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        authorName: { type: 'string' },
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiOperation({
+    summary:
+      "Shikoyatga media xabar qo'shish (multipart). Field \"text\" (ixtiyoriy) + \"file\" " +
+      '(ixtiyoriy, max 25MB, image/video/audio) + "authorName" (ixtiyoriy, default "Administrator").',
+  })
+  addMessage(
+    @Param('id') id: string,
+    @Body() dto: CreateComplaintMessageDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<ComplaintMessage> {
+    return this.complaintsService.addMessage(id, {
+      text: dto.text,
+      authorName: dto.authorName,
+      file,
+    });
+  }
+
+  @Get(':id/messages')
+  @ApiOperation({ summary: "Shikoyat media xabarlari ro'yxati (attachment'lar bilan)" })
+  findMessages(@Param('id') id: string): Promise<ComplaintMessage[]> {
+    return this.complaintsService.findMessages(id);
   }
 
   @Delete(':id')

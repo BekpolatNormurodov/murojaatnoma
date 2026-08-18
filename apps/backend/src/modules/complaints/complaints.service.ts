@@ -1,5 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Complaint, ComplaintStatus, Prisma } from '@prisma/client';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { AttachmentType, Complaint, ComplaintStatus, Prisma } from '@prisma/client';
+import { AppConfig } from '../../common/config/configuration';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateComplaintResponseDto } from './dto/create-complaint-response.dto';
 import { ListComplaintsQueryDto } from './dto/list-complaints-query.dto';
@@ -18,9 +20,32 @@ interface ComplaintResponse {
   createdAt: string;
 }
 
+/**
+ * Infers the ComplaintAttachment `type` from an uploaded file's mimetype.
+ *
+ * NOTE: same limitation as the Application upload — `enum AttachmentType` only
+ * defines PHOTO and VIDEO, so audio recordings are stored as VIDEO (the closer
+ * of the two, both being time-based recorded media). Revisit once a dedicated
+ * VOICE value is added.
+ */
+function inferAttachmentType(mimetype: string): AttachmentType {
+  if (mimetype.startsWith('image/')) return AttachmentType.PHOTO;
+  if (mimetype.startsWith('video/')) return AttachmentType.VIDEO;
+  if (mimetype.startsWith('audio/')) return AttachmentType.VIDEO;
+  throw new BadRequestException(`Unsupported file type: ${mimetype}`);
+}
+
+/** A ComplaintMessage returned together with its attachments. */
+type ComplaintMessageWithAttachments = Prisma.ComplaintMessageGetPayload<{
+  include: { attachments: true };
+}>;
+
 @Injectable()
 export class ComplaintsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService<AppConfig, true>,
+  ) {}
 
   /**
    * Every field on `Complaint` (including the `responses` Json column, which
@@ -69,6 +94,7 @@ export class ComplaintsService {
         ...(dto.status
           ? { resolvedAt: done ? (existing.resolvedAt ?? new Date()) : null }
           : {}),
+        ...(dto.category !== undefined ? { category: dto.category } : {}),
       },
     });
   }
@@ -100,6 +126,59 @@ export class ComplaintsService {
         responses: nextResponses as unknown as Prisma.InputJsonValue,
         status: nextStatus,
       },
+    });
+  }
+
+  /**
+   * `POST /complaints/:id/messages` — appends a message to the complaint's
+   * media thread. If `file` is present it is persisted exactly like the
+   * Application upload: the file is already written to UPLOADS_DIR by Multer,
+   * and here we build its public URL (`${publicBaseUrl}/uploads/<file>`),
+   * infer the AttachmentType from the mimetype, and create a linked
+   * ComplaintAttachment. Returns the created message WITH its attachments.
+   */
+  async addMessage(
+    complaintId: string,
+    input: { text?: string; authorName?: string; file?: Express.Multer.File },
+  ): Promise<ComplaintMessageWithAttachments> {
+    await this.findOne(complaintId);
+
+    const { text, authorName, file } = input;
+
+    let attachmentCreate: Prisma.ComplaintAttachmentCreateWithoutMessageInput | undefined;
+    if (file) {
+      const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
+      attachmentCreate = {
+        type: inferAttachmentType(file.mimetype),
+        url: `${publicBaseUrl}/uploads/${file.filename}`,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+      };
+    }
+
+    return this.prisma.complaintMessage.create({
+      data: {
+        complaintId,
+        authorType: 'ADMIN',
+        authorName: authorName ?? 'Administrator',
+        text: text ?? null,
+        ...(attachmentCreate ? { attachments: { create: [attachmentCreate] } } : {}),
+      },
+      include: { attachments: true },
+    });
+  }
+
+  /**
+   * `GET /complaints/:id/messages` — the complaint's media thread, oldest
+   * first, each message including its attachments.
+   */
+  async findMessages(complaintId: string): Promise<ComplaintMessageWithAttachments[]> {
+    await this.findOne(complaintId);
+    return this.prisma.complaintMessage.findMany({
+      where: { complaintId },
+      include: { attachments: true },
+      orderBy: { createdAt: 'asc' },
     });
   }
 
