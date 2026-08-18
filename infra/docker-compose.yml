@@ -86,6 +86,11 @@ services:
       # Task-proof media uploads: multipart -> disk volume, served at /uploads/.
       UPLOADS_DIR: ${UPLOADS_DIR:-/app/uploads}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://murojaatnoma.uz}
+      # Firebase Cloud Messaging (push). Empty ⇒ push DISABLED (payloads logged).
+      # FIREBASE_SERVICE_ACCOUNT_B64 is base64(service-account.json) and lives
+      # ONLY in the gitignored server .env — the repo is public, never commit it.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_SERVICE_ACCOUNT_B64: ${FIREBASE_SERVICE_ACCOUNT_B64:-}
     # Persist uploaded task-proof media (photos/videos) across container rebuilds.
     volumes:
       - uploads:/app/uploads
