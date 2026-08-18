@@ -20,18 +20,28 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
+import { Select } from '@/shared/ui/Select';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
-import { ROLE_META, STAFF_STATUS_META, WEEKDAYS } from '@/shared/data/mock';
-import type { StaffMember, StaffRole } from '@/shared/data/types';
-import { ROLE_ICON, StaffDetail } from './StaffDetail';
+import { ROLE_META, WEEKDAYS } from '@/shared/data/mock';
+import type { StaffMember, StaffRole, StaffStatus } from '@/shared/data/types';
+import { StaffDetail } from './StaffDetail';
 import { StaffFormModal } from './StaffFormModal';
 import { useStaff } from './useStaff';
 import { useCreateStaff, useDeleteStaff, useUpdateStaff } from './useStaffMutations';
+import { ROLE_ICON, roleMeta, staffStatusMeta } from './staffMeta';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 const ROLE_ORDER = (Object.keys(ROLE_META) as StaffRole[]).sort(
   (a, b) => ROLE_META[a].rank - ROLE_META[b].rank,
 );
+
+const STATUS_FILTER_OPTIONS: { value: StaffStatus | 'all'; label: string; dot?: string }[] = [
+  { value: 'all', label: 'Barcha holatlar' },
+  { value: 'active', label: 'Faol', dot: '#10b981' },
+  { value: 'inactive', label: 'Nofaol', dot: '#94a3b8' },
+  { value: 'suspended', label: "To'xtatilgan", dot: '#ef4444' },
+];
 
 function scheduleLabel(s: StaffMember['schedule']) {
   const days = s.days.map((d) => WEEKDAYS[d - 1]).join(', ');
@@ -51,8 +61,10 @@ export function StaffPage() {
   const staff = useMemo(() => data ?? [], [data]);
 
   const [roleFilter, setRoleFilter] = useState<StaffRole | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<StaffStatus | 'all'>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   // CRUD holati: yaratish oynasi / o'chirishni tasdiqlash / qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -73,6 +85,7 @@ export function StaffPage() {
     const q = query.trim().toLowerCase();
     return staff.filter((s) => {
       if (roleFilter !== 'all' && s.role !== roleFilter) return false;
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
       if (!q) return true;
       return (
         s.name.toLowerCase().includes(q) ||
@@ -81,7 +94,15 @@ export function StaffPage() {
         s.login.toLowerCase().includes(q)
       );
     });
-  }, [staff, roleFilter, query]);
+  }, [staff, roleFilter, statusFilter, query]);
+
+  const hasActiveFilters = roleFilter !== 'all' || statusFilter !== 'all' || query.trim() !== '';
+
+  function resetFilters() {
+    setRoleFilter('all');
+    setStatusFilter('all');
+    setQuery('');
+  }
 
   const stats = useMemo(() => {
     const total = staff.length;
@@ -182,7 +203,7 @@ export function StaffPage() {
           </div>
 
           {/* Filters */}
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-2">
               <FilterPill
                 active={roleFilter === 'all'}
@@ -203,14 +224,32 @@ export function StaffPage() {
               ))}
             </div>
             <div className="relative lg:w-72">
+              <label htmlFor="staff-search" className="sr-only">
+                Xodimlarni qidirish
+              </label>
               <SearchNormal1 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
+                id="staff-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Ism, lavozim yoki login..."
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-primary-300"
               />
             </div>
+          </div>
+
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="w-full sm:w-56">
+              <Select value={statusFilter} onChange={setStatusFilter} options={STATUS_FILTER_OPTIONS} block />
+            </div>
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <RotateRight size={15} /> Filtrlarni tozalash
+              </button>
+            )}
           </div>
 
           {/* Staff grid */}
@@ -223,14 +262,18 @@ export function StaffPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {filtered.map((s, i) => {
-                const Icon = ROLE_ICON[s.role];
-                const meta = ROLE_META[s.role];
+                const Icon = ROLE_ICON[s.role] ?? Profile2User;
+                const meta = roleMeta(s.role);
                 return (
                   <motion.button
                     key={s.id}
-                    initial={{ opacity: 0, y: 16 }}
+                    initial={reducedMotion ? false : { opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i * 0.04, 0.3), duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    transition={
+                      reducedMotion
+                        ? { duration: 0 }
+                        : { delay: Math.min(i * 0.04, 0.3), duration: 0.4, ease: [0.22, 1, 0.36, 1] }
+                    }
                     onClick={() => setSelectedId(s.id)}
                     className="group text-left"
                   >
@@ -243,8 +286,8 @@ export function StaffPage() {
                           </div>
                           <p className="truncate text-[13px] text-ink-muted">{s.position}</p>
                         </div>
-                        <Badge tone={STAFF_STATUS_META[s.status].tone} dot>
-                          {STAFF_STATUS_META[s.status].label}
+                        <Badge tone={staffStatusMeta(s.status).tone} dot>
+                          {staffStatusMeta(s.status).label}
                         </Badge>
                       </div>
 
@@ -281,8 +324,33 @@ export function StaffPage() {
           )}
 
           {!isLoading && filtered.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-line py-16 text-center text-ink-muted">
-              Mos xodim topilmadi
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line py-16 text-center">
+              <Profile2User size={36} variant="Bulk" className="text-ink-muted" />
+              {staff.length === 0 ? (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Hali xodimlar yo'q</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Hokim apparati xodimini qo'shib boshlang
+                    </p>
+                  </div>
+                  <Button onClick={() => setCreating(true)}>
+                    <Add size={18} /> Xodim qo'shish
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Mos xodim topilmadi</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Qidiruv yoki filtrlarga mos xodim yo'q — boshqa so'z bilan urinib ko'ring
+                    </p>
+                  </div>
+                  <Button variant="secondary" onClick={resetFilters}>
+                    <RotateRight size={16} /> Filtrlarni tozalash
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </>
@@ -363,8 +431,9 @@ function FilterPill({
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-medium transition-all',
+        'inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-medium transition-all',
         active
           ? 'border-primary-400 bg-primary-50 text-primary-700'
           : 'border-line bg-surface text-ink-soft hover:bg-surface-2',

@@ -1,15 +1,11 @@
 import { useState } from 'react';
 import {
   Crown1,
-  UserTick,
-  Briefcase,
-  UserSquare,
-  SecurityUser,
-  Profile2User,
   Eye,
   EyeSlash,
   Key,
   Refresh2,
+  SecurityUser,
   ShieldTick,
   Clock,
   Sms,
@@ -18,6 +14,7 @@ import {
   Save2,
   Trash,
   CloseCircle,
+  UserSquare as LoginIcon,
   type Icon as IconType,
 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
@@ -26,23 +23,9 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Switch } from '@/shared/ui/Switch';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, timeAgo } from '@/shared/lib/format';
-import {
-  ALL_MODULES,
-  MODULE_LABEL,
-  ROLE_META,
-  STAFF_STATUS_META,
-  WEEKDAYS,
-} from '@/shared/data/mock';
+import { ALL_MODULES, MODULE_LABEL, ROLE_META, WEEKDAYS } from '@/shared/data/mock';
 import type { ModuleKey, StaffMember, StaffRole, StaffStatus } from '@/shared/data/types';
-
-export const ROLE_ICON: Record<StaffRole, IconType> = {
-  hokim: Crown1,
-  hokim_yordamchisi: UserTick,
-  bolim_boshligi: Briefcase,
-  operator: UserSquare,
-  nazoratchi: SecurityUser,
-  ishchi: Profile2User,
-};
+import { ROLE_ICON, roleMeta, staffStatusMeta } from './staffMeta';
 
 const STATUS_ORDER: StaffStatus[] = ['active', 'inactive', 'suspended'];
 
@@ -103,8 +86,12 @@ function StaffEditor({
   const [twoFactor, setTwoFactor] = useState(member.twoFactor);
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [loginTouched, setLoginTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  const loginError = login.trim() ? undefined : 'Loginni kiriting';
+  const showLoginError = loginTouched && loginError;
 
   function toggleModule(m: ModuleKey) {
     setPermissions((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]));
@@ -117,14 +104,19 @@ function StaffEditor({
   }
   function applyRoleDefaults(r: StaffRole) {
     setRole(r);
-    setPermissions([...ROLE_META[r].defaults]);
+    setPermissions([...roleMeta(r).defaults]);
   }
 
   async function handleSave() {
+    setLoginTouched(true);
+    if (loginError) {
+      setSaveError(loginError);
+      return;
+    }
     setSaveError(null);
     setSaving(true);
     try {
-      await onSave({ ...member, role, status, login, permissions, schedule, twoFactor });
+      await onSave({ ...member, role, status, login: login.trim(), permissions, schedule, twoFactor });
       onClose();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Saqlab bo'lmadi. Qaytadan urining.");
@@ -139,8 +131,8 @@ function StaffEditor({
         <Avatar name={member.name} src={member.photo} color={member.avatarColor} size={64} />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="primary">{ROLE_META[role].label}</Badge>
-            <Badge tone={STAFF_STATUS_META[status].tone}>{STAFF_STATUS_META[status].label}</Badge>
+            <Badge tone="primary">{roleMeta(role).label}</Badge>
+            <Badge tone={staffStatusMeta(status).tone}>{staffStatusMeta(status).label}</Badge>
           </div>
           <div className="mt-1.5 flex flex-col gap-0.5 text-[13px] text-ink-muted">
             <span className="flex items-center gap-1.5">
@@ -194,7 +186,7 @@ function StaffEditor({
         <div className="flex gap-2">
           {STATUS_ORDER.map((s) => {
             const active = status === s;
-            const meta = STAFF_STATUS_META[s];
+            const meta = staffStatusMeta(s);
             return (
               <button
                 key={s}
@@ -220,15 +212,29 @@ function StaffEditor({
       {/* Credentials */}
       <section>
         <SectionTitle icon={Key} title="Kirish ma'lumotlari" />
-        <label className="mb-1.5 block text-[13px] font-medium text-ink-soft">Login</label>
+        <label htmlFor="staff-login" className="mb-1.5 block text-[13px] font-medium text-ink-soft">
+          Login
+        </label>
         <div className="relative">
-          <UserSquare size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
+          <LoginIcon size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <input
+            id="staff-login"
             value={login}
             onChange={(e) => setLogin(e.target.value)}
-            className="h-11 w-full rounded-xl border border-line bg-surface-2 pl-11 pr-4 text-sm text-ink outline-none focus:border-primary-300 focus:bg-surface"
+            onBlur={() => setLoginTouched(true)}
+            aria-invalid={!!showLoginError}
+            aria-describedby={showLoginError ? 'staff-login-error' : undefined}
+            className={cn(
+              'h-11 w-full rounded-xl border bg-surface-2 pl-11 pr-4 text-sm text-ink outline-none focus:border-primary-300 focus:bg-surface',
+              showLoginError ? 'border-danger' : 'border-line',
+            )}
           />
         </div>
+        {showLoginError && (
+          <span id="staff-login-error" role="alert" className="mt-1.5 block text-[12px] font-medium text-danger">
+            {loginError}
+          </span>
+        )}
 
         <label className="mb-1.5 mt-3 block text-[13px] font-medium text-ink-soft">Parol</label>
         <div className="flex gap-2">
@@ -320,7 +326,7 @@ function StaffEditor({
         <div className="mb-2 flex items-center justify-between">
           <SectionTitle icon={SecurityUser} title="Modullarga ruxsat (dostup)" className="mb-0" />
           <button
-            onClick={() => setPermissions([...ROLE_META[role].defaults])}
+            onClick={() => setPermissions([...roleMeta(role).defaults])}
             className="text-[13px] font-medium text-primary-600 hover:underline"
           >
             Rol bo'yicha

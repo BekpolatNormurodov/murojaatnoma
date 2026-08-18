@@ -30,6 +30,12 @@ function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
+/** Lenient telefon format tekshiruvi — kamida 9 raqam, faqat +/bo'sh joy/tire. */
+function isPhone(v: string) {
+  const digits = v.trim().replace(/[\s()-]/g, '');
+  return /^\+?\d{9,13}$/.test(digits);
+}
+
 export function StaffFormModal({
   open,
   onClose,
@@ -56,6 +62,7 @@ export function StaffFormModal({
   const [photo, setPhoto] = useState('');
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -76,6 +83,7 @@ export function StaffFormModal({
     setAvatarColor(AVATAR_COLORS[0]);
     setPhoto('');
     setSubmitAttempted(false);
+    setTouched({});
     setSubmitError(null);
     setSubmitting(false);
   }, []);
@@ -89,7 +97,11 @@ export function StaffFormModal({
     position: position.trim() ? undefined : 'Lavozimni kiriting',
     department: department.trim() ? undefined : "Bo'limni kiriting",
     login: login.trim() ? undefined : 'Loginni kiriting',
-    phone: phone.trim() ? undefined : 'Telefon raqamni kiriting',
+    phone: !phone.trim()
+      ? 'Telefon raqamni kiriting'
+      : isPhone(phone)
+        ? undefined
+        : "Telefon raqam formati noto'g'ri (masalan: +998 90 123 45 67)",
     email: !email.trim()
       ? 'Email manzilni kiriting'
       : isEmail(email)
@@ -97,6 +109,14 @@ export function StaffFormModal({
         : "Email manzil noto'g'ri",
   };
   const hasErrors = Object.values(errors).some(Boolean);
+
+  function markTouched(field: string) {
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }
+  /** Submit urinilgandan yoki fielddan chiqilgandan keyingina xato ko'rsatiladi. */
+  function shownError(field: keyof typeof errors) {
+    return submitAttempted || touched[field] ? errors[field] : undefined;
+  }
 
   function applyRole(r: StaffRole) {
     setRole(r);
@@ -160,58 +180,82 @@ export function StaffFormModal({
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ism-familiya" required error={submitAttempted ? errors.name : undefined}>
+          <Field label="Ism-familiya" required error={shownError('name')} errorId="s-name-error">
             <input
+              id="s-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => markTouched('name')}
               placeholder="Ism familiya"
-              className={cn(fieldCls, submitAttempted && errors.name ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('name')}
+              aria-describedby={shownError('name') ? 's-name-error' : undefined}
+              className={cn(fieldCls, shownError('name') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Lavozim" required error={submitAttempted ? errors.position : undefined}>
+          <Field label="Lavozim" required error={shownError('position')} errorId="s-position-error">
             <input
+              id="s-position"
               value={position}
               onChange={(e) => setPosition(e.target.value)}
+              onBlur={() => markTouched('position')}
               placeholder="Masalan: Bosh mutaxassis"
-              className={cn(fieldCls, submitAttempted && errors.position ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('position')}
+              aria-describedby={shownError('position') ? 's-position-error' : undefined}
+              className={cn(fieldCls, shownError('position') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Bo'lim" required error={submitAttempted ? errors.department : undefined}>
+          <Field label="Bo'lim" required error={shownError('department')} errorId="s-department-error">
             <input
+              id="s-department"
               value={department}
               onChange={(e) => setDepartment(e.target.value)}
+              onBlur={() => markTouched('department')}
               placeholder="Masalan: Kotibiyat"
-              className={cn(fieldCls, submitAttempted && errors.department ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('department')}
+              aria-describedby={shownError('department') ? 's-department-error' : undefined}
+              className={cn(fieldCls, shownError('department') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Login" required error={submitAttempted ? errors.login : undefined}>
+          <Field label="Login" required error={shownError('login')} errorId="s-login-error">
             <input
+              id="s-login"
               value={login}
               onChange={(e) => setLogin(e.target.value)}
+              onBlur={() => markTouched('login')}
               placeholder="tizim.login"
-              className={cn(fieldCls, 'font-mono', submitAttempted && errors.login ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('login')}
+              aria-describedby={shownError('login') ? 's-login-error' : undefined}
+              className={cn(fieldCls, 'font-mono', shownError('login') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Telefon" required error={submitAttempted ? errors.phone : undefined}>
+          <Field label="Telefon" required error={shownError('phone')} errorId="s-phone-error">
             <input
+              id="s-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => markTouched('phone')}
               placeholder="+998 90 123 45 67"
-              className={cn(fieldCls, submitAttempted && errors.phone ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('phone')}
+              aria-describedby={shownError('phone') ? 's-phone-error' : undefined}
+              className={cn(fieldCls, shownError('phone') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Email" required error={submitAttempted ? errors.email : undefined}>
+          <Field label="Email" required error={shownError('email')} errorId="s-email-error">
             <input
+              id="s-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => markTouched('email')}
               placeholder="ism@hokimiyat.uz"
-              className={cn(fieldCls, submitAttempted && errors.email ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('email')}
+              aria-describedby={shownError('email') ? 's-email-error' : undefined}
+              className={cn(fieldCls, shownError('email') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
@@ -352,11 +396,14 @@ function Field({
   children,
   error,
   required,
+  errorId,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string;
   required?: boolean;
+  /** Xato matnining id'si — inputning aria-describedby bilan bog'lash uchun. */
+  errorId?: string;
 }) {
   return (
     <label className="block">
@@ -369,7 +416,11 @@ function Field({
         )}
       </span>
       {children}
-      {error && <span className="mt-1.5 block text-[12px] font-medium text-danger">{error}</span>}
+      {error && (
+        <span id={errorId} role="alert" className="mt-1.5 block text-[12px] font-medium text-danger">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
