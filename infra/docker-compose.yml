@@ -15,6 +15,10 @@ networks:
 
 volumes:
   pgdata:
+  # Task-proof media (photos/videos) uploaded by workers/citizens via
+  # POST /applications/:id/attachments/upload. Written by the backend (rw),
+  # served read-only by the gateway at /uploads/. Survives container rebuilds.
+  uploads:
 
 services:
   # ---------------------------------------------------------------------
@@ -79,6 +83,12 @@ services:
       # Dev bridge: return the OTP code in the request-otp response (no SMS
       # gateway wired yet). MUST be false in real production once SMS lands.
       OTP_DEV_ECHO: ${OTP_DEV_ECHO:-false}
+      # Task-proof media uploads: multipart -> disk volume, served at /uploads/.
+      UPLOADS_DIR: ${UPLOADS_DIR:-/app/uploads}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://murojaatnoma.uz}
+    # Persist uploaded task-proof media (photos/videos) across container rebuilds.
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,5 +138,7 @@ services:
       - ./certs:/etc/nginx/certs:ro
       # Real Let's Encrypt certs (managed by certbot on the host).
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Task-proof media, written by backend, served read-only at /uploads/.
+      - uploads:/var/www/uploads:ro
     networks:
       - internal
