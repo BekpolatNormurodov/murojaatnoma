@@ -3,6 +3,7 @@ import { Add, CloseCircle, RotateRight, SearchNormal1 } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
+import { MonthPicker } from '@/shared/ui/DatePicker';
 import { cn } from '@/shared/lib/cn';
 import { useWorkers } from '@/features/workers/useWorkers';
 import { useStaff } from '@/features/staff/useStaff';
@@ -238,17 +239,18 @@ export function BonusFormModal({
         <div className="grid grid-cols-2 gap-4">
           <Field label="Miqdor (so'm)" error={showErr('amount') && !amountValid ? "Musbat son kiriting" : undefined}>
             <div className="relative">
+              {/* Mingliklar bilan formatlangan, faqat musbat butun son kiritish
+                  mumkin (raqam bo'lmagan belgilar — minus ham — o'tmaydi). */}
               <input
-                type="number"
-                min={1}
-                step={1000}
+                type="text"
                 inputMode="numeric"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                value={formatThousands(amount)}
+                onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
                 onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
                 placeholder="500 000"
+                aria-label="Premya miqdori (so'm)"
                 className={cn(
-                  'h-11 w-full rounded-xl border bg-surface-2 px-4 pr-12 text-sm text-ink outline-none placeholder:text-ink-muted focus:bg-surface',
+                  'h-11 w-full rounded-xl border bg-surface-2 px-4 pr-12 text-sm tabular-nums text-ink outline-none placeholder:text-ink-muted focus:bg-surface',
                   showErr('amount') && !amountValid ? 'border-danger' : 'border-line focus:border-primary-300',
                 )}
               />
@@ -258,15 +260,13 @@ export function BonusFormModal({
             </div>
           </Field>
           <Field label="Oy" error={showErr('month') && !monthValid ? 'Oyni tanlang' : undefined}>
-            <input
-              type="month"
+            <MonthPicker
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              onBlur={() => setTouched((t) => ({ ...t, month: true }))}
-              className={cn(
-                'h-11 w-full rounded-xl border bg-surface-2 px-4 text-sm text-ink outline-none focus:bg-surface',
-                showErr('month') && !monthValid ? 'border-danger' : 'border-line focus:border-primary-300',
-              )}
+              onChange={(v) => {
+                setMonth(v);
+                setTouched((t) => ({ ...t, month: true }));
+              }}
+              block
             />
           </Field>
         </div>
@@ -297,6 +297,12 @@ export function BonusFormModal({
       </div>
     </Modal>
   );
+}
+
+/** "500000" -> "500 000" — mingliklar ajratilgan ko'rinish (faqat display). */
+function formatThousands(digits: string): string {
+  if (!digits) return '';
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {

@@ -208,6 +208,148 @@ export function DatePicker({
   );
 }
 
+const MONTHS_SHORT = [
+  'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn',
+  'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek',
+];
+
+/** "yyyy-mm" -> { year, month(0-11) }. */
+function parseMonth(v: string): { year: number; month: number } | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(v);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const month = Number(m[2]) - 1;
+  if (month < 0 || month > 11) return null;
+  return { year, month };
+}
+
+/**
+ * Stillangan OY tanlagich — native `type="month"` o'rniga (yil navigatsiyasi +
+ * 12 oy to'ri). Qiymat formati: "yyyy-mm". `DatePicker` bilan bir xil ko'rinish.
+ */
+export function MonthPicker({
+  value,
+  onChange,
+  block = false,
+  placeholder = 'Oyni tanlang',
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  block?: boolean;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
+  const parsed = parseMonth(value);
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(() => parsed?.year ?? today.getFullYear());
+
+  useEffect(() => {
+    if (open) setViewYear(parseMonth(value)?.year ?? new Date().getFullYear());
+  }, [open, value]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const label = parsed ? `${MONTHS_FULL[parsed.month]} ${parsed.year}` : placeholder;
+
+  function pick(monthIdx: number) {
+    onChange(`${viewYear}-${pad2(monthIdx + 1)}`);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'flex h-11 w-full items-center gap-2.5 rounded-xl border bg-surface px-3.5 text-sm font-medium outline-none transition-colors',
+          open ? 'border-primary-300 text-primary-700' : 'border-line text-ink-soft hover:bg-surface-2',
+        )}
+      >
+        <Calendar size={17} variant="Bulk" className={cn('shrink-0', open ? 'text-primary-500' : 'text-ink-muted')} />
+        <span className={cn('flex-1 truncate text-left', !parsed && 'text-ink-muted')}>{label}</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            className="absolute left-0 z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
+          >
+            {/* Yil navigatsiyasi */}
+            <div className="mb-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setViewYear((y) => y - 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
+              >
+                <ArrowLeft2 size={16} />
+              </button>
+              <span className="text-sm font-semibold text-ink">{viewYear}</span>
+              <button
+                type="button"
+                onClick={() => setViewYear((y) => y + 1)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
+              >
+                <ArrowRight2 size={16} />
+              </button>
+            </div>
+
+            {/* Oylar to'ri */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {MONTHS_SHORT.map((mn, i) => {
+                const isSel = !!parsed && parsed.year === viewYear && parsed.month === i;
+                const isThisMonth = today.getFullYear() === viewYear && today.getMonth() === i;
+                return (
+                  <button
+                    key={mn}
+                    type="button"
+                    onClick={() => pick(i)}
+                    className={cn(
+                      'flex h-10 items-center justify-center rounded-lg text-[13px] font-medium transition-colors',
+                      isSel
+                        ? 'bg-primary-600 text-white shadow-glow'
+                        : isThisMonth
+                          ? 'bg-primary-50 text-primary-700'
+                          : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                    )}
+                  >
+                    {mn}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Shu oy */}
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date();
+                onChange(`${now.getFullYear()}-${pad2(now.getMonth() + 1)}`);
+                setOpen(false);
+              }}
+              className="mt-2 w-full rounded-xl border border-line py-2 text-[13px] font-medium text-primary-600 transition-colors hover:bg-primary-50"
+            >
+              Shu oy
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // 07:00 dan 21:30 gacha 30 daqiqalik oraliqlar
 const TIME_SLOTS: string[] = [];
 for (let h = 7; h <= 21; h++) {
