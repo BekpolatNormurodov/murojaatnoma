@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Add, Save2, CloseCircle } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
-import { Select } from '@/shared/ui/Select';
 import { CATEGORY_META, DISTRICTS } from '@/shared/data/mock';
 import type { RequestCategory, Worker } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
@@ -12,7 +11,9 @@ const AVATAR_COLORS = [
   '#06b6d4', '#ec4899', '#8b5cf6', '#0ea5e9', '#64748b',
 ];
 
-const DISTRICT_OPTIONS = DISTRICTS.map((d) => ({ value: d.id, label: d.name, dot: d.color }));
+// Loyiha Mirzo Ulug'bek tumani (viloyat — "Toshkent shahri") — yagona hudud,
+// shuning uchun tuman tanlash yo'q; har bir ishchi shu tumanga biriktiriladi.
+const FIXED_DISTRICT = DISTRICTS.find((d) => d.name.includes("Mirzo Ulug'bek")) ?? DISTRICTS[0];
 const CATEGORY_KEYS = Object.keys(CATEGORY_META) as RequestCategory[];
 
 const fieldCls =
@@ -41,14 +42,13 @@ export function WorkerFormModal({
   /** `createLogin` — "Login yaratish (telefon orqali)" belgilangan bo'lsa true
    *  (faqat yaratishda ko'rinadi); chaqiruvchi (WorkersPage) ishchi
    *  yaratilgandan so'ng buni ishlatib alohida POST /employees yuboradi
-   *  (worker-app OTP-login uchun). */
+   *  (worker-app login/parol hisobini yaratish uchun). */
   onSubmit: (input: WorkerFormInput, createLogin: boolean) => Promise<void>;
 }) {
   const editing = !!worker;
 
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
-  const [districtId, setDistrictId] = useState(DISTRICTS[0].id);
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [specialization, setSpecialization] = useState<RequestCategory[]>([]);
@@ -56,8 +56,8 @@ export function WorkerFormModal({
   const [photo, setPhoto] = useState('');
   const [salary, setSalary] = useState('');
   const [vehicle, setVehicle] = useState('');
-  // worker-app'ga shu telefon raqami bilan OTP orqali kirish uchun /employees
-  // yozuvi ham yaratilsinmi — faqat yangi ishchi yaratishda dolzarb.
+  // worker-app hisobini (login/parol) yaratish uchun /employees yozuvi ham
+  // yaratilsinmi — faqat yangi ishchi yaratishda dolzarb.
   const [createLogin, setCreateLogin] = useState(false);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -68,7 +68,6 @@ export function WorkerFormModal({
   const reset = useCallback(() => {
     setName(worker?.name ?? '');
     setPosition(worker?.position ?? '');
-    setDistrictId(worker?.districtId ?? DISTRICTS[0].id);
     setPhone(worker?.phone ?? '');
     setEmail(worker?.email ?? '');
     setSpecialization(worker?.specialization ?? []);
@@ -119,15 +118,15 @@ export function WorkerFormModal({
     setSubmitAttempted(true);
     if (hasErrors) return;
 
-    const district = DISTRICTS.find((d) => d.id === districtId) ?? DISTRICTS[0];
     const salaryNum = Number(salary.replace(/\s/g, ''));
     const input: WorkerFormInput = {
       name: name.trim(),
       photo: photo.trim(),
       avatarColor,
       position: position.trim(),
-      region: district.name,
-      districtId: district.id,
+      // Yagona hudud — Mirzo Ulug'bek tumani, viloyat "Toshkent shahri".
+      region: 'Toshkent shahri',
+      districtId: FIXED_DISTRICT.id,
       phone: phone.trim(),
       email: email.trim(),
       specialization,
@@ -196,10 +195,6 @@ export function WorkerFormModal({
             />
           </Field>
         </div>
-
-        <Field label="Tuman" required>
-          <Select value={districtId} onChange={setDistrictId} options={DISTRICT_OPTIONS} block />
-        </Field>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Telefon" required error={shownError('phone')} errorId="w-phone-error">
@@ -311,9 +306,9 @@ export function WorkerFormModal({
               className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-600"
             />
             <span className="text-[13px]">
-              <span className="block font-medium text-ink">Login yaratish (telefon orqali)</span>
+              <span className="block font-medium text-ink">Worker-app hisobini yaratish</span>
               <span className="mt-0.5 block text-ink-muted">
-                Ishchi worker-app'ga yuqoridagi telefon raqami bilan SMS-kod (OTP) orqali kira oladi
+                Ishchi uchun worker-app hisobi yaratiladi — u login va parol bilan kiradi (SMS/OTP emas).
               </span>
             </span>
           </label>
