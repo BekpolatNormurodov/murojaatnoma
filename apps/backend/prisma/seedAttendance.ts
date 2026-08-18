@@ -29,6 +29,7 @@ import {
   AttachmentType,
   NotificationType,
 } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -43,6 +44,12 @@ const OFFICE_LNG = 69.3402;
 
 const REGION = "Toshkent shahri";
 const DISTRICT = "Mirzo Ulug'bek";
+
+// Demo employee credential: every seeded employee logs into the worker-app with
+// their `key` as username and this shared password. bcrypt-hashed once (cost 10)
+// so the stored value is never plaintext. Rotate/replace per-employee for prod.
+const DEMO_EMPLOYEE_PASSWORD = 'Xodim2026!';
+const DEMO_PASSWORD_HASH = bcrypt.hashSync(DEMO_EMPLOYEE_PASSWORD, 10);
 
 // ---------------------------------------------------------------------------
 // Date helpers (all local server time — consistent with how the rest of the
@@ -157,6 +164,8 @@ async function seedEmployees(deptIds: Record<string, string>): Promise<Record<st
         isActive: true,
         departmentId: deptIds[e.deptCode],
         workStartTime: e.workStartTime,
+        username: e.key,
+        passwordHash: DEMO_PASSWORD_HASH,
       },
       create: {
         fullName: e.fullName,
@@ -168,6 +177,8 @@ async function seedEmployees(deptIds: Record<string, string>): Promise<Record<st
         isActive: true,
         departmentId: deptIds[e.deptCode],
         workStartTime: e.workStartTime,
+        username: e.key,
+        passwordHash: DEMO_PASSWORD_HASH,
       },
     });
     out[e.key] = { id: row.id, workStartTime: row.workStartTime };

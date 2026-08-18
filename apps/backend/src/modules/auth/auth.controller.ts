@@ -4,6 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { AuthService } from './auth.service';
+import { EmployeeLoginDto } from './dto/employee-login.dto';
 import { MeDto } from './dto/me.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -27,9 +28,17 @@ export class AuthController {
   @Public()
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify the OTP code and obtain a token pair' })
+  @ApiOperation({ summary: 'Verify the OTP code and obtain a citizen token pair' })
   verifyOtp(@Body() dto: VerifyOtpDto): Promise<TokenPairDto> {
     return this.authService.verifyOtp(dto);
+  }
+
+  @Public()
+  @Post('employee/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Employee login with username + password (worker-app)' })
+  employeeLogin(@Body() dto: EmployeeLoginDto): Promise<TokenPairDto> {
+    return this.authService.employeeLogin(dto);
   }
 
   @Public()

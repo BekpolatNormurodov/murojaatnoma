@@ -6,10 +6,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
 import { createHash, randomInt } from 'node:crypto';
 import { AppConfig } from '../../common/config/configuration';
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { EmployeeLoginDto } from './dto/employee-login.dto';
 import { MeDto } from './dto/me.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { RequestOtpResultDto } from './dto/request-otp-result.dto';
@@ -53,7 +55,21 @@ export class AuthService {
     };
   }
 
-  /** Verifies the OTP and issues an access/refresh token pair for the matching employee. */
+  /**
+   * Verifies an OTP and issues a CITIZEN-scope token.
+   *
+   * OTP is the CITIZEN sign-in path (user-app) only. Employees authenticate
+   * with username + password via {@link employeeLogin} — so OTP never yields
+   * an employee token, even when the verified phone belongs to an employee
+   * (in that case the person is signing into the citizen app as a citizen).
+   * This enforces the product rule "citizens: SMS only; employees: password".
+   *
+   * Access-token-only (no refresh row — a citizen has no employee FK to
+   * persist against); the short-lived access token is re-minted by requesting
+   * a fresh OTP. Phone ownership is proven by the consumed challenge below, and
+   * the global CitizenAccessGuard confines scope:'citizen' to @AllowCitizen
+   * routes (secure-by-default).
+   */
   async verifyOtp(dto: VerifyOtpDto): Promise<TokenPairDto> {
     const challenge = await this.prisma.otpChallenge.findFirst({
       where: { phone: dto.phone, consumed: false },
@@ -85,33 +101,41 @@ export class AuthService {
       data: { consumed: true },
     });
 
-    const employee = await this.prisma.employee.findUnique({
-      where: { phone: dto.phone },
-    });
-
-    if (employee) {
-      if (!employee.isActive) {
-        throw new UnauthorizedException('Employee account is inactive');
-      }
-      return this.issueTokenPair({
-        sub: employee.id,
-        phone: employee.phone,
-        role: employee.role,
-        scope: 'employee',
-      });
-    }
-
-    // No employee record for this OTP-verified phone → issue a CITIZEN token.
-    // Now SAFE (secure-by-default): the global CitizenAccessGuard denies
-    // scope:'citizen' on every route NOT marked @AllowCitizen(), so a citizen
-    // reaches only @Public routes + explicitly citizen-facing endpoints (which
-    // must scope their results to token.phone). Phone ownership is proven by
-    // the consumed OTP above. Access-token-only (no refresh row — no employee FK).
     return this.issueTokenPair({
       sub: dto.phone,
       phone: dto.phone,
       role: 'CITIZEN',
       scope: 'citizen',
+    });
+  }
+
+  /**
+   * Employee (worker-app) credential login. Validates username + bcrypt
+   * password against the Employee row and issues an employee-scope token pair.
+   * Mirrors the admin-auth bcrypt flow; the error message is deliberately
+   * generic so it never reveals whether the username exists.
+   */
+  async employeeLogin(dto: EmployeeLoginDto): Promise<TokenPairDto> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { username: dto.username.trim() },
+    });
+
+    // Reject unknown username, credential-less rows (OTP-era employees with no
+    // password provisioned), and deactivated accounts — all with one message.
+    if (!employee || !employee.passwordHash || !employee.isActive) {
+      throw new UnauthorizedException('Login yoki parol xato');
+    }
+
+    const passwordOk = await bcrypt.compare(dto.password, employee.passwordHash);
+    if (!passwordOk) {
+      throw new UnauthorizedException('Login yoki parol xato');
+    }
+
+    return this.issueTokenPair({
+      sub: employee.id,
+      phone: employee.phone,
+      role: employee.role,
+      scope: 'employee',
     });
   }
 

@@ -105,6 +105,10 @@ model Employee {
   isActive      Boolean      @default(true)
   avatarUrl     String?
   email         String?      @unique
+  // Employee login credentials (worker-app): employees sign in with
+  // username + password (bcrypt), NOT OTP. Nullable so pre-existing rows and
+  // OTP-era employees remain valid until a username/password is provisioned.
+  username      String?      @unique
   passwordHash  String?
   departmentId  String?
   workStartTime String       @default("09:00")
