@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatMessage } from '@prisma/client';
-import { Public } from '../../common/decorators/public.decorator';
+import { RequireScope } from '../../common/decorators/scope.decorator';
 import { ChatService } from './chat.service';
 import { ArchiveConversationDto } from './dto/archive-conversation.dto';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
@@ -20,16 +20,19 @@ import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
 
-// NOTE: all routes are @Public() for now — auth-gating (JWT + roles) is a
-// later step once the web-admin login flow is wired up (same convention as
-// complaints/staff/requests). Realtime broadcasts for these mutations are
-// emitted by ChatService as domain events and re-broadcast by RealtimeGateway.
+// Admin-scoped. web-admin (admin JWT) is the only /chat REST consumer today;
+// the Socket.IO gateway independently enforces JWT+scope for the employee
+// realtime path. Gating here (JwtAuthGuard requires a token, ScopeGuard requires
+// admin) closes a PII hole — internal chat was previously @Public, i.e.
+// world-readable/writable/deletable. Broaden to 'employee' when worker-app moves
+// onto /chat. Realtime broadcasts are emitted by ChatService as domain events
+// and re-broadcast by RealtimeGateway.
 @ApiTags('chat')
+@RequireScope('admin')
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
-  @Public()
   @Get('conversations')
   @ApiOperation({
     summary:
@@ -41,7 +44,6 @@ export class ChatController {
     return this.chatService.findAllConversations(query.archived ?? false);
   }
 
-  @Public()
   @Post('conversations/direct')
   @ApiOperation({
     summary:
@@ -53,7 +55,6 @@ export class ChatController {
     return this.chatService.openDirectConversation(dto);
   }
 
-  @Public()
   @Get('conversations/:id/messages')
   @ApiOperation({ summary: 'Suhbat xabarlari (xronologik tartibda, sahifalash bilan)' })
   findMessages(
@@ -63,7 +64,6 @@ export class ChatController {
     return this.chatService.findMessages(id, query);
   }
 
-  @Public()
   @Post('conversations/:id/messages')
   @ApiOperation({ summary: 'Suhbatga yangi xabar yuborish (matn/rasm/fayl/ovoz)' })
   sendMessage(
@@ -73,14 +73,12 @@ export class ChatController {
     return this.chatService.sendMessage(id, dto);
   }
 
-  @Public()
   @Patch('conversations/:id/read')
   @ApiOperation({ summary: "Suhbatdagi barcha xabarlarni o'qilgan deb belgilash" })
   markRead(@Param('id') id: string): Promise<{ ok: true }> {
     return this.chatService.markRead(id);
   }
 
-  @Public()
   @Patch('conversations/:id/archive')
   @ApiOperation({ summary: 'Suhbatni arxivlash / arxivdan chiqarish' })
   archiveConversation(
@@ -90,7 +88,6 @@ export class ChatController {
     return this.chatService.archiveConversation(id, dto.archived);
   }
 
-  @Public()
   @Delete('conversations/:id/messages')
   @ApiOperation({
     summary: "Chatni tozalash — barcha xabarlarni o'chiradi va suhbatni arxivlaydi",
@@ -99,7 +96,6 @@ export class ChatController {
     return this.chatService.clearConversation(id);
   }
 
-  @Public()
   @Delete('conversations/:id/messages/:messageId')
   @ApiOperation({ summary: "Bitta xabarni o'chirish" })
   deleteMessage(
@@ -109,7 +105,6 @@ export class ChatController {
     return this.chatService.deleteMessage(id, messageId);
   }
 
-  @Public()
   @Patch('conversations/:id/messages/:messageId')
   @ApiOperation({
     summary: "Xabarni tahrirlash — faqat hali o'qilmagan bo'lsa (aks holda 409)",
@@ -122,7 +117,6 @@ export class ChatController {
     return this.chatService.editMessage(id, messageId, dto.text);
   }
 
-  @Public()
   @Delete('conversations/:id')
   @ApiOperation({ summary: "Suhbatni butunlay o'chirish (xabarlari bilan)" })
   deleteConversation(@Param('id') id: string): Promise<{ ok: true }> {
