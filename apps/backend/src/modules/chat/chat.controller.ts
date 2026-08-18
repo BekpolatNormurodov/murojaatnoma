@@ -15,6 +15,7 @@ import { ChatService } from './chat.service';
 import { ArchiveConversationDto } from './dto/archive-conversation.dto';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
+import { CreateCitizenConversationDto } from './dto/create-citizen-conversation.dto';
 import { EditChatMessageDto } from './dto/edit-chat-message.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
@@ -53,6 +54,17 @@ export class ChatController {
     @Body() dto: CreateDirectConversationDto,
   ): Promise<ChatConversationResponse> {
     return this.chatService.openDirectConversation(dto);
+  }
+
+  @Post('conversations/citizen')
+  @ApiOperation({
+    summary:
+      "Fuqaro (app-user) bilan shaxsiy suhbatni ochish (mavjud bo'lsa qaytaradi, bo'lmasa yaratadi)",
+  })
+  openCitizenConversation(
+    @Body() dto: CreateCitizenConversationDto,
+  ): Promise<ChatConversationResponse> {
+    return this.chatService.openCitizenConversation(dto);
   }
 
   @Get('conversations/:id/messages')

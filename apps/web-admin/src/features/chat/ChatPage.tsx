@@ -431,6 +431,32 @@ export function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toEmployeeId, employeesQuery.isLoading, employees, setActiveId, setSearchParams]);
 
+  // Tayyor suhbatni ochish: `?open=<conversationId>` — AppUserDetail'dan
+  // (fuqaroga xabar yozish) keladi. `?to=`dan farqli — bu yerda mutation yo'q,
+  // shunchaki mavjud suhbatni (backend allaqachon yaratgan) faollashtiramiz.
+  const resolvingOpenRef = useRef<string | null>(null);
+  const openConvId = searchParams.get('open');
+  useEffect(() => {
+    if (!openConvId) {
+      resolvingOpenRef.current = null;
+      return;
+    }
+    if (resolvingOpenRef.current === openConvId) return;
+    resolvingOpenRef.current = openConvId;
+    setActiveId(openConvId);
+    setMobileThread(true);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('open');
+        return next;
+      },
+      { replace: true },
+    );
+    resolvingOpenRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openConvId, setActiveId, setSearchParams]);
+
   function handlePickEmployee(employee: LiveLocation) {
     setPickerOpen(false);
     setSearchParams(

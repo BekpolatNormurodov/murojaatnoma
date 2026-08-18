@@ -17,6 +17,7 @@ import {
 } from '../../common/events/realtime-events';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
+import { CreateCitizenConversationDto } from './dto/create-citizen-conversation.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
 
@@ -138,6 +139,39 @@ export class ChatService {
         title: dto.title,
         avatarColor: dto.avatarColor,
         staffId: dto.employeeId,
+        online: false,
+      },
+      // Opening a conversation also restores it from Archive.
+      update: {
+        title: dto.title,
+        archived: false,
+        archivedAt: null,
+        ...(dto.avatarColor !== undefined ? { avatarColor: dto.avatarColor } : {}),
+      },
+      include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+
+    return this.withUnreadCount(conversation);
+  }
+
+  /**
+   * Opens (or re-opens) a 1:1 conversation with an app-user (fuqaro) —
+   * upserted by a deterministic id (`dm-citizen-<appUserId>`), mirroring the
+   * employee DM path so admin↔citizen messaging shares the same chat plumbing.
+   */
+  async openCitizenConversation(
+    dto: CreateCitizenConversationDto,
+  ): Promise<ChatConversationResponse> {
+    const id = `dm-citizen-${dto.appUserId}`;
+
+    const conversation = await this.prisma.chatConversation.upsert({
+      where: { id },
+      create: {
+        id,
+        kind: ChatConvKind.direct,
+        title: dto.title,
+        avatarColor: dto.avatarColor,
+        staffId: dto.appUserId,
         online: false,
       },
       // Opening a conversation also restores it from Archive.

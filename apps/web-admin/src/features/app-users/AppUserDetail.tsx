@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useOpenCitizenConversation } from '@/features/chat/useChat';
 import {
   CallCalling,
   Sms,
+  Send2,
   Location,
   Calendar,
   Clock,
@@ -89,6 +92,8 @@ export function AppUserDetail({
   pending?: boolean;
 }) {
   const { t } = useI18n();
+  const navigate = useNavigate();
+  const openCitizen = useOpenCitizenConversation();
   const u = user;
   const maxActivity = useMemo(
     () => (u ? Math.max(1, ...u.activity.map((a) => a.count)) : 1),
@@ -246,6 +251,21 @@ export function AppUserDetail({
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
+            {/* Fuqaroga chat orqali xabar yozish (admin bo'lib) — DM ochib chatga o'tadi. */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!u) return;
+                openCitizen.mutate(
+                  { appUserId: u.id, title: u.name, avatarColor: u.avatarColor },
+                  { onSuccess: (conv) => navigate(`/chat?open=${conv.id}`) },
+                );
+              }}
+              disabled={openCitizen.isPending}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary-300 bg-primary-50 px-4 py-2.5 text-sm font-medium text-primary-700 transition-colors hover:bg-primary-100 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <Send2 size={16} variant="Bulk" /> {t('appUsers.detail.sendMessage')}
+            </button>
             <a
               href={`tel:${u.phone}`}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"

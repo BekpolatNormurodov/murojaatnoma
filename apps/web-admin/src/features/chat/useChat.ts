@@ -237,6 +237,25 @@ export function useOpenDirectConversation() {
 }
 
 /**
+ * Fuqaro (app-user) bilan shaxsiy (DM) suhbatni ochadi/yaratadi:
+ * POST /chat/conversations/citizen — { appUserId, title, avatarColor? }.
+ * Idempotent (backend `appUserId` bo'yicha `dm-citizen-<appUserId>` upsert).
+ * AppUserDetail'dagi "Xabar yuborish" tugmasi shu yo'lni ishlatadi va chatga
+ * `?open=<conversationId>` bilan o'tadi. Yangi DM ro'yxatda darhol ko'rinishi
+ * uchun suhbatlar ro'yxatini qayta so'raydi.
+ */
+export function useOpenCitizenConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { appUserId: string; title: string; avatarColor?: string }) =>
+      api.post<ChatConversation>('/chat/conversations/citizen', body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
  * Xodimlarning jonli ro'yxati — xarita sahifasi ishlatadigan aynan o'sha
  * manba (`GET /locations/latest`), bir xil query kaliti bilan (keshni
  * ulashadi). "Xodimga yozish" tanlagichi va `?to=` orqali DM ochish shu
