@@ -91,6 +91,14 @@ services:
       # ONLY in the gitignored server .env — the repo is public, never commit it.
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       FIREBASE_SERVICE_ACCOUNT_B64: ${FIREBASE_SERVICE_ACCOUNT_B64:-}
+      # WebRTC realtime calls (voice/video). STUN is hardcoded (Google public);
+      # TURN is OPTIONAL — only needed for reliable connectivity across symmetric
+      # NAT / mobile carriers. Set these in the gitignored server .env to activate
+      # (GET /rt/ice-servers then advertises TURN to clients, no rebuild needed).
+      TURN_URL: ${TURN_URL:-}
+      TURN_USERNAME: ${TURN_USERNAME:-}
+      TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
+      CALL_RING_TIMEOUT_SEC: ${CALL_RING_TIMEOUT_SEC:-35}
     # Persist uploaded task-proof media (photos/videos) across container rebuilds.
     volumes:
       - uploads:/app/uploads
