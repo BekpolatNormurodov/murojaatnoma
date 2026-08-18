@@ -11,7 +11,7 @@ import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
-import 'package:worker_app/features/auth/presentation/pages/phone_input_page.dart';
+import 'package:worker_app/features/auth/presentation/pages/login_page.dart';
 
 class _FakeRepo implements AuthRepository {
   @override
@@ -38,7 +38,7 @@ class _FakeRepo implements AuthRepository {
 }
 
 void main() {
-  testWidgets('Phone input page renders', (tester) async {
+  testWidgets('Login page renders (username + password)', (tester) async {
     final repo = _FakeRepo();
     await tester.pumpWidget(
       MaterialApp(
@@ -51,11 +51,11 @@ void main() {
             loginEmployee: LoginEmployee(repo),
             restoreSession: RestoreSession(repo),
           ),
-          child: const PhoneInputPage(),
+          child: const LoginPage(),
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(PhoneInputPage), findsOneWidget);
+    expect(find.byType(LoginPage), findsOneWidget);
   });
 }
