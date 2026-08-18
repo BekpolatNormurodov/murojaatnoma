@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/app/router/app_router.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
@@ -125,6 +126,12 @@ Future<void> configureDependencies() async {
     // butun ilova davomida BITTA plagin instansiyasi (`init()` bir marta,
     // `bootstrap()`da) kifoya.
     ..registerLazySingleton<NotificationService>(NotificationService.new)
+    // `FcmService` — masofaviy push (FCM). Tokenni backendga yuboradi va
+    // foreground push'ni `NotificationService` orqali ko'rsatadi. Prod'da
+    // `bootstrap()`da ishga tushadi (mock rejimda o'tkazib yuboriladi).
+    ..registerLazySingleton<FcmService>(
+      () => FcmService(getIt<DioClient>().dio, getIt<NotificationService>()),
+    )
     // ---- App-level cubits (theme + locale) ----
     ..registerFactory<ThemeCubit>(ThemeCubit.new)
     ..registerFactory<LocaleCubit>(LocaleCubit.new)
