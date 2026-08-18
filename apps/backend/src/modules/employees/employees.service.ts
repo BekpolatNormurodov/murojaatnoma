@@ -1,6 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Employee, FaceTemplate } from '@prisma/client';
 import { Paginated } from '../../common/interfaces/paginated.interface';
+
+/**
+ * Employee enriched with a computed `hasFace` flag (whether the employee has
+ * at least one enrolled face template). Lets the web-admin show a read-only
+ * "Yuz ro'yxatdan o'tgan: ha/yo'q" status without exposing the biometric
+ * embeddings themselves. `hasFace` is derived from a count — NOT a schema
+ * column, so it needs no migration.
+ */
+export type EmployeeWithFace = Employee & { hasFace: boolean };
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EnrollFaceDto } from './dto/enroll-face.dto';
@@ -15,32 +24,44 @@ export class EmployeesService {
     return this.prisma.employee.create({ data: dto });
   }
 
-  async findAll(query: ListEmployeesQueryDto): Promise<Paginated<Employee>> {
+  async findAll(
+    query: ListEmployeesQueryDto,
+  ): Promise<Paginated<EmployeeWithFace>> {
     const { page, limit, region, district } = query;
     const where = {
       ...(region ? { region } : {}),
       ...(district ? { district } : {}),
     };
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.employee.findMany({
         where,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        include: { _count: { select: { faceTemplates: true } } },
       }),
       this.prisma.employee.count({ where }),
     ]);
 
+    const data = rows.map(({ _count, ...employee }) => ({
+      ...employee,
+      hasFace: _count.faceTemplates > 0,
+    }));
+
     return { data, total, page, limit };
   }
 
-  async findOne(id: string): Promise<Employee> {
-    const employee = await this.prisma.employee.findUnique({ where: { id } });
+  async findOne(id: string): Promise<EmployeeWithFace> {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id },
+      include: { _count: { select: { faceTemplates: true } } },
+    });
     if (!employee) {
       throw new NotFoundException(`Employee ${id} not found`);
     }
-    return employee;
+    const { _count, ...rest } = employee;
+    return { ...rest, hasFace: _count.faceTemplates > 0 };
   }
 
   async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {

@@ -18,7 +18,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
-import { EmployeesService } from './employees.service';
+import { EmployeesService, EmployeeWithFace } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EnrollFaceDto } from './dto/enroll-face.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
@@ -65,13 +65,15 @@ export class EmployeesController {
 
   @Get()
   @ApiOperation({ summary: 'List employees with optional region/district filter' })
-  findAll(@Query() query: ListEmployeesQueryDto): Promise<Paginated<Employee>> {
+  findAll(
+    @Query() query: ListEmployeesQueryDto,
+  ): Promise<Paginated<EmployeeWithFace>> {
     return this.employeesService.findAll(query);
   }
 
   @Get(':id')
   @ApiOperation({ summary: 'Get an employee profile by id' })
-  findOne(@Param('id') id: string): Promise<Employee> {
+  findOne(@Param('id') id: string): Promise<EmployeeWithFace> {
     return this.employeesService.findOne(id);
   }
 
