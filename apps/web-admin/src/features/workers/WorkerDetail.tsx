@@ -23,8 +23,16 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Progress } from '@/shared/ui/Progress';
 import { ATTENDANCE_META, CATEGORY_META } from '@/shared/data/mock';
-import type { Worker, WorkerDocType } from '@/shared/data/types';
+import type { RequestCategory, Worker, WorkerDocType } from '@/shared/data/types';
 import { formatDate, formatNumber, formatSomShort } from '@/shared/lib/format';
+import { workerStatusMeta } from './workerMeta';
+
+const FALLBACK_CATEGORY_META = { label: "Boshqa", color: '#94a3b8' };
+
+/** CATEGORY_META'da yo'q (kutilmagan) kategoriya uchun neytral fallback. */
+function categoryMeta(cat: RequestCategory) {
+  return CATEGORY_META[cat] ?? FALLBACK_CATEGORY_META;
+}
 
 const DOC_STATUS: Record<
   string,
@@ -79,7 +87,12 @@ export function WorkerDetail({
           <div className="flex items-center gap-4 rounded-2xl border border-line bg-surface p-4">
             <Avatar name={worker.name} src={worker.photo} color={worker.avatarColor} size={68} status={worker.status} />
             <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-bold text-ink">{worker.name}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-bold text-ink">{worker.name}</h3>
+                <Badge tone={workerStatusMeta(worker.status).tone} dot>
+                  {workerStatusMeta(worker.status).label}
+                </Badge>
+              </div>
               <p className="text-[13px] text-ink-muted">{worker.position}</p>
               <div className="mt-1.5 flex items-center gap-2">
                 <span className="flex items-center gap-1 text-sm font-bold text-ink">
@@ -189,17 +202,24 @@ export function WorkerDetail({
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               Mutaxassislik
             </h4>
-            <div className="flex flex-wrap gap-2">
-              {worker.specialization.map((c) => (
-                <span
-                  key={c}
-                  className="rounded-lg px-2.5 py-1 text-[12px] font-medium"
-                  style={{ background: `${CATEGORY_META[c].color}1a`, color: CATEGORY_META[c].color }}
-                >
-                  {CATEGORY_META[c].label}
-                </span>
-              ))}
-            </div>
+            {worker.specialization.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {worker.specialization.map((c) => {
+                  const meta = categoryMeta(c);
+                  return (
+                    <span
+                      key={c}
+                      className="rounded-lg px-2.5 py-1 text-[12px] font-medium"
+                      style={{ background: `${meta.color}1a`, color: meta.color }}
+                    >
+                      {meta.label}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-[13px] text-ink-muted">Mutaxassislik belgilanmagan</p>
+            )}
           </div>
 
           {/* Documents */}
@@ -207,6 +227,9 @@ export function WorkerDetail({
             <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-ink-muted">
               <DocumentText size={14} /> Hujjatlar ({worker.documents.length})
             </h4>
+            {worker.documents.length === 0 && (
+              <p className="text-[13px] text-ink-muted">Hujjat yuklanmagan</p>
+            )}
             <div className="space-y-1.5">
               {worker.documents.map((doc) => (
                 <div

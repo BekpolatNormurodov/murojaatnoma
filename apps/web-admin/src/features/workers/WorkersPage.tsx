@@ -25,6 +25,8 @@ import { Progress } from '@/shared/ui/Progress';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
+import { Select } from '@/shared/ui/Select';
+import { DISTRICTS } from '@/shared/data/mock';
 import type { Worker, WorkerStatus } from '@/shared/data/types';
 import { formatNumber } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
@@ -32,27 +34,35 @@ import { WorkerDetail } from './WorkerDetail';
 import { WorkerFormModal } from './WorkerFormModal';
 import { useWorkers } from './useWorkers';
 import { useCreateWorker, useDeleteWorker, useUpdateWorker } from './useWorkerMutations';
+import { workerStatusMeta } from './workerMeta';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
 
-const STATUS_LABEL: Record<
-  WorkerStatus,
-  { label: string; tone: 'success' | 'warning' | 'neutral' | 'info' }
-> = {
-  online: { label: 'Onlayn', tone: 'success' },
-  on_task: { label: 'Vazifada', tone: 'warning' },
-  break: { label: 'Tanaffus', tone: 'info' },
-  offline: { label: 'Oflayn', tone: 'neutral' },
-};
-
 type Filter = 'all' | 'inside' | 'outside' | 'unconfirmed';
+
+const STATUS_OPTIONS: { value: WorkerStatus | 'all'; label: string; dot?: string }[] = [
+  { value: 'all', label: 'Barcha holatlar' },
+  { value: 'online', label: 'Onlayn', dot: '#10b981' },
+  { value: 'on_task', label: 'Vazifada', dot: '#f59e0b' },
+  { value: 'break', label: 'Tanaffus', dot: '#06b6d4' },
+  { value: 'offline', label: 'Oflayn', dot: '#94a3b8' },
+];
+
+const DISTRICT_FILTER_OPTIONS: { value: string; label: string; dot?: string }[] = [
+  { value: 'all', label: 'Barcha tumanlar' },
+  ...DISTRICTS.map((d) => ({ value: d.id, label: d.name, dot: d.color })),
+];
 
 export function WorkersPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [districtFilter, setDistrictFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<WorkerStatus | 'all'>('all');
   const [selected, setSelected] = useState<Worker | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   // CRUD holati: yaratish / tahrirlash / o'chirish oynalari + qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -114,20 +124,34 @@ export function WorkersPage() {
   const insideCount = workers.filter((w) => w.insideRegion).length;
 
   const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return workers.filter((w) => {
-      const q =
-        !query ||
-        w.name.toLowerCase().includes(query.toLowerCase()) ||
-        w.region.toLowerCase().includes(query.toLowerCase()) ||
-        w.position.toLowerCase().includes(query.toLowerCase());
-      const f =
+      const matchesQuery =
+        !q ||
+        w.name.toLowerCase().includes(q) ||
+        w.region.toLowerCase().includes(q) ||
+        w.position.toLowerCase().includes(q) ||
+        w.phone.toLowerCase().includes(q);
+      const matchesQuickFilter =
         filter === 'all' ||
         (filter === 'inside' && w.insideRegion) ||
         (filter === 'outside' && !w.insideRegion) ||
         (filter === 'unconfirmed' && !w.todayConfirmed);
-      return q && f;
+      const matchesDistrict = districtFilter === 'all' || w.districtId === districtFilter;
+      const matchesStatus = statusFilter === 'all' || w.status === statusFilter;
+      return matchesQuery && matchesQuickFilter && matchesDistrict && matchesStatus;
     });
-  }, [workers, query, filter]);
+  }, [workers, query, filter, districtFilter, statusFilter]);
+
+  const hasActiveFilters =
+    query.trim() !== '' || filter !== 'all' || districtFilter !== 'all' || statusFilter !== 'all';
+
+  function resetFilters() {
+    setQuery('');
+    setFilter('all');
+    setDistrictFilter('all');
+    setStatusFilter('all');
+  }
 
   const FILTERS: { key: Filter; label: string }[] = [
     { key: 'all', label: 'Barchasi' },
@@ -181,9 +205,9 @@ export function WorkersPage() {
                 ].map((s, i) => (
                   <motion.div
                     key={s.label}
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={reducedMotion ? false : { opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
+                    transition={{ delay: reducedMotion ? 0 : i * 0.05 }}
                   >
                     <Card className="p-4">
                       <div
@@ -200,14 +224,15 @@ export function WorkersPage() {
           </div>
 
           {/* Filters + search */}
-          <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap gap-1.5">
               {FILTERS.map((f) => (
                 <button
                   key={f.key}
                   onClick={() => setFilter(f.key)}
+                  aria-pressed={filter === f.key}
                   className={cn(
-                    'rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
+                    'min-h-11 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
                     filter === f.key
                       ? 'bg-ink text-white'
                       : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
@@ -218,14 +243,40 @@ export function WorkersPage() {
               ))}
             </div>
             <div className="relative w-full lg:w-72">
+              <label htmlFor="workers-search" className="sr-only">
+                Ishchilarni qidirish
+              </label>
               <SearchNormal1 size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
+                id="workers-search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ism, lavozim yoki hudud..."
+                placeholder="Ism, lavozim, hudud yoki telefon..."
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
               />
             </div>
+          </div>
+
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="w-full sm:w-56">
+              <Select
+                value={districtFilter}
+                onChange={setDistrictFilter}
+                options={DISTRICT_FILTER_OPTIONS}
+                block
+              />
+            </div>
+            <div className="w-full sm:w-56">
+              <Select value={statusFilter} onChange={setStatusFilter} options={STATUS_OPTIONS} block />
+            </div>
+            {hasActiveFilters && (
+              <button
+                onClick={resetFilters}
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <RotateRight size={15} /> Filtrlarni tozalash
+              </button>
+            )}
           </div>
 
           {/* Worker cards */}
@@ -240,9 +291,13 @@ export function WorkersPage() {
               {filtered.map((w, i) => (
                 <motion.button
                   key={w.id}
-                initial={{ opacity: 0, y: 16 }}
+                initial={reducedMotion ? false : { opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(i * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }}
+                transition={
+                  reducedMotion
+                    ? { duration: 0 }
+                    : { delay: Math.min(i * 0.05, 0.4), ease: [0.22, 1, 0.36, 1] }
+                }
                 onClick={() => setSelected(w)}
                 className="text-left"
               >
@@ -258,8 +313,8 @@ export function WorkersPage() {
                         </div>
                       </div>
                     </div>
-                    <Badge tone={STATUS_LABEL[w.status].tone} dot>
-                      {STATUS_LABEL[w.status].label}
+                    <Badge tone={workerStatusMeta(w.status).tone} dot>
+                      {workerStatusMeta(w.status).label}
                     </Badge>
                   </div>
 
@@ -348,7 +403,34 @@ export function WorkersPage() {
           )}
 
           {!isLoading && filtered.length === 0 && (
-            <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line py-16 text-center">
+              <Profile2User size={36} variant="Bulk" className="text-ink-muted" />
+              {workers.length === 0 ? (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Hali ishchilar yo'q</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Birinchi dala ishchisini qo'shib boshlang
+                    </p>
+                  </div>
+                  <Button onClick={() => setCreating(true)}>
+                    <Add size={18} /> Ishchi qo'shish
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Hech narsa topilmadi</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Qidiruv yoki filtrlarga mos ishchi yo'q — boshqa so'z bilan urinib ko'ring
+                    </p>
+                  </div>
+                  <Button variant="secondary" onClick={resetFilters}>
+                    <RotateRight size={16} /> Filtrlarni tozalash
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </>
       )}

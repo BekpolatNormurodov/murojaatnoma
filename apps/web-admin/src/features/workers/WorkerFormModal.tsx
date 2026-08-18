@@ -29,6 +29,12 @@ function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
+/** Lenient telefon format tekshiruvi — kamida 9 raqam, faqat +/bo'sh joy/tire. */
+function isPhone(v: string) {
+  const digits = v.trim().replace(/[\s()-]/g, '');
+  return /^\+?\d{9,13}$/.test(digits);
+}
+
 export function WorkerFormModal({
   open,
   worker,
@@ -56,6 +62,7 @@ export function WorkerFormModal({
   const [vehicle, setVehicle] = useState('');
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -72,6 +79,7 @@ export function WorkerFormModal({
     setSalary(worker && worker.salary ? String(worker.salary) : '');
     setVehicle(worker?.vehicle ?? '');
     setSubmitAttempted(false);
+    setTouched({});
     setSubmitError(null);
     setSubmitting(false);
   }, [worker]);
@@ -83,7 +91,11 @@ export function WorkerFormModal({
   const errors = {
     name: name.trim() ? undefined : 'Ism-familiyani kiriting',
     position: position.trim() ? undefined : 'Lavozimni kiriting',
-    phone: phone.trim() ? undefined : 'Telefon raqamni kiriting',
+    phone: !phone.trim()
+      ? 'Telefon raqamni kiriting'
+      : isPhone(phone)
+        ? undefined
+        : "Telefon raqam formati noto'g'ri (masalan: +998 90 123 45 67)",
     email: !email.trim()
       ? 'Email manzilni kiriting'
       : isEmail(email)
@@ -91,6 +103,14 @@ export function WorkerFormModal({
         : "Email manzil noto'g'ri",
   };
   const hasErrors = Object.values(errors).some(Boolean);
+
+  function markTouched(field: string) {
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }
+  /** Submit urinilgandan yoki fielddan chiqilgandan keyingina xato ko'rsatiladi. */
+  function shownError(field: keyof typeof errors) {
+    return submitAttempted || touched[field] ? errors[field] : undefined;
+  }
 
   function toggleCategory(c: RequestCategory) {
     setSpecialization((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -150,20 +170,28 @@ export function WorkerFormModal({
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ism-familiya" required error={submitAttempted ? errors.name : undefined}>
+          <Field label="Ism-familiya" required error={shownError('name')} errorId="w-name-error">
             <input
+              id="w-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => markTouched('name')}
               placeholder="Ism familiya"
-              className={cn(fieldCls, submitAttempted && errors.name ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('name')}
+              aria-describedby={shownError('name') ? 'w-name-error' : undefined}
+              className={cn(fieldCls, shownError('name') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Lavozim" required error={submitAttempted ? errors.position : undefined}>
+          <Field label="Lavozim" required error={shownError('position')} errorId="w-position-error">
             <input
+              id="w-position"
               value={position}
               onChange={(e) => setPosition(e.target.value)}
+              onBlur={() => markTouched('position')}
               placeholder="Masalan: Elektrik"
-              className={cn(fieldCls, submitAttempted && errors.position ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('position')}
+              aria-describedby={shownError('position') ? 'w-position-error' : undefined}
+              className={cn(fieldCls, shownError('position') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
@@ -178,20 +206,28 @@ export function WorkerFormModal({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Telefon" required error={submitAttempted ? errors.phone : undefined}>
+          <Field label="Telefon" required error={shownError('phone')} errorId="w-phone-error">
             <input
+              id="w-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => markTouched('phone')}
               placeholder="+998 90 123 45 67"
-              className={cn(fieldCls, submitAttempted && errors.phone ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('phone')}
+              aria-describedby={shownError('phone') ? 'w-phone-error' : undefined}
+              className={cn(fieldCls, shownError('phone') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Email" required error={submitAttempted ? errors.email : undefined}>
+          <Field label="Email" required error={shownError('email')} errorId="w-email-error">
             <input
+              id="w-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => markTouched('email')}
               placeholder="ism@hokimiyat.uz"
-              className={cn(fieldCls, submitAttempted && errors.email ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('email')}
+              aria-describedby={shownError('email') ? 'w-email-error' : undefined}
+              className={cn(fieldCls, shownError('email') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
@@ -307,11 +343,14 @@ function Field({
   children,
   error,
   required,
+  errorId,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string;
   required?: boolean;
+  /** Xato matnining id'si — inputning aria-describedby bilan bog'lash uchun. */
+  errorId?: string;
 }) {
   return (
     <label className="block">
@@ -324,7 +363,11 @@ function Field({
         )}
       </span>
       {children}
-      {error && <span className="mt-1.5 block text-[12px] font-medium text-danger">{error}</span>}
+      {error && (
+        <span id={errorId} role="alert" className="mt-1.5 block text-[12px] font-medium text-danger">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
