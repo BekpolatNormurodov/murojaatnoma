@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -12,7 +13,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Employee, EmployeeRole, FaceTemplate } from '@prisma/client';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequireScope } from '../../common/decorators/scope.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
@@ -20,11 +24,37 @@ import { EnrollFaceDto } from './dto/enroll-face.dto';
 import { ListEmployeesQueryDto } from './dto/list-employees-query.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
+/**
+ * Staff directory + biometric enrollment.
+ *
+ * SECURITY: the whole controller is `@RequireScope('admin')` — the full
+ * roster and any employee's profile/PII are web-admin territory, never
+ * reachable by a mobile employee token. The two face-template routes
+ * override that to `('employee', 'admin')` and then enforce OWNER-OR-ADMIN
+ * in-handler (`assertCanManageFace`): a mobile employee may enroll/read only
+ * their OWN `:id`; an admin may act on any. This closes the biometric-
+ * embedding + PII leak where any authenticated token reached every route.
+ */
 @ApiTags('employees')
 @ApiBearerAuth()
+@RequireScope('admin')
 @Controller('employees')
 export class EmployeesController {
   constructor(private readonly employeesService: EmployeesService) {}
+
+  /**
+   * Owner-or-admin gate for the face-template routes: an `admin`-scope token
+   * may target any employee id; any other principal (a mobile `employee`) may
+   * target ONLY its own id. Throws 403 otherwise. Employee identity comes from
+   * the verified JWT subject (`user.employeeId`), never from client input.
+   */
+  private assertCanManageFace(user: AuthenticatedUser, targetId: string): void {
+    if (user.scope === 'admin') return;
+    if (user.employeeId === targetId) return;
+    throw new ForbiddenException(
+      'You may only access your own face template.',
+    );
+  }
 
   @Post()
   @Roles(EmployeeRole.ADMIN)
@@ -61,14 +91,25 @@ export class EmployeesController {
   }
 
   @Post(':id/face-template')
-  @ApiOperation({ summary: 'Enroll a face-recognition embedding for an employee' })
-  enrollFace(@Param('id') id: string, @Body() dto: EnrollFaceDto): Promise<FaceTemplate> {
+  @RequireScope('employee', 'admin')
+  @ApiOperation({ summary: 'Enroll a face-recognition embedding (own id, or admin)' })
+  enrollFace(
+    @Param('id') id: string,
+    @Body() dto: EnrollFaceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<FaceTemplate> {
+    this.assertCanManageFace(user, id);
     return this.employeesService.enrollFace(id, dto);
   }
 
   @Get(':id/face-template')
-  @ApiOperation({ summary: 'List enrolled face templates for an employee' })
-  findFaceTemplates(@Param('id') id: string): Promise<FaceTemplate[]> {
+  @RequireScope('employee', 'admin')
+  @ApiOperation({ summary: 'List enrolled face templates (own id, or admin)' })
+  findFaceTemplates(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<FaceTemplate[]> {
+    this.assertCanManageFace(user, id);
     return this.employeesService.findFaceTemplates(id);
   }
 }
