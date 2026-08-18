@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,8 +10,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// internet yo'q paytda hisobotlarni qurilmada saqlab turadi (outbox), aloqa
 /// tiklanganda ularni `POST /locations/batch` orqali oqizib yuboradi.
 ///
-/// Faqat foreground kuzatuv (geolocator position stream). [start] ni bir necha
-/// bor chaqirish xavfsiz — allaqachon ishlayotgan bo'lsa hech nima qilmaydi.
+/// Kuzatuv fonda ham davom etadi (geolocator position stream): Android'da
+/// foreground-service, iOS'da fon rejimidagi joylashuv yangilanishlari orqali
+/// ilova minimallashtirilganda/ekran o'chganda ham uzilmaydi. [start] ni bir
+/// necha bor chaqirish xavfsiz — allaqachon ishlayotgan bo'lsa hech nima
+/// qilmaydi.
 class LocationTrackingService {
   LocationTrackingService(this._dio);
 
@@ -39,10 +43,7 @@ class LocationTrackingService {
 
     _running = true;
     _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: _distanceFilterMeters,
-      ),
+      locationSettings: _buildSettings(),
     ).listen(
       _onPosition,
       onError: (Object error) {
@@ -66,6 +67,44 @@ class LocationTrackingService {
     _positionSub = null;
     _flushTimer?.cancel();
     _flushTimer = null;
+  }
+
+  /// Platformaga mos joylashuv sozlamalari. Android'da foreground-service
+  /// (doimiy bildirishnoma), iOS'da esa fon rejimidagi yangilanishlar orqali
+  /// oqim ilova minimallashtirilganda/ekran o'chganda ham uzilmaydi.
+  LocationSettings _buildSettings() {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return AndroidSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: _distanceFilterMeters,
+          foregroundNotificationConfig: const ForegroundNotificationConfig(
+            notificationTitle: 'Joylashuv kuzatuvi',
+            notificationText: 'Ish vaqtida joylashuvingiz yuborilmoqda',
+            enableWakeLock: true,
+            setOngoing: true,
+          ),
+        );
+      case TargetPlatform.iOS:
+        // Fon rejimidagi yangilanishlar uchun `showBackgroundLocationIndicator`
+        // yoqiladi. Qolgan fon xatti-harakati AppleSettings standartlaridan
+        // keladi: allowBackgroundLocationUpdates=true (fonda yangilanish),
+        // pauseLocationUpdatesAutomatically=false (iOS oqimni to'xtatmaydi),
+        // activityType=other. Ular takroriy bo'lgani uchun ochiq yozilmadi.
+        return AppleSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: _distanceFilterMeters,
+          showBackgroundLocationIndicator: true,
+        );
+      case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        return const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: _distanceFilterMeters,
+        );
+    }
   }
 
   Future<void> _reportCurrent() async {
