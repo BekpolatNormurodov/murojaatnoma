@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   SearchNormal1,
@@ -25,6 +26,7 @@ import { StatCard } from '@/shared/ui/StatCard';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
+import { PersonProfileModal, type PersonRef } from '@/shared/ui/PersonProfileModal';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
@@ -126,6 +128,9 @@ export function ComplaintsPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = complaints.find((c) => c.id === selectedId) ?? null;
+  const navigate = useNavigate();
+  // Fuqaro / o'rinbosar avataridan ochiladigan umumiy profil oynasi.
+  const [person, setPerson] = useState<PersonRef | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -333,7 +338,20 @@ export function ComplaintsPage() {
 
               {/* Citizen */}
               <div className="mt-3 flex items-center gap-2.5 border-t border-line pt-3">
-                <Avatar src={c.citizenPhoto} name={c.citizenName} size={34} />
+                <Avatar
+                  src={c.citizenPhoto}
+                  name={c.citizenName}
+                  size={34}
+                  onClick={() =>
+                    setPerson({
+                      id: c.citizenPhone || c.id,
+                      name: c.citizenName,
+                      photo: c.citizenPhoto,
+                      phone: c.citizenPhone,
+                      kind: 'citizen',
+                    })
+                  }
+                />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-medium text-ink">{c.citizenName}</div>
                   <div className="flex items-center gap-1 text-[11px] text-ink-muted">
@@ -350,7 +368,23 @@ export function ComplaintsPage() {
               <div className="mt-3 flex items-center justify-between gap-2">
                 {deputy ? (
                   <div className="flex min-w-0 items-center gap-1.5">
-                    <Avatar src={deputy.photo} name={deputy.name} color={deputy.color} size={22} />
+                    <Avatar
+                      src={deputy.photo}
+                      name={deputy.name}
+                      color={deputy.color}
+                      size={22}
+                      onClick={() =>
+                        setPerson({
+                          id: deputy.id,
+                          name: deputy.name,
+                          photo: deputy.photo,
+                          color: deputy.color,
+                          position: deputy.shortDirection,
+                          phone: deputy.phone,
+                          kind: 'deputy',
+                        })
+                      }
+                    />
                     <span className="truncate text-[11.5px] text-ink-soft">{deputy.shortDirection}</span>
                   </div>
                 ) : (
@@ -389,6 +423,14 @@ export function ComplaintsPage() {
       )}
 
       <ComplaintDetail complaint={selected} onClose={() => setSelectedId(null)} />
+      <PersonProfileModal
+        person={person}
+        onClose={() => setPerson(null)}
+        onViewPage={(p) => {
+          if (p.kind === 'deputy') navigate('/deputies');
+          else if (p.kind === 'citizen') navigate('/app-users');
+        }}
+      />
     </div>
   );
 }

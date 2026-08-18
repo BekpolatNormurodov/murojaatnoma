@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   SearchNormal1,
@@ -22,6 +23,7 @@ import { Button } from '@/shared/ui/Button';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { RequestDetail } from './RequestDetail';
+import { PersonProfileModal, type PersonRef } from '@/shared/ui/PersonProfileModal';
 import { AddRequestModal } from './RequestModals';
 import { RequestToastStack } from './RequestToasts';
 import { CATEGORY_META, STATUS_META } from '@/shared/data/mock';
@@ -125,6 +127,9 @@ export function RequestsPage() {
   const selected = requests.find((r) => r.id === selectedId) ?? null;
   const addRequest = useRequests((s) => s.add);
   const [addOpen, setAddOpen] = useState(false);
+  const navigate = useNavigate();
+  // Ro'yxat qatoridagi ishchi avataridan ochiladigan umumiy profil oynasi.
+  const [person, setPerson] = useState<PersonRef | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const { canWrite } = usePermissions();
 
@@ -528,7 +533,22 @@ export function RequestsPage() {
                 <div className="mt-4 flex items-center justify-between border-t border-line pt-3">
                   {worker ? (
                     <div className="flex items-center gap-2">
-                      <Avatar name={worker.name} color={worker.avatarColor} size={26} />
+                      <Avatar
+                        name={worker.name}
+                        color={worker.avatarColor}
+                        size={26}
+                        onClick={() =>
+                          setPerson({
+                            id: worker.id,
+                            name: worker.name,
+                            photo: worker.photo,
+                            color: worker.avatarColor,
+                            position: worker.position,
+                            phone: worker.phone,
+                            kind: 'worker',
+                          })
+                        }
+                      />
                       <span className="text-xs font-medium text-ink-soft">{worker.name}</span>
                     </div>
                   ) : (
@@ -594,6 +614,13 @@ export function RequestsPage() {
       <RequestDetail request={selected} onClose={() => setSelectedId(null)} />
       <AddRequestModal open={addOpen} onClose={() => setAddOpen(false)} onCreate={addRequest} />
       <RequestToastStack />
+      <PersonProfileModal
+        person={person}
+        onClose={() => setPerson(null)}
+        onViewPage={(p) => {
+          if (p.kind === 'worker') navigate('/workers');
+        }}
+      />
     </div>
   );
 }

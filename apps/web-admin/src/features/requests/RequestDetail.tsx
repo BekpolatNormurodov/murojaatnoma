@@ -19,11 +19,13 @@ import {
   Buildings2,
   Trash,
 } from 'iconsax-react';
+import { useNavigate } from 'react-router-dom';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Modal } from '@/shared/ui/Modal';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
+import { PersonProfileModal, type PersonRef } from '@/shared/ui/PersonProfileModal';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import {
   CATEGORY_META,
@@ -163,6 +165,9 @@ export function RequestDetail({
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const navigate = useNavigate();
+  // Avatar bosilganda ochiladigan umumiy profil oynasi uchun tanlangan odam.
+  const [person, setPerson] = useState<PersonRef | null>(null);
 
   // Boshqa murojaat tanlanganda (yoki drawer yopilganda) — oldingi
   // murojaatga tegishli lokal holatlarni (tanlagich, o'chirish tasdig'i)
@@ -355,7 +360,20 @@ export function RequestDetail({
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="mb-3 text-[13px] font-semibold text-ink">{t('requests.detail.citizen')}</p>
             <div className="flex items-center gap-3">
-              <Avatar src={r.citizenPhoto} name={r.citizenName} size={44} />
+              <Avatar
+                src={r.citizenPhoto}
+                name={r.citizenName}
+                size={44}
+                onClick={() =>
+                  setPerson({
+                    id: r.citizenPhone || r.id,
+                    name: r.citizenName,
+                    photo: r.citizenPhoto,
+                    phone: r.citizenPhone,
+                    kind: 'citizen',
+                  })
+                }
+              />
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-ink">{r.citizenName}</div>
                 <a
@@ -421,7 +439,23 @@ export function RequestDetail({
                 <Hierarchy size={16} variant="Bulk" className="text-primary-600" /> {t('common.responsibleDeputy')}
               </p>
               <div className="flex items-center gap-3">
-                <Avatar src={deputy.photo} name={deputy.name} color={deputy.color} size={42} />
+                <Avatar
+                  src={deputy.photo}
+                  name={deputy.name}
+                  color={deputy.color}
+                  size={42}
+                  onClick={() =>
+                    setPerson({
+                      id: deputy.id,
+                      name: deputy.name,
+                      photo: deputy.photo,
+                      color: deputy.color,
+                      position: deputy.shortDirection,
+                      phone: deputy.phone,
+                      kind: 'deputy',
+                    })
+                  }
+                />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-ink">{deputy.name}</div>
                   <div className="text-[12px] text-ink-muted">{deputy.shortDirection}</div>
@@ -454,7 +488,24 @@ export function RequestDetail({
             </div>
             {worker ? (
               <div className="flex items-center gap-3">
-                <Avatar src={worker.photo} name={worker.name} color={worker.avatarColor} size={42} status={worker.status} />
+                <Avatar
+                  src={worker.photo}
+                  name={worker.name}
+                  color={worker.avatarColor}
+                  size={42}
+                  status={worker.status}
+                  onClick={() =>
+                    setPerson({
+                      id: worker.id,
+                      name: worker.name,
+                      photo: worker.photo,
+                      color: worker.avatarColor,
+                      position: worker.position,
+                      phone: worker.phone,
+                      kind: 'worker',
+                    })
+                  }
+                />
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-ink">{worker.name}</div>
                   <div className="text-[12px] text-ink-muted">{worker.position}</div>
@@ -554,6 +605,17 @@ export function RequestDetail({
           />
         </div>
       )}
+
+      {/* Umumiy profil oynasi — fuqaro / o'rinbosar / ishchi avatarlaridan ochiladi */}
+      <PersonProfileModal
+        person={person}
+        onClose={() => setPerson(null)}
+        onViewPage={(p) => {
+          if (p.kind === 'worker') navigate('/workers');
+          else if (p.kind === 'deputy') navigate('/deputies');
+          else if (p.kind === 'citizen') navigate('/app-users');
+        }}
+      />
     </Drawer>
   );
 }

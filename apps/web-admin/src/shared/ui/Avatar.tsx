@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { cn } from '@/shared/lib/cn';
 
 /** Ism bo'yicha bosh harflar (initials). */
@@ -19,6 +19,7 @@ export function Avatar({
   status,
   ring = false,
   className,
+  onClick,
 }: {
   name: string;
   src?: string;
@@ -27,6 +28,8 @@ export function Avatar({
   status?: 'online' | 'offline' | 'on_task' | 'break';
   ring?: boolean;
   className?: string;
+  /** Berilsa — avatar bosiladigan bo'ladi (masalan profil oynasini ochish). */
+  onClick?: () => void;
 }) {
   const [failed, setFailed] = useState(false);
   const statusColor =
@@ -38,8 +41,39 @@ export function Avatar({
           ? 'bg-accent-500'
           : 'bg-ink-muted';
 
+  // onClick berilganda <div> ni tugma sifatida ochamiz. Element <div> bo'lib
+  // qoladi (boshqa tugma/link ichida nesting DOM'da yaroqli bo'lishi uchun);
+  // bosilganda tashqi konteyner (masalan bosiladigan karta) ochilib
+  // ketmasligi uchun hodisa tarqalishini to'xtatamiz.
+  const clickable = typeof onClick === 'function';
+
   return (
-    <div className={cn('relative shrink-0', className)} style={{ width: size, height: size }}>
+    <div
+      className={cn(
+        'relative shrink-0',
+        clickable &&
+          'cursor-pointer rounded-full transition-all hover:ring-2 hover:ring-primary-300',
+        className,
+      )}
+      style={{ width: size, height: size }}
+      {...(clickable
+        ? {
+            role: 'button',
+            tabIndex: 0,
+            onClick: (e: MouseEvent) => {
+              e.stopPropagation();
+              onClick();
+            },
+            onKeyDown: (e: KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                onClick();
+              }
+            },
+          }
+        : {})}
+    >
       {src && !failed ? (
         <img
           src={src}
