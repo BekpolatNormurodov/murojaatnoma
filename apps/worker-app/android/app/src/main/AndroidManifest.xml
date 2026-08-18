@@ -2,6 +2,19 @@
     <!-- GPS / location for worker tracking and geofence check-in -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Continuous (background) worker tracking. LocationTrackingService runs a
+         geolocator foreground-service with an ongoing notification + wakelock so
+         location keeps flowing when the app is minimised / the screen is off.
+         ACCESS_BACKGROUND_LOCATION: location while backgrounded (API 29+).
+         FOREGROUND_SERVICE + FOREGROUND_SERVICE_LOCATION: the location-typed
+         foreground service — FOREGROUND_SERVICE_LOCATION is REQUIRED on Android
+         14+ (targetSdk 34+) or the service throws at start. WAKE_LOCK backs
+         ForegroundNotificationConfig(enableWakeLock: true). The <service> itself
+         is contributed by geolocator_android with foregroundServiceType="location". -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Camera for task completion photo proof + on-device face check-in -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Microphone for real on-device voice-message recording (attachments/chat) -->

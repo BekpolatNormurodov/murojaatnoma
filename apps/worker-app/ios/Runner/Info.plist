@@ -8,6 +8,12 @@
 	<string>Hokimiyat Ishchi</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Vazifa joylashuvini tasdiqlash uchun lokatsiyangiz kerak.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Ish vaqtida joylashuvingizni fon rejimida ham (ilova yopiq bo'lsa ham) yuborish uchun doimiy lokatsiya ruxsati kerak.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Bajarilgan ish isboti uchun rasm olish kerak.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
