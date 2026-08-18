@@ -214,11 +214,6 @@ export function AppUserDetail({
           <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-4">
             <InfoRow
               icon={<Location size={15} variant="Bulk" className="text-ink-muted" />}
-              label={t('appUsers.regionLabel')}
-              value={u.region}
-            />
-            <InfoRow
-              icon={<Location size={15} variant="Bulk" className="text-ink-muted" />}
               label={t('common.address')}
               value={<span className="max-w-56 truncate text-right">{u.address}</span>}
             />

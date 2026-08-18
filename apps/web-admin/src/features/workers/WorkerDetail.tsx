@@ -2,7 +2,6 @@ import {
   Star1,
   Call,
   Sms,
-  Location,
   TickCircle,
   CloseCircle,
   LoginCurve,
@@ -68,11 +67,14 @@ export function WorkerDetail({
   onClose,
   onEdit,
   onDelete,
+  onCall,
 }: {
   worker: Worker | null;
   onClose: () => void;
   onEdit?: (worker: Worker) => void;
   onDelete?: (worker: Worker) => void;
+  /** Berilsa — qo'ng'iroq umumiy handler orqali (WebRTC), aks holda tel: havolasi. */
+  onCall?: (worker: Worker) => void;
 }) {
   const navigate = useNavigate();
   return (
@@ -80,7 +82,7 @@ export function WorkerDetail({
       open={!!worker}
       onClose={onClose}
       title="Ishchi profili"
-      subtitle={worker?.region}
+      subtitle={worker?.position}
       width={500}
     >
       {worker && (
@@ -100,10 +102,6 @@ export function WorkerDetail({
                 <span className="flex items-center gap-1 text-sm font-bold text-ink">
                   <Star1 size={15} variant="Bold" className="text-warning" />
                   {worker.rating}
-                </span>
-                <span className="text-ink-muted">·</span>
-                <span className="flex items-center gap-1 text-[13px] text-ink-soft">
-                  <Location size={13} /> {worker.region}
                 </span>
               </div>
             </div>

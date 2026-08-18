@@ -175,6 +175,9 @@ export function StaffPage() {
         fullName: input.name,
         phone: toE164Phone(input.phone),
         position: input.position,
+        // Loyiha Mirzo Ulug'bek tumani (viloyat — "Toshkent shahri"). Region
+        // UI'dan olib tashlandi, lekin backend create-employee DTO uni talab
+        // qiladi, shuning uchun konstanta bilan yuboramiz.
         region: 'Toshkent shahri',
         district: "Mirzo Ulug'bek",
       });

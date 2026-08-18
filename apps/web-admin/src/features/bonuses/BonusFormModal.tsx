@@ -3,7 +3,7 @@ import { Add, CloseCircle, RotateRight, SearchNormal1 } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
-import { MonthPicker } from '@/shared/ui/DatePicker';
+import { Select, type SelectOption } from '@/shared/ui/Select';
 import { cn } from '@/shared/lib/cn';
 import { useWorkers } from '@/features/workers/useWorkers';
 import { useStaff } from '@/features/staff/useStaff';
@@ -11,6 +11,18 @@ import type { CreateBonusInput } from './useBonusMutations';
 import { SOURCE_META, currentMonthValue, type RecipientSource } from './meta';
 
 const SOURCE_KEYS: RecipientSource[] = ['worker', 'staff', 'custom'];
+
+/** "Oy" select'i variantlari — Uzbekcha nomlar, qiymat "01".."12" ("YYYY-MM" uchun). */
+const MONTH_OPTIONS: SelectOption[] = [
+  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+  'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr',
+].map((label, i) => ({ value: String(i + 1).padStart(2, '0'), label }));
+
+/** "Yil" select'i variantlari — joriy yildan +1 dan -5 gacha (yangi yillar tepada). */
+const YEAR_OPTIONS: SelectOption[] = Array.from({ length: 7 }, (_, i) => {
+  const y = String(new Date().getFullYear() + 1 - i);
+  return { value: y, label: y };
+});
 
 /**
  * "Premya yozish" — yangi premya (bonus) yaratish oynasi. Qabul qiluvchi
@@ -76,6 +88,8 @@ export function BonusFormModal({
   const amountValid = amount.trim() !== '' && Number.isFinite(amountValue) && amountValue > 0;
   const reasonValid = reason.trim().length > 0;
   const monthValid = /^\d{4}-\d{2}$/.test(month);
+  // "YYYY-MM" — Yil/Oy select'lari uchun ajratilgan qismlar.
+  const [yearPart, monthPart] = month.split('-');
   const recipientValid = recipientName.length > 0;
   const valid = amountValid && reasonValid && monthValid && recipientValid;
 
@@ -260,14 +274,28 @@ export function BonusFormModal({
             </div>
           </Field>
           <Field label="Oy" error={showErr('month') && !monthValid ? 'Oyni tanlang' : undefined}>
-            <MonthPicker
-              value={month}
-              onChange={(v) => {
-                setMonth(v);
-                setTouched((t) => ({ ...t, month: true }));
-              }}
-              block
-            />
+            {/* Yil + Oy — ikkita toza Select "YYYY-MM" qiymatiga birlashadi. */}
+            <div className="grid grid-cols-[6.25rem_1fr] gap-2">
+              <Select
+                block
+                value={yearPart}
+                onChange={(y) => {
+                  setMonth(`${y}-${monthPart}`);
+                  setTouched((t) => ({ ...t, month: true }));
+                }}
+                options={YEAR_OPTIONS}
+              />
+              <Select
+                block
+                menuAlign="end"
+                value={monthPart}
+                onChange={(mm) => {
+                  setMonth(`${yearPart}-${mm}`);
+                  setTouched((t) => ({ ...t, month: true }));
+                }}
+                options={MONTH_OPTIONS}
+              />
+            </div>
           </Field>
         </div>
 

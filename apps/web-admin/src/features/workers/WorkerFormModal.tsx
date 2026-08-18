@@ -3,20 +3,13 @@ import { Add, Save2, CloseCircle } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Select } from '@/shared/ui/Select';
 import { CATEGORY_META, DISTRICTS } from '@/shared/data/mock';
-import type { RequestCategory, Worker, WorkerStatus } from '@/shared/data/types';
+import type { RequestCategory, Worker } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
 import type { WorkerFormInput } from './useWorkerMutations';
 
 const AVATAR_COLORS = [
   '#10b981', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444',
   '#06b6d4', '#ec4899', '#8b5cf6', '#0ea5e9', '#64748b',
-];
-
-const STATUS_OPTIONS: { value: WorkerStatus; label: string; dot: string }[] = [
-  { value: 'online', label: 'Onlayn', dot: '#10b981' },
-  { value: 'on_task', label: 'Vazifada', dot: '#f59e0b' },
-  { value: 'break', label: 'Tanaffus', dot: '#06b6d4' },
-  { value: 'offline', label: 'Oflayn', dot: '#94a3b8' },
 ];
 
 const DISTRICT_OPTIONS = DISTRICTS.map((d) => ({ value: d.id, label: d.name, dot: d.color }));
@@ -59,7 +52,6 @@ export function WorkerFormModal({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [specialization, setSpecialization] = useState<RequestCategory[]>([]);
-  const [status, setStatus] = useState<WorkerStatus>('offline');
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]);
   const [photo, setPhoto] = useState('');
   const [salary, setSalary] = useState('');
@@ -80,7 +72,6 @@ export function WorkerFormModal({
     setPhone(worker?.phone ?? '');
     setEmail(worker?.email ?? '');
     setSpecialization(worker?.specialization ?? []);
-    setStatus(worker?.status ?? 'offline');
     setAvatarColor(worker?.avatarColor ?? AVATAR_COLORS[0]);
     setPhoto(worker?.photo ?? '');
     setSalary(worker && worker.salary ? String(worker.salary) : '');
@@ -140,7 +131,9 @@ export function WorkerFormModal({
       phone: phone.trim(),
       email: email.trim(),
       specialization,
-      status,
+      // "Holat" auto-derived jonli-lokatsiya statusi — bu yerda kiritilmaydi;
+      // WorkerFormInput status'ni talab qilgani uchun default 'offline' yuboriladi.
+      status: 'offline',
       salary: Number.isFinite(salaryNum) ? salaryNum : 0,
       vehicle: vehicle.trim() ? vehicle.trim() : null,
     };
@@ -204,14 +197,9 @@ export function WorkerFormModal({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Tuman" required>
-            <Select value={districtId} onChange={setDistrictId} options={DISTRICT_OPTIONS} block />
-          </Field>
-          <Field label="Holat" required>
-            <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} block />
-          </Field>
-        </div>
+        <Field label="Tuman" required>
+          <Select value={districtId} onChange={setDistrictId} options={DISTRICT_OPTIONS} block />
+        </Field>
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Telefon" required error={shownError('phone')} errorId="w-phone-error">
@@ -283,13 +271,17 @@ export function WorkerFormModal({
           </Field>
         </div>
 
-        <Field label="Rasm URL (ixtiyoriy)">
+        <Field label="Avatar rasmi (ixtiyoriy)">
           <input
             value={photo}
             onChange={(e) => setPhoto(e.target.value)}
             placeholder="https://..."
             className={cn(fieldCls, 'border-line')}
           />
+          <p className="mt-1.5 text-[12px] text-ink-muted">
+            Bu profil rasmi (avatar). Yuz biometriyasi bunga aloqasi yo'q — u mobil ilovada
+            xodim tomonidan ro'yxatdan o'tkaziladi.
+          </p>
         </Field>
 
         <Field label="Avatar rangi">

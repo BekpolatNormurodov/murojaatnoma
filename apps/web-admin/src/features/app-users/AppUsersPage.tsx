@@ -30,7 +30,6 @@ import {
   Slash,
   ShieldTick,
   TickCircle,
-  Location,
   InfoCircle,
   FilterRemove,
 } from 'iconsax-react';
@@ -58,7 +57,6 @@ import { cn } from '@/shared/lib/cn';
 type StatusFilter = AppUserStatus | 'all';
 type DeviceFilter = AppUserDevice | 'all';
 type SortKey = 'recent' | 'requests' | 'points';
-const ALL_REGIONS = 'all';
 
 const STATUS_OPTIONS_KEYS: { value: StatusFilter; labelKey: string; dot?: string }[] = [
   { value: 'all', labelKey: 'appUsers.filters.allStatuses' },
@@ -146,7 +144,6 @@ export function AppUsersPage() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [device, setDevice] = useState<DeviceFilter>('all');
-  const [region, setRegion] = useState<string>(ALL_REGIONS);
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<AppUser | null>(null);
@@ -233,24 +230,13 @@ export function AppUsersPage() {
     [dauQuery.data],
   );
 
-  const regionOptions = useMemo(() => {
-    const unique = Array.from(new Set(users.map((u) => u.region))).sort((a, b) =>
-      a.localeCompare(b, 'uz'),
-    );
-    return [
-      { value: ALL_REGIONS, label: t('appUsers.filters.allRegions') },
-      ...unique.map((r) => ({ value: r, label: r })),
-    ];
-  }, [users, t]);
-
   const hasActiveFilters =
-    query.trim() !== '' || status !== 'all' || device !== 'all' || region !== ALL_REGIONS;
+    query.trim() !== '' || status !== 'all' || device !== 'all';
 
   const clearFilters = useCallback(() => {
     setQuery('');
     setStatus('all');
     setDevice('all');
-    setRegion(ALL_REGIONS);
   }, []);
 
   const filtered = useMemo(() => {
@@ -258,13 +244,12 @@ export function AppUsersPage() {
     const list = users.filter((u) => {
       const matchesStatus = status === 'all' || u.status === status;
       const matchesDevice = device === 'all' || u.device === device;
-      const matchesRegion = region === ALL_REGIONS || u.region === region;
       const matchesQuery =
         !q ||
         u.name.toLowerCase().includes(q) ||
         u.phone.includes(q) ||
         u.region.toLowerCase().includes(q);
-      return matchesStatus && matchesDevice && matchesRegion && matchesQuery;
+      return matchesStatus && matchesDevice && matchesQuery;
     });
     list.sort((a, b) => {
       if (sortKey === 'requests') return b.requestsCount - a.requestsCount;
@@ -272,7 +257,7 @@ export function AppUsersPage() {
       return +new Date(b.lastActiveAt) - +new Date(a.lastActiveAt);
     });
     return list;
-  }, [users, query, status, device, region, sortKey]);
+  }, [users, query, status, device, sortKey]);
 
   const topUsers = useMemo(
     () => [...users].sort((a, b) => b.points - a.points).slice(0, 5),
@@ -587,13 +572,6 @@ export function AppUsersPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} />
               <Select value={device} onChange={setDevice} options={DEVICE_OPTIONS} />
-              <Select
-                value={region}
-                onChange={setRegion}
-                options={regionOptions}
-                icon={Location}
-                menuAlign="end"
-              />
               <Select value={sortKey} onChange={setSortKey} options={SORT_OPTIONS} icon={Sort} />
               {hasActiveFilters && (
                 <button

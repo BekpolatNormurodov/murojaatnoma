@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import {
   Star1,
   Call,
-  Location,
   Profile2User,
   TickCircle,
   Medal,
@@ -135,6 +134,9 @@ export function WorkersPage() {
         fullName: input.name,
         phone: toE164Phone(input.phone),
         position: input.position,
+        // Loyiha Mirzo Ulug'bek tumani (viloyat — "Toshkent shahri"). Region
+        // UI'dan olib tashlandi, lekin backend create-employee DTO uni talab
+        // qiladi, shuning uchun konstanta bilan yuboramiz.
         region: 'Toshkent shahri',
         district: "Mirzo Ulug'bek",
       });
@@ -179,7 +181,6 @@ export function WorkersPage() {
       const matchesQuery =
         !q ||
         w.name.toLowerCase().includes(q) ||
-        w.region.toLowerCase().includes(q) ||
         w.position.toLowerCase().includes(q) ||
         w.phone.toLowerCase().includes(q);
       const matchesQuickFilter =
@@ -360,9 +361,6 @@ export function WorkersPage() {
                       <div>
                         <h3 className="text-[15px] font-semibold text-ink">{w.name}</h3>
                         <p className="text-[12px] text-ink-muted">{w.position}</p>
-                        <div className="mt-0.5 flex items-center gap-1 text-xs text-ink-muted">
-                          <Location size={12} /> {w.region}
-                        </div>
                       </div>
                     </div>
                     <Badge tone={workerStatusMeta(w.status).tone} dot>
