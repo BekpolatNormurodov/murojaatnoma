@@ -1298,6 +1298,12 @@ abstract class AppLocalizations {
   /// **'Javob so\'rash'**
   String get leaveRequestTileLabel;
 
+  /// No description provided for @premyaRequestTileLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Premya so\'rash'**
+  String get premyaRequestTileLabel;
+
   /// No description provided for @leaveRequestPageTitle.
   ///
   /// In uz, this message translates to:

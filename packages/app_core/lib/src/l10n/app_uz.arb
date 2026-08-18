@@ -224,6 +224,7 @@
   "requestRateSuccessMessage": "Murojaat muvaffaqiyatli baholandi",
   "requestNotFoundTitle": "Murojaat topilmadi",
   "leaveRequestTileLabel": "Javob so'rash",
+  "premyaRequestTileLabel": "Premya so'rash",
   "leaveRequestPageTitle": "Javob so'rash",
   "leaveRequestDurationTypeLabel": "Muddat turi",
   "leaveRequestDurationHours": "Soatlab",

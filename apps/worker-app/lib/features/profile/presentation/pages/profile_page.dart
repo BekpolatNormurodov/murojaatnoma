@@ -210,6 +210,12 @@ class ProfilePage extends StatelessWidget {
                           ),
                           const Divider(height: 1),
                           AppListTile(
+                            title: l10n.premyaRequestTileLabel,
+                            leadingIcon: AppIcons.medal,
+                            onTap: () => context.push('/premya-request'),
+                          ),
+                          const Divider(height: 1),
+                          AppListTile(
                             title: l10n.profileNewsTileLabel,
                             leadingIcon: AppIcons.notification,
                             onTap: () => context.push('/news'),

@@ -77,6 +77,11 @@ import 'package:worker_app/features/points/domain/repositories/points_repository
 import 'package:worker_app/features/points/domain/usecases/get_current_points.dart';
 import 'package:worker_app/features/points/domain/usecases/get_points_history.dart';
 import 'package:worker_app/features/points/presentation/bloc/points_cubit.dart';
+import 'package:worker_app/features/premya/data/datasources/premya_remote_data_source.dart';
+import 'package:worker_app/features/premya/data/repositories/premya_repository_impl.dart';
+import 'package:worker_app/features/premya/domain/repositories/premya_repository.dart';
+import 'package:worker_app/features/premya/domain/usecases/get_my_premya.dart';
+import 'package:worker_app/features/premya/domain/usecases/submit_premya.dart';
 import 'package:worker_app/features/requests/data/datasources/applications_remote_data_source.dart';
 import 'package:worker_app/features/requests/data/repositories/applications_repository_impl.dart';
 import 'package:worker_app/features/requests/domain/repositories/applications_repository.dart';
@@ -503,5 +508,20 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<GetMyLeave>(
       () => GetMyLeave(getIt<LeaveRepository>()),
+    )
+    // ---- Premya (xodim "mukofot so'rash" so'rovlari) ----
+    ..registerLazySingleton<PremyaRemoteDataSource>(
+      () => AppConfig.useMock
+          ? PremyaRemoteDataSourceMockImpl()
+          : PremyaRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<PremyaRepository>(
+      () => PremyaRepositoryImpl(remote: getIt<PremyaRemoteDataSource>()),
+    )
+    ..registerLazySingleton<SubmitPremya>(
+      () => SubmitPremya(getIt<PremyaRepository>()),
+    )
+    ..registerLazySingleton<GetMyPremya>(
+      () => GetMyPremya(getIt<PremyaRepository>()),
     );
 }

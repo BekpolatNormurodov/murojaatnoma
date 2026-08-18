@@ -39,6 +39,7 @@ import 'package:worker_app/features/news/presentation/pages/news_page.dart';
 import 'package:worker_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:worker_app/features/points/presentation/bloc/points_cubit.dart';
 import 'package:worker_app/features/points/presentation/pages/points_page.dart';
+import 'package:worker_app/features/premya/presentation/pages/premya_request_page.dart';
 import 'package:worker_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:worker_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:worker_app/features/requests/presentation/bloc/requests_cubit.dart';
@@ -323,6 +324,15 @@ class AppRouter {
         GoRoute(
           path: '/leave-request',
           builder: (context, _) => const LeaveRequestPage(),
+        ),
+        // `/premya-request` — profil sahifasidagi "Premya so'rash" kirish
+        // nuqtasidan PUSH qilinadigan to'liq ekranli mukofot so'rovi sahifasi
+        // (`/leave-request` bilan bir xil naqsh, shell'dan tashqarida). Usecase
+        // (`SubmitPremya`) `getIt` orqali chaqiriladi — HAQIQIY backend
+        // (`POST /premya`, mock/api seam) bilan bog'langan.
+        GoRoute(
+          path: '/premya-request',
+          builder: (context, _) => const PremyaRequestPage(),
         ),
         // `/notifications` — bosh sahifadagi qo'ng'iroq belgisidan PUSH
         // qilinadigan to'liq ekranli sahifa (`/points` bilan bir xil

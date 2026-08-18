@@ -200,6 +200,7 @@
   "requestRateSuccessMessage": "Обращение успешно оценено",
   "requestNotFoundTitle": "Обращение не найдено",
   "leaveRequestTileLabel": "Запросить отгул",
+  "premyaRequestTileLabel": "Запросить премию",
   "leaveRequestPageTitle": "Запросить отгул",
   "leaveRequestDurationTypeLabel": "Тип продолжительности",
   "leaveRequestDurationHours": "Часами",

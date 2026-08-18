@@ -1,6 +1,5 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
-
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -625,6 +624,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get leaveRequestTileLabel => 'Запросить отгул';
+
+  @override
+  String get premyaRequestTileLabel => 'Запросить премию';
 
   @override
   String get leaveRequestPageTitle => 'Запросить отгул';
