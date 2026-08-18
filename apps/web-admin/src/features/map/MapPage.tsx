@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleMarker,
   GeoJSON,
@@ -46,6 +46,7 @@ import {
   statusLabel,
   trackRange,
   type FilterKey,
+  type Labels,
   type Lang,
   type StatusKey,
   type TrackWindow,
@@ -98,11 +99,32 @@ function markerIcon(
 }
 
 /** Flies to a position when the selected employee changes. */
-function FlyTo({ pos }: { pos: [number, number] | null }) {
+/**
+ * Flies to the selected employee ONCE, when the selection changes — keyed on
+ * `flyKey` (the employee id), NOT on the live position. This is deliberate:
+ * the map data polls every 15s and each poll yields a fresh position array,
+ * so keying on position would re-center (and fight the admin's manual pan)
+ * on every poll. The `lastKey` ref makes the fly a one-shot per selection.
+ */
+function FlyTo({
+  pos,
+  flyKey,
+}: {
+  pos: [number, number] | null;
+  flyKey: string | null;
+}) {
   const map = useMap();
+  const lastKey = useRef<string | null>(null);
   useEffect(() => {
-    if (pos) map.flyTo(pos, Math.max(map.getZoom(), 15), { duration: 0.8 });
-  }, [pos, map]);
+    if (!flyKey) {
+      lastKey.current = null;
+      return;
+    }
+    if (pos && flyKey !== lastKey.current) {
+      lastKey.current = flyKey;
+      map.flyTo(pos, Math.max(map.getZoom(), 15), { duration: 0.8 });
+    }
+  }, [pos, flyKey, map]);
   return null;
 }
 
@@ -129,12 +151,9 @@ export function MapPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile overlay
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
 
-  // 1s tick so the auto-refresh pill counts up between polls.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // NOTE: the "updated Xs ago" pill owns its own 1s ticker (see <UpdatedAgo/>)
+  // so the map subtree is NOT re-rendered every second — that used to make the
+  // map jump back and feel unpannable while an employee was selected.
 
   const districtQ = useQuery({
     queryKey: ['zones', 'district'],
@@ -174,10 +193,14 @@ export function MapPage() {
   const track = trackQ.data;
 
   const selected = locations.find((l) => l.employeeId === selectedId) ?? null;
-  const selectedPos: [number, number] | null =
-    selected && selected.latitude != null && selected.longitude != null
-      ? [selected.latitude, selected.longitude]
-      : null;
+  const selLat = selected?.latitude ?? null;
+  const selLng = selected?.longitude ?? null;
+  // Stable reference across renders — only changes when the coordinates change,
+  // so it never spuriously re-triggers effects on unrelated re-renders.
+  const selectedPos = useMemo<[number, number] | null>(
+    () => (selLat != null && selLng != null ? [selLat, selLng] : null),
+    [selLat, selLng],
+  );
 
   // Employees passing the search + mahalla filters (but NOT the status chip),
   // so each chip can advertise how many rows it would show.
@@ -560,7 +583,7 @@ export function MapPage() {
 
           {markers}
 
-          <FlyTo pos={selectedPos} />
+          <FlyTo pos={selectedPos} flyKey={selectedId} />
           <FlyToTarget target={flyTarget} />
         </MapContainer>
 
@@ -573,17 +596,11 @@ export function MapPage() {
             <Filter size={15} variant="Bulk" />
             {t.list}
           </button>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm backdrop-blur">
-            {locationsQ.isFetching ? (
-              <RotateRight size={13} className="animate-spin text-primary-600" />
-            ) : (
-              <span className="h-2 w-2 rounded-full bg-primary-500" />
-            )}
-            {t.updated}:{' '}
-            {locationsQ.dataUpdatedAt
-              ? agoShort(locationsQ.dataUpdatedAt, now, t)
-              : '—'}
-          </span>
+          <UpdatedAgo
+            isFetching={locationsQ.isFetching}
+            updatedAt={locationsQ.dataUpdatedAt}
+            t={t}
+          />
         </div>
 
         {/* Mahalla toggle */}
@@ -653,6 +670,37 @@ function Legend({ color, label }: { color: string; label: string }) {
     <span className="inline-flex items-center gap-1.5">
       <span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} />
       {label}
+    </span>
+  );
+}
+
+/**
+ * The "updated Xs ago" pill. Owns a private 1-second ticker so the relative
+ * time counts up smoothly WITHOUT re-rendering the map — this isolation is
+ * what keeps the live map freely pannable while data polls in the background.
+ */
+function UpdatedAgo({
+  isFetching,
+  updatedAt,
+  t,
+}: {
+  isFetching: boolean;
+  updatedAt: number;
+  t: Labels;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface/90 px-2.5 py-1 text-[11px] font-medium text-ink-soft shadow-sm backdrop-blur">
+      {isFetching ? (
+        <RotateRight size={13} className="animate-spin text-primary-600" />
+      ) : (
+        <span className="h-2 w-2 rounded-full bg-primary-500" />
+      )}
+      {t.updated}: {updatedAt ? agoShort(updatedAt, now, t) : '—'}
     </span>
   );
 }
