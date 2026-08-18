@@ -35,6 +35,13 @@ export const envValidationSchema = Joi.object({
   // code back in the response so the login flow can be exercised without a
   // live SMS gateway. Must stay false in production.
   OTP_DEV_ECHO: Joi.boolean().truthy('true').falsy('false').default(false),
+  // Fixed demo OTP code (e.g. "111111"): when set, /auth/request-otp stores it
+  // instead of a random code so citizens can log in without a live SMS gateway.
+  // Must be a 4-6 digit number (OTP_CODE_REGEX); leave empty in production.
+  OTP_DEMO_CODE: Joi.string()
+    .allow('')
+    .pattern(/^\d{4,6}$/)
+    .default(''),
 
   FACE_MATCH_THRESHOLD: Joi.number().min(0).max(1).default(DEFAULT_FACE_MATCH_THRESHOLD),
   GEOFENCE_RADIUS_M: Joi.number().positive().default(DEFAULT_GEOFENCE_RADIUS_M),

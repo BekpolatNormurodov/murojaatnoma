@@ -37,8 +37,14 @@ export class AuthService {
    * be disabled (OTP_DEV_ECHO=false) in every non-development environment.
    */
   async requestOtp(dto: RequestOtpDto): Promise<RequestOtpResultDto> {
-    const { ttlSeconds, devEcho } = this.configService.get('otp', { infer: true });
-    const code = randomInt(100000, 999999).toString();
+    const { ttlSeconds, devEcho, demoCode } = this.configService.get('otp', {
+      infer: true,
+    });
+    // When a fixed demo code is configured (OTP_DEMO_CODE, e.g. "111111"), use
+    // it so citizens can sign in with a known code while no live SMS gateway is
+    // wired; otherwise generate a random 6-digit code.
+    const code =
+      demoCode.length > 0 ? demoCode : randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
     await this.prisma.otpChallenge.create({

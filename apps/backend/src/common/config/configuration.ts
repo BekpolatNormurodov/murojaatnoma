@@ -34,6 +34,13 @@ export interface AppConfig {
     ttlSeconds: number;
     /** Dev convenience: echo the generated OTP code back in the response. */
     devEcho: boolean;
+    /**
+     * Fixed demo OTP code. When non-empty, /auth/request-otp stores THIS code
+     * instead of a random one, so citizens can sign in with a known code while
+     * no live SMS gateway is wired (e.g. "111111"). Leave empty in production
+     * with real SMS. Length must satisfy OTP_CODE_REGEX (4-6 digits).
+     */
+    demoCode: string;
   };
   attendance: {
     faceMatchThreshold: number;
@@ -95,6 +102,7 @@ export default (): AppConfig => ({
   otp: {
     ttlSeconds: parseInt(process.env.OTP_TTL_SECONDS ?? `${DEFAULT_OTP_TTL_SECONDS}`, 10),
     devEcho: (process.env.OTP_DEV_ECHO ?? 'false').toLowerCase() === 'true',
+    demoCode: process.env.OTP_DEMO_CODE ?? '',
   },
   attendance: {
     faceMatchThreshold: parseFloat(

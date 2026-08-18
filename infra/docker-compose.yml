@@ -83,6 +83,10 @@ services:
       # Dev bridge: return the OTP code in the request-otp response (no SMS
       # gateway wired yet). MUST be false in real production once SMS lands.
       OTP_DEV_ECHO: ${OTP_DEV_ECHO:-false}
+      # Fixed demo OTP code for citizen login while no SMS gateway is wired:
+      # /auth/request-otp stores this instead of a random code, so citizens sign
+      # in with a known 6-digit code (six ones). Set to "" once real SMS lands.
+      OTP_DEMO_CODE: ${OTP_DEMO_CODE:-111111}
       # Task-proof media uploads: multipart -> disk volume, served at /uploads/.
       UPLOADS_DIR: ${UPLOADS_DIR:-/app/uploads}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://murojaatnoma.uz}
