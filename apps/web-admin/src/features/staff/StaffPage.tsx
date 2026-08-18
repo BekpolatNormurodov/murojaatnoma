@@ -22,6 +22,7 @@ import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select } from '@/shared/ui/Select';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { timeAgo } from '@/shared/lib/format';
 import { ROLE_META, WEEKDAYS } from '@/shared/data/mock';
 import type { StaffMember, StaffRole, StaffStatus } from '@/shared/data/types';
@@ -65,6 +66,7 @@ export function StaffPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const { canWrite } = usePermissions();
 
   // CRUD holati: yaratish oynasi / o'chirishni tasdiqlash / qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -164,12 +166,14 @@ export function StaffPage() {
         title="Xodimlar boshqaruvi"
         subtitle="Hokim apparati xodimlari, rollar, ruxsatlar va kirish ma'lumotlari"
         action={
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
-          >
-            <Add size={20} /> Xodim qo'shish
-          </button>
+          canWrite && (
+            <button
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+            >
+              <Add size={20} /> Xodim qo'shish
+            </button>
+          )
         }
       />
 
@@ -334,9 +338,11 @@ export function StaffPage() {
                       Hokim apparati xodimini qo'shib boshlang
                     </p>
                   </div>
-                  <Button onClick={() => setCreating(true)}>
-                    <Add size={18} /> Xodim qo'shish
-                  </Button>
+                  {canWrite && (
+                    <Button onClick={() => setCreating(true)}>
+                      <Add size={18} /> Xodim qo'shish
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>

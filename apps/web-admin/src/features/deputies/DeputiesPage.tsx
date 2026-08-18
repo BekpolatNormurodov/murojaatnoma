@@ -25,6 +25,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { CATEGORY_META, COMPLAINTS, REQUESTS } from '@/shared/data/mock';
 import type { Deputy, RequestCategory } from '@/shared/data/types';
 import { useDeputies } from './useDeputies';
@@ -234,6 +235,7 @@ export function DeputiesPage() {
   const [categoryFilter, setCategoryFilter] = useState<RequestCategory | 'all'>('all');
   const [selected, setSelected] = useState<Deputy | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const { canWrite } = usePermissions();
 
   // CRUD holati: yaratish / tahrirlash / o'chirish oynalari + qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -320,12 +322,14 @@ export function DeputiesPage() {
         title="Hokim o'rinbosarlari"
         subtitle="Hokimiyat rahbariyati — yo'nalishlar bo'yicha mas'ul o'rinbosarlar. Murojaatlar yo'nalishga qarab avtomatik biriktiriladi."
         action={
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
-          >
-            <Add size={20} /> O'rinbosar qo'shish
-          </button>
+          canWrite && (
+            <button
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+            >
+              <Add size={20} /> O'rinbosar qo'shish
+            </button>
+          )
         }
       />
 
@@ -486,9 +490,11 @@ export function DeputiesPage() {
                       Birinchi hokim o'rinbosarini qo'shib boshlang
                     </p>
                   </div>
-                  <Button onClick={() => setCreating(true)}>
-                    <Add size={18} /> O'rinbosar qo'shish
-                  </Button>
+                  {canWrite && (
+                    <Button onClick={() => setCreating(true)}>
+                      <Add size={18} /> O'rinbosar qo'shish
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>

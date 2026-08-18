@@ -20,6 +20,7 @@ import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatDate, formatSom, formatSomShort } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { useBonuses, type Bonus } from './useBonuses';
 import { useCreateBonus, useDeleteBonus, type CreateBonusInput } from './useBonusMutations';
 import { bonusSource, formatMonthLabel, SOURCE_META } from './meta';
@@ -35,6 +36,7 @@ export function BonusesPage() {
   const { data, isLoading, isError, error, refetch } = useBonuses(monthFilter || undefined);
   const bonuses = useMemo(() => data ?? [], [data]);
   const reducedMotion = usePrefersReducedMotion();
+  const { canWrite } = usePermissions();
 
   const [query, setQuery] = useState('');
   const [formOpen, setFormOpen] = useState(false);
@@ -94,9 +96,11 @@ export function BonusesPage() {
         title="Premyalar"
         subtitle="Xodim va ishchilarga berilgan premyalar (bonuslar) tarixi"
         action={
-          <Button onClick={() => setFormOpen(true)}>
-            <Add size={20} /> Premya yozish
-          </Button>
+          canWrite && (
+            <Button onClick={() => setFormOpen(true)}>
+              <Add size={20} /> Premya yozish
+            </Button>
+          )
         }
       />
 
@@ -203,9 +207,11 @@ export function BonusesPage() {
                   <p className="mt-3 text-sm text-ink-soft">
                     {hasAnyData ? 'Mos premya topilmadi' : 'Hozircha premyalar yoʻq'}
                   </p>
-                  <Button className="mt-4" onClick={() => setFormOpen(true)}>
-                    <Add size={18} /> Premya yozish
-                  </Button>
+                  {canWrite && (
+                    <Button className="mt-4" onClick={() => setFormOpen(true)}>
+                      <Add size={18} /> Premya yozish
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -270,6 +276,7 @@ function BonusRow({
 }) {
   const src = bonusSource(bonus);
   const meta = SOURCE_META[src];
+  const { canWrite } = usePermissions();
   return (
     <motion.tr
       initial={reducedMotion ? false : { opacity: 0 }}
@@ -296,14 +303,16 @@ function BonusRow({
       <td className="px-3 py-3 text-ink-muted">{formatDate(bonus.createdAt)}</td>
       <td className="px-5 py-3">
         <div className="flex items-center justify-end">
-          <button
-            onClick={onDelete}
-            title="O'chirish"
-            aria-label={`${bonus.recipientName} premyasini o'chirish`}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-danger-soft hover:text-red-600"
-          >
-            <Trash size={17} />
-          </button>
+          {canWrite && (
+            <button
+              onClick={onDelete}
+              title="O'chirish"
+              aria-label={`${bonus.recipientName} premyasini o'chirish`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-danger-soft hover:text-red-600"
+            >
+              <Trash size={17} />
+            </button>
+          )}
         </div>
       </td>
     </motion.tr>

@@ -29,6 +29,7 @@ import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
 import type { RequestStatus } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { formatDate } from '@/shared/lib/format';
 import { DatePicker } from '@/shared/ui/DatePicker';
 import { getDeadline, isOpen, urgencyMeta, type Urgency } from './deadline';
@@ -125,6 +126,7 @@ export function RequestsPage() {
   const addRequest = useRequests((s) => s.add);
   const [addOpen, setAddOpen] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
+  const { canWrite } = usePermissions();
 
   // Tanlangan sana oralig'ining chegaralari (ms). null = filtrlanmaydi.
   const dateBounds = useMemo<{ from: number; to: number } | null>(() => {
@@ -250,12 +252,14 @@ export function RequestsPage() {
               <Sort size={18} />
               {sortKey === 'urgency' ? t('requests.sort.byDeadline') : t('requests.sort.byDate')}
             </button>
-            <button
-              onClick={() => setAddOpen(true)}
-              className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
-            >
-              <Add size={18} /> {t('requests.addButton')}
-            </button>
+            {canWrite && (
+              <button
+                onClick={() => setAddOpen(true)}
+                className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
+              >
+                <Add size={18} /> {t('requests.addButton')}
+              </button>
+            )}
           </div>
         }
       />
@@ -562,9 +566,11 @@ export function RequestsPage() {
             </p>
           </div>
           {requests.length === 0 ? (
-            <Button onClick={() => setAddOpen(true)}>
-              <Add size={18} /> {t('requests.addButton')}
-            </Button>
+            canWrite && (
+              <Button onClick={() => setAddOpen(true)}>
+                <Add size={18} /> {t('requests.addButton')}
+              </Button>
+            )
           ) : (
             <Button
               variant="secondary"

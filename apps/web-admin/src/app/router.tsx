@@ -1,6 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AdminLayout } from './layout/AdminLayout';
-import { ProtectedRoute, GuestRoute } from './guards';
+import { ProtectedRoute, GuestRoute, RoleRoute } from './guards';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { RequestsPage } from '@/features/requests/RequestsPage';
@@ -38,24 +38,27 @@ export const router = createBrowserRouter([
       </ProtectedRoute>
     ),
     children: [
+      // Boshqaruv paneli har doim ochiq (SUPER_ADMIN/ADMIN/VIEWER) — rol noaniq/eski
+      // bo'lsa ham RoleRoute'ning "/" ga qaytarish natijasida cheksiz redirect
+      // hosil bo'lmasligi uchun bu marshrut ataylab RoleRoute bilan o'ralmagan.
       { index: true, element: <DashboardPage /> },
-      { path: 'requests', element: <RequestsPage /> },
-      { path: 'complaints', element: <ComplaintsPage /> },
-      { path: 'meetings', element: <MeetingsPage /> },
-      { path: 'chat', element: <ChatPage /> },
-      { path: 'deputies', element: <DeputiesPage /> },
-      { path: 'workers', element: <WorkersPage /> },
-      { path: 'attendance', element: <AttendancePage /> },
-      { path: 'staff', element: <StaffPage /> },
-      { path: 'bonuses', element: <BonusesPage /> },
-      { path: 'map', element: <MapPage /> },
-      { path: 'app-users', element: <AppUsersPage /> },
-      { path: 'cameras', element: <CamerasPage /> },
-      { path: 'finance', element: <FinancePage /> },
-      { path: 'analytics', element: <AnalyticsPage /> },
-      { path: 'documents', element: <DocumentsPage /> },
-      { path: 'news', element: <NewsPage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      { path: 'requests', element: <RoleRoute feature="requests"><RequestsPage /></RoleRoute> },
+      { path: 'complaints', element: <RoleRoute feature="complaints"><ComplaintsPage /></RoleRoute> },
+      { path: 'meetings', element: <RoleRoute feature="meetings"><MeetingsPage /></RoleRoute> },
+      { path: 'chat', element: <RoleRoute feature="chat"><ChatPage /></RoleRoute> },
+      { path: 'deputies', element: <RoleRoute feature="deputies"><DeputiesPage /></RoleRoute> },
+      { path: 'workers', element: <RoleRoute feature="workers"><WorkersPage /></RoleRoute> },
+      { path: 'attendance', element: <RoleRoute feature="attendance"><AttendancePage /></RoleRoute> },
+      { path: 'staff', element: <RoleRoute feature="staff"><StaffPage /></RoleRoute> },
+      { path: 'bonuses', element: <RoleRoute feature="bonuses"><BonusesPage /></RoleRoute> },
+      { path: 'map', element: <RoleRoute feature="map"><MapPage /></RoleRoute> },
+      { path: 'app-users', element: <RoleRoute feature="appUsers"><AppUsersPage /></RoleRoute> },
+      { path: 'cameras', element: <RoleRoute feature="cameras"><CamerasPage /></RoleRoute> },
+      { path: 'finance', element: <RoleRoute feature="finance"><FinancePage /></RoleRoute> },
+      { path: 'analytics', element: <RoleRoute feature="analytics"><AnalyticsPage /></RoleRoute> },
+      { path: 'documents', element: <RoleRoute feature="documents"><DocumentsPage /></RoleRoute> },
+      { path: 'news', element: <RoleRoute feature="news"><NewsPage /></RoleRoute> },
+      { path: 'settings', element: <RoleRoute feature="settings"><SettingsPage /></RoleRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

@@ -2,10 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { API_BASE } from "@/shared/api/config";
 
+/** Backend admin roli (auth/admin/login + /auth/admin/me bilan bir xil). */
+export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "VIEWER";
+
 export interface AuthUser {
   name: string;
   email: string;
-  role: string;
+  role: AdminRole;
   avatar?: string;
   username?: string;
 }
@@ -46,7 +49,7 @@ function toUser(a: AdminDto): AuthUser {
   return {
     name: a.fullName || a.username,
     email: a.email ?? "",
-    role: a.role,
+    role: a.role as AdminRole,
     username: a.username,
   };
 }

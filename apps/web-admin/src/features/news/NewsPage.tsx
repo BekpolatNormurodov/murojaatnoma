@@ -8,6 +8,7 @@ import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, formatCompact, timeAgo } from '@/shared/lib/format';
 import { api } from '@/shared/api/client';
+import { usePermissions } from '@/shared/lib/permissions';
 import { NEWS_META } from '@/shared/data/mock';
 import type { NewsCategory, NewsItem } from '@/shared/data/types';
 import { useNews } from './useNews';
@@ -34,6 +35,7 @@ export function NewsPage() {
   const [selected, setSelected] = useState<NewsItem | null>(null);
   const [editing, setEditing] = useState<NewsItem | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const { canWrite } = usePermissions();
 
   useEffect(() => {
     if (data) setItems(data);
@@ -94,12 +96,14 @@ export function NewsPage() {
         title="Yangiliklar va e'lonlar"
         subtitle="Tuman hokimiyati rasmiy xabarlari, e'lonlar va tadbirlar"
         action={
-          <button
-            onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
-          >
-            <Add size={20} /> Yangilik qo'shish
-          </button>
+          canWrite && (
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+            >
+              <Add size={20} /> Yangilik qo'shish
+            </button>
+          )
         }
       />
 

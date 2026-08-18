@@ -24,6 +24,7 @@ import { DISTRICTS } from '@/shared/data/mock';
 import type { Camera, CameraStatus } from '@/shared/data/types';
 import { formatNumber, timeAgo } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { useCameras } from './useCameras';
 import { useLiveCameras } from './useLiveCameras';
 import { EVENT_META, STATUS_LABEL, TYPE_LABEL } from './meta';
@@ -153,6 +154,7 @@ export function CamerasPage() {
   const [live, setLive] = useState(true);
   const [selected, setSelected] = useState<Camera | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const { canWrite } = usePermissions();
 
   const { data: baseCameras, isLoading, isError, error, refetch } = useCameras();
   const { cameras, events, addCamera, removeCamera } = useLiveCameras(baseCameras ?? [], live);
@@ -227,9 +229,11 @@ export function CamerasPage() {
                 </>
               )}
             </button>
-            <Button onClick={() => setAddOpen(true)}>
-              <Add size={18} /> Kamera qo‘shish
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setAddOpen(true)}>
+                <Add size={18} /> Kamera qo‘shish
+              </Button>
+            )}
           </div>
         }
       />

@@ -33,11 +33,13 @@ import { useRequests } from '@/shared/store/requests';
 import { useComplaints } from '@/shared/store/complaints';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions, type Feature } from '@/shared/lib/permissions';
 
 interface NavItem {
   to: string;
   labelKey: string;
   icon: IconType;
+  feature: Feature;
   badge?: number;
 }
 
@@ -50,42 +52,42 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.main',
     items: [
-      { to: '/', labelKey: 'nav.dashboard', icon: Element3 },
-      { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion },
-      { to: '/complaints', labelKey: 'nav.complaints', icon: Danger },
-      { to: '/meetings', labelKey: 'nav.meetings', icon: Calendar },
-      { to: '/chat', labelKey: 'nav.chat', icon: Messages2 },
-      { to: '/map', labelKey: 'nav.map', icon: Map1 },
-      { to: '/app-users', labelKey: 'nav.appUsers', icon: Mobile },
+      { to: '/', labelKey: 'nav.dashboard', icon: Element3, feature: 'dashboard' },
+      { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion, feature: 'requests' },
+      { to: '/complaints', labelKey: 'nav.complaints', icon: Danger, feature: 'complaints' },
+      { to: '/meetings', labelKey: 'nav.meetings', icon: Calendar, feature: 'meetings' },
+      { to: '/chat', labelKey: 'nav.chat', icon: Messages2, feature: 'chat' },
+      { to: '/map', labelKey: 'nav.map', icon: Map1, feature: 'map' },
+      { to: '/app-users', labelKey: 'nav.appUsers', icon: Mobile, feature: 'appUsers' },
     ],
   },
   {
     titleKey: 'nav.section.staff',
     items: [
-      { to: '/deputies', labelKey: 'nav.deputies', icon: Hierarchy },
-      { to: '/workers', labelKey: 'nav.workers', icon: Profile2User },
-      { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick },
-      { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser },
+      { to: '/deputies', labelKey: 'nav.deputies', icon: Hierarchy, feature: 'deputies' },
+      { to: '/workers', labelKey: 'nav.workers', icon: Profile2User, feature: 'workers' },
+      { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick, feature: 'attendance' },
+      { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser, feature: 'staff' },
       // dict.ts'da tarjima kaliti yo'q — t() topilmagan kalitni o'zini
       // qaytaradi (I18nProvider fallback), shu sababli literal so'z
       // to'g'ridan-to'g'ri ko'rsatiladi (uz/ru/en'da bir xil).
-      { to: '/bonuses', labelKey: 'Premyalar', icon: MedalStar },
+      { to: '/bonuses', labelKey: 'Premyalar', icon: MedalStar, feature: 'bonuses' },
     ],
   },
   {
     titleKey: 'nav.section.monitoring',
-    items: [{ to: '/cameras', labelKey: 'nav.cameras', icon: Video }],
+    items: [{ to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' }],
   },
   {
     titleKey: 'nav.section.finance',
-    items: [{ to: '/finance', labelKey: 'nav.finance', icon: WalletMoney }],
+    items: [{ to: '/finance', labelKey: 'nav.finance', icon: WalletMoney, feature: 'finance' }],
   },
   {
     titleKey: 'nav.section.other',
     items: [
-      { to: '/analytics', labelKey: 'nav.analytics', icon: Chart21 },
-      { to: '/documents', labelKey: 'nav.documents', icon: Folder2 },
-      { to: '/news', labelKey: 'nav.news', icon: Speaker },
+      { to: '/analytics', labelKey: 'nav.analytics', icon: Chart21, feature: 'analytics' },
+      { to: '/documents', labelKey: 'nav.documents', icon: Folder2, feature: 'documents' },
+      { to: '/news', labelKey: 'nav.news', icon: Speaker, feature: 'news' },
     ],
   },
 ];
@@ -100,6 +102,14 @@ export function SidebarContent({
   const { t } = useI18n();
   const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
+  const { can } = usePermissions();
+  // Rol ko'ra olmaydigan bo'limlar menyudan yashiriladi (bo'sh qolgan bo'lim ham
+  // ko'rsatilmaydi) — router.tsx'dagi RoleRoute bilan bir xil `can()` xaritasi,
+  // shu sababli to'g'ridan-to'g'ri URL kiritilsa ham marshrut "/" ga qaytaradi.
+  const visibleSections = SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => can(item.feature)),
+  })).filter((section) => section.items.length > 0);
   // Suhbatlar ro'yxati boshqa joyda (ChatPage) allaqachon so'ralgan bo'lsa,
   // react-query keshidan qayta ishlatiladi — qo'shimcha so'rov yubormaydi.
   const { data: conversations } = useConversations();
@@ -129,7 +139,7 @@ export function SidebarContent({
 
       {/* Nav */}
       <nav className={cn('flex-1 space-y-1 overflow-y-auto overflow-x-hidden pb-4', collapsed ? 'px-2' : 'px-3')}>
-        {SECTIONS.map((section, si) => (
+        {visibleSections.map((section, si) => (
           <div key={section.titleKey}>
             {collapsed ? (
               si > 0 && <div className="mx-auto my-2 h-px w-8 bg-line" />
@@ -204,23 +214,25 @@ export function SidebarContent({
 
       {/* Footer */}
       <div className={cn('space-y-1 border-t border-line py-4', collapsed ? 'px-2' : 'px-3')}>
-        <NavLink
-          to="/settings"
-          onClick={onNavigate}
-          title={collapsed ? t('nav.settings') : undefined}
-          className={({ isActive }) =>
-            cn(
-              'flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors',
-              collapsed ? 'justify-center px-0' : 'px-3',
-              isActive
-                ? 'bg-primary-50 text-primary-700'
-                : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
-            )
-          }
-        >
-          <Setting2 size={21} className="shrink-0" />
-          {!collapsed && t('nav.settings')}
-        </NavLink>
+        {can('settings') && (
+          <NavLink
+            to="/settings"
+            onClick={onNavigate}
+            title={collapsed ? t('nav.settings') : undefined}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors',
+                collapsed ? 'justify-center px-0' : 'px-3',
+                isActive
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+              )
+            }
+          >
+            <Setting2 size={21} className="shrink-0" />
+            {!collapsed && t('nav.settings')}
+          </NavLink>
+        )}
         <button
           onClick={() => setLogoutOpen(true)}
           title={collapsed ? t('nav.logout') : undefined}

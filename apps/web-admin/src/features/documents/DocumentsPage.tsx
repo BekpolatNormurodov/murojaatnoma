@@ -30,6 +30,7 @@ import type { GovDocStatus, GovDocType, GovDocument } from '@/shared/data/types'
 import { formatDate } from '@/shared/lib/format';
 import { exportToCSV, exportToExcel, fileStamp, printHTML, printTable } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { useDocuments } from './useDocuments';
 import { DOC_EXPORT_COLUMNS, STATUS_DOT, STATUS_META, TYPE_META, buildDocHTML, formatSize } from './meta';
 import { AddDocumentModal, DocumentPreviewModal, ReportsModal } from './DocumentModals';
@@ -81,6 +82,7 @@ export function DocumentsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [preview, setPreview] = useState<GovDocument | null>(null);
+  const { canWrite } = usePermissions();
 
   useEffect(() => {
     if (data) setDocs(data.map((d) => ({ ...d })));
@@ -188,9 +190,11 @@ export function DocumentsPage() {
                 },
               ]}
             />
-            <Button onClick={() => setAddOpen(true)}>
-              <Add size={18} /> Yangi hujjat
-            </Button>
+            {canWrite && (
+              <Button onClick={() => setAddOpen(true)}>
+                <Add size={18} /> Yangi hujjat
+              </Button>
+            )}
           </div>
         }
       />

@@ -30,6 +30,7 @@ import { DISTRICTS } from '@/shared/data/mock';
 import type { Worker, WorkerStatus } from '@/shared/data/types';
 import { formatNumber } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
+import { usePermissions } from '@/shared/lib/permissions';
 import { WorkerDetail } from './WorkerDetail';
 import { WorkerFormModal } from './WorkerFormModal';
 import { useWorkers } from './useWorkers';
@@ -63,6 +64,7 @@ export function WorkersPage() {
   const [statusFilter, setStatusFilter] = useState<WorkerStatus | 'all'>('all');
   const [selected, setSelected] = useState<Worker | null>(null);
   const reducedMotion = usePrefersReducedMotion();
+  const { canWrite } = usePermissions();
 
   // CRUD holati: yaratish / tahrirlash / o'chirish oynalari + qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -166,12 +168,14 @@ export function WorkersPage() {
         title="Ishchilar"
         subtitle="Dala ishchilarini boshqaring — davomat, geofence, reyting va hujjatlar"
         action={
-          <button
-            onClick={() => setCreating(true)}
-            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
-          >
-            <Add size={20} /> Ishchi qo'shish
-          </button>
+          canWrite && (
+            <button
+              onClick={() => setCreating(true)}
+              className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+            >
+              <Add size={20} /> Ishchi qo'shish
+            </button>
+          )
         }
       />
 
@@ -413,9 +417,11 @@ export function WorkersPage() {
                       Birinchi dala ishchisini qo'shib boshlang
                     </p>
                   </div>
-                  <Button onClick={() => setCreating(true)}>
-                    <Add size={18} /> Ishchi qo'shish
-                  </Button>
+                  {canWrite && (
+                    <Button onClick={() => setCreating(true)}>
+                      <Add size={18} /> Ishchi qo'shish
+                    </Button>
+                  )}
                 </>
               ) : (
                 <>
