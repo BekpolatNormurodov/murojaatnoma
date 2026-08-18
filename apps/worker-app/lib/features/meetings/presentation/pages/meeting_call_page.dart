@@ -91,11 +91,25 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
   /// holatini qayta tekshirishga arziydi.
   bool _wasBackgrounded = false;
 
+  /// `_initCamera` orqali topilgan barcha kameralar — old/orqa almashtirish
+  /// (flip) tugmasi shu ro'yxat asosida ishlaydi. 1 tadan kam bo'lsa
+  /// tugma butunlay yashiriladi (masalan emulyator yoki bitta kamerali
+  /// qurilma).
+  List<CameraDescription> _cameras = [];
+  int _cameraIndex = 0;
+  bool _flippingCamera = false;
+
   bool _micOn = true;
   bool _camOn = true;
   bool _sharing = false;
   bool _panelOpen = false;
   bool _pickerOpen = false;
+
+  /// Qo'shilish bosilgandan keyin, ishtirokchilar/timer boshlanishidan
+  /// oldin qisqa "ulanmoqda" bosqichi — haqiqiy qo'ng'iroqqa ulanish
+  /// tuyg'usini beradi.
+  bool _connecting = false;
+  Timer? _connectTimer;
 
   DateTime? _startedAt;
   Duration _elapsed = Duration.zero;
@@ -125,6 +139,7 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
     _elapsedTicker?.cancel();
     _speakingTicker?.cancel();
     _toastTimer?.cancel();
+    _connectTimer?.cancel();
     for (final t in _joinTimers) {
       t.cancel();
     }
@@ -195,6 +210,8 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
         (c) => c.lensDirection == CameraLensDirection.front,
       );
       if (index < 0) index = 0;
+      _cameras = cameras;
+      _cameraIndex = index;
       await _openController(cameras[index]);
     } on Object {
       if (mounted) setState(() => _camPhase = _CamPhase.cameraError);
@@ -207,6 +224,13 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
       await controller.initialize();
     } on Object {
       unawaited(controller.dispose());
+      // Bu chaqiruv kamera almashtirish (flip) davomida bo'lgan bo'lishi
+      // mumkin — o'sha holda `_controller` hali OLDINGI (ishlab turgan)
+      // kontrollerga ishora qilib turibdi. Yangisi ochilmasa ham, eskisini
+      // shu yerda tozalamasak, u UI'da ko'rsatilmagan holda fonda "osilib"
+      // qolib, xotira/kamera resursini band qilib turadi.
+      unawaited(_controller?.dispose());
+      _controller = null;
       if (mounted) setState(() => _camPhase = _CamPhase.cameraError);
       return;
     }
@@ -233,17 +257,52 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
     setState(() => _camOn = !_camOn);
   }
 
+  /// Mavjud kameralar orasida (masalan old <-> orqa) almashtiradi. Diqqat:
+  /// `_camPhase` bu davomda ATAYLAB `live`dan chetlanmaydi — eski
+  /// kontroller almashtirish tugaguncha ko'rsatilishda davom etadi (kamroq
+  /// "miltillash"), va bu ilova fon rejimiga tasodifan almashtirish
+  /// o'rtasida o'tib qolsa ham `didChangeAppLifecycleState`ning odatiy
+  /// tozalash yo'lini (`_camPhase == live` tekshiruvi) buzmaydi.
+  Future<void> _flipCamera() async {
+    if (_flippingCamera || _camPhase != _CamPhase.live || _cameras.length < 2) {
+      return;
+    }
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _flippingCamera = true);
+    final nextIndex = (_cameraIndex + 1) % _cameras.length;
+    await _openController(_cameras[nextIndex]);
+    if (!mounted) return;
+    setState(() {
+      _cameraIndex = nextIndex;
+      _flippingCamera = false;
+    });
+  }
+
   void _joinWithoutCamera() {
     setState(() {
       _camOn = false;
       _stage = _Stage.call;
     });
-    _startCallSimulation();
+    _beginConnecting();
   }
 
   void _join() {
     setState(() => _stage = _Stage.call);
-    _startCallSimulation();
+    _beginConnecting();
+  }
+
+  /// "Qo'shilish" bosilgandan so'ng qisqa "ulanmoqda" bosqichi — shundan
+  /// keyingina ishtirokchilar qo'shila boshlaydi va vaqt sanog'i ishga
+  /// tushadi (real qo'ng'iroqqa ulanish tuyg'usi uchun).
+  void _beginConnecting() {
+    HapticFeedback.mediumImpact();
+    setState(() => _connecting = true);
+    _connectTimer?.cancel();
+    _connectTimer = Timer(const Duration(milliseconds: 950), () {
+      if (!mounted) return;
+      setState(() => _connecting = false);
+      _startCallSimulation();
+    });
   }
 
   void _startCallSimulation() {
@@ -351,6 +410,9 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
               micOn: _micOn,
               camOn: _camOn,
               selfName: selfName,
+              canFlipCamera: _cameras.length > 1,
+              flippingCamera: _flippingCamera,
+              onFlipCamera: _flipCamera,
               onToggleMic: _toggleMic,
               onToggleCam: _toggleCam,
               onRetryCamera: () => unawaited(_initCamera()),
@@ -361,12 +423,16 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
           : _CallView(
               meeting: widget.meeting,
               camPhase: _camPhase,
+              permanentlyDenied: _permanentlyDenied,
               controller: _controller,
               micOn: _micOn,
               camOn: _camOn,
               sharing: _sharing,
               panelOpen: _panelOpen,
               pickerOpen: _pickerOpen,
+              connecting: _connecting,
+              canFlipCamera: _cameras.length > 1,
+              flippingCamera: _flippingCamera,
               elapsed: _elapsed,
               joined: _joined,
               selfName: selfName,
@@ -374,6 +440,8 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
               floatingReactions: _floatingReactions,
               onToggleMic: _toggleMic,
               onToggleCam: _toggleCam,
+              onFlipCamera: _flipCamera,
+              onRetryCamera: () => unawaited(_initCamera()),
               onToggleSharing: () => setState(() => _sharing = !_sharing),
               onTogglePanel: () => setState(() => _panelOpen = !_panelOpen),
               onTogglePicker: () => setState(() => _pickerOpen = !_pickerOpen),
@@ -397,6 +465,9 @@ class _LobbyView extends StatelessWidget {
     required this.micOn,
     required this.camOn,
     required this.selfName,
+    required this.canFlipCamera,
+    required this.flippingCamera,
+    required this.onFlipCamera,
     required this.onToggleMic,
     required this.onToggleCam,
     required this.onRetryCamera,
@@ -412,6 +483,9 @@ class _LobbyView extends StatelessWidget {
   final bool micOn;
   final bool camOn;
   final String selfName;
+  final bool canFlipCamera;
+  final bool flippingCamera;
+  final VoidCallback onFlipCamera;
   final VoidCallback onToggleMic;
   final VoidCallback onToggleCam;
   final VoidCallback onRetryCamera;
@@ -488,6 +562,17 @@ class _LobbyView extends StatelessWidget {
                             bottom: 12,
                             child: _SelfBadge(micOn: micOn),
                           ),
+                          if (camPhase == _CamPhase.live &&
+                              camOn &&
+                              canFlipCamera)
+                            Positioned(
+                              right: 12,
+                              top: 12,
+                              child: _FlipCameraButton(
+                                flipping: flippingCamera,
+                                onTap: onFlipCamera,
+                              ),
+                            ),
                           Positioned(
                             left: 0,
                             right: 0,
@@ -1018,12 +1103,16 @@ class _CallView extends StatelessWidget {
   const _CallView({
     required this.meeting,
     required this.camPhase,
+    required this.permanentlyDenied,
     required this.controller,
     required this.micOn,
     required this.camOn,
     required this.sharing,
     required this.panelOpen,
     required this.pickerOpen,
+    required this.connecting,
+    required this.canFlipCamera,
+    required this.flippingCamera,
     required this.elapsed,
     required this.joined,
     required this.selfName,
@@ -1031,6 +1120,8 @@ class _CallView extends StatelessWidget {
     required this.floatingReactions,
     required this.onToggleMic,
     required this.onToggleCam,
+    required this.onFlipCamera,
+    required this.onRetryCamera,
     required this.onToggleSharing,
     required this.onTogglePanel,
     required this.onTogglePicker,
@@ -1040,12 +1131,19 @@ class _CallView extends StatelessWidget {
 
   final Meeting meeting;
   final _CamPhase camPhase;
+  final bool permanentlyDenied;
   final CameraController? controller;
   final bool micOn;
   final bool camOn;
   final bool sharing;
   final bool panelOpen;
   final bool pickerOpen;
+
+  /// Qo'shilishdan keyingi qisqa "ulanmoqda" bosqichi — shu davrda butun
+  /// qo'ng'iroq ekrani ustidan tiniq bo'lmagan overlay ko'rsatiladi.
+  final bool connecting;
+  final bool canFlipCamera;
+  final bool flippingCamera;
   final Duration elapsed;
   final List<_LiveParticipant> joined;
   final String selfName;
@@ -1053,6 +1151,8 @@ class _CallView extends StatelessWidget {
   final List<({int id, String emoji, double left})> floatingReactions;
   final VoidCallback onToggleMic;
   final VoidCallback onToggleCam;
+  final VoidCallback onFlipCamera;
+  final VoidCallback onRetryCamera;
   final VoidCallback onToggleSharing;
   final VoidCallback onTogglePanel;
   final VoidCallback onTogglePicker;
@@ -1064,86 +1164,104 @@ class _CallView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Column(
+      child: Stack(
         children: [
-          _CallTopBar(
-            title: meeting.title,
-            elapsed: elapsed,
-            total: _total,
-            panelOpen: panelOpen,
-            onTogglePanel: onTogglePanel,
-            onClose: onEndCall,
-          ),
-          Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Stack(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: _ParticipantGrid(
-                          camPhase: camPhase,
-                          controller: controller,
-                          micOn: micOn,
-                          camOn: camOn,
-                          joined: joined,
-                          selfName: selfName,
-                        ),
-                      ),
-                      if (sharing)
-                        Positioned(
-                          top: 8,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: _FloatingPill(
-                              text: context.l10n.callSharingBanner,
-                              color: AppColors.accent,
+          Column(
+            children: [
+              _CallTopBar(
+                title: meeting.title,
+                elapsed: elapsed,
+                total: _total,
+                panelOpen: panelOpen,
+                onTogglePanel: onTogglePanel,
+                onClose: onEndCall,
+              ),
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: _ParticipantGrid(
+                              camPhase: camPhase,
+                              permanentlyDenied: permanentlyDenied,
+                              controller: controller,
+                              micOn: micOn,
+                              camOn: camOn,
+                              canFlipCamera: canFlipCamera,
+                              flippingCamera: flippingCamera,
+                              onFlipCamera: onFlipCamera,
+                              onRetryCamera: onRetryCamera,
+                              joined: joined,
+                              selfName: selfName,
                             ),
                           ),
-                        )
-                      else if (toastName != null)
-                        Positioned(
-                          top: 8,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: _FloatingPill(
-                              key: ValueKey(toastName),
-                              text: context.l10n.callParticipantJoined(
-                                toastName!,
+                          if (sharing)
+                            Positioned(
+                              top: 8,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: _FloatingPill(
+                                  text: context.l10n.callSharingBanner,
+                                  color: AppColors.accent,
+                                ),
                               ),
-                              color: Colors.black.withValues(alpha: 0.7),
+                            )
+                          else if (toastName != null)
+                            Positioned(
+                              top: 8,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: _FloatingPill(
+                                  key: ValueKey(toastName),
+                                  text: context.l10n.callParticipantJoined(
+                                    toastName!,
+                                  ),
+                                  color: Colors.black.withValues(alpha: 0.7),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ..._buildFloatingReactions(),
-                    ],
-                  ),
+                          ..._buildFloatingReactions(),
+                        ],
+                      ),
+                    ),
+                    _PeoplePanel(
+                      open: panelOpen,
+                      meeting: meeting,
+                      micOn: micOn,
+                      camOn: camOn,
+                      joined: joined,
+                      onClose: onTogglePanel,
+                    ),
+                  ],
                 ),
-                _PeoplePanel(
-                  open: panelOpen,
-                  meeting: meeting,
-                  micOn: micOn,
-                  camOn: camOn,
-                  joined: joined,
-                  onClose: onTogglePanel,
-                ),
-              ],
-            ),
+              ),
+              _CallControls(
+                micOn: micOn,
+                camOn: camOn,
+                sharing: sharing,
+                pickerOpen: pickerOpen,
+                onToggleMic: onToggleMic,
+                onToggleCam: onToggleCam,
+                onToggleSharing: onToggleSharing,
+                onTogglePicker: onTogglePicker,
+                onSendReaction: onSendReaction,
+                onEndCall: onEndCall,
+              ),
+            ],
           ),
-          _CallControls(
-            micOn: micOn,
-            camOn: camOn,
-            sharing: sharing,
-            pickerOpen: pickerOpen,
-            onToggleMic: onToggleMic,
-            onToggleCam: onToggleCam,
-            onToggleSharing: onToggleSharing,
-            onTogglePicker: onTogglePicker,
-            onSendReaction: onSendReaction,
-            onEndCall: onEndCall,
+          IgnorePointer(
+            ignoring: !connecting,
+            child: AnimatedOpacity(
+              opacity: connecting ? 1 : 0,
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeOut,
+              child: _ConnectingOverlay(meetingTitle: meeting.title),
+            ),
           ),
         ],
       ),
@@ -1177,6 +1295,57 @@ class _CallView extends StatelessWidget {
   }
 }
 
+/// Qo'shilishdan keyingi qisqa "ulanmoqda" bosqichida butun qo'ng'iroq
+/// ekrani ustidan ko'rsatiladigan tiniq bo'lmagan overlay.
+class _ConnectingOverlay extends StatelessWidget {
+  const _ConnectingOverlay({required this.meetingTitle});
+
+  final String meetingTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: AppColors.ink.withValues(alpha: 0.92),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.6,
+                  valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'Video-konferensiyaga ulanmoqda…',
+                style: AppTextStyles.bodyStrong.copyWith(
+                  color: AppColors.surface,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                meetingTitle,
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.surface.withValues(alpha: 0.55),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CallTopBar extends StatelessWidget {
   const _CallTopBar({
     required this.title,
@@ -1205,114 +1374,131 @@ class _CallTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppColors.danger.withValues(alpha: 0.16),
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                      IconsaxPlusBold.record_circle,
-                      size: 11,
-                      color: AppColors.danger,
-                    )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .fadeIn(duration: 500.ms)
-                    .then()
-                    .fadeOut(duration: 500.ms),
-                const SizedBox(width: 5),
-                Text(
-                  l10n.callLive,
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.danger,
-                    fontWeight: FontWeight.w800,
-                  ),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(99),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.bodyStrong.copyWith(
-                    color: AppColors.surface,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                          IconsaxPlusBold.record_circle,
+                          size: 11,
+                          color: AppColors.danger,
+                        )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .fadeIn(duration: 500.ms)
+                        .then()
+                        .fadeOut(duration: 500.ms),
+                    const SizedBox(width: 5),
+                    Text(
+                      l10n.callLive,
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.danger,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  _fmt(elapsed),
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.surface.withValues(alpha: 0.5),
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.bodyStrong.copyWith(
+                        color: AppColors.surface,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      _fmt(elapsed),
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.surface.withValues(alpha: 0.5),
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.surface.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(AppIcons.people, size: 13, color: AppColors.surface),
-                const SizedBox(width: 5),
-                Text(
-                  '$total',
-                  style: AppTextStyles.caption.copyWith(
-                    color: AppColors.surface,
-                    fontWeight: FontWeight.w700,
-                  ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.surface.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(99),
                 ),
-              ],
-            ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      AppIcons.people,
+                      size: 13,
+                      color: AppColors.surface,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$total',
+                      style: AppTextStyles.caption.copyWith(
+                        color: AppColors.surface,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _CircleIconButton(
+                icon: IconsaxPlusBold.profile_2user,
+                active: panelOpen,
+                onTap: onTogglePanel,
+              ),
+              const SizedBox(width: 6),
+              _CircleIconButton(
+                icon: IconsaxPlusLinear.close_circle,
+                onTap: onClose,
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          _CircleIconButton(
-            icon: IconsaxPlusBold.profile_2user,
-            active: panelOpen,
-            onTap: onTogglePanel,
-          ),
-          const SizedBox(width: 6),
-          _CircleIconButton(
-            icon: IconsaxPlusLinear.close_circle,
-            onTap: onClose,
-          ),
-        ],
-      ),
-    );
+        )
+        .animate()
+        .fadeIn(duration: 320.ms)
+        .slideY(begin: -0.25, end: 0, duration: 320.ms, curve: Curves.easeOut);
   }
 }
 
 class _ParticipantGrid extends StatelessWidget {
   const _ParticipantGrid({
     required this.camPhase,
+    required this.permanentlyDenied,
     required this.controller,
     required this.micOn,
     required this.camOn,
+    required this.canFlipCamera,
+    required this.flippingCamera,
+    required this.onFlipCamera,
+    required this.onRetryCamera,
     required this.joined,
     required this.selfName,
   });
 
   final _CamPhase camPhase;
+  final bool permanentlyDenied;
   final CameraController? controller;
   final bool micOn;
   final bool camOn;
+  final bool canFlipCamera;
+  final bool flippingCamera;
+  final VoidCallback onFlipCamera;
+  final VoidCallback onRetryCamera;
   final List<_LiveParticipant> joined;
   final String selfName;
 
@@ -1381,37 +1567,29 @@ class _ParticipantGrid extends StatelessWidget {
   Widget _buildTile(BuildContext context, int index) {
     if (index == 0) {
       return _Tile(
-        speaking: micOn && camPhase == _CamPhase.live,
-        highlight: true,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (camPhase == _CamPhase.live && camOn && controller != null)
-              CameraCoverBox(
-                aspectRatio: 1 / controller!.value.aspectRatio,
-                child: CameraPreview(controller!),
-              )
-            else
-              DecoratedBox(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.darkSurfaceAlt, AppColors.darkCanvas],
-                  ),
-                ),
-                child: Center(
-                  child: AppAvatar(
-                    name: selfName,
-                    color: AppColors.primary,
-                    size: 64,
-                  ),
-                ),
-              ),
-            _TileLabel(name: selfName, muted: !micOn, self: true),
-          ],
-        ),
-      );
+            speaking: micOn && camPhase == _CamPhase.live,
+            highlight: true,
+            child: _SelfTile(
+              camPhase: camPhase,
+              permanentlyDenied: permanentlyDenied,
+              controller: controller,
+              camOn: camOn,
+              micOn: micOn,
+              selfName: selfName,
+              canFlipCamera: canFlipCamera,
+              flippingCamera: flippingCamera,
+              onFlipCamera: onFlipCamera,
+              onRetryCamera: onRetryCamera,
+            ),
+          )
+          .animate()
+          .fadeIn(duration: 280.ms)
+          .scale(
+            begin: const Offset(0.94, 0.94),
+            end: const Offset(1, 1),
+            duration: 280.ms,
+            curve: Curves.easeOutBack,
+          );
     }
 
     final p = joined[index - 1];
@@ -1440,10 +1618,7 @@ class _ParticipantGrid extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.darkSurfaceAlt,
-                        AppColors.darkCanvas,
-                      ],
+                      colors: [AppColors.darkSurfaceAlt, AppColors.darkCanvas],
                     ),
                   ),
                   child: Center(child: AppAvatar(name: p.name, size: 56)),
@@ -1460,6 +1635,204 @@ class _ParticipantGrid extends StatelessWidget {
           duration: 260.ms,
           curve: Curves.easeOutBack,
         );
+  }
+}
+
+/// Qo'ng'iroq to'rida (grid) xodimning O'Z plitkasi — haqiqiy kamera
+/// preview'i, kamera almashtirish (flip) tugmasi va (lobbydagiga o'xshash,
+/// lekin plitka ichiga sig'adigan ixcham ko'rinishdagi) ruxsat/xato
+/// holatlari.
+class _SelfTile extends StatelessWidget {
+  const _SelfTile({
+    required this.camPhase,
+    required this.permanentlyDenied,
+    required this.controller,
+    required this.camOn,
+    required this.micOn,
+    required this.selfName,
+    required this.canFlipCamera,
+    required this.flippingCamera,
+    required this.onFlipCamera,
+    required this.onRetryCamera,
+  });
+
+  final _CamPhase camPhase;
+  final bool permanentlyDenied;
+  final CameraController? controller;
+  final bool camOn;
+  final bool micOn;
+  final String selfName;
+  final bool canFlipCamera;
+  final bool flippingCamera;
+  final VoidCallback onFlipCamera;
+  final VoidCallback onRetryCamera;
+
+  @override
+  Widget build(BuildContext context) {
+    final showLivePreview =
+        camPhase == _CamPhase.live && camOn && controller != null;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (showLivePreview)
+          CameraCoverBox(
+            aspectRatio: 1 / controller!.value.aspectRatio,
+            child: CameraPreview(controller!),
+          )
+        else
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.darkSurfaceAlt, AppColors.darkCanvas],
+              ),
+            ),
+            child: Center(
+              child: switch (camPhase) {
+                _CamPhase.live => AppAvatar(
+                  name: selfName,
+                  color: AppColors.primary,
+                  size: 64,
+                ),
+                _CamPhase.initializing => const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                  ),
+                ),
+                _CamPhase.permissionDenied ||
+                _CamPhase.cameraError => _SelfTileIssueBadge(
+                  isDenied: camPhase == _CamPhase.permissionDenied,
+                  permanentlyDenied: permanentlyDenied,
+                  onRetry: onRetryCamera,
+                ),
+              },
+            ),
+          ),
+        if (showLivePreview && canFlipCamera)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: _FlipCameraButton(
+              flipping: flippingCamera,
+              onTap: onFlipCamera,
+            ),
+          ),
+        _TileLabel(name: selfName, muted: !micOn, self: true),
+      ],
+    );
+  }
+}
+
+/// `_PermissionDeniedCard`/`_CameraErrorCard`ning bir kichkina to'r
+/// plitkasi ichiga sig'adigan ixcham ekvivalenti — qo'ng'iroq davomida
+/// (masalan fondan qaytishda ruxsat rad etilgan bo'lib chiqsa yoki kamera
+/// xatoligi yuzaga kelsa) foydalanuvchi qora ekran o'rniga aniq sabab va
+/// "Qayta urinish" imkoniyatini ko'radi.
+class _SelfTileIssueBadge extends StatelessWidget {
+  const _SelfTileIssueBadge({
+    required this.isDenied,
+    required this.permanentlyDenied,
+    required this.onRetry,
+  });
+
+  final bool isDenied;
+  final bool permanentlyDenied;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final showSettings = isDenied && permanentlyDenied;
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isDenied ? IconsaxPlusBold.danger : AppIcons.camera,
+            color: AppColors.danger,
+            size: 22,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isDenied
+                ? l10n.videoRecorderPermissionTitle
+                : l10n.videoRecorderError,
+            style: AppTextStyles.caption.copyWith(
+              color: AppColors.surface.withValues(alpha: 0.7),
+              fontSize: 10.5,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: showSettings ? () => unawaited(openAppSettings()) : onRetry,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.surface.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                showSettings ? l10n.recorderOpenSettings : l10n.retry,
+                style: AppTextStyles.caption.copyWith(
+                  color: AppColors.surface,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 10.5,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Old/orqa kamera o'rtasida almashtiruvchi kichik dumaloq tugma — self
+/// plitka (lobby va qo'ng'iroq) ustiga qo'yiladi. Almashtirish davomida
+/// (`flipping`) ikonka o'rniga kichik spinner ko'rsatiladi.
+class _FlipCameraButton extends StatelessWidget {
+  const _FlipCameraButton({required this.flipping, required this.onTap});
+
+  final bool flipping;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: flipping ? null : onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          shape: BoxShape.circle,
+        ),
+        child: flipping
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation(Colors.white),
+                ),
+              )
+            : const Icon(
+                IconsaxPlusBold.convert,
+                size: 16,
+                color: Colors.white,
+              ),
+      ),
+    );
   }
 }
 
@@ -1785,143 +2158,146 @@ class _CallControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.surface.withValues(alpha: 0.08)),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (pickerOpen)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child:
-                  Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.darkSurfaceAlt,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: AppColors.surface.withValues(alpha: 0.1),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: AppColors.surface.withValues(alpha: 0.08)),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (pickerOpen)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child:
+                      Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.darkSurfaceAlt,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: AppColors.surface.withValues(alpha: 0.1),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (final e in _reactions)
+                                  GestureDetector(
+                                    onTap: () => onSendReaction(e),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      child: Text(
+                                        e,
+                                        style: const TextStyle(fontSize: 22),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          )
+                          .animate()
+                          .fadeIn(duration: 160.ms)
+                          .scale(
+                            begin: const Offset(0.9, 0.9),
+                            end: const Offset(1, 1),
+                            duration: 160.ms,
                           ),
+                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  Expanded(
+                    child: _ControlButton(
+                      active: micOn,
+                      icon: micOn
+                          ? IconsaxPlusBold.microphone_2
+                          : IconsaxPlusBold.microphone_slash,
+                      label: l10n.callMic,
+                      onTap: onToggleMic,
+                    ),
+                  ),
+                  Expanded(
+                    child: _ControlButton(
+                      active: camOn,
+                      icon: camOn
+                          ? IconsaxPlusBold.video
+                          : IconsaxPlusBold.video_slash,
+                      label: l10n.callCamera,
+                      onTap: onToggleCam,
+                    ),
+                  ),
+                  Expanded(
+                    child: _ControlButton(
+                      active: !sharing,
+                      accentWhenActive: sharing,
+                      icon: IconsaxPlusBold.monitor,
+                      label: l10n.callScreen,
+                      onTap: onToggleSharing,
+                    ),
+                  ),
+                  Expanded(
+                    child: _ControlButton(
+                      active: !pickerOpen,
+                      accentWhenActive: pickerOpen,
+                      icon: IconsaxPlusBold.emoji_happy,
+                      label: l10n.callReaction,
+                      onTap: onTogglePicker,
+                    ),
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: onEndCall,
+                      child: Container(
+                        height: 52,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.danger,
+                          borderRadius: BorderRadius.circular(99),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.danger.withValues(alpha: 0.35),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            for (final e in _reactions)
-                              GestureDetector(
-                                onTap: () => onSendReaction(e),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                  ),
-                                  child: Text(
-                                    e,
-                                    style: const TextStyle(fontSize: 22),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      )
-                      .animate()
-                      .fadeIn(duration: 160.ms)
-                      .scale(
-                        begin: const Offset(0.9, 0.9),
-                        end: const Offset(1, 1),
-                        duration: 160.ms,
-                      ),
-            ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              Expanded(
-                child: _ControlButton(
-                  active: micOn,
-                  icon: micOn
-                      ? IconsaxPlusBold.microphone_2
-                      : IconsaxPlusBold.microphone_slash,
-                  label: l10n.callMic,
-                  onTap: onToggleMic,
-                ),
-              ),
-              Expanded(
-                child: _ControlButton(
-                  active: camOn,
-                  icon: camOn
-                      ? IconsaxPlusBold.video
-                      : IconsaxPlusBold.video_slash,
-                  label: l10n.callCamera,
-                  onTap: onToggleCam,
-                ),
-              ),
-              Expanded(
-                child: _ControlButton(
-                  active: !sharing,
-                  accentWhenActive: sharing,
-                  icon: IconsaxPlusBold.monitor,
-                  label: l10n.callScreen,
-                  onTap: onToggleSharing,
-                ),
-              ),
-              Expanded(
-                child: _ControlButton(
-                  active: !pickerOpen,
-                  accentWhenActive: pickerOpen,
-                  icon: IconsaxPlusBold.emoji_happy,
-                  label: l10n.callReaction,
-                  onTap: onTogglePicker,
-                ),
-              ),
-              Expanded(
-                child: GestureDetector(
-                  onTap: onEndCall,
-                  child: Container(
-                    height: 52,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.danger,
-                      borderRadius: BorderRadius.circular(99),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.danger.withValues(alpha: 0.35),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          IconsaxPlusBold.call_slash,
-                          size: 20,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            l10n.callEnd,
-                            style: AppTextStyles.button.copyWith(
+                            const Icon(
+                              IconsaxPlusBold.call_slash,
+                              size: 20,
                               color: Colors.white,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                l10n.callEnd,
+                                style: AppTextStyles.button.copyWith(
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    );
+        )
+        .animate()
+        .fadeIn(duration: 320.ms)
+        .slideY(begin: 0.3, end: 0, duration: 320.ms, curve: Curves.easeOut);
   }
 }
 
