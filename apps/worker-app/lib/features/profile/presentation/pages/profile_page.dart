@@ -40,16 +40,12 @@ class ProfilePage extends StatelessWidget {
   static const _appVersion = 'v1.0.8';
 
   /// [session]dan "Bo'lim" qatori uchun eng yaqin haqiqiy ma'lumot —
-  /// backendda alohida "bo'lim nomi" maydoni yo'q, shuning uchun
-  /// hudud/tuman birlashtirilib ko'rsatiladi (soxta bo'lim nomi
-  /// o'ylab topilmaydi). Ikkalasi ham bo'sh bo'lsa — neytral belgi.
+  /// backendda alohida "bo'lim nomi" maydoni yo'q, shuning uchun tuman
+  /// ko'rsatiladi. Loyiha hozircha FAQAT Mirzo Ulug'bek uchun ishlagani
+  /// sababli region (viloyat/shahar) ko'rsatilmaydi.
   static String _departmentValue(AuthSession? session) {
-    final region = session?.region ?? '';
     final district = session?.district ?? '';
-    if (region.isEmpty && district.isEmpty) return _workingHoursPlaceholder;
-    if (district.isEmpty) return region;
-    if (region.isEmpty) return district;
-    return '$region, $district';
+    return district.isEmpty ? _workingHoursPlaceholder : district;
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -333,7 +329,6 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final name = widget.session?.name ?? '';
     final position = widget.session?.position ?? '';
-    final region = widget.session?.region ?? '';
     final workerId = widget.session?.workerId ?? '';
 
     return AppCard(
@@ -386,22 +381,13 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                   },
                 ),
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    _IconLabel(
-                      icon: AppIcons.location,
-                      text: region,
-                      color: mutedColor,
-                    ),
-                    _IconLabel(
-                      icon: AppIcons.key,
-                      text: l10n.profileWorkerIdLabel(workerId),
-                      color: mutedColor,
-                    ),
-                  ],
+                // Region (viloyat/shahar) ATAYLAB ko'rsatilmaydi — loyiha
+                // hozircha faqat Mirzo Ulug'bek uchun. Tuman "Bo'lim" qatorida
+                // (`_departmentValue`) ko'rsatiladi.
+                _IconLabel(
+                  icon: AppIcons.key,
+                  text: l10n.profileWorkerIdLabel(workerId),
+                  color: mutedColor,
                 ),
               ],
             ),

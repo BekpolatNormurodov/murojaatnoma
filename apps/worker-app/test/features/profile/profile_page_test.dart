@@ -70,7 +70,8 @@ const _session = AuthSession(
   workerId: 'W-1042',
   name: 'Sardor Karimov',
   position: 'Kommunal xizmat mutaxassisi',
-  region: 'Chilonzor tumani',
+  region: 'Toshkent shahri',
+  district: "Mirzo Ulug'bek",
 );
 
 void main() {
@@ -172,7 +173,10 @@ void main() {
         find.textContaining('Kommunal xizmat mutaxassisi'),
         findsOneWidget,
       );
-      expect(find.textContaining('Chilonzor tumani'), findsOneWidget);
+      // Region (viloyat/shahar) endi ATAYLAB ko'rsatilmaydi (loyiha faqat
+      // Mirzo Ulug'bek uchun) — tuman ko'rsatiladi.
+      expect(find.textContaining('Toshkent shahri'), findsNothing);
+      expect(find.textContaining("Mirzo Ulug'bek"), findsWidgets);
       expect(find.textContaining('W-1042'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
