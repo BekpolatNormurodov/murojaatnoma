@@ -174,6 +174,7 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
               ),
               child: AppListTile(
                 title: l10n.leaveRequestStartDateLabel,
+                titleMaxLines: 2,
                 subtitle: formatDate(_startDate),
                 leadingIcon: AppIcons.calendar,
                 onTap: _pickDate,
@@ -188,6 +189,7 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
                 ),
                 child: AppListTile(
                   title: l10n.leaveRequestStartTimeLabel,
+                  titleMaxLines: 2,
                   subtitle: _startTime == null
                       ? '--:--'
                       : _startTime!.format(context),

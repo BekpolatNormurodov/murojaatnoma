@@ -26,17 +26,15 @@ class NotificationsPage extends StatelessWidget {
         leading: const AppBackButton(),
         title: Text(l10n.notificationsTitle),
         actions: [
+          // Compact icon (not a long text label) so the AppBar title never
+          // gets squeezed/truncated (e.g. "Уве..." in RU). The action stays
+          // accessible via the tooltip.
           if (hasUnread)
-            TextButton(
+            IconButton(
               onPressed: () =>
                   context.read<NotificationsCubit>().markAllRead(),
-              child: Text(
-                l10n.notificationsMarkAllRead,
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              tooltip: l10n.notificationsMarkAllRead,
+              icon: const Icon(Icons.done_all, color: AppColors.primary),
             ),
         ],
       ),
