@@ -33,11 +33,16 @@ class MessageComposer extends StatefulWidget {
     required this.onSendAttachment,
     required this.onSendSticker,
     super.key,
+    this.onTyping,
   });
 
   final ValueChanged<String> onSendText;
   final ValueChanged<ChatAttachment> onSendAttachment;
   final ValueChanged<String> onSendSticker;
+
+  /// "Yozmoqda" signali — matn maydoni bo'sh↔to'la o'zgarganda chaqiriladi
+  /// (jonli `chat:typing`). Ixtiyoriy — berilmasa signal yuborilmaydi.
+  final ValueChanged<bool>? onTyping;
 
   @override
   State<MessageComposer> createState() => _MessageComposerState();
@@ -65,7 +70,12 @@ class _MessageComposerState extends State<MessageComposer> {
 
   void _handleTextChange() {
     final hasText = _controller.text.trim().isNotEmpty;
-    if (hasText != _hasText) setState(() => _hasText = hasText);
+    if (hasText != _hasText) {
+      setState(() => _hasText = hasText);
+      // Matn bo'sh↔to'la o'tishida "yozmoqda" holatini bildiradi (past
+      // hajmli signal — har bosishda emas, faqat o'tishda).
+      widget.onTyping?.call(hasText);
+    }
   }
 
   void _submitText() {

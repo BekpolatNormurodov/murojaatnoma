@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:worker_app/app/app.dart';
 import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
+import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
 import 'package:worker_app/firebase_options.dart';
@@ -25,7 +26,33 @@ Future<void> bootstrap() async {
   await _restoreSession();
   unawaited(_initNotifications());
   unawaited(_initPush());
+  _initRealtime();
   runApp(const WorkerApp());
+}
+
+/// Jonli chat socketini (Socket.IO) login holatiga bog'laydi — faqat REAL
+/// rejimda (mock'da backend/token yo'q, shuning uchun o'tkazib yuboriladi).
+/// `_initPush` bilan bir xil naqsh: login holatini ilova ILDIZIDA kuzatadi
+/// (Chat qatlami socket lifecycle'iga bog'lanib qolmaydi) — sessiya
+/// autentifikatsiyalanganda `connect()`, chiqilganda `disconnect()`.
+/// Butunlay `try/catch` bilan o'ralgan: socket ishga tushmasa ham ilova
+/// HECH QACHON qulamaydi (chat oddiygina jonli yangilanmaydi).
+void _initRealtime() {
+  if (AppConfig.useMock) return;
+  try {
+    final socket = getIt<RealtimeSocketService>();
+    final authCubit = getIt<AuthCubit>();
+    if (authCubit.state.isAuthenticated) unawaited(socket.connect());
+    authCubit.stream.listen((state) {
+      if (state.isAuthenticated) {
+        unawaited(socket.connect());
+      } else {
+        socket.disconnect();
+      }
+    });
+  } on Object {
+    // Socket ishga tushmasa — ilova baribir normal ishlaydi.
+  }
 }
 
 /// Masofaviy push (FCM)ni ishga tushiradi — faqat REAL rejimda (mock'da

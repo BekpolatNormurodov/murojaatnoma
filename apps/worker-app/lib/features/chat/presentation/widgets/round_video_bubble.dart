@@ -178,7 +178,13 @@ class _FullVideoPageState extends State<_FullVideoPage> {
   }
 
   Future<void> _init() async {
-    final controller = VideoPlayerController.file(File(widget.path));
+    // Kelgan (boshqa qurilmadan) dumaloq video serverdagi URL bo'ladi; o'zimiz
+    // yozganini local fayl. Shunga qarab to'g'ri controller tanlaymiz — aks
+    // holda kelgan video-notelar o'ynamasdi.
+    final path = widget.path;
+    final controller = path.startsWith('http')
+        ? VideoPlayerController.networkUrl(Uri.parse(path))
+        : VideoPlayerController.file(File(path));
     try {
       await controller.initialize();
       await controller.setLooping(true);

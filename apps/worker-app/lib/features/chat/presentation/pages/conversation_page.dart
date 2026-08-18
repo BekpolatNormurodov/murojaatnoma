@@ -136,8 +136,32 @@ class _ConversationPageState extends State<ConversationPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (conversation != null)
-                    _HeaderSubtitle(conversation: conversation),
+                  // Suhbatdosh yozayotgan bo'lsa (jonli `chat:typing`) —
+                  // "yozmoqda…", aks holda odatiy holat (onlayn/ishtirokchilar).
+                  // Matn ATAYLAB literal (yangi l10n kaliti umumiy, boshqa
+                  // sessiyalar tomonidan tahrirlanayotgan ARB fayllarga
+                  // tegmaslik uchun).
+                  BlocBuilder<ConversationCubit, ConversationState>(
+                    builder: (context, state) {
+                      final typing =
+                          state is ConversationLoaded && state.peerTyping;
+                      if (typing) {
+                        return Text(
+                          'yozmoqda…',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        );
+                      }
+                      if (conversation != null) {
+                        return _HeaderSubtitle(conversation: conversation);
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
                 ],
               ),
             ),
@@ -214,6 +238,9 @@ class _ConversationPageState extends State<ConversationPage> {
                       type: MessageType.sticker,
                       stickerId: id,
                     ),
+                    onTyping: (isTyping) => context
+                        .read<ConversationCubit>()
+                        .notifyTyping(isTyping: isTyping),
                   ),
                 ],
               ),

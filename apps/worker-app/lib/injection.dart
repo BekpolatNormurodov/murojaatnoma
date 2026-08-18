@@ -7,6 +7,8 @@ import 'package:worker_app/app/router/app_router.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
+import 'package:worker_app/core/realtime/realtime_socket_service.dart';
+import 'package:worker_app/core/realtime/uploads_service.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
@@ -131,6 +133,19 @@ Future<void> configureDependencies() async {
     // `bootstrap()`da ishga tushadi (mock rejimda o'tkazib yuboriladi).
     ..registerLazySingleton<FcmService>(
       () => FcmService(getIt<DioClient>().dio, getIt<NotificationService>()),
+    )
+    // `RealtimeSocketService` — jonli chat transporti (Socket.IO). Butun
+    // ilova davomida BITTA ulanish (lazy singleton): `bootstrap()`dagi auth
+    // `isAuthenticated` hook'i `connect()`ni, logout esa `disconnect()`ni
+    // chaqiradi. Mock rejimda umuman ulanmaydi (token/backend yo'q).
+    ..registerLazySingleton<RealtimeSocketService>(
+      () => RealtimeSocketService(getIt<SharedPreferences>()),
+    )
+    // `UploadsService` — chat media biriktirmalarini (`POST /uploads`)
+    // serverga yuklaydi (mahalliy fayl -> URL), so'ng `chat:send` shu URL'ni
+    // yuboradi. Attendance ApiImpl bilan bir xil xato xaritalanishi.
+    ..registerLazySingleton<UploadsService>(
+      () => UploadsService(getIt<DioClient>()),
     )
     // ---- App-level cubits (theme + locale) ----
     ..registerFactory<ThemeCubit>(ThemeCubit.new)
@@ -351,6 +366,9 @@ Future<void> configureDependencies() async {
       () => ConversationCubit(
         getMessages: getIt<GetMessages>(),
         sendMessage: getIt<SendMessage>(),
+        socket: getIt<RealtimeSocketService>(),
+        uploads: getIt<UploadsService>(),
+        authCubit: getIt<AuthCubit>(),
       ),
     )
     // ---- Majlislar/Meetings (Zoom-uslubidagi ichki yig'ilishlar) ----

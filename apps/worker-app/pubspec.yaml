@@ -52,6 +52,11 @@ dependencies:
   # Networking
   dio: ^5.7.0
 
+  # Realtime chat transport (Socket.IO) — jonli xabar yetkazish
+  # (chat:message/chat:read/chat:typing) uchun. Qo'ng'iroqlar (WebRTC) BU
+  # modul doirasidan tashqarida (flutter_webrtc ATAYLAB qo'shilmagan).
+  socket_io_client: ^2.0.3
+
   # Routing
   go_router: ^14.8.1
 

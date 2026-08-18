@@ -24,13 +24,25 @@ class ConversationLoading extends ConversationState {
 /// Xabarlar tarixi muvaffaqiyatli yuklandi (bo'sh bo'lishi ham mumkin).
 /// Xronologik tartibda (eskisidan yangisiga) — ro'yxat pastiga skroll
 /// qilinadi.
+///
+/// [peerTyping] — suhbatdosh hozir yozayotgan bo'lsa `true` (jonli
+/// `chat:typing` eventi orqali) — sarlavhada "yozmoqda..." ko'rsatiladi.
+/// Mock/oflayn rejimda doim `false`.
 class ConversationLoaded extends ConversationState {
-  const ConversationLoaded(this.messages);
+  const ConversationLoaded(this.messages, {this.peerTyping = false});
 
   final List<Message> messages;
+  final bool peerTyping;
+
+  ConversationLoaded copyWith({List<Message>? messages, bool? peerTyping}) {
+    return ConversationLoaded(
+      messages ?? this.messages,
+      peerTyping: peerTyping ?? this.peerTyping,
+    );
+  }
 
   @override
-  List<Object?> get props => [messages];
+  List<Object?> get props => [messages, peerTyping];
 }
 
 /// Xabarlarni yuklashda xatolik (server yoki kutilmagan) — [message]
