@@ -22,6 +22,7 @@ import {
   Mobile,
   ShieldTick,
   ArrowLeft2,
+  MedalStar,
   type Icon as IconType,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -65,6 +66,10 @@ const SECTIONS: NavSection[] = [
       { to: '/workers', labelKey: 'nav.workers', icon: Profile2User },
       { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick },
       { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser },
+      // dict.ts'da tarjima kaliti yo'q — t() topilmagan kalitni o'zini
+      // qaytaradi (I18nProvider fallback), shu sababli literal so'z
+      // to'g'ridan-to'g'ri ko'rsatiladi (uz/ru/en'da bir xil).
+      { to: '/bonuses', labelKey: 'Premyalar', icon: MedalStar },
     ],
   },
   {

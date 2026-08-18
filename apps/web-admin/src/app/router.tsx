@@ -17,6 +17,7 @@ import { CamerasPage } from '@/features/cameras/CamerasPage';
 import { FinancePage } from '@/features/finance/FinancePage';
 import { DocumentsPage } from '@/features/documents/DocumentsPage';
 import { StaffPage } from '@/features/staff/StaffPage';
+import { BonusesPage } from '@/features/bonuses/BonusesPage';
 import { NewsPage } from '@/features/news/NewsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
       { path: 'workers', element: <WorkersPage /> },
       { path: 'attendance', element: <AttendancePage /> },
       { path: 'staff', element: <StaffPage /> },
+      { path: 'bonuses', element: <BonusesPage /> },
       { path: 'map', element: <MapPage /> },
       { path: 'app-users', element: <AppUsersPage /> },
       { path: 'cameras', element: <CamerasPage /> },
