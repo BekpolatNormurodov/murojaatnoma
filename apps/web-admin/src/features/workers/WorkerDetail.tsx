@@ -67,7 +67,6 @@ export function WorkerDetail({
   onClose,
   onEdit,
   onDelete,
-  onCall,
 }: {
   worker: Worker | null;
   onClose: () => void;
