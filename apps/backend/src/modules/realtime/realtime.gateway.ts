@@ -74,7 +74,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.logger.warn(
         `Rejecting socket ${client.id}: ${err instanceof Error ? err.message : 'unauthorized'}`,
       );
-      client.emit('connect_error', { message: 'unauthorized' });
+      // NB: 'connect_error' is a RESERVED Socket.IO event — emitting it from the
+      // SERVER throws ("connect_error is a reserved event name"), which escaped
+      // this catch and crash-looped the whole backend on every unauthorized
+      // connect. Signal with a custom event instead, then disconnect.
+      client.emit('auth:error', { message: 'unauthorized' });
       client.disconnect(true);
     }
   }
