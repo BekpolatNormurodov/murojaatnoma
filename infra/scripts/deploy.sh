@@ -6,6 +6,17 @@ set -euo pipefail
 #
 # Usage: bash infra/scripts/deploy.sh
 
+# Shares its lock file with infra/scripts/redeploy.sh so the two tools can
+# never race each other's `docker compose build`/`up -d` on the same
+# gov-system project (e.g. an operator running this by hand while a
+# sync-tick's redeploy.sh is mid-flight).
+LOCK_FILE="/tmp/murojaatnoma-deploy.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "another deploy is already running (lock held: $LOCK_FILE) — exiting" >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 INFRA_DIR="$REPO_ROOT/infra"
