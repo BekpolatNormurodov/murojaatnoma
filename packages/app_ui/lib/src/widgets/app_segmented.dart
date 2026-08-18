@@ -97,7 +97,9 @@ class _Segment<T> extends StatelessWidget {
     final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final color = active
         ? (isDark ? AppColors.darkInk : AppColors.ink)
-        : (isDark ? AppColors.darkInkMuted : AppColors.inkMuted);
+        // Nofaol yorliqlar ilgari juda och (inkMuted) edi — biroz to'qroq
+        // (inkSoft) qilib o'qilishini yaxshiladik; faol pill o'zgarmaydi.
+        : (isDark ? AppColors.darkInkSoft : AppColors.inkSoft);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

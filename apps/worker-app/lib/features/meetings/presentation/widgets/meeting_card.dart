@@ -38,9 +38,13 @@ class MeetingCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    // Kelajakdagi "rejalashtirilgan" majlisda faol "Ulanish" ko'rsatilmaydi —
+    // faqat JONLI, yoki boshlanish vaqti kelgan majlisga ulanish mumkin.
+    final startAt = DateTime.tryParse(meeting.startAt);
+    final hasStarted = startAt != null && !startAt.isAfter(DateTime.now());
     final canJoin =
         meeting.status == MeetingStatus.jonli ||
-        meeting.status == MeetingStatus.rejalashtirilgan;
+        (meeting.status == MeetingStatus.rejalashtirilgan && hasStarted);
 
     return AppCard(
       onTap: onTap,

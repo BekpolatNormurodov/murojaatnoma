@@ -108,7 +108,11 @@ class _DayBar extends StatelessWidget {
                   heightFactor: value <= 0 ? 0.02 : value,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: _color,
+                      // Nol-soatli kunlar QIZIL emas — nozik kulrang chiziq
+                      // (qizil "xato"dek ko'rinmasligi uchun).
+                      color: day.hours > 0
+                          ? _color
+                          : mutedColor.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),

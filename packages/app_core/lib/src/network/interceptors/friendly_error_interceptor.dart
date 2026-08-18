@@ -48,7 +48,11 @@ class FriendlyErrorInterceptor extends Interceptor {
           return "Server vaqtincha ishlamayapti. Birozdan so'ng urining.";
         }
         return "So'rovni bajarib bo'lmadi. Qayta urinib ko'ring.";
-      case DioExceptionType.unknown:
+      // Qolgan turlar (unknown, transformTimeout, kelajakdagi yangi turlar)
+      // uchun umumiy xabar. `default` ataylab: switch Dio versiyasidan qat'i
+      // nazar TO'LIQ bo'ladi (ba'zi versiyalarda transformTimeout yo'q).
+      // ignore: no_default_cases
+      default:
         return "Kutilmagan xatolik yuz berdi. Qayta urinib ko'ring.";
     }
   }
