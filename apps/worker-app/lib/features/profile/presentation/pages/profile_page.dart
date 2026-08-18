@@ -120,55 +120,57 @@ class ProfilePage extends StatelessWidget {
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: -0.06, end: 0),
                 const SizedBox(height: 24),
-                _SectionTitle(l10n.profileLanguageTitle),
-                const SizedBox(height: 8),
+                // Til + Mavzu — bitta ixcham kartada (avval 2 ta katta bo'sh
+                // karta edi, sahifa siyrak ko'rinardi).
                 AppCard(
-                      child: AppSegmented<Locale>(
-                        value: locale,
-                        segments: [
-                          AppSegment(
-                            value: const Locale('uz'),
-                            label: l10n.languageNameUzbek,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _SectionTitle(l10n.profileLanguageTitle),
+                          const SizedBox(height: 8),
+                          AppSegmented<Locale>(
+                            value: locale,
+                            segments: [
+                              AppSegment(
+                                value: const Locale('uz'),
+                                label: l10n.languageNameUzbek,
+                              ),
+                              AppSegment(
+                                value: const Locale('ru'),
+                                label: l10n.languageNameRussian,
+                              ),
+                            ],
+                            onChanged: (value) => unawaited(
+                              context.read<LocaleCubit>().setLocale(value),
+                            ),
                           ),
-                          AppSegment(
-                            value: const Locale('ru'),
-                            label: l10n.languageNameRussian,
+                          const SizedBox(height: 18),
+                          _SectionTitle(l10n.profileThemeTitle),
+                          const SizedBox(height: 8),
+                          AppSegmented<ThemeMode>(
+                            value: themeMode == ThemeMode.dark
+                                ? ThemeMode.dark
+                                : ThemeMode.light,
+                            segments: [
+                              AppSegment(
+                                value: ThemeMode.light,
+                                label: l10n.profileThemeOptionLight,
+                                icon: AppIcons.sun,
+                              ),
+                              AppSegment(
+                                value: ThemeMode.dark,
+                                label: l10n.profileThemeOptionDark,
+                                icon: AppIcons.moon,
+                              ),
+                            ],
+                            onChanged: (value) => unawaited(
+                              context.read<ThemeCubit>().setMode(value),
+                            ),
                           ),
                         ],
-                        onChanged: (value) => unawaited(
-                          context.read<LocaleCubit>().setLocale(value),
-                        ),
                       ),
                     )
                     .animate(delay: 60.ms)
-                    .fadeIn(duration: 300.ms)
-                    .slideY(begin: 0.06, end: 0),
-                const SizedBox(height: 24),
-                _SectionTitle(l10n.profileThemeTitle),
-                const SizedBox(height: 8),
-                AppCard(
-                      child: AppSegmented<ThemeMode>(
-                        value: themeMode == ThemeMode.dark
-                            ? ThemeMode.dark
-                            : ThemeMode.light,
-                        segments: [
-                          AppSegment(
-                            value: ThemeMode.light,
-                            label: l10n.profileThemeOptionLight,
-                            icon: AppIcons.sun,
-                          ),
-                          AppSegment(
-                            value: ThemeMode.dark,
-                            label: l10n.profileThemeOptionDark,
-                            icon: AppIcons.moon,
-                          ),
-                        ],
-                        onChanged: (value) => unawaited(
-                          context.read<ThemeCubit>().setMode(value),
-                        ),
-                      ),
-                    )
-                    .animate(delay: 100.ms)
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: 0.06, end: 0),
                 const SizedBox(height: 24),
