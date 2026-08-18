@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   SearchNormal1,
@@ -12,6 +13,7 @@ import {
   Pause,
   CloseCircle,
   Messages2,
+  MessageAdd1,
   DocumentDownload,
   RotateRight,
 } from 'iconsax-react';
@@ -19,7 +21,18 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
 import { ChatComposer } from './ChatComposer';
-import { useConversations, useMessages, useSendMessage, useMarkRead, usePrefersReducedMotion } from './useChat';
+import { EmployeePickerModal } from './EmployeePickerModal';
+import {
+  useConversations,
+  useMessages,
+  useSendMessage,
+  useMarkRead,
+  usePrefersReducedMotion,
+  useOpenDirectConversation,
+  useLiveEmployees,
+} from './useChat';
+import { pickAvatarColor } from './chatAvatar';
+import type { LiveLocation } from '@/shared/api/locations';
 import { ME_ID, GROUP_ID, useChatUi, type ChatMessage } from '@/shared/store/chat';
 import { STAFF } from '@/shared/data/mock';
 import { formatDate } from '@/shared/lib/format';
@@ -95,6 +108,12 @@ export function ChatPage() {
   const sendMessage = useSendMessage();
   const { mutate: markRead } = useMarkRead();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const openDirect = useOpenDirectConversation();
+  const employeesQuery = useLiveEmployees();
+  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
   const [mobileThread, setMobileThread] = useState(false);
@@ -151,6 +170,69 @@ export function ChatPage() {
     el.scrollIntoView({ behavior, block: 'end' });
     scrolledConvRef.current = activeId;
   }, [activeId, activeMessages.length, messagesQuery.isLoading, prefersReducedMotion]);
+
+  // "Xodimga yozish" yo'li: `?to=<employeeId>` — xarita sahifasidan yoki shu
+  // sahifadagi tanlagichdan kelgan bitta DM ochish so'rovi. Xodim nomi/rangi
+  // xarita ishlatadigan aynan o'sha jonli ro'yxatdan (`useLiveEmployees`)
+  // olinadi; topilmasa — "Xodim" degan neytral sarlavha bilan davom etiladi.
+  // Suhbat ochilgach faol qilinadi va `to` parametri URL'dan tozalanadi
+  // (sahifani yangilash qayta trigger qilmasligi uchun).
+  const resolvingToRef = useRef<string | null>(null);
+  const toEmployeeId = searchParams.get('to');
+
+  useEffect(() => {
+    if (!toEmployeeId) {
+      resolvingToRef.current = null;
+      return;
+    }
+    if (employeesQuery.isLoading) return; // ism/rasmni olguncha kutamiz
+    if (resolvingToRef.current === toEmployeeId) return; // shu param uchun so'rov allaqachon yuborilgan
+    resolvingToRef.current = toEmployeeId;
+
+    const employee = employees.find((e) => e.employeeId === toEmployeeId);
+
+    openDirect.mutate(
+      {
+        employeeId: toEmployeeId,
+        title: employee?.fullName.trim() || 'Xodim',
+        avatarColor: pickAvatarColor(toEmployeeId),
+      },
+      {
+        onSuccess: (conversation) => {
+          setActiveId(conversation.id);
+          setMobileThread(true);
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete('to');
+              return next;
+            },
+            { replace: true },
+          );
+        },
+        onSettled: () => {
+          resolvingToRef.current = null;
+        },
+      },
+    );
+    // openDirect.mutate is intentionally excluded — it's stable enough for this
+    // purpose and including the mutation object would re-fire this effect on
+    // every pending/success/error transition (the resolvingToRef guard above
+    // is what actually prevents duplicate requests).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toEmployeeId, employeesQuery.isLoading, employees, setActiveId, setSearchParams]);
+
+  function handlePickEmployee(employee: LiveLocation) {
+    setPickerOpen(false);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('to', employee.employeeId);
+        return next;
+      },
+      { replace: false },
+    );
+  }
 
   // Render uchun kunlar bo'yicha guruhlash
   const rendered = useMemo(() => {
@@ -255,6 +337,15 @@ export function ChatPage() {
               </button>
             ))}
           </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setPickerOpen(true)}
+            className="mt-2 w-full justify-center"
+          >
+            <MessageAdd1 size={16} variant="Bulk" />
+            Xodimga yozish
+          </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
@@ -482,6 +573,13 @@ export function ChatPage() {
         title={activeConv?.title ?? 'Qo‘ng‘iroq'}
         subtitle={activeConv?.kind === 'group' ? 'Guruh qo‘ng‘irog‘i' : undefined}
         participants={callParticipants}
+      />
+
+      {/* "Xodimga yozish" — xodim tanlagich (umumiy chat entry-point) */}
+      <EmployeePickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={handlePickEmployee}
       />
 
       {/* Rasm ko'rish (lightbox) */}

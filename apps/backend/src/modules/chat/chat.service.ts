@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ChatMessage, ChatMsgStatus } from '@prisma/client';
+import { ChatConvKind, ChatMessage, ChatMsgStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
+import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
 
@@ -82,6 +83,42 @@ export class ChatService {
     });
   }
 
+  /**
+   * Opens (or re-opens) a 1:1 conversation with an employee — upserted by a
+   * deterministic id (`dm-emp-<employeeId>`) so repeated calls for the same
+   * employee are idempotent and always resolve to the same conversation.
+   * Used by both the "message an employee" entry points in web-admin (live
+   * map + general chat picker) — same endpoint, same conversation.
+   *
+   * Intentionally decoupled: the title/avatar come straight from the
+   * request body (the frontend already has them from the live employee
+   * list) — this never queries the employee/workforce table.
+   */
+  async openDirectConversation(
+    dto: CreateDirectConversationDto,
+  ): Promise<ChatConversationResponse> {
+    const id = `dm-emp-${dto.employeeId}`;
+
+    const conversation = await this.prisma.chatConversation.upsert({
+      where: { id },
+      create: {
+        id,
+        kind: ChatConvKind.direct,
+        title: dto.title,
+        avatarColor: dto.avatarColor,
+        staffId: dto.employeeId,
+        online: false,
+      },
+      update: {
+        title: dto.title,
+        ...(dto.avatarColor !== undefined ? { avatarColor: dto.avatarColor } : {}),
+      },
+      include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+    });
+
+    return this.withUnreadCount(conversation);
+  }
+
   /** Marks every message NOT sent by "me" as read (mirrors the store's `markRead`). */
   async markRead(conversationId: string): Promise<{ ok: true }> {
     await this.ensureConversation(conversationId);
@@ -103,5 +140,26 @@ export class ChatService {
     if (!exists) {
       throw new NotFoundException(`Chat conversation ${id} not found`);
     }
+  }
+
+  /**
+   * Shapes a single conversation (with its latest message preloaded) into a
+   * {@link ChatConversationResponse} — same derived fields `findAllConversations`
+   * computes in bulk, kept in one place so single-conversation call sites
+   * (e.g. `openDirectConversation`) don't drift from the list's shape.
+   */
+  private async withUnreadCount(
+    conversation: { messages: ChatMessage[] } & Omit<ChatConversationResponse, 'lastMessage' | 'unreadCount'>,
+  ): Promise<ChatConversationResponse> {
+    const { messages, ...rest } = conversation;
+    const unreadCount = await this.prisma.chatMessage.count({
+      where: {
+        conversationId: rest.id,
+        senderId: { not: ME_ID },
+        status: { not: ChatMsgStatus.read },
+      },
+    });
+
+    return { ...rest, lastMessage: messages[0] ?? null, unreadCount };
   }
 }

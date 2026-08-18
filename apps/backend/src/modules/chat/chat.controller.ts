@@ -4,6 +4,7 @@ import { ChatMessage } from '@prisma/client';
 import { Public } from '../../common/decorators/public.decorator';
 import { ChatService } from './chat.service';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
+import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
 
@@ -22,6 +23,18 @@ export class ChatController {
   })
   findAllConversations(): Promise<ChatConversationResponse[]> {
     return this.chatService.findAllConversations();
+  }
+
+  @Public()
+  @Post('conversations/direct')
+  @ApiOperation({
+    summary:
+      "Xodim bilan shaxsiy suhbatni ochish (mavjud bo'lsa qaytaradi, bo'lmasa yaratadi) — xarita va umumiy chat'dagi \"Xodimga yozish\" tugmalari shu endpoint'ni ishlatadi",
+  })
+  openDirectConversation(
+    @Body() dto: CreateDirectConversationDto,
+  ): Promise<ChatConversationResponse> {
+    return this.chatService.openDirectConversation(dto);
   }
 
   @Public()

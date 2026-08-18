@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
+import { fetchLiveLocations } from '@/shared/api/locations';
 import type { ChatConversation, ChatMessage, CreateChatMessageInput } from '@/shared/store/chat';
 
 /**
@@ -66,6 +67,41 @@ export function useMarkRead() {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', conversationId] });
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     },
+  });
+}
+
+/**
+ * Xodim bilan shaxsiy (DM) suhbatni ochadi/yaratadi:
+ * POST /chat/conversations/direct — { employeeId, title, avatarColor? }
+ * Idempotent (backend `employeeId` bo'yicha upsert qiladi): xarita sahifasidagi
+ * "Yozish" tugmasi va umumiy chat'dagi "Xodimga yozish" tanlagichi — ikkalasi
+ * ham shu bitta yo'lni (`ChatPage`ning `?to=<employeeId>` ishlovchisi) ishlatadi.
+ * Muvaffaqiyatli bo'lsa suhbatlar ro'yxatini qayta so'raydi (yangi DM
+ * ro'yxatda darhol ko'rinishi uchun).
+ */
+export function useOpenDirectConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { employeeId: string; title: string; avatarColor?: string }) =>
+      api.post<ChatConversation>('/chat/conversations/direct', body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Xodimlarning jonli ro'yxati — xarita sahifasi ishlatadigan aynan o'sha
+ * manba (`GET /locations/latest`), bir xil query kaliti bilan (keshni
+ * ulashadi). "Xodimga yozish" tanlagichi va `?to=` orqali DM ochish shu
+ * yerdan ism/avatar oladi — xodim/kadrlar jadvaliga alohida so'rov
+ * yubormaydi.
+ */
+export function useLiveEmployees() {
+  return useQuery({
+    queryKey: ['locations', 'latest'],
+    queryFn: fetchLiveLocations,
+    staleTime: 15_000,
   });
 }
 
