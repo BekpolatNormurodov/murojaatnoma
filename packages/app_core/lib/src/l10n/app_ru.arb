@@ -280,6 +280,8 @@
   "profilePinLabel": "Изменить PIN",
   "profileHelpLabel": "Помощь",
   "profileReportsLabel": "Отчёты",
+  "profileNewsTileLabel": "Новости",
+  "profileDocumentsTileLabel": "Документы",
   "chatTabAll": "Все",
   "chatTabPersonal": "Личные",
   "chatTabGroup": "Группы",

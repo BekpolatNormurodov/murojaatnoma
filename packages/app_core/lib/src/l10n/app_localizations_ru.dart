@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -869,6 +870,12 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get profileReportsLabel => 'Отчёты';
+
+  @override
+  String get profileNewsTileLabel => 'Новости';
+
+  @override
+  String get profileDocumentsTileLabel => 'Документы';
 
   @override
   String get chatTabAll => 'Все';

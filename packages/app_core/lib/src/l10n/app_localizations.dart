@@ -1778,6 +1778,18 @@ abstract class AppLocalizations {
   /// **'Hisobotlar'**
   String get profileReportsLabel;
 
+  /// No description provided for @profileNewsTileLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Yangiliklar'**
+  String get profileNewsTileLabel;
+
+  /// No description provided for @profileDocumentsTileLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Hujjatlar'**
+  String get profileDocumentsTileLabel;
+
   /// No description provided for @chatTabAll.
   ///
   /// In uz, this message translates to:

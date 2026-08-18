@@ -304,6 +304,8 @@
   "profilePinLabel": "PIN o'zgartirish",
   "profileHelpLabel": "Yordam",
   "profileReportsLabel": "Hisobotlar",
+  "profileNewsTileLabel": "Yangiliklar",
+  "profileDocumentsTileLabel": "Hujjatlar",
   "chatTabAll": "Barchasi",
   "chatTabPersonal": "Shaxsiy",
   "chatTabGroup": "Guruh",
