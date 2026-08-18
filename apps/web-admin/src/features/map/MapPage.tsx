@@ -40,6 +40,7 @@ import {
   statusColor,
   STATUS_COLORS,
   statusKey,
+  statusLabel,
   trackRange,
   type FilterKey,
   type Lang,
@@ -53,13 +54,29 @@ const DISTRICT_CENTER: [number, number] = [41.3354, 69.3737];
 type MahallaFilter = { code: string; name: string };
 type FlyTarget = { pos: [number, number]; nonce: number };
 
-function markerIcon(loc: LiveLocation, selected: boolean): L.DivIcon {
+/** Escape a string for safe interpolation into an HTML attribute value. */
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function markerIcon(
+  loc: LiveLocation,
+  selected: boolean,
+  ariaLabel: string,
+): L.DivIcon {
   const color = statusColor(loc);
   const initial = initials(loc.fullName).charAt(0);
   const ring = selected ? 'box-shadow:0 0 0 4px rgba(16,185,129,0.35);' : '';
+  // role="img" + aria-label carry the "name — status" cue so the status is not
+  // conveyed by the dot color alone (a11y for color-blind / screen-reader use).
   return L.divIcon({
     className: 'emp-marker',
-    html: `<div style="width:32px;height:32px;border-radius:50%;background:${color};color:#fff;
+    html: `<div role="img" aria-label="${escapeAttr(ariaLabel)}"
+      style="width:32px;height:32px;border-radius:50%;background:${color};color:#fff;
       display:flex;align-items:center;justify-content:center;font:600 13px system-ui;
       border:2px solid #fff;${ring}">${initial}</div>`,
     iconSize: [32, 32],
@@ -196,19 +213,26 @@ export function MapPage() {
   );
   const markers = useMemo(
     () =>
-      markerLocs.map((loc) => (
-        <Marker
-          key={loc.employeeId}
-          position={[loc.latitude as number, loc.longitude as number]}
-          icon={markerIcon(loc, loc.employeeId === selectedId)}
-          eventHandlers={{ click: () => setSelectedId(loc.employeeId) }}
-        >
-          <Tooltip direction="top" offset={[0, -14]}>
-            {loc.fullName}
-          </Tooltip>
-        </Marker>
-      )),
-    [markerLocs, selectedId],
+      markerLocs.map((loc) => {
+        // "Name — Status": a text cue that mirrors the marker's dot color.
+        const label = `${loc.fullName} — ${statusLabel(loc, lang)}`;
+        return (
+          <Marker
+            key={loc.employeeId}
+            position={[loc.latitude as number, loc.longitude as number]}
+            icon={markerIcon(loc, loc.employeeId === selectedId, label)}
+            title={label}
+            alt={label}
+            keyboard
+            eventHandlers={{ click: () => setSelectedId(loc.employeeId) }}
+          >
+            <Tooltip direction="top" offset={[0, -14]}>
+              {label}
+            </Tooltip>
+          </Marker>
+        );
+      }),
+    [markerLocs, selectedId, lang],
   );
 
   // Live per-mahalla headcount → polygon tint. Keyed so the GeoJSON restyles
@@ -274,7 +298,7 @@ export function MapPage() {
               <button
                 onClick={() => setSidebarOpen(false)}
                 aria-label={t.close}
-                className="rounded-lg p-1 text-ink-muted hover:bg-surface-2 hover:text-ink lg:hidden"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-2 hover:text-ink lg:hidden"
               >
                 <CloseCircle size={20} variant="Bold" />
               </button>
@@ -299,7 +323,7 @@ export function MapPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t.search}
-              className="h-9 w-full rounded-lg border border-line bg-surface-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500"
+              className="h-11 w-full rounded-lg border border-line bg-surface-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500"
             />
           </div>
         </div>
@@ -525,7 +549,7 @@ export function MapPage() {
         <div className="absolute left-3 top-3 z-[1000] flex items-center gap-2">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-soft shadow-sm lg:hidden"
+            className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-xs font-medium text-ink-soft shadow-sm lg:hidden"
           >
             <Filter size={15} variant="Bulk" />
             {t.list}
@@ -547,7 +571,7 @@ export function MapPage() {
         <button
           onClick={() => setShowMahallas((s) => !s)}
           className={cn(
-            'absolute right-3 top-3 z-[1000] rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm transition-colors',
+            'absolute right-3 top-3 z-[1000] inline-flex h-11 items-center rounded-lg border px-3 text-xs font-medium shadow-sm transition-colors',
             showMahallas
               ? 'border-primary-500 bg-primary-600 text-white'
               : 'border-line bg-surface text-ink-soft',

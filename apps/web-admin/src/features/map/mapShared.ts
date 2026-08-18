@@ -185,6 +185,23 @@ export const LABELS: Record<Lang, Labels> = {
   },
 };
 
+/**
+ * Localized human-readable status for an employee — the non-color status cue
+ * surfaced in the marker tooltip / aria-label so status isn't conveyed by
+ * color alone. Mirrors {@link statusKey}.
+ */
+export function statusLabel(loc: LiveLocation, lang: Lang): string {
+  const t = LABELS[lang];
+  const byKey: Record<StatusKey, string> = {
+    office: t.office,
+    district: t.inDistrict,
+    outside: t.outDistrict,
+    stale: t.stale,
+    noloc: t.noLoc,
+  };
+  return byKey[statusKey(loc)];
+}
+
 /** Relative "N ago" text for the given ISO timestamp. */
 export function relTime(iso: string | null, t: Labels): string {
   if (!iso) return t.never;

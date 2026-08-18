@@ -1,3 +1,4 @@
+import 'package:app_ui/app_ui.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -21,7 +22,8 @@ class ZoneBoundaryLoader {
 
   final Dio _dio;
 
-  static const Color _districtColor = Color(0xFF059669);
+  // Tuman chegarasi — brend yashil (app_ui token: web-admin bilan 1:1).
+  static const Color _districtColor = AppColors.primaryDark;
 
   // Tuman — qalin ajralib turadigan tashqi chegara + yengil to'ldirish.
   static const double _districtBorderWidth = 3;
@@ -30,7 +32,9 @@ class ZoneBoundaryLoader {
   // Mahallalar — ingichka, "sekin" (past kontrast) to'r; to'ldirishsiz, shunda
   // tuman chegarasi va joriy mahalla urg'usi ustidan ustunlik qiladi.
   static const double _mahallaBorderWidth = 0.8;
-  static const Color _mahallaBorderColor = Color(0x8C64748B); // ~55% alpha
+  // Muted slate token (app_ui) + ~55% alpha (avvalgi 0x8C bilan bir xil).
+  static final Color _mahallaBorderColor =
+      AppColors.inkMuted.withValues(alpha: 0.55);
 
   Future<ZoneBoundaries> load() async {
     final mahallaFeatures = await _load('mahalla');
