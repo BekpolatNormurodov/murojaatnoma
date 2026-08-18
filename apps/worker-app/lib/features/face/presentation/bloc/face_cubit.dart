@@ -229,6 +229,15 @@ class FaceCubit extends Cubit<FaceState> {
   /// faqat bitta sahifa uchun yaratilgani sababli, marta o'rnatilgach
   /// hech qachon qaytarilmaydi.
   var _livenessMode = false;
+
+  /// Enroll-liveness rejimi: `startLiveness(forEnroll: true)` chaqirilganda
+  /// `true`. `onFrame`ning capture-trigger seam'ida (YAGONA o'qish joyi)
+  /// enroll uchun `capture()` (EnrollFace) yoki check-in uchun
+  /// `_captureAndVerify()` (VerifyFace + CheckIn/CheckOut) dan qaysi birini
+  /// chaqirishni tanlaydi. Check-in/check-out oqimi buni HECH QACHON
+  /// o'rnatmaydi (standart `false`) — shuning uchun ularning xatti-harakati
+  /// bayt-mabayt o'zgarishsiz qoladi. Har `startLiveness`da qayta yoziladi.
+  var _enrollWithLiveness = false;
   LivenessController? _livenessController;
   List<LivenessAction> _livenessActions = const [];
   DateTime? _livenessStartedAt;
@@ -476,8 +485,27 @@ class FaceCubit extends Cubit<FaceState> {
           _lastFace = face;
           onLivenessFrame(face.signal);
           if (canTriggerCapture) {
-            _captureConsumed = true;
-            unawaited(_captureAndVerify());
+            if (_enrollWithLiveness) {
+              // Enroll: liveness ISBOTLANDI — endi SHABLONNI saqlashdan oldin
+              // kadr sifatini ham talab qilamiz (frontal/markazda/yaqinlik/
+              // ko'z ochiq). Bu shablon har bir kelgusi check-in
+              // solishtiradigan ETALON bo'lgani uchun sifat MUHIM. Liveness
+              // tarmog'i onDetection sifat-gate'ini ishlatmaydi, AYNAN o'sha
+              // sof `_evaluateQuality` qayta ishlatiladi: kadr yaxshi bo'lmasa
+              // `FacePoorQuality` bilan yo'naltiramiz (liveness timeouti bilan
+              // chegaralangan), yaxshi bo'lsa saqlaymiz. Check-in bu shoxga
+              // HECH QACHON kirmaydi (`_enrollWithLiveness` doim false).
+              final reason = _evaluateQuality(face);
+              if (reason == null) {
+                _captureConsumed = true;
+                unawaited(capture());
+              } else {
+                emit(FacePoorQuality(reason));
+              }
+            } else {
+              _captureConsumed = true;
+              unawaited(_captureAndVerify());
+            }
           }
         } else {
           onNoFace();
@@ -653,8 +681,10 @@ class FaceCubit extends Cubit<FaceState> {
   void startLiveness(
     List<LivenessAction> actions, {
     AttendanceScanKind kind = AttendanceScanKind.checkIn,
+    bool forEnroll = false,
   }) {
     _livenessMode = true;
+    _enrollWithLiveness = forEnroll;
     _kind = kind;
     _livenessActions = actions;
     _livenessController = LivenessController(actions);

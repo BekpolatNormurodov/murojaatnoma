@@ -9,6 +9,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
 import 'package:worker_app/features/face/presentation/widgets/mirrored_camera_preview.dart';
 
@@ -35,7 +36,14 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    unawaited(context.read<FaceCubit>().startCamera());
+    // Enrollment ham liveness bilan (check-in kabi): avval SOF challenge'ni
+    // sozlaymiz (`startLiveness(forEnroll: true)` — real odamligini blink/
+    // burilish + `smile` bilan tekshiradi), so'ng kamerani ishga tushiramiz.
+    // `forEnroll: true` capture-trigger'ni VerifyFace emas, EnrollFace (yangi
+    // shablon saqlash) yo'liga yo'naltiradi — qarang: `FaceCubit`.
+    final cubit = context.read<FaceCubit>()
+      ..startLiveness(_pickEnrollLivenessActions(), forEnroll: true);
+    unawaited(cubit.startCamera());
   }
 
   @override
@@ -90,6 +98,23 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
   }
 }
 
+/// Enroll uchun liveness harakatlar ro'yxati: bitta tasodifiy anti-spoof
+/// yetakchi (blink/turnLeft/turnRight) + DOIM frontal `smile` bilan yakun.
+/// Challenge tugagan (va aynan `capture()` saqlaydigan) freym frontal +
+/// ko'zi ochiq bo'lishini kafolatlaydi — enroll SHABLONI shu kadrdan
+/// olinadi, shuning uchun kadr sifati muhim. Check-in'ning
+/// `_pickLivenessActions`idan ATAY farq qiladi (`smile` bilan yakunlanadi),
+/// shuning uchun umumiylashtirilmaydi.
+List<LivenessAction> _pickEnrollLivenessActions() {
+  const lead = [
+    LivenessAction.blink,
+    LivenessAction.turnLeft,
+    LivenessAction.turnRight,
+  ];
+  final seed = DateTime.now().millisecondsSinceEpoch;
+  return [lead[seed % lead.length], LivenessAction.smile];
+}
+
 /// Joriy `FaceState`ga mos to'liq-ekran ko'rinishni tanlaydi — sealed
 /// `switch` orqali compiler barcha holatlar qamrab olinganini tekshiradi.
 class _FaceEnrollBody extends StatelessWidget {
@@ -141,22 +166,30 @@ class _FaceEnrollBody extends StatelessWidget {
       ),
       FaceSuccess() => const _SuccessView(),
       FaceSearching() ||
+      FaceLivenessPrompt() ||
       FacePoorQuality() ||
       FaceAligning() ||
       FaceCapturing() ||
       FaceEmbedding() ||
       FaceEnrolling() => _LiveGateView(state: state),
-      // Vazifa 17: check-in (liveness) holatlari — bu sahifada (enrollment)
-      // hech qachon `emit` qilinmaydi (`FaceCubit` shu instansida
-      // `startLiveness()` chaqirilmaydi). `FaceState` BITTA sealed
-      // ierarxiya bo'lgani uchun switch baribir to'liq bo'lishi kerak —
-      // shuning uchun faqat nazokatli, hech qachon ko'rinmaydigan fallback.
-      FaceLivenessPrompt() ||
+      // Liveness muddati tugadi (20s) — enrollment uchun to'liq-ekranli
+      // xato + qayta urinish (sahifaning mavjud `FaceError` idiomasi bilan
+      // bir xil); `retry()` challenge'ni qaytadan boshlaydi.
+      FaceLivenessFailed() => _MessageView(
+        icon: AppIcons.timer,
+        title: l10n.faceLivenessFailedTitle,
+        message: l10n.faceLivenessFailedMessage,
+        actionLabel: l10n.retry,
+        onAction: () => context.read<FaceCubit>().retry(),
+      ),
+      // Check-in (verify) holatlari — enrollment sahifasida hech qachon emit
+      // qilinmaydi (enroll `capture()` -> EnrollFace; hech qachon
+      // VerifyFace/CheckIn'ga bormaydi). Sealed switch to'liq bo'lishi uchun
+      // nazokatli, ko'rinmaydigan fallback.
       FaceVerifying() ||
       FaceCheckingIn() ||
       FaceCheckinSuccess() ||
       FaceGeofenceOutside() ||
-      FaceLivenessFailed() ||
       FaceMatchFailed() => const ColoredBox(color: AppColors.ink),
     };
   }
@@ -181,6 +214,7 @@ class _LiveGateView extends StatelessWidget {
   /// `searching`.
   FaceScanStatus get _scanStatus => switch (state) {
     FacePoorQuality() => FaceScanStatus.error,
+    FaceLivenessPrompt() => FaceScanStatus.aligning,
     FaceAligning() => FaceScanStatus.aligning,
     FaceCapturing() ||
     FaceEmbedding() ||
@@ -189,6 +223,8 @@ class _LiveGateView extends StatelessWidget {
   };
 
   double get _arcProgress => switch (state) {
+    FaceLivenessPrompt(:final done, :final total) when total > 0 =>
+      done / total,
     FaceAligning(:final progress) => progress,
     FaceCapturing() || FaceEmbedding() || FaceEnrolling() => 1,
     _ => 0,
@@ -201,6 +237,7 @@ class _LiveGateView extends StatelessWidget {
 
   String _prompt(AppLocalizations l10n) => switch (state) {
     FaceSearching() => l10n.faceHoldStill,
+    FaceLivenessPrompt(:final action) => _actionPrompt(l10n, action),
     FacePoorQuality(:final reason) => _reasonText(l10n, reason),
     FaceAligning() => l10n.faceKeepStill,
     FaceCapturing() => l10n.faceCapturingStatus,
@@ -208,6 +245,32 @@ class _LiveGateView extends StatelessWidget {
     FaceEnrolling() => l10n.faceEnrollingStatus,
     _ => l10n.faceHoldStill,
   };
+
+  /// Liveness harakat ikonasi (pastdagi ko'rsatma-pill'da) — check-in bilan
+  /// bir xil (`_CheckinLiveView`dan ko'chirilgan): faqat `FaceLivenessPrompt`
+  /// holatida ko'rinadi.
+  IconData? get _actionIcon => switch (state) {
+    FaceLivenessPrompt(:final action) => _iconFor(action),
+    _ => null,
+  };
+
+  IconData _iconFor(LivenessAction? action) => switch (action) {
+    LivenessAction.blink => AppIcons.eyeBlink,
+    LivenessAction.turnLeft => AppIcons.turnLeft,
+    LivenessAction.turnRight => AppIcons.turnRight,
+    LivenessAction.smile => AppIcons.smile,
+    null => AppIcons.tick,
+  };
+
+  String _actionPrompt(AppLocalizations l10n, LivenessAction? action) {
+    return switch (action) {
+      LivenessAction.blink => l10n.blinkPrompt,
+      LivenessAction.turnLeft => l10n.turnLeftPrompt,
+      LivenessAction.turnRight => l10n.turnRightPrompt,
+      LivenessAction.smile => l10n.smilePrompt,
+      null => l10n.faceKeepStill,
+    };
+  }
 
   String _reasonText(AppLocalizations l10n, PoorQualityReason reason) {
     return switch (reason) {
@@ -253,6 +316,7 @@ class _LiveGateView extends StatelessWidget {
           status: _scanStatus,
           progress: _arcProgress,
           message: prompt,
+          messageIcon: _actionIcon,
         ),
         SafeArea(
           child: Column(

@@ -9,6 +9,8 @@ import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
 import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/face/data/services/face_detector_service.dart';
 import 'package:worker_app/features/face/data/services/face_embedder.dart';
+import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
+import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
 import 'package:worker_app/features/face/domain/usecases/enroll_face.dart';
 import 'package:worker_app/features/face/domain/usecases/verify_face.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
@@ -47,6 +49,18 @@ class _FixedStateFaceCubit extends FaceCubit {
   });
 
   final FaceState _fixedState;
+
+  // Enrollment endi initState'da `startLiveness(forEnroll: true)`ni ham
+  // chaqiradi (kamera bilan birga). Testda uni no-op qilamiz — aks holda
+  // real `startLiveness` fixture'ning yagona kirish nuqtasi
+  // (`startCamera` -> `_fixedState`) dan oldin stray `FaceLivenessPrompt`
+  // emit qilib qo'yardi.
+  @override
+  void startLiveness(
+    List<LivenessAction> actions, {
+    AttendanceScanKind kind = AttendanceScanKind.checkIn,
+    bool forEnroll = false,
+  }) {}
 
   @override
   Future<void> startCamera() async => emit(_fixedState);
