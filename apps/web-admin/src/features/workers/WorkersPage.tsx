@@ -104,10 +104,7 @@ export function WorkersPage() {
     setEditing(null);
   };
 
-  async function handleSubmit(
-    input: Parameters<typeof createWorker.mutateAsync>[0],
-    createLogin: boolean,
-  ) {
+  async function handleSubmit(input: Parameters<typeof createWorker.mutateAsync>[0]) {
     if (editing) {
       await updateWorker.mutateAsync({ id: editing.id, ...input });
       setToast({ tone: 'success', msg: 'Ishchi maʼlumotlari yangilandi' });
@@ -119,16 +116,10 @@ export function WorkersPage() {
     // /employees provisioning'ga umuman yetib bormaymiz.
     await createWorker.mutateAsync(input);
 
-    if (!createLogin) {
-      setToast({ tone: 'success', msg: "Yangi ishchi qo'shildi" });
-      return;
-    }
-
-    // "Worker-app hisobini yaratish" belgilangan — ishchi worker-app'ga
-    // login/parol bilan kira olishi uchun /employees'ga
-    // ALOHIDA yozuv yaratamiz. Ishchi yaratish allaqachon muvaffaqiyatli
-    // bo'lgani uchun bu yerdagi xato uni bekor qilmaydi — faqat mustaqil
-    // tarzda ushlanadi va alohida xabar bilan ko'rsatiladi.
+    // Har bir ishchi worker-app'ga login/parol bilan kirishi uchun /employees'ga
+    // ALOHIDA yozuv HAR DOIM yaratamiz (opt-in yo'q). Ishchi yaratish allaqachon
+    // muvaffaqiyatli bo'lgani uchun bu yerdagi xato uni bekor qilmaydi — faqat
+    // mustaqil tarzda ushlanadi va alohida xabar bilan ko'rsatiladi.
     try {
       await api.post('/employees', {
         fullName: input.name,

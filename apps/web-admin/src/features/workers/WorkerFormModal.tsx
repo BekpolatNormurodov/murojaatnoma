@@ -1,10 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Add, Save2, CloseCircle } from 'iconsax-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Add,
+  ArrowDown2,
+  GalleryAdd,
+  InfoCircle,
+  RotateRight,
+  Save2,
+  SearchNormal1,
+  TickCircle,
+  CloseCircle,
+} from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { CATEGORY_META, DISTRICTS } from '@/shared/data/mock';
 import type { RequestCategory, Worker } from '@/shared/data/types';
+import { api } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
 import type { WorkerFormInput } from './useWorkerMutations';
+import { WORKER_POSITIONS } from './workerMeta';
+
+/** Avatar rasm yuklash cheklovlari — faqat rasm turlari, ≤5 MB. */
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const AVATAR_COLORS = [
   '#10b981', '#3b82f6', '#a855f7', '#f59e0b', '#ef4444',
@@ -39,9 +55,9 @@ export function WorkerFormModal({
   /** Bo'lsa — tahrirlash rejimi; aks holda yangi ishchi yaratish. */
   worker: Worker | null;
   onClose: () => void;
-  /** `createLogin` — "Login yaratish (telefon orqali)" belgilangan bo'lsa true
-   *  (faqat yaratishda ko'rinadi); chaqiruvchi (WorkersPage) ishchi
-   *  yaratilgandan so'ng buni ishlatib alohida POST /employees yuboradi
+  /** `createLogin` — har bir ishchi worker-app hisobini (login/parol) oladi,
+   *  shuning uchun yaratishda doim `true` yuboriladi; chaqiruvchi (WorkersPage)
+   *  ishchi yaratilgandan so'ng buni ishlatib alohida POST /employees yuboradi
    *  (worker-app login/parol hisobini yaratish uchun). */
   onSubmit: (input: WorkerFormInput, createLogin: boolean) => Promise<void>;
 }) {
@@ -56,9 +72,11 @@ export function WorkerFormModal({
   const [photo, setPhoto] = useState('');
   const [salary, setSalary] = useState('');
   const [vehicle, setVehicle] = useState('');
-  // worker-app hisobini (login/parol) yaratish uchun /employees yozuvi ham
-  // yaratilsinmi — faqat yangi ishchi yaratishda dolzarb.
-  const [createLogin, setCreateLogin] = useState(false);
+
+  // Avatar rasm yuklash holati (POST /uploads/image → { url }).
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -75,7 +93,8 @@ export function WorkerFormModal({
     setPhoto(worker?.photo ?? '');
     setSalary(worker && worker.salary ? String(worker.salary) : '');
     setVehicle(worker?.vehicle ?? '');
-    setCreateLogin(false);
+    setUploading(false);
+    setUploadError(null);
     setSubmitAttempted(false);
     setTouched({});
     setSubmitError(null);
@@ -88,19 +107,20 @@ export function WorkerFormModal({
 
   const errors = {
     name: name.trim() ? undefined : 'Ism-familiyani kiriting',
-    position: position.trim() ? undefined : 'Lavozimni kiriting',
+    position: position.trim() ? undefined : 'Lavozimni tanlang',
     phone: !phone.trim()
       ? 'Telefon raqamni kiriting'
       : isPhone(phone)
         ? undefined
         : "Telefon raqam formati noto'g'ri (masalan: +998 90 123 45 67)",
-    email: !email.trim()
-      ? 'Email manzilni kiriting'
-      : isEmail(email)
-        ? undefined
-        : "Email manzil noto'g'ri",
   };
   const hasErrors = Object.values(errors).some(Boolean);
+
+  // Email ixtiyoriy — bo'sh bo'lsa submitni bloklamaydi; kiritilsa faqat
+  // format yumshoq tekshiriladi (bu ham submitni to'xtatmaydi).
+  const emailError = email.trim() && !isEmail(email) ? "Email manzil noto'g'ri" : undefined;
+  const shownEmailError =
+    submitAttempted || touched.email ? emailError : undefined;
 
   function markTouched(field: string) {
     setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
@@ -112,6 +132,41 @@ export function WorkerFormModal({
 
   function toggleCategory(c: RequestCategory) {
     setSpecialization((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  }
+
+  /**
+   * Avatar rasmini tanlash → mijoz tomonida tekshirish (faqat rasm, ≤5 MB) →
+   * multipart yuklash (POST /uploads/image, "file" maydoni, admin Bearer token
+   * bilan — api.upload boundary'ni brauzer o'zi qo'yishi uchun Content-Type
+   * qo'ymaydi). Javob { url } — u `photo` state'iga saqlanadi.
+   */
+  async function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Bir xil faylni qayta tanlash mumkin bo'lishi uchun inputni tozalaymiz.
+    e.target.value = '';
+    if (!file) return;
+
+    setUploadError(null);
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setUploadError('Faqat JPG, PNG yoki WEBP rasm yuklang');
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setUploadError('Rasm hajmi 5 MB dan oshmasligi kerak');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    setUploading(true);
+    try {
+      const res = await api.upload<{ url: string }>('/uploads/image', formData);
+      setPhoto(res.url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Rasmni yuklab bo'lmadi");
+    } finally {
+      setUploading(false);
+    }
   }
 
   async function submit() {
@@ -140,7 +195,8 @@ export function WorkerFormModal({
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await onSubmit(input, createLogin);
+      // Har bir ishchi worker-app hisobini oladi — provisioning doim ishlaydi.
+      await onSubmit(input, true);
       onClose();
     } catch (err) {
       setSubmitError(
@@ -183,15 +239,15 @@ export function WorkerFormModal({
             />
           </Field>
           <Field label="Lavozim" required error={shownError('position')} errorId="w-position-error">
-            <input
-              id="w-position"
+            <PositionSelect
               value={position}
-              onChange={(e) => setPosition(e.target.value)}
+              onChange={(v) => {
+                setPosition(v);
+                markTouched('position');
+              }}
               onBlur={() => markTouched('position')}
-              placeholder="Masalan: Elektrik"
-              aria-invalid={!!shownError('position')}
-              aria-describedby={shownError('position') ? 'w-position-error' : undefined}
-              className={cn(fieldCls, shownError('position') ? 'border-danger' : 'border-line')}
+              invalid={!!shownError('position')}
+              errorId={shownError('position') ? 'w-position-error' : undefined}
             />
           </Field>
         </div>
@@ -209,16 +265,17 @@ export function WorkerFormModal({
               className={cn(fieldCls, shownError('phone') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Email" required error={shownError('email')} errorId="w-email-error">
+          <Field label="Email (ixtiyoriy)" error={shownEmailError} errorId="w-email-error">
             <input
               id="w-email"
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => markTouched('email')}
               placeholder="ism@hokimiyat.uz"
-              aria-invalid={!!shownError('email')}
-              aria-describedby={shownError('email') ? 'w-email-error' : undefined}
-              className={cn(fieldCls, shownError('email') ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownEmailError}
+              aria-describedby={shownEmailError ? 'w-email-error' : undefined}
+              className={cn(fieldCls, shownEmailError ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
@@ -268,11 +325,63 @@ export function WorkerFormModal({
 
         <Field label="Avatar rasmi (ixtiyoriy)">
           <input
-            value={photo}
-            onChange={(e) => setPhoto(e.target.value)}
-            placeholder="https://..."
-            className={cn(fieldCls, 'border-line')}
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handlePhotoPick}
+            className="hidden"
           />
+          {photo ? (
+            <div className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 p-3">
+              <img
+                src={photo}
+                alt="Avatar"
+                className="h-14 w-14 shrink-0 rounded-xl object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium text-ink">Rasm yuklandi</p>
+                <p className="truncate text-[12px] text-ink-muted">{photo}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPhoto('');
+                  setUploadError(null);
+                }}
+                aria-label="Rasmni olib tashlash"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-danger"
+              >
+                <CloseCircle size={20} variant="Bulk" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className={cn(
+                'flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed text-sm font-medium transition-colors',
+                uploading
+                  ? 'cursor-not-allowed border-line text-ink-muted'
+                  : 'border-line bg-surface text-ink-soft hover:border-primary-300 hover:bg-surface-2',
+              )}
+            >
+              {uploading ? (
+                <>
+                  <RotateRight size={18} className="animate-spin" /> Yuklanmoqda...
+                </>
+              ) : (
+                <>
+                  <GalleryAdd size={18} variant="Bulk" /> Rasm yuklash
+                </>
+              )}
+            </button>
+          )}
+          {uploadError && (
+            <span role="alert" className="mt-1.5 block text-[12px] font-medium text-danger">
+              {uploadError}
+            </span>
+          )}
           <p className="mt-1.5 text-[12px] text-ink-muted">
             Bu profil rasmi (avatar). Yuz biometriyasi bunga aloqasi yo'q — u mobil ilovada
             xodim tomonidan ro'yxatdan o'tkaziladi.
@@ -298,20 +407,12 @@ export function WorkerFormModal({
         </Field>
 
         {!editing && (
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface-2 p-3.5">
-            <input
-              type="checkbox"
-              checked={createLogin}
-              onChange={(e) => setCreateLogin(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-600"
-            />
-            <span className="text-[13px]">
-              <span className="block font-medium text-ink">Worker-app hisobini yaratish</span>
-              <span className="mt-0.5 block text-ink-muted">
-                Ishchi uchun worker-app hisobi yaratiladi — u login va parol bilan kiradi (SMS/OTP emas).
-              </span>
+          <div className="flex items-start gap-2.5 rounded-xl border border-line bg-surface-2 p-3.5 text-[13px]">
+            <InfoCircle size={18} variant="Bulk" className="mt-0.5 shrink-0 text-primary-600" />
+            <span className="text-ink-soft">
+              Ishchi login va parol bilan worker-app'ga kiradi — hisob avtomatik yaratiladi.
             </span>
-          </label>
+          </div>
         )}
 
         <div className="flex gap-3 border-t border-line pt-4">
@@ -347,6 +448,126 @@ export function WorkerFormModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * "Lavozim" — qidiruvli tanlagich (combobox): trigger tugma + popover ichida
+ * qidiruv maydoni va aylanadigan (scroll) ro'yxat. Tanlangan qiymat `position`
+ * state'iga yoziladi. BonusFormModal'dagi qabul qiluvchi qidiruvi uslubida.
+ */
+function PositionSelect({
+  value,
+  onChange,
+  onBlur,
+  invalid = false,
+  errorId,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  invalid?: boolean;
+  /** Xato matni id'si — trigger'ning aria-describedby bilan bog'lash uchun. */
+  errorId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Tashqariga bosish yoki Esc — panelni yopadi (va fieldni "touched" qiladi).
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        onBlur?.();
+      }
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, onBlur]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? WORKER_POSITIONS.filter((p) => p.toLowerCase().includes(q)) : WORKER_POSITIONS;
+  }, [query]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        id="w-position"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-invalid={invalid}
+        aria-describedby={errorId}
+        className={cn(
+          'flex h-11 w-full items-center justify-between gap-2 rounded-xl border bg-surface px-3.5 text-sm outline-none transition-colors',
+          open ? 'border-primary-300' : invalid ? 'border-danger' : 'border-line',
+        )}
+      >
+        <span className={cn('truncate text-left', value ? 'text-ink' : 'text-ink-muted')}>
+          {value || 'Lavozimni tanlang'}
+        </span>
+        <ArrowDown2
+          size={15}
+          className={cn('shrink-0 text-ink-muted transition-transform', open && 'rotate-180')}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          className="absolute inset-x-0 z-50 mt-2 origin-top overflow-hidden rounded-2xl border border-line bg-surface shadow-pop animate-fade-in"
+        >
+          <div className="relative border-b border-line">
+            <SearchNormal1 size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Lavozim qidirish..."
+              className="h-11 w-full bg-transparent pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-muted"
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto p-1.5">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-6 text-center text-[13px] text-ink-muted">Hech narsa topilmadi</p>
+            ) : (
+              filtered.map((p) => {
+                const active = p === value;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    onClick={() => {
+                      onChange(p);
+                      setQuery('');
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      'flex min-h-10 w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors',
+                      active ? 'bg-primary-50 font-medium text-primary-700' : 'text-ink hover:bg-surface-2',
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{p}</span>
+                    {active && <TickCircle size={16} variant="Bulk" className="shrink-0 text-primary-600" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
