@@ -20,6 +20,12 @@ function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
+/** Lenient telefon format tekshiruvi — kamida 9 raqam, faqat +/bo'sh joy/tire. */
+function isPhone(v: string) {
+  const digits = v.trim().replace(/[\s()-]/g, '');
+  return /^\+?\d{9,13}$/.test(digits);
+}
+
 export function DeputyFormModal({
   open,
   deputy,
@@ -48,6 +54,7 @@ export function DeputyFormModal({
   const [photo, setPhoto] = useState('');
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -65,6 +72,7 @@ export function DeputyFormModal({
     setColor(deputy?.color ?? COLORS[0]);
     setPhoto(deputy?.photo ?? '');
     setSubmitAttempted(false);
+    setTouched({});
     setSubmitError(null);
     setSubmitting(false);
   }, [deputy]);
@@ -80,7 +88,11 @@ export function DeputyFormModal({
     shortDirection: shortDirection.trim() ? undefined : "Qisqa yo'nalishni kiriting",
     office: office.trim() ? undefined : 'Kabinet raqamini kiriting',
     receptionDay: receptionDay.trim() ? undefined : 'Qabul kunini kiriting',
-    phone: phone.trim() ? undefined : 'Telefon raqamni kiriting',
+    phone: !phone.trim()
+      ? 'Telefon raqamni kiriting'
+      : isPhone(phone)
+        ? undefined
+        : "Telefon raqam formati noto'g'ri (masalan: +998 71 123 45 67)",
     email: !email.trim()
       ? 'Email manzilni kiriting'
       : isEmail(email)
@@ -88,6 +100,14 @@ export function DeputyFormModal({
         : "Email manzil noto'g'ri",
   };
   const hasErrors = Object.values(errors).some(Boolean);
+
+  function markTouched(field: string) {
+    setTouched((prev) => (prev[field] ? prev : { ...prev, [field]: true }));
+  }
+  /** Submit urinilgandan yoki fielddan chiqilgandan keyingina xato ko'rsatiladi. */
+  function shownError(field: keyof typeof errors) {
+    return submitAttempted || touched[field] ? errors[field] : undefined;
+  }
 
   function toggleCategory(c: RequestCategory) {
     setCategories((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -146,77 +166,114 @@ export function DeputyFormModal({
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ism-familiya" required error={submitAttempted ? errors.name : undefined}>
+          <Field label="Ism-familiya" required error={shownError('name')} errorId="d-name-error">
             <input
+              id="d-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onBlur={() => markTouched('name')}
               placeholder="Ism familiya"
-              className={cn(fieldCls, submitAttempted && errors.name ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('name')}
+              aria-describedby={shownError('name') ? 'd-name-error' : undefined}
+              className={cn(fieldCls, shownError('name') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Lavozim" required error={submitAttempted ? errors.position : undefined}>
+          <Field label="Lavozim" required error={shownError('position')} errorId="d-position-error">
             <input
+              id="d-position"
               value={position}
               onChange={(e) => setPosition(e.target.value)}
+              onBlur={() => markTouched('position')}
               placeholder="Hokimning o'rinbosari"
-              className={cn(fieldCls, submitAttempted && errors.position ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('position')}
+              aria-describedby={shownError('position') ? 'd-position-error' : undefined}
+              className={cn(fieldCls, shownError('position') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
 
-        <Field label="Yo'nalish (to'liq)" required error={submitAttempted ? errors.direction : undefined}>
+        <Field label="Yo'nalish (to'liq)" required error={shownError('direction')} errorId="d-direction-error">
           <input
+            id="d-direction"
             value={direction}
             onChange={(e) => setDirection(e.target.value)}
+            onBlur={() => markTouched('direction')}
             placeholder="Masalan: Qurilish va kommunal xo'jalik"
-            className={cn(fieldCls, submitAttempted && errors.direction ? 'border-danger' : 'border-line')}
+            aria-invalid={!!shownError('direction')}
+            aria-describedby={shownError('direction') ? 'd-direction-error' : undefined}
+            className={cn(fieldCls, shownError('direction') ? 'border-danger' : 'border-line')}
           />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Qisqa yo'nalish" required error={submitAttempted ? errors.shortDirection : undefined}>
+          <Field
+            label="Qisqa yo'nalish"
+            required
+            error={shownError('shortDirection')}
+            errorId="d-shortDirection-error"
+          >
             <input
+              id="d-shortDirection"
               value={shortDirection}
               onChange={(e) => setShortDirection(e.target.value)}
+              onBlur={() => markTouched('shortDirection')}
               placeholder="Masalan: Kommunal"
-              className={cn(fieldCls, submitAttempted && errors.shortDirection ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('shortDirection')}
+              aria-describedby={shownError('shortDirection') ? 'd-shortDirection-error' : undefined}
+              className={cn(fieldCls, shownError('shortDirection') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Kabinet" required error={submitAttempted ? errors.office : undefined}>
+          <Field label="Kabinet" required error={shownError('office')} errorId="d-office-error">
             <input
+              id="d-office"
               value={office}
               onChange={(e) => setOffice(e.target.value)}
+              onBlur={() => markTouched('office')}
               placeholder="Masalan: 305-xona"
-              className={cn(fieldCls, submitAttempted && errors.office ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('office')}
+              aria-describedby={shownError('office') ? 'd-office-error' : undefined}
+              className={cn(fieldCls, shownError('office') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Telefon" required error={submitAttempted ? errors.phone : undefined}>
+          <Field label="Telefon" required error={shownError('phone')} errorId="d-phone-error">
             <input
+              id="d-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
+              onBlur={() => markTouched('phone')}
               placeholder="+998 71 123 45 67"
-              className={cn(fieldCls, submitAttempted && errors.phone ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('phone')}
+              aria-describedby={shownError('phone') ? 'd-phone-error' : undefined}
+              className={cn(fieldCls, shownError('phone') ? 'border-danger' : 'border-line')}
             />
           </Field>
-          <Field label="Email" required error={submitAttempted ? errors.email : undefined}>
+          <Field label="Email" required error={shownError('email')} errorId="d-email-error">
             <input
+              id="d-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => markTouched('email')}
               placeholder="ism@hokimiyat.uz"
-              className={cn(fieldCls, submitAttempted && errors.email ? 'border-danger' : 'border-line')}
+              aria-invalid={!!shownError('email')}
+              aria-describedby={shownError('email') ? 'd-email-error' : undefined}
+              className={cn(fieldCls, shownError('email') ? 'border-danger' : 'border-line')}
             />
           </Field>
         </div>
 
-        <Field label="Qabul kuni" required error={submitAttempted ? errors.receptionDay : undefined}>
+        <Field label="Qabul kuni" required error={shownError('receptionDay')} errorId="d-receptionDay-error">
           <input
+            id="d-receptionDay"
             value={receptionDay}
             onChange={(e) => setReceptionDay(e.target.value)}
+            onBlur={() => markTouched('receptionDay')}
             placeholder="Masalan: Har payshanba, 15:00–17:00"
-            className={cn(fieldCls, submitAttempted && errors.receptionDay ? 'border-danger' : 'border-line')}
+            aria-invalid={!!shownError('receptionDay')}
+            aria-describedby={shownError('receptionDay') ? 'd-receptionDay-error' : undefined}
+            className={cn(fieldCls, shownError('receptionDay') ? 'border-danger' : 'border-line')}
           />
         </Field>
 
@@ -320,11 +377,14 @@ function Field({
   children,
   error,
   required,
+  errorId,
 }: {
   label: string;
   children: React.ReactNode;
   error?: string;
   required?: boolean;
+  /** Xato matnining id'si — inputning aria-describedby bilan bog'lash uchun. */
+  errorId?: string;
 }) {
   return (
     <label className="block">
@@ -337,7 +397,11 @@ function Field({
         )}
       </span>
       {children}
-      {error && <span className="mt-1.5 block text-[12px] font-medium text-danger">{error}</span>}
+      {error && (
+        <span id={errorId} role="alert" className="mt-1.5 block text-[12px] font-medium text-danger">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

@@ -15,6 +15,8 @@ import {
   Add,
   Edit2,
   Trash,
+  SearchNormal1,
+  Profile2User,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -23,33 +25,21 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
-import { CATEGORY_META, COMPLAINTS, MEETINGS, REQUESTS } from '@/shared/data/mock';
+import { CATEGORY_META, COMPLAINTS, REQUESTS } from '@/shared/data/mock';
 import type { Deputy, RequestCategory } from '@/shared/data/types';
 import { useDeputies } from './useDeputies';
 import { DeputyFormModal } from './DeputyFormModal';
+import { DeputyDetail } from './DeputyDetail';
 import { useCreateDeputy, useDeleteDeputy, useUpdateDeputy } from './useDeputyMutations';
 import { useStaff } from '../staff/useStaff';
+import { categoryMeta, deputyStats } from './deputyMeta';
+import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
 
-const DEFAULT_CATEGORY_META = { label: "Boshqa", color: '#94a3b8' };
-
-/** CATEGORY_META'da yo'q (kutilmagan) kategoriya uchun neytral fallback. */
-function categoryMeta(cat: RequestCategory) {
-  return CATEGORY_META[cat] ?? DEFAULT_CATEGORY_META;
-}
-
-function deputyStats(d: Deputy) {
-  const requests = REQUESTS.filter((r) => d.categories.includes(r.category));
-  const openRequests = requests.filter(
-    (r) => r.status === 'new' || r.status === 'in_progress',
-  ).length;
-  const complaints = COMPLAINTS.filter((c) => c.deputyId === d.id).length;
-  const meetings = MEETINGS.filter((m) => m.chairDeputyId === d.id).length;
-  return { requests: requests.length, openRequests, complaints, meetings };
-}
+const CATEGORY_KEYS = Object.keys(CATEGORY_META) as RequestCategory[];
 
 function MiniStat({
   icon: Icon,
@@ -74,21 +64,38 @@ function MiniStat({
 function DeputyCard({
   d,
   index,
+  reducedMotion,
+  onSelect,
   onEdit,
   onDelete,
 }: {
   d: Deputy;
   index: number;
+  reducedMotion: boolean;
+  onSelect: (d: Deputy) => void;
   onEdit: (d: Deputy) => void;
   onDelete: (d: Deputy) => void;
 }) {
   const s = deputyStats(d);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={reducedMotion ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index * 0.06, 0.4), duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="relative overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-card transition-all hover:shadow-pop"
+      transition={
+        reducedMotion
+          ? { duration: 0 }
+          : { delay: Math.min(index * 0.06, 0.4), duration: 0.4, ease: [0.22, 1, 0.36, 1] }
+      }
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(d)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(d);
+        }
+      }}
+      className="relative cursor-pointer overflow-hidden rounded-2xl border border-line bg-surface p-5 shadow-card transition-all hover:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
     >
       <span className="absolute inset-x-0 top-0 h-1" style={{ background: d.color }} />
       <span
@@ -99,23 +106,29 @@ function DeputyCard({
       {/* Edit / delete controls */}
       <div className="absolute right-3 top-3 z-10 flex gap-1.5">
         <button
-          onClick={() => onEdit(d)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(d);
+          }}
           aria-label="Tahrirlash"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface/80 text-ink-soft backdrop-blur-sm transition-colors hover:bg-surface-2 hover:text-ink"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-line bg-surface/90 text-ink-soft backdrop-blur-sm transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Edit2 size={16} variant="Bulk" />
         </button>
         <button
-          onClick={() => onDelete(d)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(d);
+          }}
           aria-label="O'chirish"
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-danger/30 bg-danger-soft/80 text-red-700 backdrop-blur-sm transition-colors hover:bg-danger/15"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-danger/30 bg-danger-soft/90 text-red-700 backdrop-blur-sm transition-colors hover:bg-danger/15"
         >
           <Trash size={16} variant="Bulk" />
         </button>
       </div>
 
       {/* Header */}
-      <div className="flex items-center gap-3 pr-16">
+      <div className="flex items-center gap-3 pr-28">
         <Avatar src={d.photo} name={d.name} color={d.color} size={56} ring />
         <div className="min-w-0">
           <h3 className="truncate text-[16px] font-bold text-ink">{d.name}</h3>
@@ -185,10 +198,18 @@ function DeputyCard({
 
       {/* Contact */}
       <div className="mt-4 space-y-2 border-t border-line pt-3 text-[12.5px]">
-        <a href={`tel:${d.phone}`} className="flex items-center gap-2 text-ink-soft hover:text-accent-600">
+        <a
+          href={`tel:${d.phone}`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-2 text-ink-soft hover:text-accent-600"
+        >
           <CallCalling size={15} variant="Bulk" className="text-ink-muted" /> {d.phone}
         </a>
-        <a href={`mailto:${d.email}`} className="flex items-center gap-2 text-ink-soft hover:text-accent-600">
+        <a
+          href={`mailto:${d.email}`}
+          onClick={(e) => e.stopPropagation()}
+          className="flex items-center gap-2 text-ink-soft hover:text-accent-600"
+        >
           <Sms size={15} variant="Bulk" className="text-ink-muted" /> {d.email}
         </a>
         <div className="flex items-center gap-2 text-ink-soft">
@@ -208,6 +229,11 @@ export function DeputiesPage() {
   const deputies = useMemo(() => data ?? [], [data]);
 
   const hokim = useMemo(() => staffData?.find((s) => s.role === 'hokim'), [staffData]);
+
+  const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<RequestCategory | 'all'>('all');
+  const [selected, setSelected] = useState<Deputy | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   // CRUD holati: yaratish / tahrirlash / o'chirish oynalari + qisqa toast.
   const [creating, setCreating] = useState(false);
@@ -231,6 +257,28 @@ export function DeputiesPage() {
     setEditing(null);
   };
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return deputies.filter((d) => {
+      const matchesQuery =
+        !q ||
+        d.name.toLowerCase().includes(q) ||
+        d.direction.toLowerCase().includes(q) ||
+        d.shortDirection.toLowerCase().includes(q) ||
+        d.office.toLowerCase().includes(q) ||
+        d.topics.some((t) => t.toLowerCase().includes(q));
+      const matchesCategory = categoryFilter === 'all' || d.categories.includes(categoryFilter);
+      return matchesQuery && matchesCategory;
+    });
+  }, [deputies, query, categoryFilter]);
+
+  const hasActiveFilters = query.trim() !== '' || categoryFilter !== 'all';
+
+  function resetFilters() {
+    setQuery('');
+    setCategoryFilter('all');
+  }
+
   async function handleSubmit(input: Parameters<typeof createDeputy.mutateAsync>[0]) {
     if (editing) {
       await updateDeputy.mutateAsync({ id: editing.id, ...input });
@@ -247,6 +295,7 @@ export function DeputiesPage() {
     try {
       await deleteDeputy.mutateAsync(deleting.id);
       setDeleting(null);
+      setSelected(null);
       setToast({ tone: 'success', msg: `${name} o'chirildi` });
     } catch (err) {
       setToast({
@@ -309,6 +358,72 @@ export function DeputiesPage() {
             )}
           </div>
 
+          {/* Filters + search */}
+          {!isLoading && deputies.length > 0 && (
+            <div className="mb-6 flex flex-col gap-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setCategoryFilter('all')}
+                    aria-pressed={categoryFilter === 'all'}
+                    className={cn(
+                      'min-h-11 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
+                      categoryFilter === 'all'
+                        ? 'bg-ink text-white'
+                        : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                    )}
+                  >
+                    Barchasi
+                  </button>
+                  {CATEGORY_KEYS.map((c) => {
+                    const meta = categoryMeta(c);
+                    const active = categoryFilter === c;
+                    return (
+                      <button
+                        key={c}
+                        onClick={() => setCategoryFilter(c)}
+                        aria-pressed={active}
+                        className={cn(
+                          'min-h-11 rounded-xl border px-3.5 py-2 text-[13px] font-medium transition-colors',
+                          active
+                            ? 'border-transparent text-white'
+                            : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
+                        )}
+                        style={active ? { background: meta.color } : undefined}
+                      >
+                        {meta.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="relative w-full lg:w-72">
+                  <label htmlFor="deputies-search" className="sr-only">
+                    O'rinbosarlarni qidirish
+                  </label>
+                  <SearchNormal1
+                    size={18}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted"
+                  />
+                  <input
+                    id="deputies-search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Ism, yo'nalish yoki kabinet..."
+                    className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
+                  />
+                </div>
+              </div>
+              {hasActiveFilters && (
+                <button
+                  onClick={resetFilters}
+                  className="inline-flex min-h-11 w-fit items-center gap-1.5 rounded-xl px-1 text-[13px] font-medium text-ink-soft transition-colors hover:text-ink"
+                >
+                  <RotateRight size={15} /> Filtrlarni tozalash
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Hokim banner */}
           {hokim && (
             <Card className="mb-6 flex flex-col gap-4 overflow-hidden bg-linear-to-br from-primary-700 to-primary-600 p-5 text-white sm:flex-row sm:items-center">
@@ -343,17 +458,65 @@ export function DeputiesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {deputies.map((d, i) => (
-                <DeputyCard key={d.id} d={d} index={i} onEdit={setEditing} onDelete={setDeleting} />
+              {filtered.map((d, i) => (
+                <DeputyCard
+                  key={d.id}
+                  d={d}
+                  index={i}
+                  reducedMotion={reducedMotion}
+                  onSelect={setSelected}
+                  onEdit={(dep) => {
+                    setSelected(null);
+                    setEditing(dep);
+                  }}
+                  onDelete={setDeleting}
+                />
               ))}
             </div>
           )}
 
-          {!isLoading && deputies.length === 0 && (
-            <div className="py-20 text-center text-ink-muted">Hech narsa topilmadi</div>
+          {!isLoading && filtered.length === 0 && (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line py-16 text-center">
+              <Profile2User size={36} variant="Bulk" className="text-ink-muted" />
+              {deputies.length === 0 ? (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Hali o'rinbosarlar yo'q</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Birinchi hokim o'rinbosarini qo'shib boshlang
+                    </p>
+                  </div>
+                  <Button onClick={() => setCreating(true)}>
+                    <Add size={18} /> O'rinbosar qo'shish
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <p className="font-semibold text-ink">Hech narsa topilmadi</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Qidiruv yoki filtrlarga mos o'rinbosar yo'q — boshqa so'z bilan urinib ko'ring
+                    </p>
+                  </div>
+                  <Button variant="secondary" onClick={resetFilters}>
+                    <RotateRight size={16} /> Filtrlarni tozalash
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </>
       )}
+
+      <DeputyDetail
+        deputy={selected}
+        onClose={() => setSelected(null)}
+        onEdit={(d) => {
+          setSelected(null);
+          setEditing(d);
+        }}
+        onDelete={(d) => setDeleting(d)}
+      />
 
       <DeputyFormModal
         open={formOpen}
