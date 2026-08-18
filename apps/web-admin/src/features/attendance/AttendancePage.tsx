@@ -22,6 +22,7 @@ import {
   Profile2User,
   Clock,
   RotateRight,
+  SearchNormal1,
 } from 'iconsax-react';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -88,6 +89,7 @@ function Skeleton({ className }: { className?: string }) {
 export function AttendancePage() {
   const [date, setDate] = useState(todayIso());
   const [filter, setFilter] = useState<TodayAttendanceStatus | 'all'>('all');
+  const [query, setQuery] = useState('');
   const isToday = date === todayIso();
 
   const { data, isLoading, isFetching, isError, error, refetch } = useAttendanceToday(date);
@@ -98,10 +100,17 @@ export function AttendancePage() {
   const roster: EmployeeTodayEntry[] = data?.roster ?? [];
   const summary = data?.summary;
 
-  const rows = useMemo(
-    () => roster.filter((r) => filter === 'all' || r.status === filter),
-    [roster, filter],
-  );
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return roster.filter(
+      (r) =>
+        (filter === 'all' || r.status === filter) &&
+        (!q ||
+          r.fullName.toLowerCase().includes(q) ||
+          (r.position ?? '').toLowerCase().includes(q) ||
+          (r.department ?? '').toLowerCase().includes(q)),
+    );
+  }, [roster, filter, query]);
 
   const checkedIn = summary ? summary.total - summary.absent : 0;
   const workingNow = roster.filter((r) => r.checkIn && !r.checkOut).length;
@@ -269,21 +278,36 @@ export function AttendancePage() {
               title="Davomat jadvali"
               subtitle={isToday ? "Bugungi kun bo'yicha" : `${date} kuni bo'yicha`}
               action={
-                <div className="flex flex-wrap gap-1.5">
-                  {FILTERS.map((f) => (
-                    <button
-                      key={f.key}
-                      onClick={() => setFilter(f.key)}
-                      className={cn(
-                        'rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors',
-                        filter === f.key
-                          ? 'bg-ink text-white'
-                          : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
-                      )}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="relative">
+                    <SearchNormal1
+                      size={15}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+                    />
+                    <input
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Xodim qidirish..."
+                      aria-label="Xodim qidirish"
+                      className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-[13px] text-ink outline-none placeholder:text-ink-muted focus:border-primary-300 sm:w-52"
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {FILTERS.map((f) => (
+                      <button
+                        key={f.key}
+                        onClick={() => setFilter(f.key)}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors',
+                          filter === f.key
+                            ? 'bg-ink text-white'
+                            : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                        )}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               }
             />
@@ -376,7 +400,9 @@ export function AttendancePage() {
               </table>
             </div>
             {!isLoading && rows.length === 0 && (
-              <div className="py-16 text-center text-ink-muted">Bu holatda xodim yo'q</div>
+              <div className="py-16 text-center text-ink-muted">
+                {query.trim() ? `"${query}" bo'yicha xodim topilmadi` : "Bu holatda xodim yo'q"}
+              </div>
             )}
           </Card>
         </>

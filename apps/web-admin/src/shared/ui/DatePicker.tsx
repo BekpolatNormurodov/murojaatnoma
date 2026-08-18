@@ -10,6 +10,13 @@ const MONTHS_FULL = [
 // Dushanbadan boshlanadi
 const WEEKDAYS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 
+/** DatePicker'dagi tez tanlash tugmalari (bugungidan necha kun oldin). */
+const DAY_PRESETS = [
+  { label: 'Bugun', back: 0 },
+  { label: 'Kecha', back: 1 },
+  { label: "O'tgan kun", back: 2 },
+];
+
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /** "yyyy-mm-dd" -> Date (mahalliy vaqt, UTC siljishisiz). */
@@ -38,6 +45,23 @@ function useClickOutside<T extends HTMLElement>(onOut: () => void) {
 }
 
 /**
+ * Ochilganda tugma o'ng chekkaga yaqin bo'lsa — drop-down'ni o'ngga
+ * (`right-0`) tekislaydi, aks holda `left-0`. Shu bilan sahifaning o'ng
+ * tomonidagi (masalan Davomat sarlavhasidagi) kalendar ekrandan chiqib
+ * ketmaydi. `popoverWidth` — drop-down eni (px, taxminan).
+ */
+function useAutoAlign<T extends HTMLElement>(open: boolean, popoverWidth = 288) {
+  const btnRef = useRef<T>(null);
+  const [alignEnd, setAlignEnd] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setAlignEnd(r.left + popoverWidth > window.innerWidth - 8);
+  }, [open, popoverWidth]);
+  return [btnRef, alignEnd] as const;
+}
+
+/**
  * Stillangan kalendar drop-down — native `type="date"` o'rniga.
  * Qiymat formati: "yyyy-mm-dd".
  */
@@ -56,6 +80,7 @@ export function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
+  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open);
   const selected = parseDate(value);
   const today = new Date();
 
@@ -104,6 +129,7 @@ export function DatePicker({
   return (
     <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
@@ -122,7 +148,10 @@ export function DatePicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-0 z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
+            className={cn(
+              'absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop',
+              alignEnd ? 'right-0' : 'left-0',
+            )}
           >
             {/* Oy navigatsiyasi */}
             <div className="mb-2 flex items-center justify-between">
@@ -190,17 +219,32 @@ export function DatePicker({
               })}
             </div>
 
-            {/* Bugun */}
-            <button
-              type="button"
-              onClick={() => {
-                onChange(toValue(new Date()));
-                setOpen(false);
-              }}
-              className="mt-2 w-full rounded-xl border border-line py-2 text-[13px] font-medium text-primary-600 transition-colors hover:bg-primary-50"
-            >
-              Bugun
-            </button>
+            {/* Tez tanlash */}
+            <div className="mt-2 grid grid-cols-3 gap-1.5">
+              {DAY_PRESETS.map((p) => {
+                const d = new Date();
+                d.setDate(d.getDate() - p.back);
+                const active = !!selected && sameDay(d, selected);
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      onChange(toValue(d));
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      'rounded-xl border py-2 text-[12px] font-medium transition-colors',
+                      active
+                        ? 'border-primary-300 bg-primary-50 text-primary-700'
+                        : 'border-line text-ink-soft hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600',
+                    )}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -242,6 +286,7 @@ export function MonthPicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
+  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open);
   const parsed = parseMonth(value);
   const today = new Date();
   const [viewYear, setViewYear] = useState(() => parsed?.year ?? today.getFullYear());
@@ -267,6 +312,7 @@ export function MonthPicker({
   return (
     <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
       <button
+        ref={btnRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
@@ -285,7 +331,10 @@ export function MonthPicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-0 z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
+            className={cn(
+              'absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop',
+              alignEnd ? 'right-0' : 'left-0',
+            )}
           >
             {/* Yil navigatsiyasi */}
             <div className="mb-2 flex items-center justify-between">
