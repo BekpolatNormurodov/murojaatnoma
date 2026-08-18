@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:worker_app/features/notifications/domain/entities/notification_item.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/notifications/presentation/widgets/notification_tile.dart';
 
@@ -63,8 +64,13 @@ class NotificationsPage extends StatelessWidget {
                 final item = items[index];
                 return NotificationTile(
                   item: item,
-                  onTap: () =>
-                      context.read<NotificationsCubit>().markRead(item.id),
+                  onTap: () {
+                    context.read<NotificationsCubit>().markRead(item.id);
+                    // Ro'yxatda matn kesilishi mumkin — bosilganda TO'LIQ
+                    // bildirishnoma (sarlavha + butun matn + vaqt) ochiladi,
+                    // shunda foydalanuvchi hammasini o'qiy oladi.
+                    _showNotificationDetail(context, item);
+                  },
                 );
               },
             ),
@@ -73,6 +79,44 @@ class NotificationsPage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Bosilgan bildirishnomani TO'LIQ ko'rsatuvchi pastki oyna — ro'yxatda matn
+/// kesilib qolsa ham, bu yerda butun sarlavha + matn + vaqt o'qiladi.
+void _showNotificationDetail(BuildContext context, NotificationItem item) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    backgroundColor: isDark ? AppColors.darkSurface : AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.title, style: AppTextStyles.h3),
+              const SizedBox(height: 6),
+              Text(
+                relativeTime(sheetContext, item.createdAt),
+                style: AppTextStyles.caption.copyWith(
+                  color: isDark ? AppColors.darkInkMuted : AppColors.inkMuted,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(item.body, style: AppTextStyles.body),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 class _ErrorView extends StatelessWidget {
