@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminAuthController } from './admin-auth.controller';
 import { AdminAuthService } from './admin-auth.service';
+import { AdminUsersController } from './admin-users.controller';
+import { AdminUsersService } from './admin-users.service';
 
 /**
  * Web-admin auth (username/password). Registers its own empty JwtModule —
@@ -10,8 +12,8 @@ import { AdminAuthService } from './admin-auth.service';
  */
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AdminAuthController],
-  providers: [AdminAuthService],
+  controllers: [AdminAuthController, AdminUsersController],
+  providers: [AdminAuthService, AdminUsersService],
   exports: [AdminAuthService],
 })
 export class AdminAuthModule {}
