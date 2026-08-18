@@ -45,7 +45,11 @@ export function WorkerFormModal({
   /** Bo'lsa — tahrirlash rejimi; aks holda yangi ishchi yaratish. */
   worker: Worker | null;
   onClose: () => void;
-  onSubmit: (input: WorkerFormInput) => Promise<void>;
+  /** `createLogin` — "Login yaratish (telefon orqali)" belgilangan bo'lsa true
+   *  (faqat yaratishda ko'rinadi); chaqiruvchi (WorkersPage) ishchi
+   *  yaratilgandan so'ng buni ishlatib alohida POST /employees yuboradi
+   *  (worker-app OTP-login uchun). */
+  onSubmit: (input: WorkerFormInput, createLogin: boolean) => Promise<void>;
 }) {
   const editing = !!worker;
 
@@ -60,6 +64,9 @@ export function WorkerFormModal({
   const [photo, setPhoto] = useState('');
   const [salary, setSalary] = useState('');
   const [vehicle, setVehicle] = useState('');
+  // worker-app'ga shu telefon raqami bilan OTP orqali kirish uchun /employees
+  // yozuvi ham yaratilsinmi — faqat yangi ishchi yaratishda dolzarb.
+  const [createLogin, setCreateLogin] = useState(false);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -78,6 +85,7 @@ export function WorkerFormModal({
     setPhoto(worker?.photo ?? '');
     setSalary(worker && worker.salary ? String(worker.salary) : '');
     setVehicle(worker?.vehicle ?? '');
+    setCreateLogin(false);
     setSubmitAttempted(false);
     setTouched({});
     setSubmitError(null);
@@ -140,7 +148,7 @@ export function WorkerFormModal({
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await onSubmit(input);
+      await onSubmit(input, createLogin);
       onClose();
     } catch (err) {
       setSubmitError(
@@ -301,6 +309,23 @@ export function WorkerFormModal({
             ))}
           </div>
         </Field>
+
+        {!editing && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface-2 p-3.5">
+            <input
+              type="checkbox"
+              checked={createLogin}
+              onChange={(e) => setCreateLogin(e.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-600"
+            />
+            <span className="text-[13px]">
+              <span className="block font-medium text-ink">Login yaratish (telefon orqali)</span>
+              <span className="mt-0.5 block text-ink-muted">
+                Ishchi worker-app'ga yuqoridagi telefon raqami bilan SMS-kod (OTP) orqali kira oladi
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="flex gap-3 border-t border-line pt-4">
           <button

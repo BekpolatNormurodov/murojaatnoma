@@ -6,6 +6,9 @@ import { API_BASE } from "@/shared/api/config";
 export type AdminRole = "SUPER_ADMIN" | "ADMIN" | "VIEWER";
 
 export interface AuthUser {
+  /** Admin akkaunt id'si (AdminDto.id bilan bir xil) — o'zini solishtirish uchun
+   *  (masalan Adminlar sahifasida: o'z qatoringni o'zgartira olmaslik). */
+  id: string;
   name: string;
   email: string;
   role: AdminRole;
@@ -47,6 +50,7 @@ interface AuthState {
 
 function toUser(a: AdminDto): AuthUser {
   return {
+    id: a.id,
     name: a.fullName || a.username,
     email: a.email ?? "",
     role: a.role as AdminRole,

@@ -23,6 +23,7 @@ import {
   ShieldTick,
   ArrowLeft2,
   MedalStar,
+  Crown1,
   type Icon as IconType,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -214,6 +215,27 @@ export function SidebarContent({
 
       {/* Footer */}
       <div className={cn('space-y-1 border-t border-line py-4', collapsed ? 'px-2' : 'px-3')}>
+        {can('adminUsers') && (
+          <NavLink
+            to="/admins"
+            onClick={onNavigate}
+            // dict.ts'da tarjima kaliti yo'q — Premyalar bilan bir xil pattern
+            // (Sidebar.tsx yuqorisidagi izohga qarang), literal so'z ko'rsatiladi.
+            title={collapsed ? 'Adminlar' : undefined}
+            className={({ isActive }) =>
+              cn(
+                'flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors',
+                collapsed ? 'justify-center px-0' : 'px-3',
+                isActive
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+              )
+            }
+          >
+            <Crown1 size={21} className="shrink-0" />
+            {!collapsed && 'Adminlar'}
+          </NavLink>
+        )}
         {can('settings') && (
           <NavLink
             to="/settings"

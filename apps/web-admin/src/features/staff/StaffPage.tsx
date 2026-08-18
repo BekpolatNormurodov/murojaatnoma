@@ -21,6 +21,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select } from '@/shared/ui/Select';
+import { api } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { timeAgo } from '@/shared/lib/format';
@@ -43,6 +44,19 @@ const STATUS_FILTER_OPTIONS: { value: StaffStatus | 'all'; label: string; dot?: 
   { value: 'inactive', label: 'Nofaol', dot: '#94a3b8' },
   { value: 'suspended', label: "To'xtatilgan", dot: '#ef4444' },
 ];
+
+/**
+ * POST /employees E.164 talab qiladi (masalan +998901234567, bo'shliqsiz),
+ * lekin StaffFormModal'dagi telefon input "+998 90 123 45 67" kabi bo'shliqli
+ * formatga ruxsat beradi (isPhone) — shu sababli faqat shu yerda, provisioning
+ * chaqiruvidan oldin tozalanadi. Xodimning o'z `phone` maydoni o'zgarmaydi.
+ */
+function toE164Phone(raw: string): string {
+  const digits = raw.trim().replace(/[\s()-]/g, '');
+  if (digits.startsWith('+')) return digits;
+  if (digits.startsWith('998')) return `+${digits}`;
+  return `+998${digits}`;
+}
 
 function scheduleLabel(s: StaffMember['schedule']) {
   const days = s.days.map((d) => WEEKDAYS[d - 1]).join(', ');
@@ -137,9 +151,42 @@ export function StaffPage() {
     setToast({ tone: 'success', msg: 'Xodim maʼlumotlari yangilandi' });
   }
 
-  async function handleCreate(input: Parameters<typeof createStaff.mutateAsync>[0]) {
+  async function handleCreate(
+    input: Parameters<typeof createStaff.mutateAsync>[0],
+    createLogin: boolean,
+  ) {
+    // Xodim yozuvi (staff) — asosiy yaratish. Bu muvaffaqiyatsiz bo'lsa,
+    // xato StaffFormModal'ga tashlanadi (modal ochiq qoladi) — pastdagi
+    // /employees provisioning'ga umuman yetib bormaymiz.
     await createStaff.mutateAsync(input);
-    setToast({ tone: 'success', msg: "Yangi xodim qo'shildi" });
+
+    if (!createLogin) {
+      setToast({ tone: 'success', msg: "Yangi xodim qo'shildi" });
+      return;
+    }
+
+    // "Login yaratish (telefon orqali)" belgilangan — worker-app'da shu
+    // telefon raqami bilan OTP-login qila olishi uchun /employees'ga
+    // ALOHIDA yozuv yaratamiz. Staff yaratish allaqachon muvaffaqiyatli
+    // bo'lgani uchun bu yerdagi xato staff yaratishni bekor qilmaydi —
+    // faqat mustaqil tarzda ushlanadi va alohida xabar bilan ko'rsatiladi.
+    try {
+      await api.post('/employees', {
+        fullName: input.name,
+        phone: toE164Phone(input.phone),
+        position: input.position,
+        region: 'Toshkent shahri',
+        district: "Mirzo Ulug'bek",
+      });
+      setToast({ tone: 'success', msg: "Xodim qo'shildi va worker-app login yaratildi" });
+    } catch (err) {
+      setToast({
+        tone: 'error',
+        msg: `Xodim qo'shildi, lekin worker-app login yaratilmadi: ${
+          err instanceof Error ? err.message : "noma'lum xatolik"
+        }`,
+      });
+    }
   }
 
   async function confirmDelete() {

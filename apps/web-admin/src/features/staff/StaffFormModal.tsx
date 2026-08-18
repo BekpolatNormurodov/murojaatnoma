@@ -43,7 +43,10 @@ export function StaffFormModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSubmit: (input: StaffFormInput) => Promise<void>;
+  /** `createLogin` — "Login yaratish (telefon orqali)" belgilangan bo'lsa true;
+   *  chaqiruvchi (StaffPage) xodim yaratilgandan so'ng buni ishlatib alohida
+   *  POST /employees yuboradi (worker-app OTP-login uchun). */
+  onSubmit: (input: StaffFormInput, createLogin: boolean) => Promise<void>;
 }) {
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
@@ -60,6 +63,9 @@ export function StaffFormModal({
   const [twoFactor, setTwoFactor] = useState(false);
   const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]);
   const [photo, setPhoto] = useState('');
+  // worker-app'ga shu telefon raqami bilan OTP orqali kirish uchun /employees
+  // yozuvi ham yaratilsinmi (staff yozuvidan mustaqil, xatosi alohida ushlanadi).
+  const [createLogin, setCreateLogin] = useState(false);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -82,6 +88,7 @@ export function StaffFormModal({
     setTwoFactor(false);
     setAvatarColor(AVATAR_COLORS[0]);
     setPhoto('');
+    setCreateLogin(false);
     setSubmitAttempted(false);
     setTouched({});
     setSubmitError(null);
@@ -152,7 +159,7 @@ export function StaffFormModal({
     setSubmitError(null);
     setSubmitting(true);
     try {
-      await onSubmit(input);
+      await onSubmit(input, createLogin);
       onClose();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Saqlab bo'lmadi. Qaytadan urining.");
@@ -358,6 +365,21 @@ export function StaffFormModal({
             ))}
           </div>
         </Field>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-surface-2 p-3.5">
+          <input
+            type="checkbox"
+            checked={createLogin}
+            onChange={(e) => setCreateLogin(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 rounded accent-primary-600"
+          />
+          <span className="text-[13px]">
+            <span className="block font-medium text-ink">Login yaratish (telefon orqali)</span>
+            <span className="mt-0.5 block text-ink-muted">
+              Xodim worker-app'ga yuqoridagi telefon raqami bilan SMS-kod (OTP) orqali kira oladi
+            </span>
+          </span>
+        </label>
 
         <div className="flex gap-3 border-t border-line pt-4">
           <button

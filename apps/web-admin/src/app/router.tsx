@@ -20,6 +20,7 @@ import { StaffPage } from '@/features/staff/StaffPage';
 import { BonusesPage } from '@/features/bonuses/BonusesPage';
 import { NewsPage } from '@/features/news/NewsPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
+import { AdminsPage } from '@/features/admins/AdminsPage';
 
 export const router = createBrowserRouter([
   {
@@ -59,6 +60,7 @@ export const router = createBrowserRouter([
       { path: 'documents', element: <RoleRoute feature="documents"><DocumentsPage /></RoleRoute> },
       { path: 'news', element: <RoleRoute feature="news"><NewsPage /></RoleRoute> },
       { path: 'settings', element: <RoleRoute feature="settings"><SettingsPage /></RoleRoute> },
+      { path: 'admins', element: <RoleRoute feature="adminUsers"><AdminsPage /></RoleRoute> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

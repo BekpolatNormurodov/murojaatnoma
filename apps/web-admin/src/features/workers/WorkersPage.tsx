@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select } from '@/shared/ui/Select';
 import { DISTRICTS } from '@/shared/data/mock';
 import type { Worker, WorkerStatus } from '@/shared/data/types';
+import { api } from '@/shared/api/client';
 import { formatNumber } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
@@ -40,6 +41,19 @@ import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
+}
+
+/**
+ * POST /employees E.164 talab qiladi (masalan +998901234567, bo'shliqsiz),
+ * lekin WorkerFormModal'dagi telefon input "+998 90 123 45 67" kabi bo'shliqli
+ * formatga ruxsat beradi (isPhone) — shu sababli faqat shu yerda, provisioning
+ * chaqiruvidan oldin tozalanadi. Ishchining o'z `phone` maydoni o'zgarmaydi.
+ */
+function toE164Phone(raw: string): string {
+  const digits = raw.trim().replace(/[\s()-]/g, '');
+  if (digits.startsWith('+')) return digits;
+  if (digits.startsWith('998')) return `+${digits}`;
+  return `+998${digits}`;
 }
 
 type Filter = 'all' | 'inside' | 'outside' | 'unconfirmed';
@@ -91,13 +105,47 @@ export function WorkersPage() {
     setEditing(null);
   };
 
-  async function handleSubmit(input: Parameters<typeof createWorker.mutateAsync>[0]) {
+  async function handleSubmit(
+    input: Parameters<typeof createWorker.mutateAsync>[0],
+    createLogin: boolean,
+  ) {
     if (editing) {
       await updateWorker.mutateAsync({ id: editing.id, ...input });
       setToast({ tone: 'success', msg: 'Ishchi maʼlumotlari yangilandi' });
-    } else {
-      await createWorker.mutateAsync(input);
+      return;
+    }
+
+    // Ishchi yozuvi — asosiy yaratish. Muvaffaqiyatsiz bo'lsa xato
+    // WorkerFormModal'ga tashlanadi (modal ochiq qoladi) — pastdagi
+    // /employees provisioning'ga umuman yetib bormaymiz.
+    await createWorker.mutateAsync(input);
+
+    if (!createLogin) {
       setToast({ tone: 'success', msg: "Yangi ishchi qo'shildi" });
+      return;
+    }
+
+    // "Login yaratish (telefon orqali)" belgilangan — worker-app'da shu
+    // telefon raqami bilan OTP-login qila olishi uchun /employees'ga
+    // ALOHIDA yozuv yaratamiz. Ishchi yaratish allaqachon muvaffaqiyatli
+    // bo'lgani uchun bu yerdagi xato uni bekor qilmaydi — faqat mustaqil
+    // tarzda ushlanadi va alohida xabar bilan ko'rsatiladi.
+    try {
+      await api.post('/employees', {
+        fullName: input.name,
+        phone: toE164Phone(input.phone),
+        position: input.position,
+        region: 'Toshkent shahri',
+        district: "Mirzo Ulug'bek",
+      });
+      setToast({ tone: 'success', msg: "Ishchi qo'shildi va worker-app login yaratildi" });
+    } catch (err) {
+      setToast({
+        tone: 'error',
+        msg: `Ishchi qo'shildi, lekin worker-app login yaratilmadi: ${
+          err instanceof Error ? err.message : "noma'lum xatolik"
+        }`,
+      });
     }
   }
 
