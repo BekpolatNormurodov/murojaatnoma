@@ -27,7 +27,7 @@ import { Modal } from '@/shared/ui/Modal';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select, type SelectOption } from '@/shared/ui/Select';
 import { DatePicker, TimePicker } from '@/shared/ui/DatePicker';
-import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
+import { MeetingCall } from '@/shared/realtime/MeetingCall';
 import { DEPUTIES, HOME_DISTRICT_ID, MEETING_TYPE_META, getDeputy } from '@/shared/data/mock';
 import { useMeetings } from '@/shared/store/meetings';
 import { useMeetingsQuery } from './useMeetingsQuery';
@@ -291,27 +291,6 @@ export function MeetingsPage() {
     setDeleteError(null);
   }
 
-  const callParticipants = useMemo<CallParticipant[]>(() => {
-    if (!callTarget) return [];
-    const chair = getDeputy(callTarget.chairDeputyId);
-    const list: CallParticipant[] = [];
-    if (chair) {
-      list.push({
-        id: chair.id,
-        name: chair.name,
-        photo: chair.photo,
-        color: chair.color,
-        role: 'Raislik qiluvchi',
-      });
-    }
-    DEPUTIES.filter((d) => d.id !== callTarget.chairDeputyId)
-      .slice(0, 4)
-      .forEach((d) =>
-        list.push({ id: d.id, name: d.name, photo: d.photo, color: d.color, role: "A'zo" }),
-      );
-    return list;
-  }, [callTarget]);
-
   const openCreate = () => {
     setEditTarget(null);
     setFormOpen(true);
@@ -566,13 +545,12 @@ export function MeetingsPage() {
         onJoin={openJoin}
       />
 
-      <VideoCall
+      <MeetingCall
         open={!!callTarget}
-        onClose={() => setCallTarget(null)}
+        meetingId={callTarget?.id}
         title={callTarget?.title}
         subtitle={callTarget ? `Video selektor · ${callTarget.location}` : undefined}
-        participants={callParticipants}
-        scheduledAt={callTarget?.startAt}
+        onClose={() => setCallTarget(null)}
       />
 
       {/* O'chirish tasdiqi */}
