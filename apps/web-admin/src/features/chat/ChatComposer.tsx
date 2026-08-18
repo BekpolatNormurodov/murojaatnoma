@@ -95,6 +95,19 @@ export function ChatComposer({
     return () => window.clearInterval(iv);
   }, [recording]);
 
+  // Video-note preview'ini ulash. <video> elementi faqat videoRecording=true
+  // bo'lganda render bo'ladi, shuning uchun stream'ni getUserMedia paytida
+  // emas (o'shanda ref hali null), element mount bo'lgach — bu effekt orqali
+  // ulaymiz. Aks holda doira qora qolardi.
+  useEffect(() => {
+    const el = videoPreviewRef.current;
+    const stream = videoStreamRef.current;
+    if (videoRecording && el && stream) {
+      el.srcObject = stream;
+      void el.play().catch(() => {});
+    }
+  }, [videoRecording]);
+
   // Unmount — mikrofon/kamerani o'chirish
   useEffect(
     () => () => {
@@ -213,10 +226,8 @@ export function ChatComposer({
         audio: true,
       });
       videoStreamRef.current = stream;
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        void videoPreviewRef.current.play().catch(() => {});
-      }
+      // Preview <video> hali render bo'lmagan (videoRecording=false) — stream
+      // element mount bo'lgach yuqoridagi effekt orqali ulanadi.
       const mime = pickVideoMimeType();
       const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       videoChunksRef.current = [];
