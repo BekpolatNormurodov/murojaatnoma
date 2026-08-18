@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CloseCircle } from 'iconsax-react';
 
@@ -31,7 +32,11 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  return (
+  // Portal to <body> so the modal escapes any transformed/backdrop-filtered
+  // ancestor (e.g. the Topbar). Without this, `position: fixed` is resolved
+  // against that ancestor's box instead of the viewport, so a modal opened from
+  // the header (like the logout confirm) pins to the top instead of centering.
+  return createPortal(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -75,6 +80,7 @@ export function Modal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
