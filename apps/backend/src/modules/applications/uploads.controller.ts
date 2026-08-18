@@ -2,6 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  FileTypeValidator,
+  MaxFileSizeValidator,
+  ParseFilePipe,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -83,5 +86,36 @@ export class UploadsController {
         ? { durationSec: parsedDuration }
         : {}),
     };
+  }
+
+  @ApiBearerAuth()
+  @Post('image')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({
+    summary:
+      'Upload an IMAGE (multipart, field "file", ≤5MB, jpeg/png/webp only) → { url }. ' +
+      'Used for avatars/photos (e.g. the web-admin worker form). Server-side ' +
+      'validates the type + size, unlike the generic POST /uploads.',
+  })
+  uploadImage(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ): { url: string } {
+    const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
+    return { url: `${publicBaseUrl}/uploads/${file.filename}` };
   }
 }

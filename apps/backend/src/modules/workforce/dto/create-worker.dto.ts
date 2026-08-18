@@ -51,9 +51,10 @@ export class CreateWorkerDto {
   @IsString()
   phone!: string;
 
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'Optional — a worker need not have an email' })
+  @IsOptional()
   @IsString()
-  email!: string;
+  email?: string;
 
   @ApiProperty({ enum: RequestCategory, isArray: true })
   @IsArray()

@@ -63,7 +63,9 @@ export class WorkersService {
         region: dto.region,
         districtId: dto.districtId,
         phone: dto.phone,
-        email: dto.email,
+        // Worker.email is a non-null column but email is now optional on the
+        // form/DTO — default to '' when omitted so creation doesn't fail.
+        email: dto.email ?? '',
         specialization: dto.specialization,
         status: dto.status ?? WorkerStatus.offline,
         insideRegion: dto.insideRegion ?? false,
