@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:user_app/core/widgets/app_shimmer.dart';
 import 'package:user_app/core/widgets/empty_view.dart';
 import 'package:user_app/core/widgets/error_view.dart';
+import 'package:user_app/core/widgets/test_mode_banner.dart';
 import 'package:user_app/features/payments/domain/entities/utility.dart';
 import 'package:user_app/features/payments/presentation/bloc/utilities_cubit.dart';
 import 'package:user_app/features/payments/presentation/widgets/utility_type_meta.dart';
@@ -30,6 +31,10 @@ class UtilitiesPage extends StatelessWidget {
             onPressed: () => context.push('/payments-history'),
           ),
         ],
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(40),
+          child: TestModeBanner(),
+        ),
       ),
       body: SafeArea(
         child: BlocBuilder<UtilitiesCubit, UtilitiesState>(

@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:user_app/core/mock/mock_payments.dart';
 import 'package:user_app/core/notifications/notification_service.dart';
+import 'package:user_app/core/widgets/test_mode_banner.dart';
 import 'package:user_app/features/home/presentation/bloc/home_cubit.dart';
 import 'package:user_app/features/payments/domain/entities/saved_card.dart';
 import 'package:user_app/features/payments/domain/entities/utility.dart';
@@ -120,6 +121,10 @@ class _PayPageState extends State<PayPage> {
       appBar: AppBar(
         leading: const AppBackButton(),
         title: Text(l10n.payPageTitle),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(40),
+          child: TestModeBanner(),
+        ),
       ),
       body: SafeArea(
         child: BlocConsumer<PayCubit, PayState>(
