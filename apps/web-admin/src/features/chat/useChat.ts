@@ -9,11 +9,18 @@ import type { ChatConversation, ChatMessage, CreateChatMessageInput } from '@/sh
  * Javob shakli mock'dagi `Conversation[]` bilan bir xil (drop-in), har bir
  * element oxirgi xabar (`lastMessage`) va o'qilmaganlar soni (`unreadCount`)
  * bilan birga keladi.
+ *
+ * `archived=false` (default) — asosiy ro'yxat (arxivlanganlarni yashiradi).
+ * `archived=true` — "Arxiv" ko'rinishi (faqat arxivlangan suhbatlar). Ikkala
+ * ro'yxat alohida keshlanadi (`['chat','conversations', archived]`), shu tufayli
+ * ular orasida almashish darhol ishlaydi. `['chat','conversations']` prefiksini
+ * invalidatsiya qilish ikkalasini ham yangilaydi (partial match).
  */
-export function useConversations() {
+export function useConversations(archived = false) {
   return useQuery({
-    queryKey: ['chat', 'conversations'],
-    queryFn: () => api.get<ChatConversation[]>('/chat/conversations'),
+    queryKey: ['chat', 'conversations', archived],
+    queryFn: () =>
+      api.get<ChatConversation[]>(`/chat/conversations?archived=${archived}`),
     staleTime: 15_000,
   });
 }
@@ -98,6 +105,112 @@ export function useMarkRead() {
       api.patch<{ ok: boolean }>(`/chat/conversations/${conversationId}/read`),
     onSuccess: (_result, conversationId) => {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Xabarni o'chiradi: DELETE /chat/conversations/:cid/messages/:mid
+ * (istalgan ishtirokchi o'chira oladi). Optimistik — xabar keshdan darhol
+ * olib tashlanadi; xatolik bo'lsa orqaga qaytariladi. Har holatda suhbatlar
+ * ro'yxatini (oxirgi xabar preview'i uchun) qayta so'raymiz.
+ */
+export function useDeleteMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ conversationId, messageId }: { conversationId: string; messageId: string }) =>
+      api.del<{ ok: boolean }>(`/chat/conversations/${conversationId}/messages/${messageId}`),
+    onMutate: async ({ conversationId, messageId }) => {
+      await queryClient.cancelQueries({ queryKey: ['chat', 'messages', conversationId] });
+      const previous = queryClient.getQueryData<ChatMessage[]>(['chat', 'messages', conversationId]);
+      queryClient.setQueryData<ChatMessage[]>(['chat', 'messages', conversationId], (old) =>
+        (old ?? []).filter((m) => m.id !== messageId),
+      );
+      return { previous, conversationId };
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['chat', 'messages', context.conversationId], context.previous);
+      }
+    },
+    onSettled: (_result, _err, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', variables.conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Xabar matnini tahrirlaydi: PATCH /chat/conversations/:cid/messages/:mid { text }
+ * Faqat xabar HALI o'qilmagan bo'lsa mumkin — o'qilgan bo'lsa backend 409
+ * qaytaradi (chaqiruvchi `ApiError.status === 409` ni ushlab, "O'qilgan xabarni
+ * tahrirlab bo'lmaydi" xabarini ko'rsatadi). Muvaffaqiyatda `editedAt` o'rnatiladi;
+ * shu suhbat xabarlarini va ro'yxatni qayta so'raymiz.
+ */
+export function useEditMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      conversationId,
+      messageId,
+      text,
+    }: {
+      conversationId: string;
+      messageId: string;
+      text: string;
+    }) => api.patch<ChatMessage>(`/chat/conversations/${conversationId}/messages/${messageId}`, { text }),
+    onSuccess: (_message, variables) => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', variables.conversationId] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Suhbatni arxivlaydi/arxivdan chiqaradi:
+ * PATCH /chat/conversations/:id/archive { archived }
+ * Asosiy (archived=false) va "Arxiv" (archived=true) ro'yxatlari — ikkalasi ham
+ * yangilanishi kerak, shuning uchun `['chat','conversations']` prefiksini
+ * invalidatsiya qilamiz.
+ */
+export function useArchiveConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
+      api.patch<{ ok: boolean }>(`/chat/conversations/${id}/archive`, { archived }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Suhbatni tozalaydi: DELETE /chat/conversations/:id/messages
+ * Barcha xabarlarni o'chiradi VA suhbatni avtomatik arxivlaydi. `group-all` uchun
+ * backend 400 qaytaradi (UI'da bu amal umumiy chat uchun ko'rsatilmaydi).
+ */
+export function useClearConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<{ ok: boolean }>(`/chat/conversations/${id}/messages`),
+    onSuccess: (_result, id) => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', id] });
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    },
+  });
+}
+
+/**
+ * Suhbatni o'chiradi: DELETE /chat/conversations/:id (suhbat + barcha xabarlar).
+ * `group-all` uchun backend 400 qaytaradi (UI'da ko'rsatilmaydi). Faol suhbat
+ * o'chirilsa — ChatPage `activeId`ni tozalaydi.
+ */
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del<{ ok: boolean }>(`/chat/conversations/${id}`),
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     },
   });

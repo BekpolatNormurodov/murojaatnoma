@@ -14,11 +14,30 @@ import type { ChatMessage } from '@/shared/store/chat';
  * broadcasts them here; the optimistic-echo reconciliation below prevents a
  * brief duplicate when our own message comes back over the socket.
  */
-export function useRealtimeChat(activeConversationId: string | null | undefined) {
+/** Suhbat darajasidagi realtime hodisasi — gateway'ning `chat:conversation`i. */
+export interface ChatConversationEvent {
+  conversationId: string;
+  action: 'archived' | 'cleared' | 'deleted' | 'unarchived';
+}
+
+export function useRealtimeChat(
+  activeConversationId: string | null | undefined,
+  /** `chat:conversation` kelganda chaqiriladi — ChatPage faol suhbat o'chirilsa
+   *  (`action: 'deleted'`) uni tozalash uchun ishlatadi. */
+  onConversationEvent?: (event: ChatConversationEvent) => void,
+) {
   const { socket } = useRealtime();
   const queryClient = useQueryClient();
   const [typingConvs, setTypingConvs] = useState<Record<string, boolean>>({});
   const typingTimers = useRef<Record<string, number>>({});
+
+  // Callback'ni ref'da saqlaymiz — shunda socket obunasi (quyidagi effekt) har
+  // renderda qayta ulanmaydi, lekin doim eng so'nggi callback'ni chaqiradi.
+  // Ref'ni render paytida emas, effekt ichida yangilaymiz (React qoidasi).
+  const onConversationEventRef = useRef(onConversationEvent);
+  useEffect(() => {
+    onConversationEventRef.current = onConversationEvent;
+  });
 
   // Join/leave the active conversation room so its live events reach us.
   useEffect(() => {
@@ -85,15 +104,60 @@ export function useRealtimeChat(activeConversationId: string | null | undefined)
       void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     };
 
+    // Xabar o'chirildi (istalgan qurilmada) — keshdan olib tashlaymiz.
+    const onMessageDeleted = ({
+      conversationId,
+      messageId,
+    }: {
+      conversationId: string;
+      messageId: string;
+    }) => {
+      queryClient.setQueryData<ChatMessage[]>(['chat', 'messages', conversationId], (old) =>
+        old ? old.filter((m) => m.id !== messageId) : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    };
+
+    // Xabar tahrirlandi — keshda id bo'yicha almashtiramiz (editedAt bilan keladi).
+    const onMessageEdited = ({
+      conversationId,
+      message,
+    }: {
+      conversationId: string;
+      message: ChatMessage;
+    }) => {
+      queryClient.setQueryData<ChatMessage[]>(['chat', 'messages', conversationId], (old) =>
+        old ? old.map((m) => (m.id === message.id ? message : m)) : old,
+      );
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+    };
+
+    // Suhbat darajasidagi hodisa (arxivlandi/tozalandi/o'chirildi/arxivdan
+    // chiqarildi) — ro'yxatlarni yangilaymiz va callback orqali ChatPage'ga
+    // xabar beramiz (faol suhbat o'chirilsa uni tozalash uchun).
+    const onConversation = (event: ChatConversationEvent) => {
+      void queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
+      if (event.action === 'cleared' || event.action === 'deleted') {
+        void queryClient.invalidateQueries({ queryKey: ['chat', 'messages', event.conversationId] });
+      }
+      onConversationEventRef.current?.(event);
+    };
+
     socket.on('chat:message', onMessage);
     socket.on('chat:read', onRead);
     socket.on('chat:typing', onTyping);
     socket.on('presence:update', onPresence);
+    socket.on('chat:message:deleted', onMessageDeleted);
+    socket.on('chat:message:edited', onMessageEdited);
+    socket.on('chat:conversation', onConversation);
     return () => {
       socket.off('chat:message', onMessage);
       socket.off('chat:read', onRead);
       socket.off('chat:typing', onTyping);
       socket.off('presence:update', onPresence);
+      socket.off('chat:message:deleted', onMessageDeleted);
+      socket.off('chat:message:edited', onMessageEdited);
+      socket.off('chat:conversation', onConversation);
     };
   }, [socket, queryClient]);
 

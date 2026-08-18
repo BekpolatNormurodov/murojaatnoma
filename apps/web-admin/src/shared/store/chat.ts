@@ -33,6 +33,8 @@ export interface ChatMessage {
   /** Ovozli xabar davomiyligi (soniya). */
   durationSec?: number;
   createdAt: string; // ISO
+  /** Xabar tahrirlangan bo'lsa — oxirgi tahrir vaqti (ISO). Bo'lmasa — tahrirlanmagan. */
+  editedAt?: string;
   status: ChatMessageStatus;
 }
 
@@ -57,6 +59,9 @@ export interface Conversation {
 export interface ChatConversation extends Conversation {
   lastMessage: ChatMessage | null;
   unreadCount: number;
+  /** Suhbat arxivlangan bo'lsa `true` — asosiy ro'yxatda yashiriladi, "Arxiv"
+   *  ko'rinishida ko'rsatiladi (`GET /chat/conversations?archived=true`). */
+  archived?: boolean;
 }
 
 /** `POST /chat/conversations/:id/messages` so'rov tanasi. */

@@ -17,9 +17,18 @@ import {
   DocumentDownload,
   RotateRight,
   Clock,
+  More,
+  Trash,
+  Edit2,
+  Archive,
+  ArchiveMinus,
+  Broom,
+  type Icon as IconType,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
+import { ApiError } from '@/shared/api/client';
 import { useCall } from '@/shared/realtime/CallProvider';
 import { ChatComposer } from './ChatComposer';
 import { EmployeePickerModal } from './EmployeePickerModal';
@@ -31,11 +40,22 @@ import {
   usePrefersReducedMotion,
   useOpenDirectConversation,
   useLiveEmployees,
+  useDeleteMessage,
+  useEditMessage,
+  useArchiveConversation,
+  useClearConversation,
+  useDeleteConversation,
 } from './useChat';
 import { pickAvatarColor } from './chatAvatar';
 import { useRealtimeChat } from './useRealtimeChat';
 import type { LiveLocation } from '@/shared/api/locations';
-import { ME_ID, GROUP_ID, useChatUi, type ChatMessage } from '@/shared/store/chat';
+import {
+  ME_ID,
+  GROUP_ID,
+  useChatUi,
+  type ChatMessage,
+  type ChatConversation,
+} from '@/shared/store/chat';
 import { STAFF } from '@/shared/data/mock';
 import { formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
@@ -110,15 +130,126 @@ function RowSkeleton() {
   );
 }
 
+/* ---------------- Amallar menyusi (framer-motion popover) ---------------- */
+interface PopMenuItem {
+  label: string;
+  icon?: IconType;
+  onClick: () => void;
+  danger?: boolean;
+  /** Element ustida ajratuvchi chiziq. */
+  divider?: boolean;
+}
+
+/**
+ * Kichik "..." amallar menyusi — xabar va suhbat qatorlarida ishlatiladi.
+ * O'z `open` holatini boshqaradi (hover'dan mustaqil, shu tufayli ochiq turgan
+ * menyu sichqoncha ketganda ham yo'qolmaydi), tashqariga bosish / Esc bilan
+ * yopiladi.
+ */
+function PopMenu({
+  items,
+  ariaLabel,
+  triggerClassName,
+  align = 'end',
+  width = 190,
+}: {
+  items: PopMenuItem[];
+  ariaLabel: string;
+  triggerClassName?: string;
+  align?: 'start' | 'end';
+  width?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className={cn(
+          'flex h-7 w-7 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink',
+          open && 'bg-surface-2 text-ink',
+          triggerClassName,
+        )}
+      >
+        <More size={17} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            style={{ width }}
+            className={cn(
+              'absolute z-50 mt-1.5 overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-pop',
+              align === 'end' ? 'right-0' : 'left-0',
+            )}
+          >
+            {items.map((it, i) => (
+              <div key={i}>
+                {it.divider && <div className="my-1 h-px bg-line" />}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    it.onClick();
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors',
+                    it.danger
+                      ? 'text-red-600 hover:bg-danger-soft'
+                      : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                  )}
+                >
+                  {it.icon && <it.icon size={16} variant="Bulk" className="shrink-0" />}
+                  <span className="flex-1">{it.label}</span>
+                </button>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ============================================================
    Chat sahifasi — umumiy va shaxsiy suhbatlar
    ============================================================ */
 export function ChatPage() {
-  const conversationsQuery = useConversations();
-  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
-
   const activeId = useChatUi((s) => s.activeConversationId);
   const setActiveId = useChatUi((s) => s.setActiveConversationId);
+
+  // Asosiy ro'yxat (arxivlanmagan) yoki "Arxiv" ko'rinishi (arxivlangan) —
+  // header'dagi "Arxiv" tugmasi bilan almashtiriladi. Ikkalasi alohida keshda.
+  const [archivedView, setArchivedView] = useState(false);
+  const conversationsQuery = useConversations(archivedView);
+  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
 
   const messagesQuery = useMessages(activeId);
   const activeMessages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
@@ -126,9 +257,34 @@ export function ChatPage() {
   const sendMessage = useSendMessage();
   const { mutate: markRead } = useMarkRead();
 
+  // Chat boshqaruvi (xabar/suhbat amallari) — barchasi backend'ga bog'langan.
+  const deleteMessage = useDeleteMessage();
+  const editMessage = useEditMessage();
+  const archiveConversation = useArchiveConversation();
+  const clearConversation = useClearConversation();
+  const deleteConversation = useDeleteConversation();
+
+  // Xabar tahrirlash holati (inline, bubble ustida) va xatolik (masalan 409).
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Tasdiq talab qiluvchi (buzuvchi) amal — bitta ConfirmDialog boshqaradi.
+  const [pending, setPending] = useState<
+    | { kind: 'msg-delete'; conversationId: string; messageId: string }
+    | { kind: 'conv-clear'; conversationId: string; title: string }
+    | { kind: 'conv-delete'; conversationId: string; title: string }
+    | null
+  >(null);
+
   // Jonli (realtime) suhbat: yangi xabarlar, o'qildi, "yozmoqda…" va onlayn
-  // holati socket orqali darhol keladi (86436 gateway kontrakti).
-  const { typing, emitTyping } = useRealtimeChat(activeId);
+  // holati socket orqali darhol keladi (86436 gateway kontrakti). Suhbat
+  // darajasidagi hodisa (`chat:conversation`) — faol suhbat o'chirilsa uni
+  // tozalaymiz (boshqa amallarni kesh invalidatsiyasi hookda hal qiladi).
+  const { typing, emitTyping } = useRealtimeChat(activeId, (event) => {
+    if (event.action === 'deleted' && event.conversationId === activeId) {
+      setActiveId(GROUP_ID);
+    }
+  });
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -292,6 +448,9 @@ export function ChatPage() {
   }
 
   function openConv(id: string) {
+    // Boshqa suhbatga o'tayotganda yarim qolgan tahrirni bekor qilamiz.
+    setEditing(null);
+    setEditError(null);
     setActiveId(id);
     setMobileThread(true);
     markRead(id);
@@ -317,6 +476,108 @@ export function ChatPage() {
     });
   }
 
+  /* ---------- Xabar amallari (tahrirlash / o'chirish) ---------- */
+  function beginEdit(msg: ChatMessage) {
+    setEditing({ id: msg.id, text: msg.text ?? '' });
+    setEditError(null);
+  }
+  function cancelEdit() {
+    setEditing(null);
+    setEditError(null);
+  }
+  function saveEdit() {
+    if (!editing) return;
+    const text = editing.text.trim();
+    if (!text) return;
+    editMessage.mutate(
+      { conversationId: activeId, messageId: editing.id, text },
+      {
+        onSuccess: () => {
+          setEditing(null);
+          setEditError(null);
+        },
+        onError: (err) => {
+          // O'qilgan xabar (409) — tahrirlab bo'lmaydi.
+          setEditError(
+            err instanceof ApiError && err.status === 409
+              ? "O'qilgan xabarni tahrirlab bo'lmaydi"
+              : "Xabarni tahrirlab bo'lmadi",
+          );
+        },
+      },
+    );
+  }
+
+  /* ---------- Suhbat amallari (arxiv / tozalash / o'chirish) ---------- */
+  function toggleArchive(conv: ChatConversation) {
+    const nextArchived = !(conv.archived ?? archivedView);
+    archiveConversation.mutate(
+      { id: conv.id, archived: nextArchived },
+      {
+        onSuccess: () => {
+          // Arxivlangan/arxivdan chiqarilgan suhbat joriy ro'yxatdan chiqadi —
+          // agar u faol bo'lsa, umumiy chatga qaytamiz.
+          if (activeId === conv.id) setActiveId(GROUP_ID);
+        },
+      },
+    );
+  }
+
+  // Bitta ConfirmDialog — pending amalga qarab bajaradi.
+  function runPending() {
+    if (!pending) return;
+    if (pending.kind === 'msg-delete') {
+      deleteMessage.mutate(
+        { conversationId: pending.conversationId, messageId: pending.messageId },
+        { onSettled: () => setPending(null) },
+      );
+    } else if (pending.kind === 'conv-clear') {
+      clearConversation.mutate(pending.conversationId, { onSettled: () => setPending(null) });
+    } else {
+      const id = pending.conversationId;
+      deleteConversation.mutate(id, {
+        onSuccess: () => {
+          if (activeId === id) setActiveId(GROUP_ID);
+        },
+        onSettled: () => setPending(null),
+      });
+    }
+  }
+
+  // Suhbat qatori / thread header uchun "..." menyu elementlari. `group-all`
+  // uchun bu menyu umuman ko'rsatilmaydi (buzuvchi amallar taqiqlangan).
+  function conversationMenuItems(conv: ChatConversation): PopMenuItem[] {
+    const isArchived = conv.archived ?? archivedView;
+    return [
+      {
+        label: isArchived ? 'Arxivdan chiqarish' : 'Arxivlash',
+        icon: isArchived ? ArchiveMinus : Archive,
+        onClick: () => toggleArchive(conv),
+      },
+      {
+        label: 'Tozalash',
+        icon: Broom,
+        onClick: () => setPending({ kind: 'conv-clear', conversationId: conv.id, title: conv.title }),
+      },
+      {
+        label: "O'chirish",
+        icon: Trash,
+        danger: true,
+        divider: true,
+        onClick: () => setPending({ kind: 'conv-delete', conversationId: conv.id, title: conv.title }),
+      },
+    ];
+  }
+
+  const pendingLoading =
+    pending?.kind === 'msg-delete'
+      ? deleteMessage.isPending
+      : pending?.kind === 'conv-clear'
+        ? clearConversation.isPending
+        : pending?.kind === 'conv-delete'
+          ? deleteConversation.isPending
+          : false;
+
   return (
     <div className="flex h-[calc(100dvh-7.5rem)] min-h-136 overflow-hidden rounded-2xl border border-line bg-canvas shadow-card">
       {/* ---------- Suhbatlar ro'yxati ---------- */}
@@ -329,8 +590,12 @@ export function ChatPage() {
         <div className="border-b border-line px-4 pb-3 pt-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-lg font-bold text-ink">
-              <Messages2 size={22} variant="Bulk" className="text-primary-600" />
-              Suhbatlar
+              {archivedView ? (
+                <Archive size={22} variant="Bulk" className="text-primary-600" />
+              ) : (
+                <Messages2 size={22} variant="Bulk" className="text-primary-600" />
+              )}
+              {archivedView ? 'Arxiv' : 'Suhbatlar'}
             </h2>
             {totalUnread > 0 && (
               <span className="rounded-full bg-danger px-2 py-0.5 text-[11px] font-bold text-white">
@@ -347,7 +612,7 @@ export function ChatPage() {
               className="h-10 w-full rounded-xl border border-line bg-surface-2 pl-9 pr-3 text-sm outline-none focus:border-primary-300"
             />
           </div>
-          <div className="mt-3 flex gap-1.5">
+          <div className="mt-3 flex items-center gap-1.5">
             {(['all', 'direct'] as const).map((f) => (
               <button
                 key={f}
@@ -360,16 +625,29 @@ export function ChatPage() {
                 {f === 'all' ? 'Hammasi' : 'Xodimlar'}
               </button>
             ))}
+            <button
+              onClick={() => setArchivedView((v) => !v)}
+              title={archivedView ? 'Asosiy suhbatlar' : 'Arxivlangan suhbatlar'}
+              className={cn(
+                'ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                archivedView ? 'bg-ink text-white' : 'bg-surface-2 text-ink-soft hover:text-ink',
+              )}
+            >
+              <Archive size={15} variant="Bulk" />
+              Arxiv
+            </button>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setPickerOpen(true)}
-            className="mt-2 w-full justify-center"
-          >
-            <MessageAdd1 size={16} variant="Bulk" />
-            Xodimga yozish
-          </Button>
+          {!archivedView && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setPickerOpen(true)}
+              className="mt-2 w-full justify-center"
+            >
+              <MessageAdd1 size={16} variant="Bulk" />
+              Xodimga yozish
+            </Button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-2">
@@ -389,9 +667,19 @@ export function ChatPage() {
             </div>
           ) : conversations.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-4 py-16 text-center">
-              <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
-              <p className="text-sm font-medium text-ink">Hozircha suhbatlar yo'q</p>
-              <p className="text-xs text-ink-muted">Xodim bilan yozishmani boshlaganingizda shu yerda ko'rinadi</p>
+              {archivedView ? (
+                <>
+                  <Archive size={36} variant="Bulk" className="text-ink-muted" />
+                  <p className="text-sm font-medium text-ink">Arxivlangan suhbatlar yo'q</p>
+                  <p className="text-xs text-ink-muted">Suhbatni arxivlaganingizda shu yerda ko'rinadi</p>
+                </>
+              ) : (
+                <>
+                  <Messages2 size={36} variant="Bulk" className="text-ink-muted" />
+                  <p className="text-sm font-medium text-ink">Hozircha suhbatlar yo'q</p>
+                  <p className="text-xs text-ink-muted">Xodim bilan yozishmani boshlaganingizda shu yerda ko'rinadi</p>
+                </>
+              )}
             </div>
           ) : (
             <>
@@ -399,11 +687,19 @@ export function ChatPage() {
                 const last = conv.lastMessage;
                 const unread = conv.unreadCount;
                 return (
-                  <button
+                  <div
                     key={conv.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => openConv(conv.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openConv(conv.id);
+                      }
+                    }}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors',
+                      'group relative flex w-full cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-300',
                       activeId === conv.id ? 'bg-primary-50' : 'hover:bg-surface-2',
                     )}
                   >
@@ -450,7 +746,21 @@ export function ChatPage() {
                         )}
                       </div>
                     </div>
-                  </button>
+                    {/* Suhbat amallari — umumiy chat (group-all) uchun ko'rsatilmaydi */}
+                    {conv.id !== GROUP_ID && (
+                      <div
+                        className="absolute right-1.5 top-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <PopMenu
+                          ariaLabel="Suhbat amallari"
+                          items={conversationMenuItems(conv)}
+                          align="end"
+                          triggerClassName="bg-surface opacity-0 shadow-sm group-hover:opacity-100 focus-visible:opacity-100"
+                        />
+                      </div>
+                    )}
+                  </div>
                 );
               })}
               {convList.length === 0 && (
@@ -523,6 +833,15 @@ export function ChatPage() {
               >
                 <Video size={21} variant="Bulk" />
               </button>
+              {/* Suhbat amallari (arxiv/tozalash/o'chirish) — umumiy chat uchun yo'q */}
+              {activeConv.id !== GROUP_ID && (
+                <PopMenu
+                  ariaLabel="Suhbat amallari"
+                  items={conversationMenuItems(activeConv)}
+                  align="end"
+                  triggerClassName="h-10 w-10 rounded-xl hover:bg-primary-50 hover:text-primary-600"
+                />
+              )}
             </div>
 
             {/* Xabarlar */}
@@ -562,6 +881,21 @@ export function ChatPage() {
                         isGroup={activeConv.kind === 'group'}
                         reduce={prefersReducedMotion}
                         onImageClick={setLightbox}
+                        isEditing={editing?.id === item.msg.id}
+                        editText={editing?.text ?? ''}
+                        editSaving={editMessage.isPending}
+                        editError={editError}
+                        onEditText={(t) => setEditing((e) => (e ? { ...e, text: t } : e))}
+                        onSaveEdit={saveEdit}
+                        onCancelEdit={cancelEdit}
+                        onBeginEdit={() => beginEdit(item.msg)}
+                        onDelete={() =>
+                          setPending({
+                            kind: 'msg-delete',
+                            conversationId: activeId,
+                            messageId: item.msg.id,
+                          })
+                        }
                       />
                     ),
                   )}
@@ -607,6 +941,35 @@ export function ChatPage() {
         onSelect={handlePickEmployee}
       />
 
+      {/* Buzuvchi amallar uchun yagona tasdiq oynasi (xabar/suhbat o'chirish, tozalash) */}
+      <ConfirmDialog
+        open={pending !== null}
+        onClose={() => {
+          if (!pendingLoading) setPending(null);
+        }}
+        onConfirm={runPending}
+        loading={pendingLoading}
+        tone={pending?.kind === 'conv-clear' ? 'warning' : 'danger'}
+        icon={pending?.kind === 'conv-clear' ? Broom : Trash}
+        title={
+          pending?.kind === 'msg-delete'
+            ? "Xabarni o'chirish"
+            : pending?.kind === 'conv-clear'
+              ? 'Suhbatni tozalash'
+              : "Suhbatni o'chirish"
+        }
+        confirmLabel={pending?.kind === 'conv-clear' ? 'Tozalash' : "O'chirish"}
+        message={
+          pending?.kind === 'msg-delete'
+            ? 'Bu xabar butunlay o’chiriladi. Bu amalni ortga qaytarib bo’lmaydi.'
+            : pending?.kind === 'conv-clear'
+              ? `"${pending.title}" suhbatidagi barcha xabarlar o’chiriladi va suhbat arxivlanadi.`
+              : pending?.kind === 'conv-delete'
+                ? `"${pending.title}" suhbati va undagi barcha xabarlar butunlay o’chiriladi.`
+                : ''
+        }
+      />
+
       {/* Rasm ko'rish (lightbox) */}
       <AnimatePresence>
         {lightbox && (
@@ -648,29 +1011,123 @@ function MessageRow({
   isGroup,
   reduce,
   onImageClick,
+  isEditing,
+  editText,
+  editSaving,
+  editError,
+  onEditText,
+  onSaveEdit,
+  onCancelEdit,
+  onBeginEdit,
+  onDelete,
 }: {
   msg: ChatMessage;
   first: boolean;
   isGroup: boolean;
   reduce: boolean;
   onImageClick: (url: string) => void;
+  /** Shu xabar hozir tahrirlanmoqda (inline editor ko'rsatiladi). */
+  isEditing: boolean;
+  editText: string;
+  editSaving: boolean;
+  editError: string | null;
+  onEditText: (text: string) => void;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
+  onBeginEdit: () => void;
+  onDelete: () => void;
 }) {
   const mine = msg.senderId === ME_ID;
   const info = senderInfo(msg.senderId);
   const sending = msg.status === 'sending';
+  // Tahrirlash faqat: o'zimizniki + matn + hali o'qilmagan (backend 409 bermasin).
+  const canEdit = mine && msg.kind === 'text' && msg.status !== 'read';
+
+  // "..." amallar menyusi — optimistik (sending) va tahrirlanayotgan xabarda yashiriladi.
+  const menuEl =
+    !sending && !isEditing ? (
+      <div className="shrink-0 self-center">
+        <PopMenu
+          ariaLabel="Xabar amallari"
+          align={mine ? 'end' : 'start'}
+          width={172}
+          triggerClassName="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          items={[
+            ...(canEdit ? [{ label: 'Tahrirlash', icon: Edit2, onClick: onBeginEdit }] : []),
+            { label: "O'chirish", icon: Trash, danger: true, onClick: onDelete },
+          ]}
+        />
+      </div>
+    ) : null;
+
+  // Tahrirlash rejimi — bubble o'rniga inline muharrir (composer'ga tegmaymiz).
+  if (isEditing) {
+    return (
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: reduce ? 0 : 0.18, ease: 'easeOut' }}
+        className={cn('flex items-end gap-2', mine ? 'justify-end' : 'justify-start', first ? 'mt-3' : 'mt-0.5')}
+      >
+        {!mine && <div className="w-8 shrink-0" />}
+        <div className="flex w-72 max-w-[80%] flex-col gap-2 rounded-2xl border border-primary-300 bg-surface p-2.5 shadow-card">
+          <textarea
+            autoFocus
+            value={editText}
+            onChange={(e) => onEditText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                onSaveEdit();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                onCancelEdit();
+              }
+            }}
+            rows={2}
+            className="max-h-40 min-h-9 w-full resize-none rounded-xl border border-line bg-surface-2 px-3 py-2 text-[14px] text-ink outline-none focus:border-primary-300"
+          />
+          {editError && <span className="px-1 text-[11px] font-medium text-danger">{editError}</span>}
+          <div className="flex items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="text-[12px] font-medium text-ink-muted transition-colors hover:text-ink"
+            >
+              tahrirlashni bekor qilish
+            </button>
+            <button
+              type="button"
+              onClick={onSaveEdit}
+              disabled={editSaving || !editText.trim()}
+              className="inline-flex h-8 items-center rounded-lg bg-primary-600 px-3 text-[12.5px] font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+            >
+              {editSaving ? 'Saqlanmoqda…' : 'Saqlash'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
       initial={reduce ? false : { opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: reduce ? 0 : 0.18, ease: 'easeOut' }}
-      className={cn('flex items-end gap-2', mine ? 'justify-end' : 'justify-start', first ? 'mt-3' : 'mt-0.5')}
+      className={cn(
+        'group flex items-end gap-2',
+        mine ? 'justify-end' : 'justify-start',
+        first ? 'mt-3' : 'mt-0.5',
+      )}
     >
       {!mine && (
         <div className="w-8 shrink-0">
           {first && <Avatar name={info.name} src={info.photo} color={info.color} size={32} />}
         </div>
       )}
+      {mine && menuEl}
       <div
         className={cn(
           'max-w-[78%] sm:max-w-[68%]',
@@ -744,6 +1201,7 @@ function MessageRow({
         </div>
         <div className={cn('mt-0.5 flex items-center gap-1 px-1 text-[10.5px] text-ink-muted')}>
           <span>{timeHM(msg.createdAt)}</span>
+          {msg.editedAt && <span className="text-ink-muted/80">tahrirlangan</span>}
           {mine &&
             (sending ? (
               <Clock size={11} variant="Linear" className="text-ink-muted/70" />
@@ -756,6 +1214,7 @@ function MessageRow({
             ))}
         </div>
       </div>
+      {!mine && menuEl}
     </motion.div>
   );
 }
