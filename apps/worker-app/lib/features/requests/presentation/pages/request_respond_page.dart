@@ -86,7 +86,7 @@ class _RequestRespondPageState extends State<RequestRespondPage> {
           children: [
             AppTextField(
               label: l10n.requestResponseHint,
-              hint: l10n.requestResponseHint,
+              hint: l10n.chatMessageHint,
               controller: _controller,
               maxLines: 6,
               autofocus: true,

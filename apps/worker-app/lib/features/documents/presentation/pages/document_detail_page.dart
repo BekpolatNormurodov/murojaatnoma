@@ -70,11 +70,17 @@ class _DetailContent extends StatelessWidget {
         Text(document.title, style: AppTextStyles.h2),
         const SizedBox(height: 14),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: 24,
+          runSpacing: 12,
           children: [
-            DocumentTypeChip(type: document.type),
-            DocumentStatusChip(status: document.status),
+            _LabeledChip(
+              label: 'Turi',
+              child: DocumentTypeChip(type: document.type),
+            ),
+            _LabeledChip(
+              label: 'Holati',
+              child: DocumentStatusChip(status: document.status),
+            ),
           ],
         ),
         const SizedBox(height: 20),
@@ -119,6 +125,32 @@ class _DetailContent extends StatelessWidget {
             ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// Chip + ustidagi kichik izoh (masalan "Turi" / "Holati") — ikkala chip
+/// (tur va holat) yonma-yon turganda foydalanuvchi qaysi biri nima ekanini
+/// aniq bilishi uchun. Bir xil naqsh: pastdagi `AppListTile` `subtitle`
+/// bilan — o'zbekcha, xira izoh + asosiy qiymat.
+class _LabeledChip extends StatelessWidget {
+  const _LabeledChip({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: AppTextStyles.caption.copyWith(color: inkSoft)),
+        const SizedBox(height: 6),
+        child,
       ],
     );
   }

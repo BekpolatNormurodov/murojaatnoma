@@ -431,6 +431,7 @@ class _QuickActionCard extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.badgeText,
+    this.reserveBadgeSlot = false,
   });
 
   final IconData icon;
@@ -442,6 +443,12 @@ class _QuickActionCard extends StatelessWidget {
   /// eski "Tezkor" qatoridagi kartalar uchun) hech narsa qo'shilmaydi,
   /// ko'rinish avvalgidek qoladi.
   final String? badgeText;
+
+  /// `true` bo'lsa (masalan "Bo'limlar" to'ridagi kartalar), belgi uchun
+  /// joy DOIM ajratiladi — badge bo'lmagan kartalar ham bir xil balandlikda
+  /// bo'lib, to'r ritmi tekis ko'rinadi. `false` (standart) bo'lganda eski
+  /// xatti-harakat: badge faqat mavjud bo'lsa qo'shiladi.
+  final bool reserveBadgeSlot;
 
   @override
   Widget build(BuildContext context) {
@@ -475,7 +482,19 @@ class _QuickActionCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          if (badgeText case final text?) ...[
+          if (reserveBadgeSlot) ...[
+            const SizedBox(height: 6),
+            // Badge'siz kartalar ham bir xil balandlikda bo'lishi uchun
+            // belgi uchun joy DOIM band qilinadi — badge bo'lmasa
+            // ko'rinmas, lekin o'lchamni saqlaydi (to'r ritmi tekis).
+            Visibility(
+              visible: badgeText != null,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: AppBadge(label: badgeText ?? ''),
+            ),
+          ] else if (badgeText case final text?) ...[
             const SizedBox(height: 6),
             AppBadge(label: text),
           ],
@@ -631,7 +650,7 @@ class _TodayOverviewStrip extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 92,
+          height: 104,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -667,7 +686,9 @@ class _OverviewChip extends StatelessWidget {
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
     return SizedBox(
-      width: 128,
+      // ~2.3 karta ko'rinadigan kenglik — gorizontal skroll borligini
+      // bildiradi va yorliqlar (2 qatorgacha) so'z o'rtasidan kesilmaydi.
+      width: 140,
       child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Column(
@@ -693,7 +714,7 @@ class _OverviewChip extends StatelessWidget {
               Text(
                 label,
                 style: AppTextStyles.caption.copyWith(color: mutedColor),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
           ],
@@ -739,6 +760,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.requests,
                   label: l10n.requests,
+                  reserveBadgeSlot: true,
                   badgeText: l10n.homeNewRequestsBadge(
                     MockDashboardData.newRequestsCount,
                   ),
@@ -750,6 +772,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.chat,
                   label: l10n.chat,
+                  reserveBadgeSlot: true,
                   badgeText: l10n.homeUnreadChatBadge(
                     MockDashboardData.unreadChatCount,
                   ),
@@ -761,6 +784,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.map,
                   label: l10n.map,
+                  reserveBadgeSlot: true,
                   onTap: () => context.go('/map'),
                 ),
               ),
@@ -775,6 +799,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.trendUp,
                   label: l10n.homeAnalyticsTile,
+                  reserveBadgeSlot: true,
                   onTap: onAnalyticsTap,
                 ),
               ),
@@ -783,6 +808,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.video,
                   label: l10n.meetingsPageTitle,
+                  reserveBadgeSlot: true,
                   badgeText: l10n.homeMeetingsTodayBadge(
                     MockDashboardData.meetingsTodayCount,
                   ),
@@ -798,6 +824,7 @@ class _DashboardSections extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.calendar,
                   label: l10n.workScheduleTileLabel,
+                  reserveBadgeSlot: true,
                   onTap: () => context.push('/schedule'),
                 ),
               ),

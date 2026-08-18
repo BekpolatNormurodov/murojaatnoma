@@ -170,7 +170,9 @@ class _ScheduleRow extends StatelessWidget {
           Icon(
             day.isRestDay ? AppIcons.moon : AppIcons.timer,
             size: 18,
-            color: valueColor,
+            // Dam olish kuni ikonasi neytral (muted) rangda — issiq/apelsin
+            // emas, shu bois yashil ish-kuni ikonalari bilan kelishadi.
+            color: day.isRestDay ? mutedColor : valueColor,
           ),
           const SizedBox(width: 12),
           Expanded(

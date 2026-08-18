@@ -26,11 +26,10 @@ import 'package:worker_app/injection.dart';
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
-  /// Backendda hali "ish soatlari"ga alohida maydon yo'q (`AuthSession`da
-  /// yo'q) — soxta qiymat o'ylab topmaslik uchun neytral belgi ko'rsatiladi,
-  /// qator o'zi baribir `/schedule`ga olib boradi (haqiqiy jadval o'sha
-  /// yerda).
-  static const _workingHoursPlaceholder = '—';
+  /// Ma'lumot yo'q qiymati uchun neytral belgi — hozircha faqat "Bo'lim"
+  /// qatori uchun (backend `district` bo'sh bo'lsa). "Ish soatlari" qatori
+  /// endi haqiqiy jadval soatlarini (`l10n.workScheduleHours`) ko'rsatadi.
+  static const _emptyPlaceholder = '—';
 
   /// Ilova versiyasi — `pubspec.yaml`dagi `version:` bilan QO'LDA
   /// sinxronlanadi (`package_info_plus` kabi runtime-o'quvchi paket hali
@@ -45,7 +44,7 @@ class ProfilePage extends StatelessWidget {
   /// sababli region (viloyat/shahar) ko'rsatilmaydi.
   static String _departmentValue(AuthSession? session) {
     final district = session?.district ?? '';
-    return district.isEmpty ? _workingHoursPlaceholder : district;
+    return district.isEmpty ? _emptyPlaceholder : district;
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -185,9 +184,10 @@ class ProfilePage extends StatelessWidget {
                           AppListTile(
                             title: l10n.profileWorkingHoursLabel,
                             leadingIcon: AppIcons.timer,
-                            trailing: const _TrailingValue(
-                              _workingHoursPlaceholder,
-                            ),
+                            // Belgilangan smena soatlari (`/schedule`dagi
+                            // haftalik jadval bilan bir xil "09:00–18:00")
+                            // — yalang'och "—" o'rniga aniq qiymat.
+                            trailing: _TrailingValue(l10n.workScheduleHours),
                             onTap: () => context.push('/schedule'),
                           ),
                           const Divider(height: 1),
@@ -327,9 +327,13 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    // Lavozim (rol) — ismdan keyingi ASOSIY subtitr, shuning uchun eng xira
+    // "muted" emas, biroz to'yingroq "soft" rang bilan (qo'shimcha yarim
+    // qalinlik pastda) ajratiladi. Ro'yxatdan o'tgan sana esa eng yengil
+    // (uchinchi darajali) bo'lib qoladi.
+    final roleColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final name = widget.session?.name ?? '';
     final position = widget.session?.position ?? '';
-    final workerId = widget.session?.workerId ?? '';
 
     return AppCard(
       shadow: true,
@@ -358,7 +362,10 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                 const SizedBox(height: 2),
                 Text(
                   position,
-                  style: AppTextStyles.body.copyWith(color: mutedColor),
+                  style: AppTextStyles.body.copyWith(
+                    color: roleColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -380,15 +387,12 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                     );
                   },
                 ),
-                const SizedBox(height: 10),
-                // Region (viloyat/shahar) ATAYLAB ko'rsatilmaydi — loyiha
-                // hozircha faqat Mirzo Ulug'bek uchun. Tuman "Bo'lim" qatorida
-                // (`_departmentValue`) ko'rsatiladi.
-                _IconLabel(
-                  icon: AppIcons.key,
-                  text: l10n.profileWorkerIdLabel(workerId),
-                  color: mutedColor,
-                ),
+                // Xodim ID (`workerId`) ATAYLAB ko'rsatilmaydi — bu xom UUID
+                // (masalan "2e17c07b-0b4f-465…"), qisqartirilgan holda
+                // foydalanuvchiga hech qanday ma'no bermaydi va foydali
+                // "xodim raqami" mavjud emas. Region ham ko'rsatilmaydi
+                // (loyiha hozircha faqat Mirzo Ulug'bek uchun) — tuman
+                // "Bo'lim" qatorida (`_departmentValue`) chiqadi.
               ],
             ),
           ),
@@ -448,39 +452,5 @@ Future<_EnrollInfo> _loadEnrollInfo() async {
     return _EnrollInfo(enrolledAt: enrolledAt, photoPath: photoPath);
   } on Object {
     return const _EnrollInfo();
-  }
-}
-
-/// Kichik ikon+matn juftligi (masalan hudud, ishchi ID) — uzun matn
-/// atrofdagi `Wrap`ni yorib chiqmasligi uchun kengligi cheklangan.
-class _IconLabel extends StatelessWidget {
-  const _IconLabel({
-    required this.icon,
-    required this.text,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String text;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 160),
-          child: Text(
-            text,
-            style: AppTextStyles.caption.copyWith(color: color),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
   }
 }

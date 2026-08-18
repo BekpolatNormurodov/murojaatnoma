@@ -33,67 +33,119 @@ class RequestDetailPage extends StatelessWidget {
         leading: const AppBackButton(),
         title: Text(l10n.requestDetailTitle, style: AppTextStyles.h3),
       ),
-      body: SafeArea(
-        child: BlocBuilder<RequestDetailCubit, RequestDetailState>(
-          builder: (context, state) => switch (state) {
-            RequestDetailLoading() => const _DetailSkeleton(
-              key: Key('request_detail_skeleton'),
+      body: BlocBuilder<RequestDetailCubit, RequestDetailState>(
+        builder: (context, state) => switch (state) {
+          RequestDetailLoading() => const SafeArea(
+            child: _DetailSkeleton(key: Key('request_detail_skeleton')),
+          ),
+          RequestDetailError(:final message) => SafeArea(
+            child: _DetailErrorView(message: message),
+          ),
+          RequestDetailLoaded(:final application, :final submitting) =>
+            _DetailLoadedView(
+              application: application,
+              submitting: submitting,
             ),
-            RequestDetailError(:final message) => _DetailErrorView(
-              message: message,
-            ),
-            RequestDetailLoaded(:final application, :final submitting) =>
-              _DetailContent(application: application, submitting: submitting),
-          },
-        ),
+        },
       ),
     );
   }
 }
 
-class _DetailContent extends StatelessWidget {
-  const _DetailContent({required this.application, required this.submitting});
+/// Yuklangan holat tartibi — skroll qiluvchi tafsilot ustida, pastda esa
+/// doimo ko'rinadigan (nav-bar ustidan `SafeArea` bilan himoyalangan)
+/// asosiy amal paneli.
+class _DetailLoadedView extends StatelessWidget {
+  const _DetailLoadedView({
+    required this.application,
+    required this.submitting,
+  });
 
   final Application application;
   final bool submitting;
 
   @override
   Widget build(BuildContext context) {
+    final showActions = application.status != ApplicationStatus.rad;
+    return Column(
+      children: [
+        Expanded(child: _DetailContent(application: application)),
+        if (showActions)
+          _DetailBottomBar(application: application, submitting: submitting),
+      ],
+    );
+  }
+}
+
+/// Ekran pastida qotirilgan amal paneli — yuqoridan nozik chegara, pastdan
+/// jest navigatsiya paneli ustidan to'liq ko'rinishni kafolatlovchi
+/// `SafeArea` + ichki padding.
+class _DetailBottomBar extends StatelessWidget {
+  const _DetailBottomBar({required this.application, required this.submitting});
+
+  final Application application;
+  final bool submitting;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border(top: BorderSide(color: line)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+          child: _DetailActions(
+            application: application,
+            submitting: submitting,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// [ApplicationPriority] uchun chip rangi — `AppChip(filled: true)` bilan
+/// muhimlik va kategoriya chiplarini yagona uslubda ko'rsatish uchun.
+Color _priorityColor(ApplicationPriority priority) => switch (priority) {
+  ApplicationPriority.past => AppColors.inkMuted,
+  ApplicationPriority.orta => AppColors.warning,
+  ApplicationPriority.yuqori => AppColors.danger,
+};
+
+class _DetailContent extends StatelessWidget {
+  const _DetailContent({required this.application});
+
+  final Application application;
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Text(application.title, style: AppTextStyles.h2)),
-            const SizedBox(width: 10),
-            StatusChip(status: application.status),
-          ],
-        ),
-        const SizedBox(height: 10),
+        Text(application.title, style: AppTextStyles.h2),
+        const SizedBox(height: 12),
         Row(
           children: [
-            AppBadge(
+            AppChip(
               label: ApplicationCard.priorityLabel(
                 context,
                 application.priority,
               ),
-              variant: ApplicationCard.priorityVariant(application.priority),
+              color: _priorityColor(application.priority),
+              filled: true,
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                application.category,
-                style: AppTextStyles.caption.copyWith(color: inkSoft),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            const SizedBox(width: 8),
+            Flexible(child: AppChip(label: application.category)),
           ],
         ),
         const SizedBox(height: 24),
@@ -165,8 +217,6 @@ class _DetailContent extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 28),
-        _DetailActions(application: application, submitting: submitting),
       ],
     );
   }
@@ -217,6 +267,7 @@ class _StatusTimeline extends StatelessWidget {
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var i = 0; i < steps.length; i++) ...[
           Expanded(
@@ -232,17 +283,24 @@ class _StatusTimeline extends StatelessWidget {
                         : line,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  StatusChip.labelOf(context, steps[i]),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.caption.copyWith(
-                    color: i <= currentIndex ? ink : inkMuted,
-                    fontWeight: i == currentIndex
-                        ? FontWeight.w700
-                        : FontWeight.w400,
+                const SizedBox(height: 8),
+                // Har bir bosqich teng kenglikda (`Expanded`); yorliq
+                // `FittedBox(scaleDown)` bilan doim bitta satrga sig'adi —
+                // uzun yorliq ("Javob berildi") kichrayadi, LEKIN hech
+                // qachon so'z o'rtasidan bo'linmaydi.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    StatusChip.labelOf(context, steps[i]),
+                    maxLines: 1,
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 11.5,
+                      color: i <= currentIndex ? ink : inkMuted,
+                      fontWeight: i == currentIndex
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
                   ),
                 ),
               ],
@@ -250,9 +308,9 @@ class _StatusTimeline extends StatelessWidget {
           ),
           if (i != steps.length - 1)
             Padding(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.only(top: 6),
               child: Container(
-                width: 20,
+                width: 16,
                 height: 2,
                 color: i < currentIndex ? StatusChip.colorOf(steps[i]) : line,
               ),

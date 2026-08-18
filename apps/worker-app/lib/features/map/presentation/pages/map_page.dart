@@ -356,11 +356,13 @@ class _TrackingScaffold extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Align(
                   alignment: Alignment.topCenter,
+                  // Yuqorida FAQAT ixcham legenda chiplari — "ichida/tashqarida"
+                  // holati endi bitta joyda (pastdagi `_WorkZoneInfoCard`)
+                  // ko'rsatiladi, shu bois ilgarigi rangli `_GeofenceBanner`
+                  // (aynan shu xabarni takrorlar edi) olib tashlandi.
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _GeofenceBanner(state: state),
-                      const SizedBox(height: 10),
                       const _WorkZoneLegendChip(),
                       const SizedBox(height: 8),
                       _MahallaChip(mahalla: currentMahalla),
@@ -379,8 +381,17 @@ class _TrackingScaffold extends StatelessWidget {
             bottom: 16,
             child: SafeArea(
               top: false,
-              child: _WorkZoneInfoCard(
-                insideGeofence: snapshot?.insideGeofence,
+              // Chapga tekislangan + kenglik cheklovi: keng ekranlarda karta
+              // cho'zilib FAB ostiga kirib ketmasligi uchun (o'ng tomondagi
+              // `right: 88` bilan birga banner FABni HECH QACHON qoplamaydi).
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: _WorkZoneInfoCard(
+                    insideGeofence: snapshot?.insideGeofence,
+                  ),
+                ),
               ),
             ),
           ),
@@ -422,67 +433,6 @@ class _PositionMarker extends StatelessWidget {
         AppIcons.locationBold,
         color: AppColors.surface,
         size: 18,
-      ),
-    );
-  }
-}
-
-/// Xarita tepasidagi holat banneri — `FaceCheckinPage`ning
-/// `_GeofenceBanner`i bilan bir xil g'oya (yashil ichkarida/qizil
-/// tashqarida), qo'shimcha ravishda kuzatuv hali boshlanmagan/aniqlanayotgan
-/// holatlar uchun neytral variant bilan.
-class _GeofenceBanner extends StatelessWidget {
-  const _GeofenceBanner({required this.state});
-
-  final MapState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    final (Color color, String text) = switch (state) {
-      MapTracking(:final insideGeofence) =>
-        insideGeofence
-            ? (AppColors.success, l10n.insideGeofence)
-            : (AppColors.danger, l10n.outsideGeofence),
-      MapLoading() => (AppColors.inkMuted, l10n.mapLocating),
-      MapInitial() ||
-      MapStopped() ||
-      MapPermissionDenied() ||
-      MapError() => (AppColors.inkMuted, l10n.mapNotTracking),
-    };
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.94),
-        borderRadius: BorderRadius.circular(AppRadii.sm),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(AppIcons.locationBold, size: 15, color: AppColors.surface),
-          const SizedBox(width: 6),
-          // `Flexible` + ellipsis: uzunroq tarjima qilingan xabar (masalan
-          // ruscha "Вы находитесь за пределами рабочей зоны") tor
-          // ekranlarda banner Row'ini "toshib ketishi"ning oldini oladi.
-          Flexible(
-            child: Text(
-              text,
-              style: AppTextStyles.label.copyWith(color: AppColors.surface),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }

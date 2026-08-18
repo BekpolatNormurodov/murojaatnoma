@@ -101,6 +101,7 @@ class _DetailContent extends StatelessWidget {
                 subtitle: l10n.meetingHostLabel,
                 leadingIcon: AppIcons.profile,
                 showChevron: false,
+                titleMaxLines: 2,
               ),
               const Divider(height: 1),
               AppListTile(

@@ -194,31 +194,51 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            AppChip(
-              label: l10n.attachmentAddImage,
-              icon: AppIcons.gallery,
-              onTap: _busy ? null : _addImage,
-            ),
-            AppChip(
-              label: l10n.attachmentAddVideo,
-              icon: IconsaxPlusLinear.video,
-              onTap: _busy ? null : _addVideo,
-            ),
-            AppChip(
-              label: l10n.attachmentAddVoice,
-              icon: IconsaxPlusLinear.microphone_2,
-              onTap: _busy ? null : () => unawaited(_addVoice()),
-            ),
-            AppChip(
-              label: l10n.attachmentAddFile,
-              icon: IconsaxPlusLinear.document_text,
-              onTap: _busy ? null : _addMockFile,
-            ),
-          ],
+        // Teng kenglikdagi 2x2 to'r — chiplar (Rasm/Video/Ovozli/Fayl)
+        // 3+1 notekis o'ralmasin: har biri mavjud enning yarmini egallaydi.
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const spacing = 8.0;
+            final itemWidth = (constraints.maxWidth - spacing) / 2;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                SizedBox(
+                  width: itemWidth,
+                  child: AppChip(
+                    label: l10n.attachmentAddImage,
+                    icon: AppIcons.gallery,
+                    onTap: _busy ? null : _addImage,
+                  ),
+                ),
+                SizedBox(
+                  width: itemWidth,
+                  child: AppChip(
+                    label: l10n.attachmentAddVideo,
+                    icon: IconsaxPlusLinear.video,
+                    onTap: _busy ? null : _addVideo,
+                  ),
+                ),
+                SizedBox(
+                  width: itemWidth,
+                  child: AppChip(
+                    label: l10n.attachmentAddVoice,
+                    icon: IconsaxPlusLinear.microphone_2,
+                    onTap: _busy ? null : () => unawaited(_addVoice()),
+                  ),
+                ),
+                SizedBox(
+                  width: itemWidth,
+                  child: AppChip(
+                    label: l10n.attachmentAddFile,
+                    icon: IconsaxPlusLinear.document_text,
+                    onTap: _busy ? null : _addMockFile,
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         if (widget.attachments.isNotEmpty) ...[
           const SizedBox(height: 12),
