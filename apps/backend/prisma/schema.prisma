@@ -1151,7 +1151,9 @@ model Bonus {
   month         String
   type          String   @default("premya")
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  // @default(now()) so `db push` can add this to the already-populated bonuses
+  // table (existing rows get now()); @updatedAt bumps it on every edit.
+  updatedAt     DateTime @default(now()) @updatedAt
 
   @@map("bonuses")
 }
