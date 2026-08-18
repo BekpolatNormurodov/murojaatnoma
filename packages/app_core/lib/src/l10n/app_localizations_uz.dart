@@ -647,6 +647,36 @@ class AppLocalizationsUz extends AppLocalizations {
   String get premyaRequestTileLabel => 'Premya so\'rash';
 
   @override
+  String get premyaAmountLabel => 'Mukofot summasi (so\'mda)';
+
+  @override
+  String get premyaAmountHint => 'Ixtiyoriy — masalan 500000';
+
+  @override
+  String get premyaReasonLabel => 'Sabab';
+
+  @override
+  String get premyaReasonHint =>
+      'Nima uchun premya so\'rayapsiz? Masalan: oylik reja ortig\'i bilan bajarildi';
+
+  @override
+  String get premyaReasonRequired => 'Sababni kiritish shart';
+
+  @override
+  String get premyaInfoNote =>
+      'So\'rovingiz rahbariyat tomonidan ko\'rib chiqiladi va natija haqida xabar olasiz.';
+
+  @override
+  String get premyaSubmit => 'Yuborish';
+
+  @override
+  String get premyaSuccessTitle => 'So\'rov yuborildi';
+
+  @override
+  String get premyaSuccessMessage =>
+      'Premya so\'rovingiz rahbariyatga yuborildi.';
+
+  @override
   String get leaveRequestPageTitle => 'Javob so\'rash';
 
   @override

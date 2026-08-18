@@ -1340,6 +1340,60 @@ abstract class AppLocalizations {
   /// **'Premya so\'rash'**
   String get premyaRequestTileLabel;
 
+  /// No description provided for @premyaAmountLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Mukofot summasi (so\'mda)'**
+  String get premyaAmountLabel;
+
+  /// No description provided for @premyaAmountHint.
+  ///
+  /// In uz, this message translates to:
+  /// **'Ixtiyoriy — masalan 500000'**
+  String get premyaAmountHint;
+
+  /// No description provided for @premyaReasonLabel.
+  ///
+  /// In uz, this message translates to:
+  /// **'Sabab'**
+  String get premyaReasonLabel;
+
+  /// No description provided for @premyaReasonHint.
+  ///
+  /// In uz, this message translates to:
+  /// **'Nima uchun premya so\'rayapsiz? Masalan: oylik reja ortig\'i bilan bajarildi'**
+  String get premyaReasonHint;
+
+  /// No description provided for @premyaReasonRequired.
+  ///
+  /// In uz, this message translates to:
+  /// **'Sababni kiritish shart'**
+  String get premyaReasonRequired;
+
+  /// No description provided for @premyaInfoNote.
+  ///
+  /// In uz, this message translates to:
+  /// **'So\'rovingiz rahbariyat tomonidan ko\'rib chiqiladi va natija haqida xabar olasiz.'**
+  String get premyaInfoNote;
+
+  /// No description provided for @premyaSubmit.
+  ///
+  /// In uz, this message translates to:
+  /// **'Yuborish'**
+  String get premyaSubmit;
+
+  /// No description provided for @premyaSuccessTitle.
+  ///
+  /// In uz, this message translates to:
+  /// **'So\'rov yuborildi'**
+  String get premyaSuccessTitle;
+
+  /// No description provided for @premyaSuccessMessage.
+  ///
+  /// In uz, this message translates to:
+  /// **'Premya so\'rovingiz rahbariyatga yuborildi.'**
+  String get premyaSuccessMessage;
+
   /// No description provided for @leaveRequestPageTitle.
   ///
   /// In uz, this message translates to:

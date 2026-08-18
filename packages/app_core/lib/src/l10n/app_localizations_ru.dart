@@ -647,6 +647,36 @@ class AppLocalizationsRu extends AppLocalizations {
   String get premyaRequestTileLabel => 'Запросить премию';
 
   @override
+  String get premyaAmountLabel => 'Сумма премии (в сумах)';
+
+  @override
+  String get premyaAmountHint => 'Необязательно — например 500000';
+
+  @override
+  String get premyaReasonLabel => 'Причина';
+
+  @override
+  String get premyaReasonHint =>
+      'Почему вы запрашиваете премию? Например: месячный план перевыполнен';
+
+  @override
+  String get premyaReasonRequired => 'Укажите причину';
+
+  @override
+  String get premyaInfoNote =>
+      'Ваш запрос рассмотрит руководство, и вы получите уведомление о результате.';
+
+  @override
+  String get premyaSubmit => 'Отправить';
+
+  @override
+  String get premyaSuccessTitle => 'Запрос отправлен';
+
+  @override
+  String get premyaSuccessMessage =>
+      'Ваш запрос на премию отправлен руководству.';
+
+  @override
   String get leaveRequestPageTitle => 'Запросить отгул';
 
   @override

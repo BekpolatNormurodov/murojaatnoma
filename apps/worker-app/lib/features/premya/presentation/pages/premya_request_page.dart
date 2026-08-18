@@ -37,10 +37,11 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
   }
 
   Future<void> _submit() async {
+    final l10n = context.l10n;
     final reasonText = _reasonController.text.trim();
     final valid = reasonText.isNotEmpty;
     setState(
-      () => _reasonError = valid ? null : 'Sababni kiritish shart',
+      () => _reasonError = valid ? null : l10n.premyaReasonRequired,
     );
     if (!valid) return;
 
@@ -57,11 +58,10 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
     result.fold(
       (failure) => AppAlert.error(context, failure.message),
       (_) async {
-        final l10n = context.l10n;
         await AppDialog.success(
           context: context,
-          title: "So'rov yuborildi",
-          message: "Premya so'rovingiz rahbariyatga yuborildi.",
+          title: l10n.premyaSuccessTitle,
+          message: l10n.premyaSuccessMessage,
           buttonLabel: l10n.closeLabel,
         );
         if (mounted) context.pop();
@@ -71,6 +71,7 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final canvas = isDark ? AppColors.darkCanvas : AppColors.canvas;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
@@ -82,27 +83,25 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         leading: const AppBackButton(),
-        title: Text("Premya so'rash", style: AppTextStyles.h3),
+        title: Text(l10n.premyaRequestTileLabel, style: AppTextStyles.h3),
       ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
           children: [
-            const _SectionTitle("Mukofot summasi (so'mda)"),
+            _SectionTitle(l10n.premyaAmountLabel),
             const SizedBox(height: 8),
             AppTextField(
-              hint: 'Ixtiyoriy — masalan 500000',
+              hint: l10n.premyaAmountHint,
               controller: _amountController,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             ),
             const SizedBox(height: 20),
-            const _SectionTitle('Sabab'),
+            _SectionTitle(l10n.premyaReasonLabel),
             const SizedBox(height: 8),
             AppTextField(
-              hint:
-                  "Nima uchun premya so'rayapsiz? Masalan: oylik reja "
-                  "ortig'i bilan bajarildi",
+              hint: l10n.premyaReasonHint,
               controller: _reasonController,
               maxLines: 5,
               errorText: _reasonError,
@@ -120,8 +119,7 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    "So'rovingiz rahbariyat tomonidan ko'rib chiqiladi va "
-                    'natija haqida xabar olasiz.',
+                    l10n.premyaInfoNote,
                     style: AppTextStyles.caption.copyWith(color: mutedColor),
                   ),
                 ),
@@ -129,7 +127,7 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
             ),
             const SizedBox(height: 28),
             AppButton(
-              label: 'Yuborish',
+              label: l10n.premyaSubmit,
               icon: AppIcons.send,
               loading: _submitting,
               onPressed: _submitting ? null : _submit,
