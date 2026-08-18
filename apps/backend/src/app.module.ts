@@ -29,6 +29,7 @@ import { LeaveModule } from './modules/leave/leave.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PointsModule } from './modules/points/points.module';
+import { PremyaModule } from './modules/premya/premya.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { WorkforceModule } from './modules/workforce/workforce.module';
@@ -68,6 +69,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     SuggestionsModule,
     LeaveModule,
     BonusesModule,
+    PremyaModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

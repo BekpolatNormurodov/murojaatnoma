@@ -143,6 +143,7 @@ model Employee {
   suggestions          Suggestion[]
   suggestionVotes      SuggestionVote[]
   leaveRequests        LeaveRequest[]
+  bonusRequests        BonusRequest[]
 
   @@map("employees")
 }
@@ -1086,4 +1087,26 @@ model Bonus {
   createdAt     DateTime @default(now())
 
   @@map("bonuses")
+}
+
+// Employee-initiated bonus REQUESTS (worker-app "Premya so'rash"): the employee
+// asks for a premya; an admin later approves/rejects. Distinct from `Bonus`
+// above, which is an admin-GRANTED award the employee only views.
+enum BonusStatus {
+  pending
+  approved
+  rejected
+}
+
+model BonusRequest {
+  id         String      @id @default(uuid())
+  employeeId String
+  employee   Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  amount     Int?
+  reason     String
+  status     BonusStatus @default(pending)
+  createdAt  DateTime    @default(now())
+
+  @@index([employeeId])
+  @@map("bonus_requests")
 }
