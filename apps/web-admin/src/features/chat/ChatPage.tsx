@@ -20,7 +20,7 @@ import {
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
-import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
+import { useCall } from '@/shared/realtime/CallProvider';
 import { ChatComposer } from './ChatComposer';
 import { EmployeePickerModal } from './EmployeePickerModal';
 import {
@@ -139,8 +139,12 @@ export function ChatPage() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
   const [mobileThread, setMobileThread] = useState(false);
-  const [callOpen, setCallOpen] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+
+  // Real WebRTC 1:1 qo'ng'iroq (global CallProvider) — audio/video tugmalari
+  // shu yerda ishga tushiriladi; kiruvchi/faol qo'ng'iroq UI'si esa butun ilova
+  // bo'ylab <CallOverlay/> orqali ko'rsatiladi.
+  const { startCall, phase: callPhase } = useCall();
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -277,20 +281,15 @@ export function ChatPage() {
     return items;
   }, [activeMessages]);
 
-  const callParticipants: CallParticipant[] = useMemo(() => {
-    if (!activeConv) return [];
-    if (activeConv.kind === 'direct') {
-      const st = STAFF.find((s) => s.id === activeConv.staffId);
-      return st ? [{ id: st.id, name: st.name, photo: st.photo, color: st.avatarColor, role: st.position }] : [];
-    }
-    return STAFF.slice(0, 6).map((s) => ({
-      id: s.id,
-      name: s.name,
-      photo: s.photo,
-      color: s.avatarColor,
-      role: s.position,
-    }));
-  }, [activeConv]);
+  // Qo'ng'iroq faqat 1:1 (direct) suhbatlarda va xodim id'si (staffId) mavjud
+  // bo'lganda mumkin; guruh chatida o'chirilgan bo'ladi (kontrakt: 1:1 only).
+  const canCall = activeConv?.kind === 'direct' && !!activeConv.staffId;
+
+  function startChatCall(media: 'audio' | 'video') {
+    if (!activeConv || activeConv.kind !== 'direct' || !activeConv.staffId) return;
+    if (callPhase !== 'idle') return;
+    startCall(activeConv.staffId, activeConv.title, media);
+  }
 
   function openConv(id: string) {
     setActiveId(id);
@@ -509,16 +508,18 @@ export function ChatPage() {
                 </p>
               </div>
               <button
-                onClick={() => setCallOpen(true)}
-                title="Audio qo'ng'iroq"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600"
+                onClick={() => startChatCall('audio')}
+                disabled={!canCall || callPhase !== 'idle'}
+                title={canCall ? "Audio qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-soft"
               >
                 <Call size={21} variant="Bulk" />
               </button>
               <button
-                onClick={() => setCallOpen(true)}
-                title="Video qo'ng'iroq"
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600"
+                onClick={() => startChatCall('video')}
+                disabled={!canCall || callPhase !== 'idle'}
+                title={canCall ? "Video qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-soft"
               >
                 <Video size={21} variant="Bulk" />
               </button>
@@ -598,15 +599,6 @@ export function ChatPage() {
           </div>
         )}
       </section>
-
-      {/* Video/Audio qo'ng'iroq */}
-      <VideoCall
-        open={callOpen}
-        onClose={() => setCallOpen(false)}
-        title={activeConv?.title ?? 'Qo‘ng‘iroq'}
-        subtitle={activeConv?.kind === 'group' ? 'Guruh qo‘ng‘irog‘i' : undefined}
-        participants={callParticipants}
-      />
 
       {/* "Xodimga yozish" — xodim tanlagich (umumiy chat entry-point) */}
       <EmployeePickerModal
