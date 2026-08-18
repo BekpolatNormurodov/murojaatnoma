@@ -208,6 +208,7 @@ export const DICT: Record<Lang, Dict> = {
 
     "appUsers.actions.activate": "Faollashtirish",
     "appUsers.actions.block": "Bloklash",
+    "appUsers.actions.verify": "Tasdiqlash",
     "appUsers.actions.unverify": "Tasdiqni bekor qilish",
 
     "appUsers.empty.title": "Foydalanuvchi topilmadi",
@@ -228,6 +229,7 @@ export const DICT: Record<Lang, Dict> = {
     "appUsers.detail.registeredAt": "Ro'yxatdan o'tgan",
     "appUsers.detail.identityVerification": "Shaxs tasdig'i",
     "appUsers.detail.notVerified": "Tasdiqlanmagan",
+    "appUsers.detail.notifications": "Bildirishnomalar",
     "appUsers.detail.notifOn": "Yoqilgan",
     "appUsers.detail.notifOff": "O'chirilgan",
     "appUsers.detail.sendMessage": "Xabar yuborish",
@@ -663,6 +665,7 @@ export const DICT: Record<Lang, Dict> = {
 
     "appUsers.actions.activate": "Активировать",
     "appUsers.actions.block": "Заблокировать",
+    "appUsers.actions.verify": "Подтвердить",
     "appUsers.actions.unverify": "Отменить подтверждение",
 
     "appUsers.empty.title": "Пользователь не найден",
@@ -683,6 +686,7 @@ export const DICT: Record<Lang, Dict> = {
     "appUsers.detail.registeredAt": "Дата регистрации",
     "appUsers.detail.identityVerification": "Подтверждение личности",
     "appUsers.detail.notVerified": "Не подтверждено",
+    "appUsers.detail.notifications": "Уведомления",
     "appUsers.detail.notifOn": "Включены",
     "appUsers.detail.notifOff": "Отключены",
     "appUsers.detail.sendMessage": "Отправить сообщение",

@@ -19,6 +19,7 @@ import {
   Notification,
   type Icon as IconType,
 } from 'iconsax-react';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -88,6 +89,7 @@ export function AppUserDetail({
   /** Shu foydalanuvchi uchun PATCH so'rovi hozir bajarilyaptimi. */
   pending?: boolean;
 }) {
+  const { t } = useI18n();
   const u = user;
   const maxActivity = useMemo(
     () => (u ? Math.max(1, ...u.activity.map((a) => a.count)) : 1),
@@ -102,7 +104,7 @@ export function AppUserDetail({
     <Drawer
       open={!!u}
       onClose={onClose}
-      title="Foydalanuvchi profili"
+      title={t('appUsers.detail.title')}
       subtitle={u ? `#${u.id}` : undefined}
       width={500}
     >
@@ -134,7 +136,7 @@ export function AppUserDetail({
                   ) : (
                     <Apple size={13} variant="Bulk" className="text-ink-soft" />
                   )}
-                  {u.device === 'android' ? 'Android' : 'iOS'} · v{u.appVersion}
+                  {u.device === 'android' ? t('appUsers.deviceAndroid') : t('appUsers.deviceIos')} · v{u.appVersion}
                 </span>
               </div>
             </div>
@@ -145,25 +147,25 @@ export function AppUserDetail({
             <StatTile
               icon={MessageQuestion}
               value={formatNumber(u.requestsCount)}
-              label="Murojaat"
+              label={t('appUsers.requestsLabel')}
               color="#3b82f6"
             />
             <StatTile
               icon={TickCircle}
               value={formatNumber(u.resolvedCount)}
-              label="Hal qilingan"
+              label={t('common.resolved')}
               color="#10b981"
             />
             <StatTile
               icon={Cup}
               value={formatNumber(u.points)}
-              label="Ball"
+              label={t('appUsers.detail.points')}
               color="#f59e0b"
             />
             <StatTile
               icon={Star1}
               value={u.avgRating > 0 ? u.avgRating.toFixed(1) : '—'}
-              label="Baho"
+              label={t('appUsers.detail.rating')}
               color="#a855f7"
             />
           </div>
@@ -171,7 +173,7 @@ export function AppUserDetail({
           {/* Activity */}
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <Activity size={16} variant="Bulk" className="text-ink-muted" /> So'nggi 14 kunlik faollik
+              <Activity size={16} variant="Bulk" className="text-ink-muted" /> {t('appUsers.detail.activity14d')}
             </p>
             <div className="flex h-20 items-end justify-between gap-1">
               {u.activity.map((a, i) => (
@@ -192,7 +194,7 @@ export function AppUserDetail({
           {/* Engagement */}
           <div className="rounded-2xl border border-line bg-surface p-4">
             <div className="mb-2 flex items-center justify-between text-[13px]">
-              <span className="font-semibold text-ink">Murojaatlar hal qilinishi</span>
+              <span className="font-semibold text-ink">{t('appUsers.detail.resolveRate')}</span>
               <span className="font-semibold text-primary-600">{resolveRate}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
@@ -202,7 +204,9 @@ export function AppUserDetail({
               />
             </div>
             <p className="mt-2 text-[12px] text-ink-muted">
-              {u.resolvedCount} / {u.requestsCount} murojaat ijobiy yakunlangan
+              {t('appUsers.detail.resolveRateFootnote')
+                .replace('{resolved}', String(u.resolvedCount))
+                .replace('{total}', String(u.requestsCount))}
             </p>
           </div>
 
@@ -210,52 +214,52 @@ export function AppUserDetail({
           <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-4">
             <InfoRow
               icon={<Location size={15} variant="Bulk" className="text-ink-muted" />}
-              label="Mahalla"
+              label={t('appUsers.regionLabel')}
               value={u.region}
             />
             <InfoRow
               icon={<Location size={15} variant="Bulk" className="text-ink-muted" />}
-              label="Manzil"
+              label={t('common.address')}
               value={<span className="max-w-56 truncate text-right">{u.address}</span>}
             />
             <InfoRow
               icon={<Calendar size={15} variant="Bulk" className="text-ink-muted" />}
-              label="Ro'yxatdan o'tgan"
+              label={t('appUsers.detail.registeredAt')}
               value={formatDate(u.registeredAt)}
             />
             <InfoRow
               icon={<Clock size={15} variant="Bulk" className="text-amber-500" />}
-              label="Oxirgi faollik"
+              label={t('appUsers.lastActiveLabel')}
               value={timeAgo(u.lastActiveAt)}
             />
             <InfoRow
               icon={<ShieldTick size={15} variant="Bulk" className="text-accent-500" />}
-              label="Shaxs tasdig'i"
+              label={t('appUsers.detail.identityVerification')}
               value={
                 u.verified ? (
-                  <span className="text-primary-600">Tasdiqlangan</span>
+                  <span className="text-primary-600">{t('appUsers.verifiedLabel')}</span>
                 ) : (
-                  <span className="text-ink-muted">Tasdiqlanmagan</span>
+                  <span className="text-ink-muted">{t('appUsers.detail.notVerified')}</span>
                 )
               }
             />
             <InfoRow
               icon={<Notification size={15} variant="Bulk" className="text-ink-muted" />}
-              label="Bildirishnomalar"
-              value={u.notificationsOn ? 'Yoqilgan' : "O'chirilgan"}
+              label={t('appUsers.detail.notifications')}
+              value={u.notificationsOn ? t('appUsers.detail.notifOn') : t('appUsers.detail.notifOff')}
             />
           </div>
 
           {/* Actions */}
           <div className="flex flex-wrap gap-3">
             <button className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700">
-              <Send2 size={16} variant="Bulk" /> Xabar yuborish
+              <Send2 size={16} variant="Bulk" /> {t('appUsers.detail.sendMessage')}
             </button>
             <a
               href={`tel:${u.phone}`}
               className="flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-surface-2"
             >
-              <Sms size={16} variant="Bulk" /> Aloqa
+              <Sms size={16} variant="Bulk" /> {t('appUsers.detail.contact')}
             </a>
             <button
               type="button"
@@ -269,7 +273,7 @@ export function AppUserDetail({
               )}
             >
               <ShieldTick size={16} variant="Bulk" />
-              {u.verified ? "Tasdiqni bekor qilish" : 'Tasdiqlash'}
+              {u.verified ? t('appUsers.actions.unverify') : t('appUsers.actions.verify')}
             </button>
             <button
               type="button"
@@ -282,7 +286,7 @@ export function AppUserDetail({
                   : 'border-red-200 bg-danger-soft text-red-700 hover:opacity-90',
               )}
             >
-              <Slash size={16} variant="Bulk" /> {isBlocked ? 'Faollashtirish' : 'Bloklash'}
+              <Slash size={16} variant="Bulk" /> {isBlocked ? t('appUsers.actions.activate') : t('appUsers.actions.block')}
             </button>
           </div>
         </div>

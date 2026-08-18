@@ -34,6 +34,7 @@ import {
   InfoCircle,
   FilterRemove,
 } from 'iconsax-react';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -59,23 +60,23 @@ type DeviceFilter = AppUserDevice | 'all';
 type SortKey = 'recent' | 'requests' | 'points';
 const ALL_REGIONS = 'all';
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string; dot?: string }[] = [
-  { value: 'all', label: 'Barcha holatlar' },
-  { value: 'active', label: 'Faol', dot: '#10b981' },
-  { value: 'inactive', label: 'Nofaol', dot: '#94a3b8' },
-  { value: 'blocked', label: 'Bloklangan', dot: '#ef4444' },
+const STATUS_OPTIONS_KEYS: { value: StatusFilter; labelKey: string; dot?: string }[] = [
+  { value: 'all', labelKey: 'appUsers.filters.allStatuses' },
+  { value: 'active', labelKey: 'common.active', dot: '#10b981' },
+  { value: 'inactive', labelKey: 'common.inactive', dot: '#94a3b8' },
+  { value: 'blocked', labelKey: 'appUsers.statusBlocked', dot: '#ef4444' },
 ];
 
-const DEVICE_OPTIONS: { value: DeviceFilter; label: string; icon?: typeof Android }[] = [
-  { value: 'all', label: 'Barcha qurilmalar' },
-  { value: 'android', label: 'Android', icon: Android },
-  { value: 'ios', label: 'iOS', icon: Apple },
+const DEVICE_OPTIONS_KEYS: { value: DeviceFilter; labelKey: string; icon?: typeof Android }[] = [
+  { value: 'all', labelKey: 'appUsers.filters.allDevices' },
+  { value: 'android', labelKey: 'appUsers.deviceAndroid', icon: Android },
+  { value: 'ios', labelKey: 'appUsers.deviceIos', icon: Apple },
 ];
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'recent', label: 'Oxirgi faollik' },
-  { value: 'requests', label: 'Murojaatlar soni' },
-  { value: 'points', label: 'Faollik balli' },
+const SORT_OPTIONS_KEYS: { value: SortKey; labelKey: string }[] = [
+  { value: 'recent', labelKey: 'appUsers.sort.recent' },
+  { value: 'requests', labelKey: 'appUsers.sort.requests' },
+  { value: 'points', labelKey: 'appUsers.sort.points' },
 ];
 
 /** Amal natijasi haqida qisqa xabar (aria-live orqali o'qib beriladi). */
@@ -129,6 +130,19 @@ function appUserStatusMeta(status: AppUserStatus) {
 }
 
 export function AppUsersPage() {
+  const { t } = useI18n();
+  const STATUS_OPTIONS = useMemo(
+    () => STATUS_OPTIONS_KEYS.map((o) => ({ ...o, label: t(o.labelKey) })),
+    [t],
+  );
+  const DEVICE_OPTIONS = useMemo(
+    () => DEVICE_OPTIONS_KEYS.map((o) => ({ ...o, label: t(o.labelKey) })),
+    [t],
+  );
+  const SORT_OPTIONS = useMemo(
+    () => SORT_OPTIONS_KEYS.map((o) => ({ ...o, label: t(o.labelKey) })),
+    [t],
+  );
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [device, setDevice] = useState<DeviceFilter>('all');
@@ -171,41 +185,43 @@ export function AppUsersPage() {
         {
           onSuccess: () => notify('success', successMessage),
           onError: (err) =>
-            notify('error', err instanceof Error ? err.message : "Amalni bajarib bo'lmadi"),
+            notify('error', err instanceof Error ? err.message : t('appUsers.actionFailed')),
         },
       );
     },
-    [updateMutation, notify],
+    [updateMutation, notify, t],
   );
 
   /** Faol/nofaol foydalanuvchini bloklashdan oldin tasdiq so'raladi; blokdan chiqarish darhol bajariladi. */
   const requestToggleBlock = useCallback(
     (user: AppUser) => {
       if (user.status === 'blocked') {
-        runUpdate(user, { status: 'active' }, `${user.name} faollashtirildi`);
+        runUpdate(user, { status: 'active' }, t('appUsers.toast.activated').replace('{name}', user.name));
       } else {
         setConfirmTarget(user);
       }
     },
-    [runUpdate],
+    [runUpdate, t],
   );
 
   const confirmBlock = useCallback(() => {
     if (!confirmTarget) return;
     const user = confirmTarget;
     setConfirmTarget(null);
-    runUpdate(user, { status: 'blocked' }, `${user.name} bloklandi`);
-  }, [confirmTarget, runUpdate]);
+    runUpdate(user, { status: 'blocked' }, t('appUsers.toast.blocked').replace('{name}', user.name));
+  }, [confirmTarget, runUpdate, t]);
 
   const toggleVerify = useCallback(
     (user: AppUser) => {
       runUpdate(
         user,
         { verified: !user.verified },
-        user.verified ? `${user.name} tasdig'i bekor qilindi` : `${user.name} shaxsi tasdiqlandi`,
+        user.verified
+          ? t('appUsers.toast.unverified').replace('{name}', user.name)
+          : t('appUsers.toast.verified').replace('{name}', user.name),
       );
     },
-    [runUpdate],
+    [runUpdate, t],
   );
 
   const dauData = useMemo(
@@ -222,10 +238,10 @@ export function AppUsersPage() {
       a.localeCompare(b, 'uz'),
     );
     return [
-      { value: ALL_REGIONS, label: 'Barcha mahallalar' },
+      { value: ALL_REGIONS, label: t('appUsers.filters.allRegions') },
       ...unique.map((r) => ({ value: r, label: r })),
     ];
-  }, [users]);
+  }, [users, t]);
 
   const hasActiveFilters =
     query.trim() !== '' || status !== 'all' || device !== 'all' || region !== ALL_REGIONS;
@@ -271,12 +287,12 @@ export function AppUsersPage() {
   return (
     <div>
       <PageHeader
-        title="Ilova foydalanuvchilari"
-        subtitle="Mobil ilovadan foydalanayotgan Mirzo Ulug'bek fuqarolari va ular bo'yicha hisobot"
+        title={t('nav.appUsers')}
+        subtitle={t('appUsers.subtitle')}
         action={
           <span className="flex items-center gap-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-medium text-ink-soft">
             <Mobile size={18} variant="Bulk" className="text-primary-500" />
-            {statsQuery.isLoading ? '…' : formatNumber(stats.total)} foydalanuvchi
+            {statsQuery.isLoading ? '…' : formatNumber(stats.total)} {t('appUsers.userCountSuffix')}
           </span>
         }
       />
@@ -285,15 +301,15 @@ export function AppUsersPage() {
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
-            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="font-semibold text-ink">{t('common.loadError')}</p>
             <p className="mt-1 text-sm text-ink-muted">
               {usersQuery.error instanceof Error
                 ? usersQuery.error.message
-                : "Noma'lum xatolik yuz berdi"}
+                : t('common.unknownError')}
             </p>
           </div>
           <Button variant="secondary" onClick={() => usersQuery.refetch()}>
-            <RotateRight size={16} /> Qayta urinish
+            <RotateRight size={16} /> {t('common.retry')}
           </Button>
         </Card>
       ) : (
@@ -306,7 +322,7 @@ export function AppUsersPage() {
               <>
                 <StatCard
                   icon={Mobile}
-                  label="Jami foydalanuvchilar"
+                  label={t('appUsers.kpi.total')}
                   value={formatNumber(stats.total)}
                   delta={12}
                   tint="#3b82f6"
@@ -314,7 +330,7 @@ export function AppUsersPage() {
                 />
                 <StatCard
                   icon={UserTick}
-                  label="Faol foydalanuvchilar"
+                  label={t('appUsers.kpi.active')}
                   value={formatNumber(stats.active)}
                   delta={8}
                   tint="#10b981"
@@ -322,7 +338,7 @@ export function AppUsersPage() {
                 />
                 <StatCard
                   icon={Verify}
-                  label="Tasdiqlangan"
+                  label={t('appUsers.verifiedLabel')}
                   value={formatNumber(stats.verified)}
                   delta={5}
                   tint="#a855f7"
@@ -330,7 +346,7 @@ export function AppUsersPage() {
                 />
                 <StatCard
                   icon={MessageQuestion}
-                  label="Jami murojaatlar"
+                  label={t('appUsers.kpi.totalRequests')}
                   value={formatNumber(stats.totalRequests)}
                   delta={17}
                   tint="#f59e0b"
@@ -345,11 +361,11 @@ export function AppUsersPage() {
             {/* DAU */}
             <Card className="lg:col-span-2">
               <CardHeader
-                title="Kunlik faol foydalanuvchilar"
-                subtitle="So'nggi 14 kun"
+                title={t('appUsers.chart.dauTitle')}
+                subtitle={t('appUsers.chart.last14Days')}
                 action={
                   <span className="flex items-center gap-1.5 text-[13px] font-medium text-primary-600">
-                    <Activity size={16} variant="Bulk" /> DAU
+                    <Activity size={16} variant="Bulk" /> {t('appUsers.chart.dauAcronym')}
                   </span>
                 }
               />
@@ -358,9 +374,9 @@ export function AppUsersPage() {
                   <Skeleton className="h-full" />
                 ) : dauQuery.isError ? (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-ink-muted">
-                    <span>DAU statistikasi mavjud emas</span>
+                    <span>{t('appUsers.chart.dauUnavailable')}</span>
                     <Button variant="secondary" size="sm" onClick={() => dauQuery.refetch()}>
-                      <RotateRight size={14} /> Qayta urinish
+                      <RotateRight size={14} /> {t('common.retry')}
                     </Button>
                   </div>
                 ) : (
@@ -390,7 +406,7 @@ export function AppUsersPage() {
                       <Area
                         type="monotone"
                         dataKey="faol"
-                        name="Faol"
+                        name={t('common.active')}
                         stroke="#10b981"
                         strokeWidth={2.5}
                         fill="url(#dauFill)"
@@ -403,7 +419,7 @@ export function AppUsersPage() {
 
             {/* Device split + statuses */}
             <Card className="flex flex-col">
-              <CardHeader title="Qurilma va holat" subtitle="Taqsimot" />
+              <CardHeader title={t('appUsers.chart.deviceStatusTitle')} subtitle={t('appUsers.chart.distribution')} />
               <div className="flex-1 space-y-4 p-5 pt-3">
                 {statsQuery.isLoading ? (
                   <Skeleton className="h-full min-h-[220px]" />
@@ -412,7 +428,7 @@ export function AppUsersPage() {
                     <div>
                       <div className="mb-2 flex items-center justify-between text-[13px]">
                         <span className="flex items-center gap-1.5 font-medium text-ink">
-                          <Android size={15} variant="Bulk" className="text-primary-500" /> Android
+                          <Android size={15} variant="Bulk" className="text-primary-500" /> {t('appUsers.deviceAndroid')}
                         </span>
                         <span className="font-semibold text-ink">
                           {formatNumber(stats.android)} · {androidPct}%
@@ -428,7 +444,7 @@ export function AppUsersPage() {
                     <div>
                       <div className="mb-2 flex items-center justify-between text-[13px]">
                         <span className="flex items-center gap-1.5 font-medium text-ink">
-                          <Apple size={15} variant="Bulk" className="text-ink-soft" /> iOS
+                          <Apple size={15} variant="Bulk" className="text-ink-soft" /> {t('appUsers.deviceIos')}
                         </span>
                         <span className="font-semibold text-ink">
                           {formatNumber(stats.ios)} · {100 - androidPct}%
@@ -466,15 +482,15 @@ export function AppUsersPage() {
           {/* Growth + Top users */}
           <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
-              <CardHeader title="Ro'yxatdan o'tish o'sishi" subtitle="So'nggi 8 oy · yangi va jami" />
+              <CardHeader title={t('appUsers.chart.growthTitle')} subtitle={t('appUsers.chart.growthSubtitle')} />
               <div className="h-56 p-4 pt-2">
                 {growthQuery.isLoading ? (
                   <Skeleton className="h-full" />
                 ) : growthQuery.isError ? (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-ink-muted">
-                    <span>O'sish statistikasi mavjud emas</span>
+                    <span>{t('appUsers.chart.growthUnavailable')}</span>
                     <Button variant="secondary" size="sm" onClick={() => growthQuery.refetch()}>
-                      <RotateRight size={14} /> Qayta urinish
+                      <RotateRight size={14} /> {t('common.retry')}
                     </Button>
                   </div>
                 ) : (
@@ -497,7 +513,7 @@ export function AppUsersPage() {
                         allowDecimals={false}
                       />
                       <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--color-surface-2)' }} />
-                      <Bar dataKey="yangi" name="Yangi" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={34} />
+                      <Bar dataKey="yangi" name={t('common.new')} fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={34} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -507,7 +523,7 @@ export function AppUsersPage() {
             {/* Leaderboard */}
             <Card>
               <CardHeader
-                title="Eng faol foydalanuvchilar"
+                title={t('appUsers.leaderboard.title')}
                 action={<Cup size={18} variant="Bulk" className="text-amber-500" />}
               />
               <div className="space-y-1 p-3">
@@ -563,8 +579,8 @@ export function AppUsersPage() {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Ism, telefon yoki mahalla bo'yicha qidirish..."
-                aria-label="Foydalanuvchilarni qidirish"
+                placeholder={t('appUsers.search.placeholder')}
+                aria-label={t('appUsers.search.ariaLabel')}
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
               />
             </div>
@@ -584,7 +600,7 @@ export function AppUsersPage() {
                   onClick={clearFilters}
                   className="flex h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2"
                 >
-                  <FilterRemove size={16} variant="Bulk" /> Tozalash
+                  <FilterRemove size={16} variant="Bulk" /> {t('common.clear')}
                 </button>
               )}
             </div>
@@ -593,11 +609,11 @@ export function AppUsersPage() {
           {/* User list */}
           <Card className="overflow-hidden">
             <div className="hidden border-b border-line bg-surface-2 px-5 py-3 text-[11px] font-semibold uppercase tracking-wider text-ink-muted md:grid md:grid-cols-12 md:gap-4">
-              <div className="col-span-4">Foydalanuvchi</div>
-              <div className="col-span-2">Mahalla</div>
-              <div className="col-span-2 text-center">Murojaat</div>
-              <div className="col-span-2 text-center">Oxirgi faollik</div>
-              <div className="col-span-2 text-right">Holat</div>
+              <div className="col-span-4">{t('appUsers.table.user')}</div>
+              <div className="col-span-2">{t('appUsers.regionLabel')}</div>
+              <div className="col-span-2 text-center">{t('appUsers.requestsLabel')}</div>
+              <div className="col-span-2 text-center">{t('appUsers.lastActiveLabel')}</div>
+              <div className="col-span-2 text-right">{t('appUsers.table.status')}</div>
             </div>
             <div className="divide-y divide-line">
               {usersQuery.isLoading
@@ -615,7 +631,7 @@ export function AppUsersPage() {
                         key={u.id}
                         role="button"
                         tabIndex={0}
-                        aria-label={`${u.name} profilini ochish`}
+                        aria-label={t('appUsers.openProfileAria').replace('{name}', u.name)}
                         initial={reduceMotion ? undefined : { opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: reduceMotion ? 0 : Math.min(i * 0.015, 0.25) }}
@@ -675,7 +691,7 @@ export function AppUsersPage() {
                               trigger={
                                 <button
                                   type="button"
-                                  aria-label={`${u.name} uchun amallar`}
+                                  aria-label={t('appUsers.actionsForAria').replace('{name}', u.name)}
                                   disabled={rowPending}
                                   className="flex h-11 w-11 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50"
                                 >
@@ -684,14 +700,14 @@ export function AppUsersPage() {
                               }
                               items={[
                                 {
-                                  label: isBlocked ? 'Faollashtirish' : 'Bloklash',
+                                  label: isBlocked ? t('appUsers.actions.activate') : t('appUsers.actions.block'),
                                   icon: Slash,
                                   danger: !isBlocked,
                                   disabled: rowPending,
                                   onClick: () => requestToggleBlock(u),
                                 },
                                 {
-                                  label: u.verified ? "Tasdiqni bekor qilish" : 'Tasdiqlash',
+                                  label: u.verified ? t('appUsers.actions.unverify') : t('appUsers.actions.verify'),
                                   icon: ShieldTick,
                                   disabled: rowPending,
                                   onClick: () => toggleVerify(u),
@@ -709,16 +725,16 @@ export function AppUsersPage() {
               <div className="flex flex-col items-center gap-3 py-16 text-center">
                 <CloseCircle size={32} variant="Bulk" className="text-ink-muted" />
                 <div>
-                  <p className="font-medium text-ink">Foydalanuvchi topilmadi</p>
+                  <p className="font-medium text-ink">{t('appUsers.empty.title')}</p>
                   <p className="mt-1 text-sm text-ink-muted">
                     {hasActiveFilters
-                      ? "Qidiruv yoki filtrlarni o'zgartirib ko'ring"
-                      : 'Hozircha ilova foydalanuvchilari mavjud emas'}
+                      ? t('appUsers.empty.hasFilters')
+                      : t('appUsers.empty.noUsers')}
                   </p>
                 </div>
                 {hasActiveFilters && (
                   <Button variant="secondary" size="sm" onClick={clearFilters}>
-                    <FilterRemove size={14} /> Filtrlarni tozalash
+                    <FilterRemove size={14} /> {t('common.clearFilters')}
                   </Button>
                 )}
               </div>
@@ -737,14 +753,13 @@ export function AppUsersPage() {
             open={!!confirmTarget}
             onClose={() => setConfirmTarget(null)}
             onConfirm={confirmBlock}
-            title="Foydalanuvchini bloklash"
+            title={t('appUsers.confirmBlock.title')}
             message={
               <>
-                <strong className="text-ink">{confirmTarget?.name}</strong> ilovaga kira olmay
-                qoladi. Bu amalni keyinroq bekor qilishingiz mumkin.
+                <strong className="text-ink">{confirmTarget?.name}</strong> {t('appUsers.confirmBlock.message')}
               </>
             }
-            confirmLabel="Ha, bloklash"
+            confirmLabel={t('appUsers.confirmBlock.confirmLabel')}
             tone="danger"
             icon={Slash}
             loading={!!confirmTarget && pendingUserId === confirmTarget.id}
