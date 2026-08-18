@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import configuration from './common/config/configuration';
 import { envValidationSchema } from './common/config/env.validation';
@@ -31,6 +32,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { PointsModule } from './modules/points/points.module';
 import { PremyaModule } from './modules/premya/premya.module';
 import { PushModule } from './modules/push/push.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { WorkforceModule } from './modules/workforce/workforce.module';
@@ -45,6 +47,9 @@ import { ZonesModule } from './modules/zones/zones.module';
       validationOptions: { abortEarly: false },
     }),
     ScheduleModule.forRoot(),
+    // Domain-event bus — ChatService emits, RealtimeGateway broadcasts (so a
+    // chat mutation fans out live whether it came over REST or a socket).
+    EventEmitterModule.forRoot(),
     PrismaModule,
     // Global push (FCM) — available to notifications + the location stale-scan.
     PushModule,
@@ -67,6 +72,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     CatalogModule,
     FinanceModule,
     ChatModule,
+    // Realtime lane — Socket.IO gateway (live chat + WebRTC call signaling).
+    RealtimeModule,
     // Worker-app employee features (points/rating + suggestions)
     PointsModule,
     SuggestionsModule,

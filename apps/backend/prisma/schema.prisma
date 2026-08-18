@@ -984,12 +984,17 @@ model ChatConversation {
   photo       String?
   staffId     String? // only for kind = direct
   online      Boolean      @default(false)
+  // Archive: "clear chat" (tozalash) empties messages AND sets archived=true;
+  // the main list requests archived=false, the Archive view requests true.
+  archived    Boolean      @default(false)
+  archivedAt  DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   messages ChatMessage[]
 
   @@index([kind])
+  @@index([archived])
   @@map("chat_conversations")
 }
 
@@ -1004,6 +1009,8 @@ model ChatMessage {
   url            String?
   durationSec    Int?
   status         ChatMsgStatus @default(sent)
+  // Set when the body was edited (allowed only while status != read).
+  editedAt       DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -1011,6 +1018,30 @@ model ChatMessage {
 
   @@index([conversationId, createdAt])
   @@map("chat_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Call log (Qo'ng'iroqlar tarixi) — 1:1 WebRTC voice/video signaling history.
+// The backend only relays SDP/ICE + records the call lifecycle here; media is
+// peer-to-peer. Feeds the call-history UI (missed/incoming/outgoing badges).
+// ---------------------------------------------------------------------------
+model CallLog {
+  id          String    @id @default(uuid())
+  callerId    String
+  callerName  String
+  calleeId    String
+  calleeName  String
+  media       String // 'audio' | 'video'
+  // ringing | accepted | rejected | missed | cancelled | ended | busy
+  status      String
+  startedAt   DateTime  @default(now())
+  answeredAt  DateTime?
+  endedAt     DateTime?
+  durationSec Int       @default(0)
+
+  @@index([callerId, startedAt])
+  @@index([calleeId, startedAt])
+  @@map("call_logs")
 }
 
 // ---------------------------------------------------------------------------

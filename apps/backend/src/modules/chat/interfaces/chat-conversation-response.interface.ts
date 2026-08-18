@@ -16,6 +16,8 @@ export interface ChatConversationResponse {
   photo: string | null;
   staffId: string | null;
   online: boolean;
+  /** Archived conversations are hidden from the main list, shown in Archive. */
+  archived: boolean;
   lastMessage: ChatMessage | null;
   unreadCount: number;
 }

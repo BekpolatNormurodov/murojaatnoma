@@ -67,6 +67,15 @@ export interface AppConfig {
     /** Base64-encoded service-account JSON. Empty ⇒ push notifications disabled. */
     serviceAccountB64: string;
   };
+  /** WebRTC signaling (realtime calls). STUN is always on; TURN is optional. */
+  realtime: {
+    /** TURN server URL, e.g. "turn:turn.murojaatnoma.uz:3478". Empty ⇒ STUN-only. */
+    turnUrl: string;
+    turnUsername: string;
+    turnCredential: string;
+    /** Seconds an unanswered call rings before it is marked "missed". */
+    ringTimeoutSec: number;
+  };
 }
 
 export default (): AppConfig => ({
@@ -126,5 +135,11 @@ export default (): AppConfig => ({
   firebase: {
     projectId: process.env.FIREBASE_PROJECT_ID ?? '',
     serviceAccountB64: process.env.FIREBASE_SERVICE_ACCOUNT_B64 ?? '',
+  },
+  realtime: {
+    turnUrl: process.env.TURN_URL ?? '',
+    turnUsername: process.env.TURN_USERNAME ?? '',
+    turnCredential: process.env.TURN_CREDENTIAL ?? '',
+    ringTimeoutSec: parseInt(process.env.CALL_RING_TIMEOUT_SEC ?? '35', 10),
   },
 });

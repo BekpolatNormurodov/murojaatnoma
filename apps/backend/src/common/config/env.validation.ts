@@ -72,4 +72,12 @@ export const envValidationSchema = Joi.object({
   // secret lives only in the server's gitignored .env (repo is public).
   FIREBASE_PROJECT_ID: Joi.string().allow('').default(''),
   FIREBASE_SERVICE_ACCOUNT_B64: Joi.string().allow('').default(''),
+
+  // WebRTC realtime calls. STUN is hardcoded (Google public); TURN is optional
+  // and only needed for reliable connectivity across symmetric NAT / mobile
+  // carriers. All empty ⇒ STUN-only (fine for testing / same-network).
+  TURN_URL: Joi.string().allow('').default(''),
+  TURN_USERNAME: Joi.string().allow('').default(''),
+  TURN_CREDENTIAL: Joi.string().allow('').default(''),
+  CALL_RING_TIMEOUT_SEC: Joi.number().integer().positive().default(35),
 });
