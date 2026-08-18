@@ -35,6 +35,13 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/package.json ./package.json
 
+# Pre-create the task-proof uploads dir owned by the runtime user, so a FRESH
+# `uploads` named volume (POST /applications/:id/attachments/upload writes here)
+# initializes writable by nestjs. An ALREADY-existing volume keeps its original
+# ownership and is chowned once on the host — Docker only seeds a volume from the
+# image on first mount.
+RUN mkdir -p /app/uploads && chown -R nestjs:nodejs /app/uploads
+
 USER nestjs
 
 EXPOSE 3000
