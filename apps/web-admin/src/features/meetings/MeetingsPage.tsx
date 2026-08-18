@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import {
   Add,
   Calendar,
@@ -15,6 +15,7 @@ import {
   CloseSquare,
   RotateRight,
   Trash,
+  FilterRemove,
 } from 'iconsax-react';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -27,34 +28,26 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select, type SelectOption } from '@/shared/ui/Select';
 import { DatePicker, TimePicker } from '@/shared/ui/DatePicker';
 import { VideoCall, type CallParticipant } from '@/shared/ui/VideoCall';
-import {
-  DEPUTIES,
-  HOME_DISTRICT_ID,
-  MEETING_STATUS_META,
-  MEETING_TYPE_META,
-  getDeputy,
-} from '@/shared/data/mock';
+import { DEPUTIES, HOME_DISTRICT_ID, MEETING_TYPE_META, getDeputy } from '@/shared/data/mock';
 import { useMeetings } from '@/shared/store/meetings';
 import { useMeetingsQuery } from './useMeetingsQuery';
+import { MeetingDetail } from './MeetingDetail';
+import { MeetingToastStack } from './MeetingToasts';
+import { pushMeetingToast } from './toastStore';
+import {
+  meetingTypeMeta,
+  meetingStatusMeta,
+  toDateInput,
+  toTimeInput,
+  timeLabel,
+  isToday,
+} from './meetingMeta';
 import type { Meeting, MeetingStatus, MeetingType } from '@/shared/data/types';
 import { formatDate } from '@/shared/lib/format';
 import { cn } from '@/shared/lib/cn';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-xl bg-surface-2', className)} />;
-}
-
-const DEFAULT_MEETING_TYPE_META = { label: "Boshqa", color: '#64748b' };
-const DEFAULT_MEETING_STATUS_META = { label: "Noma'lum", tone: 'neutral' as const };
-
-/** MEETING_TYPE_META'da yo'q (kutilmagan) tur uchun neytral fallback. */
-function meetingTypeMeta(type: MeetingType) {
-  return MEETING_TYPE_META[type] ?? DEFAULT_MEETING_TYPE_META;
-}
-
-/** MEETING_STATUS_META'da yo'q (kutilmagan) holat uchun neytral fallback. */
-function meetingStatusMeta(status: MeetingStatus) {
-  return MEETING_STATUS_META[status] ?? DEFAULT_MEETING_STATUS_META;
 }
 
 const TYPE_TABS: { key: MeetingType | 'all'; label: string }[] = [
@@ -66,18 +59,13 @@ const TYPE_TABS: { key: MeetingType | 'all'; label: string }[] = [
   { key: 'hashar', label: 'Obodonlashtirish' },
 ];
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const toDateInput = (d: Date) =>
-  `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const toTimeInput = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-
 const TYPE_OPTIONS: SelectOption<MeetingType>[] = (
   Object.keys(MEETING_TYPE_META) as MeetingType[]
 ).map((k) => ({ value: k, label: MEETING_TYPE_META[k].label, dot: MEETING_TYPE_META[k].color }));
 
 const STATUS_OPTIONS: SelectOption<MeetingStatus>[] = (
-  Object.keys(MEETING_STATUS_META) as MeetingStatus[]
-).map((k) => ({ value: k, label: MEETING_STATUS_META[k].label }));
+  ['scheduled', 'ongoing', 'done', 'cancelled'] as MeetingStatus[]
+).map((k) => ({ value: k, label: meetingStatusMeta(k).label }));
 
 const CHAIR_OPTIONS: SelectOption<string>[] = DEPUTIES.map((d) => ({
   value: d.id,
@@ -90,29 +78,19 @@ const DURATION_OPTIONS: SelectOption<string>[] = [30, 45, 60, 90, 120].map((n) =
   label: `${n} daqiqa`,
 }));
 
-function timeLabel(iso: string): string {
-  return new Date(iso).toTimeString().slice(0, 5);
-}
-
-function isToday(iso: string): boolean {
-  const d = new Date(iso);
-  const n = new Date();
-  return (
-    d.getDate() === n.getDate() &&
-    d.getMonth() === n.getMonth() &&
-    d.getFullYear() === n.getFullYear()
-  );
-}
-
 function MeetingCard({
   m,
   index,
+  reducedMotion,
+  onOpen,
   onEdit,
   onDelete,
   onJoin,
 }: {
   m: Meeting;
   index: number;
+  reducedMotion: boolean;
+  onOpen: (m: Meeting) => void;
   onEdit: (m: Meeting) => void;
   onDelete: (m: Meeting) => void;
   onJoin: (m: Meeting) => void;
@@ -122,13 +100,26 @@ function MeetingCard({
   const chair = getDeputy(m.chairDeputyId);
   const cancelled = m.status === 'cancelled';
   const canJoin = m.type === 'video' && (m.status === 'scheduled' || m.status === 'ongoing');
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen(m);
+    }
+  }
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(m)}
+      onKeyDown={handleKeyDown}
+      aria-label={`"${m.title}" yig'ilishi tafsilotlari`}
+      initial={reducedMotion ? false : { opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: Math.min(index * 0.04, 0.3), duration: 0.35 }}
+      transition={reducedMotion ? { duration: 0.15 } : { delay: Math.min(index * 0.04, 0.3), duration: 0.35 }}
       className={cn(
-        'group relative overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-card transition-all hover:shadow-pop',
+        'group relative cursor-pointer overflow-hidden rounded-2xl border border-line bg-surface p-4 shadow-card outline-none transition-all hover:shadow-pop focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
         cancelled && 'opacity-70',
       )}
     >
@@ -141,24 +132,31 @@ function MeetingCard({
           {m.type === 'video' ? <Video size={14} variant="Bulk" /> : <Calendar size={14} variant="Bulk" />}
           {type.label}
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <Badge tone={st.tone} dot>
             {st.label}
           </Badge>
           <button
             type="button"
-            onClick={() => onEdit(m)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(m);
+            }}
             title="Tahrirlash"
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-primary-200 hover:text-primary-600 group-hover:opacity-100"
+            aria-label={`"${m.title}" yig'ilishini tahrirlash`}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-primary-200 hover:text-primary-600 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <Edit2 size={15} variant="Bulk" />
           </button>
           <button
             type="button"
-            onClick={() => onDelete(m)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(m);
+            }}
             title="O'chirish"
-            aria-label="Yig'ilishni o'chirish"
-            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-danger/40 hover:text-danger group-hover:opacity-100"
+            aria-label={`"${m.title}" yig'ilishini o'chirish`}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted opacity-0 transition-all hover:border-danger/40 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100"
           >
             <Trash size={15} variant="Bulk" />
           </button>
@@ -191,15 +189,20 @@ function MeetingCard({
           Kun tartibi
         </div>
         <ul className="space-y-1">
-          {m.agenda.map((a, i) => (
+          {m.agenda.slice(0, 3).map((a, i) => (
             <li key={i} className="flex items-start gap-1.5 text-[12.5px] text-ink-soft">
               <span
                 className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full"
                 style={{ background: type.color }}
               />
-              {a}
+              <span className="truncate">{a}</span>
             </li>
           ))}
+          {m.agenda.length > 3 && (
+            <li className="pl-3 text-[11.5px] font-medium text-ink-muted">
+              +{m.agenda.length - 3} yana
+            </li>
+          )}
         </ul>
       </div>
 
@@ -224,18 +227,21 @@ function MeetingCard({
       {canJoin && (
         <button
           type="button"
-          onClick={() => onJoin(m)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onJoin(m);
+          }}
           className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-accent-600 py-2.5 text-[13px] font-semibold text-white shadow-sm transition-colors hover:bg-accent-700"
         >
           {m.status === 'ongoing' ? (
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75 motion-reduce:animate-none" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
             </span>
           ) : (
             <Video size={16} variant="Bulk" />
           )}
-          {m.status === 'ongoing' ? 'Jonli — qo\u02bbshilish' : 'Video qo\u02bbshilish'}
+          {m.status === 'ongoing' ? 'Jonli — qoʻshilish' : 'Video qoʻshilish'}
         </button>
       )}
     </motion.div>
@@ -247,9 +253,11 @@ export function MeetingsPage() {
   const setMeetings = useMeetings((s) => s.setMeetings);
   const removeMeeting = useMeetings((s) => s.remove);
   const { data, isLoading, isError, error, refetch } = useMeetingsQuery();
+  const reducedMotion = !!useReducedMotion();
   const [type, setType] = useState<MeetingType | 'all'>('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Meeting | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Meeting | null>(null);
   const [callTarget, setCallTarget] = useState<Meeting | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<Meeting | null>(null);
@@ -264,9 +272,12 @@ export function MeetingsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     setDeleteError(null);
+    const title = deleteTarget.title;
     try {
       await removeMeeting(deleteTarget.id);
       setDeleteTarget(null);
+      setDetailTarget((cur) => (cur?.id === deleteTarget.id ? null : cur));
+      pushMeetingToast('success', `"${title}" yig'ilishi o'chirildi`);
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : "Yig'ilishni o'chirib bo'lmadi");
     } finally {
@@ -306,8 +317,18 @@ export function MeetingsPage() {
     setFormOpen(true);
   };
   const openEdit = (m: Meeting) => {
+    setDetailTarget(null);
     setEditTarget(m);
     setFormOpen(true);
+  };
+  const openDetail = (m: Meeting) => setDetailTarget(m);
+  const openJoin = (m: Meeting) => {
+    setDetailTarget(null);
+    setCallTarget(m);
+  };
+  const requestDelete = (m: Meeting) => {
+    setDetailTarget(null);
+    setDeleteTarget(m);
   };
 
   const filtered = useMemo(
@@ -338,6 +359,9 @@ export function MeetingsPage() {
     return { total, today, scheduled, done };
   }, [meetings]);
 
+  const noneAtAll = !isLoading && meetings.length === 0;
+  const filteredEmpty = !isLoading && meetings.length > 0 && filtered.length === 0;
+
   return (
     <div>
       <PageHeader
@@ -346,7 +370,7 @@ export function MeetingsPage() {
         action={
           <button
             onClick={openCreate}
-            className="flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-glow hover:bg-primary-700"
+            className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
           >
             <Add size={20} /> Yangi yig'ilish
           </button>
@@ -368,98 +392,163 @@ export function MeetingsPage() {
         </Card>
       ) : (
         <>
-      {/* KPIs */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {isLoading && meetings.length === 0 ? (
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[104px]" />)
-        ) : (
-          <>
-            <StatCard icon={Calendar} label="Jami yig'ilishlar" value={String(stats.total)} tint="#2563eb" index={0} />
-            <StatCard icon={Clock} label="Bugun" value={String(stats.today)} tint="#f59e0b" index={1} />
-            <StatCard icon={Calendar1} label="Rejalashtirilgan" value={String(stats.scheduled)} tint="#06b6d4" index={2} />
-            <StatCard icon={TickCircle} label="O'tkazilgan" value={String(stats.done)} tint="#10b981" index={3} />
-          </>
-        )}
-      </div>
-
-      {/* Type filter */}
-      <div className="mb-6 flex flex-wrap gap-1.5">
-        {TYPE_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setType(t.key)}
-            className={cn(
-              'flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
-              type === t.key
-                ? 'border-transparent text-white shadow-sm'
-                : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+          {/* KPIs */}
+          <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {isLoading && meetings.length === 0 ? (
+              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[104px]" />)
+            ) : (
+              <>
+                <StatCard icon={Calendar} label="Jami yig'ilishlar" value={String(stats.total)} tint="#2563eb" index={0} />
+                <StatCard icon={Clock} label="Bugun" value={String(stats.today)} tint="#f59e0b" index={1} />
+                <StatCard icon={Calendar1} label="Rejalashtirilgan" value={String(stats.scheduled)} tint="#06b6d4" index={2} />
+                <StatCard icon={TickCircle} label="O'tkazilgan" value={String(stats.done)} tint="#10b981" index={3} />
+              </>
             )}
-            style={
-              type === t.key
-                ? { background: t.key === 'all' ? '#0f172a' : MEETING_TYPE_META[t.key as MeetingType].color }
-                : undefined
-            }
-          >
-            {t.key !== 'all' && (
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ background: type === t.key ? '#fff' : MEETING_TYPE_META[t.key as MeetingType].color }}
-              />
-            )}
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {isLoading && meetings.length === 0 ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-64" />
-          ))}
-        </div>
-      ) : (
-        <>
-          {/* Upcoming */}
-          <div className="mb-3 flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-500" />
-            </span>
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-              Yaqin va joriy ({upcoming.length})
-            </h2>
           </div>
-          {upcoming.length > 0 ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {upcoming.map((m, i) => (
-                <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onDelete={setDeleteTarget} onJoin={setCallTarget} />
+
+          {!noneAtAll && (
+            <div className="mb-6 flex flex-wrap gap-1.5">
+              {TYPE_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setType(t.key)}
+                  aria-pressed={type === t.key}
+                  className={cn(
+                    'flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
+                    type === t.key
+                      ? 'border-transparent text-white shadow-sm'
+                      : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                  )}
+                  style={
+                    type === t.key
+                      ? { background: t.key === 'all' ? '#0f172a' : MEETING_TYPE_META[t.key as MeetingType].color }
+                      : undefined
+                  }
+                >
+                  {t.key !== 'all' && (
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ background: type === t.key ? '#fff' : MEETING_TYPE_META[t.key as MeetingType].color }}
+                    />
+                  )}
+                  {t.label}
+                </button>
               ))}
             </div>
-          ) : (
-            <Card className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-              <Calendar size={36} variant="Bulk" className="text-ink-muted" />
-              <p className="text-sm text-ink-muted">Yaqin yig'ilishlar yo'q</p>
-            </Card>
           )}
 
-          {/* Past */}
-          {past.length > 0 && (
+          {isLoading && meetings.length === 0 ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-64" />
+              ))}
+            </div>
+          ) : noneAtAll ? (
+            <Card className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary-50 text-primary-600">
+                <Calendar size={30} variant="Bulk" />
+              </span>
+              <div>
+                <p className="font-semibold text-ink">Hozircha yig'ilishlar yo'q</p>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Birinchi yig'ilishni qo'shib, jadvalni to'ldirishni boshlang.
+                </p>
+              </div>
+              <button
+                onClick={openCreate}
+                className="mt-1 flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
+              >
+                <Add size={20} /> Yig'ilish qo'shish
+              </button>
+            </Card>
+          ) : filteredEmpty ? (
+            <Card className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-2 text-ink-muted">
+                <FilterRemove size={28} variant="Bulk" />
+              </span>
+              <div>
+                <p className="font-semibold text-ink">Bu turdagi yig'ilishlar topilmadi</p>
+                <p className="mt-1 text-sm text-ink-muted">Boshqa turni tanlang yoki filtrni tozalang.</p>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                <Button variant="secondary" onClick={() => setType('all')}>
+                  Barchasini ko'rish
+                </Button>
+                <button
+                  onClick={openCreate}
+                  className="flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
+                >
+                  <Add size={20} /> Yig'ilish qo'shish
+                </button>
+              </div>
+            </Card>
+          ) : (
             <>
-              <div className="mb-3 mt-8 flex items-center gap-2">
-                <CloseCircle size={16} variant="Bulk" className="text-ink-muted" />
+              {/* Upcoming */}
+              <div className="mb-3 flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75 motion-reduce:animate-none" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-500" />
+                </span>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
-                  O'tkazilgan va bekor qilingan ({past.length})
+                  Yaqin va joriy ({upcoming.length})
                 </h2>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {past.map((m, i) => (
-                  <MeetingCard key={m.id} m={m} index={i} onEdit={openEdit} onDelete={setDeleteTarget} onJoin={setCallTarget} />
-                ))}
-              </div>
+              {upcoming.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {upcoming.map((m, i) => (
+                    <MeetingCard
+                      key={m.id}
+                      m={m}
+                      index={i}
+                      reducedMotion={reducedMotion}
+                      onOpen={openDetail}
+                      onEdit={openEdit}
+                      onDelete={requestDelete}
+                      onJoin={openJoin}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <Card className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+                  <Calendar size={36} variant="Bulk" className="text-ink-muted" />
+                  <p className="text-sm text-ink-muted">Yaqin yig'ilishlar yo'q</p>
+                  <button
+                    onClick={openCreate}
+                    className="mt-1 flex h-11 items-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-medium text-white shadow-glow transition-colors hover:bg-primary-700"
+                  >
+                    <Add size={20} /> Yig'ilish qo'shish
+                  </button>
+                </Card>
+              )}
+
+              {/* Past */}
+              {past.length > 0 && (
+                <>
+                  <div className="mb-3 mt-8 flex items-center gap-2">
+                    <CloseCircle size={16} variant="Bulk" className="text-ink-muted" />
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-ink-soft">
+                      O'tkazilgan va bekor qilingan ({past.length})
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {past.map((m, i) => (
+                      <MeetingCard
+                        key={m.id}
+                        m={m}
+                        index={i}
+                        reducedMotion={reducedMotion}
+                        onOpen={openDetail}
+                        onEdit={openEdit}
+                        onDelete={requestDelete}
+                        onJoin={openJoin}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
-        </>
-      )}
         </>
       )}
 
@@ -467,6 +556,14 @@ export function MeetingsPage() {
         open={formOpen}
         target={editTarget}
         onClose={() => setFormOpen(false)}
+      />
+
+      <MeetingDetail
+        meeting={detailTarget}
+        onClose={() => setDetailTarget(null)}
+        onEdit={openEdit}
+        onDelete={requestDelete}
+        onJoin={openJoin}
       />
 
       <VideoCall
@@ -499,6 +596,8 @@ export function MeetingsPage() {
         icon={Trash}
         loading={deleting}
       />
+
+      <MeetingToastStack />
     </div>
   );
 }
@@ -507,8 +606,43 @@ export function MeetingsPage() {
    Yig'ilish qo'shish / tahrirlash formasi
    ============================================================ */
 const fieldCls =
-  'h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink outline-none transition-colors focus:border-primary-300';
+  'h-11 w-full rounded-xl border bg-surface px-3.5 text-sm text-ink outline-none transition-colors focus:border-primary-300';
 const labelCls = 'mb-1.5 block text-[12.5px] font-medium text-ink-soft';
+
+/** Sarlavha/sana/vaqt/ishtirokchilar kabi maydonlar uchun xato izohi bilan wrapper. */
+function FormField({
+  label,
+  htmlFor,
+  error,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  const errorId = htmlFor && error ? `${htmlFor}-error` : undefined;
+  return (
+    <div>
+      <label htmlFor={htmlFor} className={labelCls}>
+        {label}
+      </label>
+      {children}
+      {error && (
+        <p id={errorId} role="alert" className="mt-1.5 text-[12px] font-medium text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+interface TouchedState {
+  title: boolean;
+  date: boolean;
+  time: boolean;
+  participants: boolean;
+}
 
 function MeetingFormModal({
   open,
@@ -521,6 +655,7 @@ function MeetingFormModal({
 }) {
   const add = useMeetings((s) => s.add);
   const update = useMeetings((s) => s.update);
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState('');
   const [type, setType] = useState<MeetingType>('apparat');
@@ -534,11 +669,20 @@ function MeetingFormModal({
   const [agenda, setAgenda] = useState<string[]>(['']);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [touched, setTouched] = useState<TouchedState>({
+    title: false,
+    date: false,
+    time: false,
+    participants: false,
+  });
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
     setSaving(false);
+    setSubmitAttempted(false);
+    setTouched({ title: false, date: false, time: false, participants: false });
     if (target) {
       const d = new Date(target.startAt);
       setTitle(target.title);
@@ -566,7 +710,29 @@ function MeetingFormModal({
     }
   }, [open, target]);
 
-  const valid = title.trim().length > 0 && !!date && !!time;
+  const participantsNum = Number(participants);
+  const fieldErrors = {
+    title:
+      title.trim().length === 0
+        ? 'Sarlavhani kiriting'
+        : title.trim().length < 3
+          ? "Sarlavha kamida 3 ta belgidan iborat bo'lsin"
+          : undefined,
+    date: date ? undefined : 'Sanani tanlang',
+    time: time ? undefined : 'Vaqtni tanlang',
+    participants:
+      participants.trim() === '' || Number.isNaN(participantsNum)
+        ? 'Ishtirokchilar sonini kiriting'
+        : participantsNum < 1
+          ? "Kamida 1 kishi bo'lishi kerak"
+          : undefined,
+  };
+  const hasErrors = Object.values(fieldErrors).some(Boolean);
+  const shown = (key: keyof TouchedState) => (touched[key] || submitAttempted ? fieldErrors[key] : undefined);
+
+  function markTouched(key: keyof TouchedState) {
+    setTouched((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
 
   function handleClose() {
     if (saving) return;
@@ -575,7 +741,12 @@ function MeetingFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!valid || saving) return;
+    setSubmitAttempted(true);
+    if (hasErrors) {
+      if (fieldErrors.title) titleRef.current?.focus();
+      return;
+    }
+    if (saving) return;
     const startAt = new Date(`${date}T${time}`).toISOString();
     const cleanAgenda = agenda.map((a) => a.trim()).filter(Boolean);
     const payload: Omit<Meeting, 'id'> = {
@@ -595,6 +766,10 @@ function MeetingFormModal({
     try {
       if (target) await update(target.id, payload);
       else await add(payload);
+      pushMeetingToast(
+        'success',
+        target ? `"${payload.title}" yig'ilishi yangilandi` : `"${payload.title}" yig'ilishi qo'shildi`,
+      );
       onClose();
     } catch (err) {
       setError(
@@ -617,72 +792,87 @@ function MeetingFormModal({
       subtitle={target ? `#${target.id}` : "Jadvalga yangi tadbir qo'shish"}
       width={580}
     >
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} noValidate>
         <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-          <div>
-            <label className={labelCls}>Sarlavha</label>
+          <FormField label="Sarlavha" htmlFor="meeting-title" error={shown('title')}>
             <input
+              id="meeting-title"
+              ref={titleRef}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => markTouched('title')}
               placeholder="Masalan: Haftalik apparat yig'ilishi"
-              className={fieldCls}
+              aria-invalid={!!shown('title')}
+              aria-describedby={shown('title') ? 'meeting-title-error' : undefined}
+              className={cn(fieldCls, shown('title') ? 'border-danger' : 'border-line')}
               autoFocus
             />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Turi</label>
+            <FormField label="Turi">
               <Select value={type} onChange={setType} options={TYPE_OPTIONS} block />
-            </div>
-            <div>
-              <label className={labelCls}>Holati</label>
+            </FormField>
+            <FormField label="Holati">
               <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} block />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Sana</label>
-              <DatePicker value={date} onChange={setDate} block />
-            </div>
-            <div>
-              <label className={labelCls}>Vaqti</label>
-              <TimePicker value={time} onChange={setTime} block />
-            </div>
+            <FormField label="Sana" error={shown('date')}>
+              <DatePicker
+                value={date}
+                onChange={(v) => {
+                  setDate(v);
+                  markTouched('date');
+                }}
+                block
+              />
+            </FormField>
+            <FormField label="Vaqti" error={shown('time')}>
+              <TimePicker
+                value={time}
+                onChange={(v) => {
+                  setTime(v);
+                  markTouched('time');
+                }}
+                block
+              />
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Davomiyligi</label>
+            <FormField label="Davomiyligi">
               <Select value={duration} onChange={setDuration} options={DURATION_OPTIONS} block />
-            </div>
-            <div>
-              <label className={labelCls}>Ishtirokchilar</label>
+            </FormField>
+            <FormField label="Ishtirokchilar" htmlFor="meeting-participants" error={shown('participants')}>
               <input
+                id="meeting-participants"
                 type="number"
                 min={1}
                 value={participants}
                 onChange={(e) => setParticipants(e.target.value)}
-                className={fieldCls}
+                onBlur={() => markTouched('participants')}
+                aria-invalid={!!shown('participants')}
+                aria-describedby={shown('participants') ? 'meeting-participants-error' : undefined}
+                className={cn(fieldCls, shown('participants') ? 'border-danger' : 'border-line')}
               />
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className={labelCls}>Joyi</label>
+          <FormField label="Joyi" htmlFor="meeting-location">
             <input
+              id="meeting-location"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="Manzil yoki zal nomi"
-              className={fieldCls}
+              className={cn(fieldCls, 'border-line')}
             />
-          </div>
+          </FormField>
 
-          <div>
-            <label className={labelCls}>Raislik qiluvchi</label>
+          <FormField label="Raislik qiluvchi">
             <Select value={chairId} onChange={setChairId} options={CHAIR_OPTIONS} block />
-          </div>
+          </FormField>
 
           <div>
             <label className={labelCls}>Kun tartibi</label>
@@ -696,12 +886,14 @@ function MeetingFormModal({
                       setAgenda((prev) => prev.map((x, idx) => (idx === i ? e.target.value : x)))
                     }
                     placeholder="Masala / band nomi"
-                    className={cn(fieldCls, 'h-10 flex-1')}
+                    aria-label={`Kun tartibi bandi ${i + 1}`}
+                    className={cn(fieldCls, 'h-10 flex-1 border-line')}
                   />
                   <button
                     type="button"
                     onClick={() => setAgenda((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev))}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line text-ink-muted transition-colors hover:border-danger/40 hover:text-danger"
+                    aria-label={`${i + 1}-bandni o'chirish`}
+                    className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line text-ink-muted transition-colors after:absolute after:-inset-1 after:content-[''] hover:border-danger/40 hover:text-danger"
                     title="O'chirish"
                   >
                     <CloseSquare size={18} variant="Bulk" />
@@ -712,7 +904,7 @@ function MeetingFormModal({
             <button
               type="button"
               onClick={() => setAgenda((prev) => [...prev, ''])}
-              className="mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-primary-600 hover:bg-primary-50"
+              className="relative mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-primary-600 after:absolute after:-inset-1.5 after:content-[''] hover:bg-primary-50"
             >
               <AddCircle size={17} variant="Bulk" /> Band qo'shish
             </button>
@@ -728,7 +920,7 @@ function MeetingFormModal({
         <div className="mt-5 flex gap-3 border-t border-line pt-4">
           <button
             type="submit"
-            disabled={!valid || saving}
+            disabled={saving}
             className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-sm font-medium text-white shadow-glow transition-all hover:bg-primary-700 disabled:pointer-events-none disabled:opacity-50"
           >
             {saving && <RotateRight size={16} className="animate-spin" />}
