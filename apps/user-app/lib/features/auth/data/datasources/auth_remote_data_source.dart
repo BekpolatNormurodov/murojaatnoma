@@ -51,6 +51,21 @@ class AuthRemoteDataSourceMockImpl implements AuthRemoteDataSource {
 String _normalizePhone(String raw) =>
     raw.replaceAll(RegExp('[^0-9+]'), '').trim();
 
+/// Backend (`AuthService`, `apps/backend/src/modules/auth/auth.service.ts`)
+/// ba'zi OTP xatolarini xom INGLIZ tilida qaytaradi (masalan
+/// `BadRequestException('Invalid OTP code')`) — ular to'g'ridan-to'g'ri
+/// ko'rsatilsa fuqaro tushunmaydi. Bu lug'at TANIQLI backend xabarlarini
+/// aniq, qisqa o'zbekcha matnga aylantiradi; tanilmagan xabar (masalan
+/// telefon validatsiyasi) O'ZGARISHSIZ qoladi (backend matni ko'rsatiladi
+/// — umuman xabarsiz qolishdan yaxshiroq).
+const _authErrorTranslations = {
+  'Invalid OTP code': "Kod noto'g'ri. Qaytadan urinib ko'ring",
+  'OTP code expired or not found': "Kod eskirdi. Yangi kod so'rang",
+  'Too many incorrect attempts. Request a new code.':
+      "Juda ko'p noto'g'ri urinish. Yangi kod so'rang",
+  'Employee account is inactive': 'Hisobingiz faol emas',
+};
+
 /// `DioException`dan foydalanuvchiga ko'rsatsa bo'ladigan xabarni ajratib
 /// oladi — backend (`NestJS`) standart xatolik shakli
 /// `{statusCode, message, error}` bo'lib, `message` string YOKI
@@ -59,7 +74,9 @@ String _extractErrorMessage(DioException e) {
   final data = e.response?.data;
   if (data is Map<String, dynamic>) {
     final message = data['message'];
-    if (message is String && message.isNotEmpty) return message;
+    if (message is String && message.isNotEmpty) {
+      return _authErrorTranslations[message] ?? message;
+    }
     if (message is List && message.isNotEmpty) {
       return message.map((m) => m.toString()).join('\n');
     }

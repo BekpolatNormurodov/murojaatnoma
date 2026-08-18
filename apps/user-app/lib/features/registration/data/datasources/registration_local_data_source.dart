@@ -46,27 +46,53 @@ class RegistrationLocalDataSourceImpl implements RegistrationLocalDataSource {
       if (decoded is! Map<String, dynamic>) {
         throw CacheException('Saqlangan fuqaro profili JSON shakli buzilgan');
       }
-      final requiredStringFields = [
-        'full_name',
-        'document_type',
-        'document_number',
-        'birth_date',
-        'region_code',
-        'district_code',
-        'address',
-      ];
-      for (final field in requiredStringFields) {
-        if (decoded[field] is! String) {
+
+      // `full_name` — YAGONA har doim majburiy maydon.
+      if (decoded['full_name'] is! String) {
+        throw CacheException('Saqlangan fuqaro profili maydonlari buzilgan');
+      }
+
+      // `document_type`/`document_number` — IXTIYORIY, lekin JUFT: ikkalasi
+      // ham mavjud (va to'g'ri shaklda) YOKI ikkalasi ham yo'q bo'lishi
+      // kerak — biri bo'lib ikkinchisi bo'lmasa (yoki `document_type`
+      // tanish bo'lmagan qiymat bo'lsa), bu YARIM-buzilgan holat.
+      final rawDocumentType = decoded['document_type'];
+      final rawDocumentNumber = decoded['document_number'];
+      final hasDocumentType = rawDocumentType != null;
+      if (hasDocumentType != (rawDocumentNumber != null)) {
+        throw CacheException('Saqlangan fuqaro profili maydonlari buzilgan');
+      }
+      if (hasDocumentType) {
+        if (rawDocumentType is! String || rawDocumentNumber is! String) {
+          throw CacheException(
+            'Saqlangan fuqaro profili maydonlari buzilgan',
+          );
+        }
+        if (!DocumentType.values.any((v) => v.name == rawDocumentType)) {
           throw CacheException(
             'Saqlangan fuqaro profili maydonlari buzilgan',
           );
         }
       }
-      if (!DocumentType.values.any(
-        (v) => v.name == decoded['document_type'],
-      )) {
-        throw CacheException('Saqlangan fuqaro profili maydonlari buzilgan');
+
+      // `birth_date`/`region_code`/`district_code`/`address` — mustaqil
+      // IXTIYORIY maydonlar: mavjud bo'lsa String bo'lishi shart, yo'q
+      // (yoki JSON `null`) bo'lsa — "kiritilmagan" deb talqin qilinadi.
+      const optionalStringFields = [
+        'birth_date',
+        'region_code',
+        'district_code',
+        'address',
+      ];
+      for (final field in optionalStringFields) {
+        final value = decoded[field];
+        if (value != null && value is! String) {
+          throw CacheException(
+            'Saqlangan fuqaro profili maydonlari buzilgan',
+          );
+        }
       }
+
       return CitizenProfile.fromJson(decoded);
     } on CacheException {
       rethrow;

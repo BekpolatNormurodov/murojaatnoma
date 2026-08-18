@@ -25,10 +25,22 @@ class RequestAttachmentPicker extends StatefulWidget {
     required this.attachments,
     required this.onChanged,
     super.key,
+    this.maxCount = defaultMaxCount,
   });
+
+  /// Chaqiruvchilar (masalan `SubmitRequestPage`dagi sarlavha
+  /// hisoblagichi: "Fayllar (2/5)") standart chegarani QAYTA
+  /// e'lon qilmasdan shu yerdan o'qishi uchun ochiq konstanta.
+  static const defaultMaxCount = 5;
 
   final List<RequestAttachment> attachments;
   final ValueChanged<List<RequestAttachment>> onChanged;
+
+  /// Bitta murojaatga biriktirsa bo'ladigan MAKSIMAL fayllar soni —
+  /// forma "shishib" ketmasligi va tasodifan cheksiz mock fayl/ovoz
+  /// qo'shilishining oldini olish uchun (sarlavha ustidagi hisoblagichda
+  /// ham ko'rsatiladi, qarang: `SubmitRequestPage`).
+  final int maxCount;
 
   @override
   State<RequestAttachmentPicker> createState() =>
@@ -39,7 +51,20 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
   final _picker = ImagePicker();
   bool _busy = false;
 
+  bool get _atLimit => widget.attachments.length >= widget.maxCount;
+
+  void _showLimitReached() {
+    AppAlert.info(
+      context,
+      "Ko'pi bilan ${widget.maxCount} ta fayl biriktirishingiz mumkin",
+    );
+  }
+
   Future<void> _addImage() async {
+    if (_atLimit) {
+      _showLimitReached();
+      return;
+    }
     final source = await _chooseSource(context);
     if (source == null || !mounted) return;
 
@@ -89,6 +114,10 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
   }
 
   void _addMockVoice() {
+    if (_atLimit) {
+      _showLimitReached();
+      return;
+    }
     final count = widget.attachments
         .where((a) => a.type == RequestAttachmentType.voice)
         .length;
@@ -102,6 +131,10 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
   }
 
   void _addMockFile() {
+    if (_atLimit) {
+      _showLimitReached();
+      return;
+    }
     final count = widget.attachments
         .where((a) => a.type == RequestAttachmentType.file)
         .length;

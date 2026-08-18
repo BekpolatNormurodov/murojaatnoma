@@ -127,14 +127,11 @@ class _OtpPageState extends State<OtpPage> {
                           const SizedBox(height: 40),
                           OtpInput(
                                 key: _otpKey,
-                                // Real backend (`/auth/request-otp`) HAR DOIM
-                                // 6 xonali kod generatsiya qiladi
-                                // (`randomInt(100000, 999999)`, qarang:
-                                // `apps/backend/src/modules/auth/auth.service.ts`)
-                                // — standart 4 xonali uzunlik demo/mock
-                                // rejimidagi 4-xonali "1111" kodiga mos edi,
-                                // xolos.
-                                length: 6,
+                                // `OtpInput.length` standart qiymati (6) real
+                                // backend (`/auth/request-otp`)ning
+                                // `randomInt(100000, 999999)` kod uzunligiga
+                                // mos — qarang:
+                                // `apps/backend/src/modules/auth/auth.service.ts`.
                                 onChanged: (v) => setState(() => _code = v),
                                 onCompleted: (code) {
                                   setState(() => _code = code);

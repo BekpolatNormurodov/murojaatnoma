@@ -25,18 +25,19 @@ part 'notifications_state.dart';
 /// Hech qachon uncaught tashlamaydi — muvaffaqiyatsizlik har doim
 /// [NotificationsError] holatiga aylanadi (kesh bo'sh bo'lsa).
 class NotificationsCubit extends Cubit<NotificationsState> {
-  NotificationsCubit({
-    NotificationsMockDataSource? dataSource,
-    CacheService? cache,
-  }) : _dataSource = dataSource ?? NotificationsMockDataSource(),
-       _cache =
-           cache ??
-           (getIt.isRegistered<CacheService>()
-               ? getIt<CacheService>()
-               : null),
-       super(const NotificationsLoading());
+  NotificationsCubit({NotificationsDataSource? dataSource, CacheService? cache})
+    : _dataSource = dataSource ?? NotificationsMockDataSource(),
+      _cache =
+          cache ??
+          (getIt.isRegistered<CacheService>() ? getIt<CacheService>() : null),
+      super(const NotificationsLoading());
 
-  final NotificationsMockDataSource _dataSource;
+  // `NotificationsDataSource` — QATIY MANBAGA EMAS, ABSTRAKSIYAGA bog'liq
+  // (qarang: `notifications_mock_data_source.dart`dagi shartnoma hujjati)
+  // — real backend tayyor bo'lganda standart qiymatni
+  // (`?? NotificationsMockDataSource()`) almashtirish yetarli, bu klass
+  // o'zi o'zgarmaydi.
+  final NotificationsDataSource _dataSource;
   final CacheService? _cache;
   static const _logger = AppLogger();
 

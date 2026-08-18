@@ -92,6 +92,8 @@ class CitizenRequest extends Equatable {
     required this.createdAt,
     this.response,
     this.attachments = const [],
+    this.region,
+    this.district,
   });
 
   factory CitizenRequest.fromJson(Map<String, dynamic> json) {
@@ -111,6 +113,8 @@ class CitizenRequest extends Equatable {
       attachments: (json['attachments'] as List<dynamic>? ?? const [])
           .map((e) => RequestAttachment.fromJson(e as Map<String, dynamic>))
           .toList(),
+      region: json['region'] as String?,
+      district: json['district'] as String?,
     );
   }
 
@@ -130,6 +134,15 @@ class CitizenRequest extends Equatable {
   final CitizenRequestResponse? response;
   final List<RequestAttachment> attachments;
 
+  /// Muammo/murojaat tegishli hudud — ko'rsatiladigan (allaqachon
+  /// lokalizatsiya qilingan) VILOYAT nomi, masalan `"Toshkent shahri"`
+  /// (backend `Application.region`ga to'g'ridan-to'g'ri mos keladi:
+  /// erkin matn, kod EMAS). Ixtiyoriy — berilmasa `null`.
+  final String? region;
+
+  /// Xuddi [region] kabi, lekin TUMAN nomi (masalan `"Yunusobod tumani"`).
+  final String? district;
+
   @override
   List<Object?> get props => [
     id,
@@ -141,6 +154,8 @@ class CitizenRequest extends Equatable {
     createdAt,
     response,
     attachments,
+    region,
+    district,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -153,5 +168,7 @@ class CitizenRequest extends Equatable {
     'created_at': createdAt,
     'response': response?.toJson(),
     'attachments': attachments.map((a) => a.toJson()).toList(),
+    'region': region,
+    'district': district,
   };
 }

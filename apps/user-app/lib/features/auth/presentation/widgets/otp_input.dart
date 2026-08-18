@@ -5,12 +5,14 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// 4 xonali OTP kiritish maydoni.
+/// SMS-OTP kiritish maydoni — uzunlik chaqiruvchi tomonidan beriladi
+/// ([length]; standart 6 — real backend har doim 6 xonali kod
+/// generatsiya qiladi, qarang: `OtpPage`dagi izoh).
 class OtpInput extends StatefulWidget {
   const OtpInput({
     required this.onCompleted,
     super.key,
-    this.length = 4,
+    this.length = 6,
     this.onChanged,
   });
 
@@ -34,6 +36,13 @@ class OtpInputState extends State<OtpInput>
     vsync: this,
     duration: const Duration(milliseconds: 480),
   );
+
+  /// Oxirgi tasdiqlash NOTO'G'RI chiqqanda [shakeAndClear] tomonidan
+  /// vaqtincha `true`ga o'rnatiladi — kataklar shu vaqt ichida ANIQ
+  /// "xato" holatida (qizil) ko'rsatiladi (silkinish tugagach nolga
+  /// qaytadi VA kod tozalanadi), shunchaki bo'sh holatga sakrab
+  /// qolmaydi.
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -60,12 +69,20 @@ class OtpInputState extends State<OtpInput>
     widget.onChanged?.call('');
   }
 
-  /// Noto'g'ri kod tasdiqdan o'tmaganda chaqiring — silkinish animatsiyasi
-  /// ko'rsatadi, og'ir haptik beradi va xonalarni tozalaydi.
+  /// Noto'g'ri kod tasdiqdan o'tmaganda chaqiring — kataklar qizil "xato"
+  /// holatida silkinadi (kiritilgan raqamlar bir zum ko'rinib turadi —
+  /// foydalanuvchi NIMA xato ekanini ko'radi), og'ir haptik beradi, so'ng
+  /// silkinish tugagach xonalarni tozalaydi.
   void shakeAndClear() {
     HapticFeedback.heavyImpact();
-    unawaited(_shakeController.forward(from: 0));
-    clear();
+    setState(() => _hasError = true);
+    unawaited(
+      _shakeController.forward(from: 0).whenComplete(() {
+        if (!mounted) return;
+        setState(() => _hasError = false);
+        clear();
+      }),
+    );
   }
 
   @override
@@ -77,6 +94,10 @@ class OtpInputState extends State<OtpInput>
     return Stack(
       children: [
         // Yashirin matn maydoni — haqiqiy klaviatura kirishini boshqaradi.
+        // `autofillHints: oneTimeCode` — iOS/Android SMS-kod avtomatik
+        // to'ldirish taklifini (klaviatura ustidagi banner) yoqadi, shu
+        // bilan foydalanuvchi kodni QO'LDA kiritmasdan/ko'chirib
+        // qo'ymasdan bitta bosishda to'ldirishi mumkin.
         Opacity(
           opacity: 0,
           child: TextField(
@@ -84,6 +105,7 @@ class OtpInputState extends State<OtpInput>
             focusNode: _focusNode,
             keyboardType: TextInputType.number,
             maxLength: widget.length,
+            autofillHints: const [AutofillHints.oneTimeCode],
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             onChanged: (value) {
               setState(() {});
@@ -110,17 +132,29 @@ class OtpInputState extends State<OtpInput>
               children: List.generate(widget.length, (i) {
                 final filled = i < _controller.text.length;
                 final active = i == _controller.text.length;
+                // Xato holati faqat TO'LDIRILGAN kataklarga tegishli —
+                // shu bilan foydalanuvchi silkinish paytida aynan qaysi
+                // raqamlar noto'g'ri chiqqanini (qizil) ko'radi.
+                final isError = _hasError && filled;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   margin: const EdgeInsets.symmetric(horizontal: 7),
                   width: 62,
                   height: 68,
                   decoration: BoxDecoration(
-                    color: filled ? AppColors.primaryLight : surface,
+                    color: isError
+                        ? AppColors.danger.withValues(alpha: 0.1)
+                        : filled
+                        ? AppColors.primaryLight
+                        : surface,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: active || filled ? AppColors.primary : line,
-                      width: active || filled ? 1.8 : 1,
+                      color: isError
+                          ? AppColors.danger
+                          : active || filled
+                          ? AppColors.primary
+                          : line,
+                      width: isError || active || filled ? 1.8 : 1,
                     ),
                   ),
                   alignment: Alignment.center,
@@ -129,7 +163,11 @@ class OtpInputState extends State<OtpInput>
                     style: TextStyle(
                       fontSize: 26,
                       fontWeight: FontWeight.w700,
-                      color: filled ? AppColors.primaryDark : ink,
+                      color: isError
+                          ? AppColors.danger
+                          : filled
+                          ? AppColors.primaryDark
+                          : ink,
                     ),
                   ),
                 );

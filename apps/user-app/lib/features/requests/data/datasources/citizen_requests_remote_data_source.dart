@@ -88,6 +88,8 @@ class CitizenRequestsRemoteDataSourceMockImpl
       status: RequestStatus.yuborilgan,
       createdAt: DateTime.now().toIso8601String(),
       attachments: draft.attachments,
+      region: draft.region,
+      district: draft.district,
     );
     mockCitizenRequests.insert(0, created);
     return created;
@@ -218,6 +220,8 @@ CitizenRequest _requestFromApplicationJson(Map<String, dynamic> json) {
     // `attachments` ataylab berilmaydi (standart `const []` ga tushadi) —
     // backendda bitta "rasmiy javob" maydoni yo'q, javoblar endi to'liq
     // xabarlar (thread) orqali keladi (qarang: `getMessages`).
+    region: json['region'] as String?,
+    district: json['district'] as String?,
   );
 }
 
@@ -378,6 +382,13 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
             title: draft.title,
           ),
           'description': draft.body,
+          // Backend DTO'da IKKALASI HAM ixtiyoriy (`@IsOptional()`) — shu
+          // tufayli faqat fuqaro haqiqatan ham tanlagan bo'lsa yuboriladi
+          // (bo'sh/`null` bo'lsa kalitning o'zi qatnashmaydi).
+          if (draft.region != null && draft.region!.trim().isNotEmpty)
+            'region': draft.region!.trim(),
+          if (draft.district != null && draft.district!.trim().isNotEmpty)
+            'district': draft.district!.trim(),
         },
       );
       return _requestFromApplicationJson(response.data ?? const {});
