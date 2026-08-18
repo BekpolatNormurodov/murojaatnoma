@@ -30,10 +30,11 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { StatCard } from '@/shared/ui/StatCard';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
-import { DatePicker } from '@/shared/ui/DatePicker';
+import { DateRangePicker } from '@/shared/ui/DatePicker';
 import { cn } from '@/shared/lib/cn';
 import { useAttendanceToday, todayIso } from './useAttendanceToday';
 import { useAttendanceMonthlyReport } from './useAttendanceMonthlyReport';
+import { AttendanceRangeView } from './AttendanceRangeView';
 import type { EmployeeTodayEntry, TodayAttendanceStatus } from './api/types';
 
 function ChartTooltip({ active, payload, label }: any) {
@@ -87,10 +88,14 @@ function Skeleton({ className }: { className?: string }) {
 }
 
 export function AttendancePage() {
-  const [date, setDate] = useState(todayIso());
+  // Sana oraligʻi: from===to bo'lsa bitta kun (kunlik davomat taxtasi),
+  // aks holda oraliq (AttendanceRangeView — jami koʻrsatkichlar).
+  const [range, setRange] = useState({ from: todayIso(), to: todayIso() });
+  const isSingleDay = range.from === range.to;
+  const date = range.from;
+  const isToday = date === todayIso();
   const [filter, setFilter] = useState<TodayAttendanceStatus | 'all'>('all');
   const [query, setQuery] = useState('');
-  const isToday = date === todayIso();
 
   const { data, isLoading, isFetching, isError, error, refetch } = useAttendanceToday(date);
 
@@ -138,15 +143,10 @@ export function AttendancePage() {
         subtitle="Ishga kelish/ketish vaqti va geofence nazorati"
         action={
           <div className="flex items-center gap-2">
-            {isFetching && !isLoading && (
+            {isFetching && !isLoading && isSingleDay && (
               <span className="text-xs text-ink-muted">Yangilanmoqda...</span>
             )}
-            <DatePicker value={date} onChange={setDate} />
-            {!isToday && (
-              <Button variant="secondary" onClick={() => setDate(todayIso())}>
-                Bugun
-              </Button>
-            )}
+            <DateRangePicker from={range.from} to={range.to} onChange={setRange} />
           </div>
         }
       />
@@ -164,7 +164,7 @@ export function AttendancePage() {
             <RotateRight size={16} /> Qayta urinish
           </Button>
         </Card>
-      ) : (
+      ) : isSingleDay ? (
         <>
           {/* KPI */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
@@ -406,6 +406,8 @@ export function AttendancePage() {
             )}
           </Card>
         </>
+      ) : (
+        <AttendanceRangeView from={range.from} to={range.to} query={query} onQuery={setQuery} />
       )}
     </div>
   );

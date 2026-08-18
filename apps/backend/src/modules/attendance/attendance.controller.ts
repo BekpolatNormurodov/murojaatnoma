@@ -15,6 +15,7 @@ import { CheckOutDto } from './dto/check-out.dto';
 import {
   DailyReportQueryDto,
   MonthlyReportQueryDto,
+  RangeReportQueryDto,
   TodayQueryDto,
 } from './dto/attendance-report-query.dto';
 import { VerifyFaceDto } from './dto/verify-face.dto';
@@ -100,6 +101,12 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Monthly attendance report, optionally filtered by employee' })
   monthlyReport(@Query() query: MonthlyReportQueryDto): Promise<AttendanceReport> {
     return this.attendanceService.monthlyReport(query);
+  }
+
+  @Get('report/range')
+  @ApiOperation({ summary: 'Attendance report over a date range (from..to), optional employee' })
+  rangeReport(@Query() query: RangeReportQueryDto): Promise<AttendanceReport> {
+    return this.attendanceService.rangeReport(query);
   }
 
   /**

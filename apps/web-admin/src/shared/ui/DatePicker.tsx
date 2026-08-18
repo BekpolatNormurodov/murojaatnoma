@@ -252,6 +252,264 @@ export function DatePicker({
   );
 }
 
+/* ============================================================
+   DateRangePicker — oraliq (interval) tanlagich: 8 tayyor preset
+   (Bugun..O'tgan yil) + ixtiyoriy oraliq (kalendardan boshi/oxiri).
+   Qiymat: { from, to } — ikkalasi ham "yyyy-mm-dd".
+   ============================================================ */
+
+const addDays = (d: Date, n: number) => {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+};
+/** Shu haftaning dushanbasi (00:00). */
+const startOfWeekMon = (d: Date) => {
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  r.setDate(r.getDate() - ((r.getDay() + 6) % 7));
+  return r;
+};
+
+/** Oraliq presetlari — bugungiga nisbatan {from,to} Date qaytaradi. */
+const RANGE_PRESETS: { label: string; range: (t: Date) => { from: Date; to: Date } }[] = [
+  { label: 'Bugun', range: (t) => ({ from: t, to: t }) },
+  { label: 'Kecha', range: (t) => ({ from: addDays(t, -1), to: addDays(t, -1) }) },
+  { label: 'Bu hafta', range: (t) => ({ from: startOfWeekMon(t), to: t }) },
+  {
+    label: "O'tgan hafta",
+    range: (t) => {
+      const s = addDays(startOfWeekMon(t), -7);
+      return { from: s, to: addDays(s, 6) };
+    },
+  },
+  { label: 'Bu oy', range: (t) => ({ from: new Date(t.getFullYear(), t.getMonth(), 1), to: t }) },
+  {
+    label: "O'tgan oy",
+    range: (t) => ({
+      from: new Date(t.getFullYear(), t.getMonth() - 1, 1),
+      to: new Date(t.getFullYear(), t.getMonth(), 0),
+    }),
+  },
+  { label: 'Bu yil', range: (t) => ({ from: new Date(t.getFullYear(), 0, 1), to: t }) },
+  {
+    label: "O'tgan yil",
+    range: (t) => ({
+      from: new Date(t.getFullYear() - 1, 0, 1),
+      to: new Date(t.getFullYear() - 1, 11, 31),
+    }),
+  },
+];
+
+export function DateRangePicker({
+  from,
+  to,
+  onChange,
+  block = false,
+  className,
+}: {
+  from: string;
+  to: string;
+  onChange: (range: { from: string; to: string }) => void;
+  block?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
+  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open, 388);
+  const today = new Date();
+  const fromD = parseDate(from);
+  const toD = parseDate(to);
+
+  const [view, setView] = useState(() => {
+    const b = fromD ?? today;
+    return new Date(b.getFullYear(), b.getMonth(), 1);
+  });
+  const [pending, setPending] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const b = parseDate(from) ?? new Date();
+    setView(new Date(b.getFullYear(), b.getMonth(), 1));
+    setPending(null);
+  }, [open, from]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const cells = useMemo(() => {
+    const year = view.getFullYear();
+    const month = view.getMonth();
+    const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const arr: (number | null)[] = [];
+    for (let i = 0; i < firstDow; i++) arr.push(null);
+    for (let d = 1; d <= daysInMonth; d++) arr.push(d);
+    return arr;
+  }, [view]);
+
+  const activePreset = useMemo(() => {
+    if (!fromD || !toD) return null;
+    const t = new Date();
+    return RANGE_PRESETS.find((p) => {
+      const r = p.range(t);
+      return sameDay(r.from, fromD) && sameDay(r.to, toD);
+    })?.label ?? null;
+  }, [fromD, toD]);
+
+  const label = fromD && toD
+    ? activePreset
+      ? activePreset
+      : sameDay(fromD, toD)
+        ? `${fromD.getDate()}-${MONTHS_FULL[fromD.getMonth()]}, ${fromD.getFullYear()}`
+        : `${fromD.getDate()} ${MONTHS_FULL[fromD.getMonth()].slice(0, 3)} — ${toD.getDate()} ${MONTHS_FULL[toD.getMonth()].slice(0, 3)}, ${toD.getFullYear()}`
+    : 'Oraliqni tanlang';
+
+  function applyPreset(p: (typeof RANGE_PRESETS)[number]) {
+    const r = p.range(new Date());
+    onChange({ from: toValue(r.from), to: toValue(r.to) });
+    setOpen(false);
+  }
+
+  function pickDay(day: number) {
+    const d = new Date(view.getFullYear(), view.getMonth(), day);
+    if (!pending) {
+      setPending(d);
+      return;
+    }
+    const [f, t] = pending.getTime() <= d.getTime() ? [pending, d] : [d, pending];
+    onChange({ from: toValue(f), to: toValue(t) });
+    setPending(null);
+    setOpen(false);
+  }
+
+  // Kalendarda ajratib ko'rsatiladigan boshi/oxiri (tanlanayotgan yoki tasdiqlangan).
+  const hlStart = pending ?? fromD;
+  const hlEnd = pending ? null : toD;
+
+  return (
+    <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          'flex h-11 w-full items-center gap-2.5 rounded-xl border bg-surface px-3.5 text-sm font-medium outline-none transition-colors',
+          open ? 'border-primary-300 text-primary-700' : 'border-line text-ink-soft hover:bg-surface-2',
+        )}
+      >
+        <Calendar size={17} variant="Bulk" className={cn('shrink-0', open ? 'text-primary-500' : 'text-ink-muted')} />
+        <span className={cn('flex-1 truncate text-left', !fromD && 'text-ink-muted')}>{label}</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            className={cn(
+              'absolute z-50 mt-2 flex w-max rounded-2xl border border-line bg-surface p-3 shadow-pop',
+              alignEnd ? 'right-0' : 'left-0',
+            )}
+          >
+            {/* Tayyor oraliqlar */}
+            <div className="flex w-30 flex-col gap-0.5 border-r border-line pr-2">
+              {RANGE_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className={cn(
+                    'rounded-lg px-2.5 py-2 text-left text-[12.5px] font-medium transition-colors',
+                    activePreset === p.label
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Kalendar (boshi → oxiri) */}
+            <div className="w-64 pl-3">
+              <div className="mb-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
+                >
+                  <ArrowLeft2 size={16} />
+                </button>
+                <span className="text-sm font-semibold text-ink">
+                  {MONTHS_FULL[view.getMonth()]} {view.getFullYear()}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
+                >
+                  <ArrowRight2 size={16} />
+                </button>
+              </div>
+              <div className="mb-1 grid grid-cols-7 gap-1">
+                {WEEKDAYS.map((w, i) => (
+                  <div
+                    key={w}
+                    className={cn(
+                      'flex h-7 items-center justify-center text-[11px] font-semibold',
+                      i >= 5 ? 'text-danger' : 'text-ink-muted',
+                    )}
+                  >
+                    {w}
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {cells.map((day, i) => {
+                  if (day === null) return <div key={`b${i}`} />;
+                  const d = new Date(view.getFullYear(), view.getMonth(), day);
+                  const isEdge = (!!hlStart && sameDay(d, hlStart)) || (!!hlEnd && sameDay(d, hlEnd));
+                  const inRange =
+                    !!hlStart && !!hlEnd && d.getTime() > hlStart.getTime() && d.getTime() < hlEnd.getTime();
+                  const isToday = sameDay(d, today);
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() => pickDay(day)}
+                      className={cn(
+                        'flex h-9 items-center justify-center rounded-lg text-[13px] font-medium transition-colors',
+                        isEdge
+                          ? 'bg-primary-600 text-white shadow-glow'
+                          : inRange
+                            ? 'bg-primary-50 text-primary-700'
+                            : isToday
+                              ? 'bg-primary-50/60 text-primary-700'
+                              : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                      )}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-center text-[11.5px] text-ink-muted">
+                {pending ? 'Tugash sanasini tanlang' : 'Boshlanish sanasini tanlang'}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 const MONTHS_SHORT = [
   'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn',
   'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek',

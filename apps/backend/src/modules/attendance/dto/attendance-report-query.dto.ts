@@ -47,3 +47,20 @@ export class TodayQueryDto {
   @IsDateString()
   date?: string;
 }
+
+export class RangeReportQueryDto {
+  @ApiPropertyOptional({ example: '2026-08-01', description: 'Range start (inclusive). Defaults to today.' })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-08-31', description: 'Range end (inclusive). Defaults to today.' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+}

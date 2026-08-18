@@ -47,6 +47,8 @@ export interface TodayAttendance {
    ------------------------------------------------------------ */
 export interface EmployeeDailySummary {
   employeeId: string;
+  fullName: string;
+  position: string;
   firstCheckIn: string | null;
   lastCheckOut: string | null;
   validScans: number;

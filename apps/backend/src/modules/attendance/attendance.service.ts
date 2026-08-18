@@ -14,6 +14,7 @@ import { CheckOutDto } from './dto/check-out.dto';
 import {
   DailyReportQueryDto,
   MonthlyReportQueryDto,
+  RangeReportQueryDto,
   TodayQueryDto,
 } from './dto/attendance-report-query.dto';
 import { VerifyFaceDto } from './dto/verify-face.dto';
@@ -23,6 +24,8 @@ import { dayRange, formatLocalDate, minutesAfter, parseTimeOnDate } from './util
 
 export interface EmployeeDailySummary {
   employeeId: string;
+  fullName: string;
+  position: string;
   firstCheckIn: Date | null;
   lastCheckOut: Date | null;
   validScans: number;
@@ -181,6 +184,20 @@ export class AttendanceService {
     const from = new Date(year, month, 1, 0, 0, 0, 0);
     const to = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
+    return this.buildReport(from, to, query.employeeId);
+  }
+
+  /**
+   * Attendance report over an arbitrary date range (inclusive of both ends),
+   * powering the web-admin davomat "oraliq" (interval) view — Bu hafta / O'tgan
+   * oy / Bu yil / custom range. Reuses the same aggregator as daily/monthly.
+   */
+  async rangeReport(query: RangeReportQueryDto): Promise<AttendanceReport> {
+    const now = new Date();
+    const fromDay = query.from ? new Date(query.from) : now;
+    const toDay = query.to ? new Date(query.to) : now;
+    const from = dayRange(fromDay).from;
+    const to = dayRange(toDay).to;
     return this.buildReport(from, to, query.employeeId);
   }
 
@@ -535,14 +552,18 @@ export class AttendanceService {
       }),
     ]);
 
+    const empById = new Map(employees.map((e) => [e.id, e]));
     const byEmployee = new Map<string, EmployeeDailySummary>();
     const presentEmployeeIds = new Set<string>();
 
     for (const record of records) {
       let summary = byEmployee.get(record.employeeId);
       if (!summary) {
+        const emp = empById.get(record.employeeId);
         summary = {
           employeeId: record.employeeId,
+          fullName: emp?.fullName ?? '',
+          position: emp?.position ?? '',
           firstCheckIn: null,
           lastCheckOut: null,
           validScans: 0,
