@@ -93,6 +93,7 @@ function previewText(m: ChatMessage): string {
   if (m.kind === 'image') return '📷 Rasm';
   if (m.kind === 'file') return `📎 ${m.fileName ?? 'Fayl'}`;
   if (m.kind === 'voice') return '🎤 Ovozli xabar';
+  if (m.kind === 'video') return '🎥 Video xabar';
   return m.text ?? '';
 }
 
@@ -302,6 +303,9 @@ export function ChatPage() {
   }
   function handleSendVoice(url: string, durationSec: number) {
     sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'voice', url, durationSec });
+  }
+  function handleSendVideo(url: string, durationSec: number) {
+    sendMessage.mutate({ conversationId: activeId, senderId: ME_ID, kind: 'video', url, durationSec });
   }
   function handleSendFile(url: string, kind: 'image' | 'file', name: string, size: number) {
     sendMessage.mutate({
@@ -576,6 +580,7 @@ export function ChatPage() {
             <ChatComposer
               onSendText={handleSendText}
               onSendVoice={handleSendVoice}
+              onSendVideo={handleSendVideo}
               onSendFile={handleSendFile}
               onTyping={(isTyping) => {
                 if (activeId) emitTyping(activeId, isTyping);
@@ -683,15 +688,20 @@ function MessageRow({
       >
         <div
           className={cn(
-            'overflow-hidden shadow-card transition-opacity',
-            msg.kind === 'image' ? 'rounded-2xl' : 'px-3.5 py-2.5',
-            mine
-              ? 'rounded-2xl rounded-br-md bg-primary-600 text-white'
-              : 'rounded-2xl rounded-bl-md border border-line bg-surface text-ink',
+            'transition-opacity',
+            msg.kind === 'video'
+              ? 'bg-transparent'
+              : cn(
+                  'overflow-hidden shadow-card',
+                  msg.kind === 'image' ? 'rounded-2xl' : 'px-3.5 py-2.5',
+                  mine
+                    ? 'rounded-2xl rounded-br-md bg-primary-600 text-white'
+                    : 'rounded-2xl rounded-bl-md border border-line bg-surface text-ink',
+                ),
             sending && 'opacity-70',
           )}
         >
-          {!mine && first && isGroup && msg.kind !== 'image' && (
+          {!mine && first && isGroup && msg.kind !== 'image' && msg.kind !== 'video' && (
             <p className="mb-0.5 text-[12px] font-semibold" style={{ color: info.color }}>
               {info.name}
             </p>
@@ -703,6 +713,10 @@ function MessageRow({
             <button onClick={() => onImageClick(msg.url!)} className="block">
               <img src={msg.url} alt={msg.fileName ?? 'rasm'} className="max-h-72 w-full cursor-pointer object-cover" />
             </button>
+          )}
+
+          {msg.kind === 'video' && msg.url && (
+            <VideoNoteBubble url={msg.url} duration={msg.durationSec ?? 1} mine={mine} />
           )}
 
           {msg.kind === 'file' && msg.url && (
@@ -834,5 +848,50 @@ function VoiceBubble({ url, duration, mine }: { url: string; duration: number; m
         {fmtDur(playing || cur > 0 ? Math.round(cur) : duration)}
       </span>
     </div>
+  );
+}
+
+/* ---------------- Dumaloq video xabar (video-note) ---------------- */
+function VideoNoteBubble({ url, duration, mine }: { url: string; duration: number; mine: boolean }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+
+  function toggle() {
+    const v = videoRef.current;
+    if (!v) return;
+    if (playing) v.pause();
+    else void v.play();
+  }
+
+  return (
+    <button
+      onClick={toggle}
+      title={playing ? 'Pauza' : "Ko'rish"}
+      className={cn(
+        'relative block aspect-square h-[180px] w-[180px] shrink-0 overflow-hidden rounded-full shadow-card ring-2',
+        mine ? 'ring-primary-200' : 'ring-line',
+      )}
+    >
+      <video
+        ref={videoRef}
+        src={url}
+        playsInline
+        preload="metadata"
+        className="h-full w-full object-cover"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
+      {!playing && (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-primary-600">
+            <Play size={22} variant="Bold" />
+          </span>
+        </span>
+      )}
+      <span className="absolute bottom-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-medium tabular-nums text-white">
+        {fmtDur(duration)}
+      </span>
+    </button>
   );
 }

@@ -10,7 +10,7 @@ import { create } from "zustand";
 export const ME_ID = "me";
 export const GROUP_ID = "group-all";
 
-export type ChatMessageKind = "text" | "image" | "file" | "voice";
+export type ChatMessageKind = "text" | "image" | "file" | "voice" | "video";
 /** "sending" — faqat klient tomonidagi optimistik holat (server javobidan
  *  oldin ko'rsatiladi); server hech qachon uni qaytarmaydi. */
 export type ChatMessageStatus = "sending" | "sent" | "delivered" | "read";

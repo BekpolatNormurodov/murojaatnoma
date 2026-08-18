@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Paperclip, Gallery, Microphone2, Send2, Trash, InfoCircle } from 'iconsax-react';
+import { Paperclip, Gallery, Microphone2, VideoCircle, Send2, Trash, InfoCircle } from 'iconsax-react';
 import { usePrefersReducedMotion } from './useChat';
 import { api } from '@/shared/api/client';
+import { cn } from '@/shared/lib/cn';
 
-/* Suhbat uchun xabar yozish paneli: matn, fayl, rasm va ovozli xabar. */
+/* Suhbat uchun xabar yozish paneli: matn, fayl, rasm, ovozli va dumaloq video xabar. */
 
 const fmtRec = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+/** Dumaloq video xabar (kружочек) uchun eng katta uzunlik — Telegram kabi 60s. */
+const MAX_VIDEO_NOTE_SEC = 60;
 
 /** POST /uploads javobi — mahalliy faylni doimiy (durable) URL'ga aylantiradi. */
 type UploadResult = { url: string; fileName: string; fileSize: number; mimeType: string; durationSec?: number };
@@ -18,15 +22,30 @@ function voiceExt(mime: string): string {
   return 'webm';
 }
 
+/** Video xabar uchun MediaRecorder qo'llab-quvvatlaydigan eng mos mimeType'ni tanlaydi. */
+function pickVideoMimeType(): string {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  const candidates = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? '';
+}
+
+/** Fayl kengaytmasini video mimeType'idan chiqaradi (video-note fayl nomi uchun). */
+function videoExt(mime: string): string {
+  if (mime.includes('mp4')) return 'mp4';
+  return 'webm';
+}
+
 export function ChatComposer({
   onSendText,
   onSendVoice,
+  onSendVideo,
   onSendFile,
   onTyping,
   disabled = false,
 }: {
   onSendText: (text: string) => void;
   onSendVoice: (url: string, durationSec: number) => void;
+  onSendVideo: (url: string, durationSec: number) => void;
   onSendFile: (url: string, kind: 'image' | 'file', name: string, size: number) => void;
   /** Jonli "yozmoqda…" — matn o'zgarganda chaqiriladi (debounce ichkarida). */
   onTyping?: (isTyping: boolean) => void;
@@ -34,6 +53,7 @@ export function ChatComposer({
 }) {
   const [text, setText] = useState('');
   const [recording, setRecording] = useState(false);
+  const [videoRecording, setVideoRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   // Faylni serverga yuklash holati — yuklanayotganda tugmalar bloklanadi va
   // xatolik bo'lsa qisqa ogohlantirish ko'rsatiladi (blob: URL o'rniga endi
@@ -59,6 +79,15 @@ export function ChatComposer({
   const startRef = useRef(0);
   const cancelledRef = useRef(false);
 
+  // Dumaloq video xabar (video-note) uchun alohida holat/refs — ovozdan
+  // mustaqil, chunki ikkalasi bir vaqtda ishlamaydi lekin turli media turi.
+  const videoRecorderRef = useRef<MediaRecorder | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const videoStreamRef = useRef<MediaStream | null>(null);
+  const videoStartRef = useRef(0);
+  const videoCancelledRef = useRef(false);
+  const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+
   // Yozib olish taymeri
   useEffect(() => {
     if (!recording) return;
@@ -66,10 +95,11 @@ export function ChatComposer({
     return () => window.clearInterval(iv);
   }, [recording]);
 
-  // Unmount — mikrofonni o'chirish
+  // Unmount — mikrofon/kamerani o'chirish
   useEffect(
     () => () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      videoStreamRef.current?.getTracks().forEach((t) => t.stop());
     },
     [],
   );
@@ -77,6 +107,11 @@ export function ChatComposer({
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+  };
+
+  const stopVideoStream = () => {
+    videoStreamRef.current?.getTracks().forEach((t) => t.stop());
+    videoStreamRef.current = null;
   };
 
   const typingStopRef = useRef<number | undefined>(undefined);
@@ -170,6 +205,77 @@ export function ChatComposer({
     setRecording(false);
   };
 
+  const startVideoRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 480, height: 480 },
+        audio: true,
+      });
+      videoStreamRef.current = stream;
+      if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = stream;
+        void videoPreviewRef.current.play().catch(() => {});
+      }
+      const mime = pickVideoMimeType();
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      videoChunksRef.current = [];
+      videoCancelledRef.current = false;
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) videoChunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        const dur = Math.max(1, Math.round((Date.now() - videoStartRef.current) / 1000));
+        stopVideoStream();
+        if (videoCancelledRef.current) return;
+        const blobMime = rec.mimeType || mime || 'video/webm';
+        const blob = new Blob(videoChunksRef.current, { type: blobMime });
+        // Video-note'ni ham serverga yuklaymiz (durable URL) — aks holda u
+        // faqat yuboruvchining brauzerida ko'rinardi.
+        setUploading(true);
+        setUploadError(null);
+        const fd = new FormData();
+        fd.append('file', blob, `video-note-${dur}s.${videoExt(blobMime)}`);
+        fd.append('durationSec', String(dur));
+        api
+          .upload<UploadResult>('/uploads', fd)
+          .then((res) => onSendVideo(res.url, res.durationSec ?? dur))
+          .catch(() => setUploadError('Video xabarni yuklab bo‘lmadi.'))
+          .finally(() => setUploading(false));
+      };
+      videoRecorderRef.current = rec;
+      videoStartRef.current = Date.now();
+      setSeconds(0);
+      rec.start();
+      setVideoRecording(true);
+    } catch {
+      /* kamera/mikrofon ruxsati berilmadi */
+    }
+  };
+
+  const finishVideoRecording = () => {
+    videoCancelledRef.current = false;
+    videoRecorderRef.current?.stop();
+    setVideoRecording(false);
+  };
+
+  const cancelVideoRecording = () => {
+    videoCancelledRef.current = true;
+    videoRecorderRef.current?.stop();
+    setVideoRecording(false);
+  };
+
+  // Video-note yozib olish taymeri — 60s'da avtomatik to'xtaydi.
+  useEffect(() => {
+    if (!videoRecording) return;
+    const iv = window.setInterval(() => {
+      const s = Math.round((Date.now() - videoStartRef.current) / 1000);
+      setSeconds(s);
+      if (s >= MAX_VIDEO_NOTE_SEC) finishVideoRecording();
+    }, 250);
+    return () => window.clearInterval(iv);
+  }, [videoRecording]);
+
   if (disabled) return null;
 
   return (
@@ -194,7 +300,62 @@ export function ChatComposer({
       )}
 
       <AnimatePresence mode="wait">
-        {recording ? (
+        {videoRecording ? (
+          <motion.div
+            key="video-rec"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={panelTransition}
+            className="flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-danger-soft px-3 py-4"
+          >
+            <span className="flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+              </span>
+              <span className="text-sm font-medium text-red-700">
+                Video yozilmoqda… {fmtRec(seconds)} / {fmtRec(MAX_VIDEO_NOTE_SEC)}
+              </span>
+            </span>
+
+            {/* Dumaloq jonli self-preview — Telegram "кружочек" uslubi */}
+            <div className="relative h-[220px] w-[220px] shrink-0">
+              <span
+                className={cn(
+                  'absolute inset-0 rounded-full ring-4 ring-red-500',
+                  !prefersReducedMotion && 'animate-pulse',
+                )}
+              />
+              <div className="absolute inset-1.5 overflow-hidden rounded-full bg-black">
+                <video
+                  ref={videoPreviewRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="h-full w-full -scale-x-100 object-cover"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                onClick={cancelVideoRecording}
+                title="Bekor qilish"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-red-600 transition-colors hover:bg-red-100"
+              >
+                <Trash size={18} variant="Bulk" />
+              </button>
+              <button
+                onClick={finishVideoRecording}
+                title="Yuborish"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700"
+              >
+                <Send2 size={17} variant="Bold" />
+              </button>
+            </div>
+          </motion.div>
+        ) : recording ? (
           <motion.div
             key="rec"
             initial={{ opacity: 0, y: 8 }}
@@ -255,7 +416,7 @@ export function ChatComposer({
           >
             <button
               onClick={() => fileRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || recording || videoRecording}
               title="Fayl biriktirish"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -263,7 +424,7 @@ export function ChatComposer({
             </button>
             <button
               onClick={() => imageRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || recording || videoRecording}
               title="Rasm biriktirish"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -293,14 +454,24 @@ export function ChatComposer({
                 <Send2 size={19} variant="Bold" />
               </button>
             ) : (
-              <button
-                onClick={startRecording}
-                disabled={uploading}
-                title="Ovozli xabar"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-glow transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Microphone2 size={19} variant="Bold" />
-              </button>
+              <>
+                <button
+                  onClick={startVideoRecording}
+                  disabled={uploading || recording || videoRecording}
+                  title="Dumaloq video xabar"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <VideoCircle size={21} />
+                </button>
+                <button
+                  onClick={startRecording}
+                  disabled={uploading || recording || videoRecording}
+                  title="Ovozli xabar"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-glow transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Microphone2 size={19} variant="Bold" />
+                </button>
+              </>
             )}
           </motion.div>
         )}

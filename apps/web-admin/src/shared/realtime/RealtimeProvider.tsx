@@ -48,12 +48,22 @@ export function RealtimeProvider({ children }: { children: ReactNode }) {
 
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
+    // The gateway signals a rejected/expired token via a custom 'auth:error'
+    // event (NOT the reserved 'connect_error'). Stop reconnecting so a stale
+    // token can't storm the gateway with reconnect attempts — a fresh token
+    // (silent refresh → this effect re-runs) creates a new socket.
+    const onAuthError = () => {
+      setConnected(false);
+      s.disconnect();
+    };
     s.on('connect', onConnect);
     s.on('disconnect', onDisconnect);
+    s.on('auth:error', onAuthError);
 
     return () => {
       s.off('connect', onConnect);
       s.off('disconnect', onDisconnect);
+      s.off('auth:error', onAuthError);
     };
   }, [token, isAuthed]);
 
