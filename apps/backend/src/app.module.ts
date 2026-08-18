@@ -17,6 +17,7 @@ import { AppUsersModule } from './modules/app-users/app-users.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BonusesModule } from './modules/bonuses/bonuses.module';
 import { BootstrapModule } from './modules/bootstrap/bootstrap.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -66,6 +67,7 @@ import { ZonesModule } from './modules/zones/zones.module';
     PointsModule,
     SuggestionsModule,
     LeaveModule,
+    BonusesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -1069,3 +1069,21 @@ model LeaveRequest {
 
   @@map("leave_requests")
 }
+
+// ---------------------------------------------------------------------------
+// Employee bonuses (Premya — admin-granted, web-admin write / worker-app read)
+// ---------------------------------------------------------------------------
+
+model Bonus {
+  id            String   @id @default(uuid())
+  employeeId    String?
+  workerId      String?
+  recipientName String
+  amount        Int
+  reason        String
+  month         String
+  type          String   @default("premya")
+  createdAt     DateTime @default(now())
+
+  @@map("bonuses")
+}
