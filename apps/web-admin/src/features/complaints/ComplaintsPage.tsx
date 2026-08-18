@@ -19,6 +19,7 @@ import {
   Trash,
   type Icon as IconType,
 } from 'iconsax-react';
+import { useI18n } from '@/shared/i18n/I18nProvider';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatCard } from '@/shared/ui/StatCard';
 import { Card } from '@/shared/ui/Card';
@@ -41,12 +42,12 @@ function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
 
-const STATUS_TABS: { key: ComplaintStatus | 'all'; label: string }[] = [
-  { key: 'all', label: 'Barchasi' },
-  { key: 'new', label: 'Yangi' },
-  { key: 'reviewing', label: "Ko'rib chiqilmoqda" },
-  { key: 'resolved', label: 'Hal qilingan' },
-  { key: 'rejected', label: 'Rad etilgan' },
+const STATUS_TABS: { key: ComplaintStatus | 'all'; labelKey: string }[] = [
+  { key: 'all', labelKey: 'common.all' },
+  { key: 'new', labelKey: 'common.new' },
+  { key: 'reviewing', labelKey: 'common.reviewing' },
+  { key: 'resolved', labelKey: 'common.resolved' },
+  { key: 'rejected', labelKey: 'common.rejected' },
 ];
 
 /** Backenddan kutilmagan qiymat kelsa ham UI qulamasligi uchun himoyalangan meta. */
@@ -60,11 +61,13 @@ const FALLBACK_STATUS: (typeof COMPLAINT_STATUS_META)['new'] = {
   tone: 'neutral',
 };
 
-function severityMeta(s: Complaint['severity']) {
-  return COMPLAINT_SEVERITY_META[s] ?? FALLBACK_SEVERITY;
+function severityMeta(s: Complaint['severity'], t: (key: string) => string) {
+  const meta = COMPLAINT_SEVERITY_META[s];
+  return meta ?? { ...FALLBACK_SEVERITY, label: t('common.unknown') };
 }
-function statusMeta(s: Complaint['status']) {
-  return COMPLAINT_STATUS_META[s] ?? FALLBACK_STATUS;
+function statusMeta(s: Complaint['status'], t: (key: string) => string) {
+  const meta = COMPLAINT_STATUS_META[s];
+  return meta ?? { ...FALLBACK_STATUS, label: t('common.unknown') };
 }
 
 function daysLeft(iso: string): number {
@@ -72,11 +75,12 @@ function daysLeft(iso: string): number {
 }
 
 function DeadlineChip({ c }: { c: Complaint }) {
+  const { t } = useI18n();
   const done = c.status === 'resolved' || c.status === 'rejected';
   if (done) {
     return (
       <span className="flex items-center gap-1 text-[12px] font-medium text-primary-600">
-        <TickCircle size={13} variant="Bulk" /> Yopildi
+        <TickCircle size={13} variant="Bulk" /> {t('common.deadline.closed')}
       </span>
     );
   }
@@ -90,12 +94,15 @@ function DeadlineChip({ c }: { c: Complaint }) {
       )}
     >
       <Clock size={13} variant="Bulk" />
-      {overdue ? `${Math.abs(left)} kun kechikdi` : `${left} kun qoldi`}
+      {overdue
+        ? t('common.deadline.overdueTemplate').replace('{days}', String(Math.abs(left)))
+        : t('common.deadline.remainingTemplate').replace('{days}', String(left))}
     </span>
   );
 }
 
 export function ComplaintsPage() {
+  const { t } = useI18n();
   const complaints = useComplaints((s) => s.complaints);
   const loading = useComplaints((s) => s.loading);
   const error = useComplaints((s) => s.error);
@@ -145,11 +152,11 @@ export function ComplaintsPage() {
 
   const counts = useMemo(
     () =>
-      STATUS_TABS.reduce<Record<string, number>>((acc, t) => {
-        acc[t.key] =
-          t.key === 'all'
+      STATUS_TABS.reduce<Record<string, number>>((acc, tabItem) => {
+        acc[tabItem.key] =
+          tabItem.key === 'all'
             ? complaints.length
-            : complaints.filter((c) => c.status === t.key).length;
+            : complaints.filter((c) => c.status === tabItem.key).length;
         return acc;
       }, {}),
     [complaints],
@@ -165,15 +172,15 @@ export function ComplaintsPage() {
   return (
     <div>
       <PageHeader
-        title="Shikoyatlar"
-        subtitle="Fuqarolarning rasmiy shikoyatlari — yo'nalish bo'yicha hokim o'rinbosarlariga biriktiriladi"
+        title={t('nav.complaints')}
+        subtitle={t('complaints.subtitle')}
         action={
           <div
             role="status"
             aria-atomic="true"
             className="flex items-center gap-2 rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2 text-[13px] font-medium text-red-700"
           >
-            <Flag size={17} variant="Bulk" /> {stats.escalated} ta nazoratda
+            <Flag size={17} variant="Bulk" /> {t('complaints.escalatedBadge').replace('{count}', String(stats.escalated))}
           </div>
         }
       />
@@ -182,11 +189,11 @@ export function ComplaintsPage() {
         <Card role="alert" className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
-            <p className="font-semibold text-ink">Ma'lumotlarni yuklab bo'lmadi</p>
+            <p className="font-semibold text-ink">{t('common.loadError')}</p>
             <p className="mt-1 text-sm text-ink-muted">{error}</p>
           </div>
           <Button variant="secondary" onClick={() => fetchComplaints()}>
-            <RotateRight size={16} /> Qayta urinish
+            <RotateRight size={16} /> {t('common.retry')}
           </Button>
         </Card>
       ) : loading && complaints.length === 0 ? (
@@ -206,34 +213,34 @@ export function ComplaintsPage() {
         <>
       {/* KPIs */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Danger} label="Jami shikoyatlar" value={String(stats.total)} tint="#ef4444" index={0} />
-        <StatCard icon={Flag} label="Yangi" value={String(stats.fresh)} tint="#3b82f6" index={1} />
-        <StatCard icon={Clock} label="Ko'rib chiqilmoqda" value={String(stats.reviewing)} tint="#f59e0b" index={2} />
-        <StatCard icon={TickCircle} label="Hal qilingan" value={String(stats.resolved)} tint="#10b981" index={3} />
+        <StatCard icon={Danger} label={t('complaints.kpi.total')} value={String(stats.total)} tint="#ef4444" index={0} />
+        <StatCard icon={Flag} label={t('common.new')} value={String(stats.fresh)} tint="#3b82f6" index={1} />
+        <StatCard icon={Clock} label={t('common.reviewing')} value={String(stats.reviewing)} tint="#f59e0b" index={2} />
+        <StatCard icon={TickCircle} label={t('common.resolved')} value={String(stats.resolved)} tint="#10b981" index={3} />
       </div>
 
       {/* Filters */}
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-1.5">
-          {STATUS_TABS.map((t) => (
+          {STATUS_TABS.map((tabItem) => (
             <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
+              key={tabItem.key}
+              onClick={() => setTab(tabItem.key)}
               className={cn(
                 'flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
-                tab === t.key
+                tab === tabItem.key
                   ? 'bg-ink text-white'
                   : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
               )}
             >
-              {t.label}
+              {t(tabItem.labelKey)}
               <span
                 className={cn(
                   'rounded-full px-1.5 text-[11px]',
-                  tab === t.key ? 'bg-white/20' : 'bg-surface-2 text-ink-muted',
+                  tab === tabItem.key ? 'bg-white/20' : 'bg-surface-2 text-ink-muted',
                 )}
               >
-                {counts[t.key]}
+                {counts[tabItem.key]}
               </span>
             </button>
           ))}
@@ -244,8 +251,8 @@ export function ComplaintsPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Qidirish..."
-            aria-label="Shikoyatlar orasidan qidirish"
+            placeholder={t('common.searchPlaceholder')}
+            aria-label={t('complaints.search.ariaLabel')}
             className="h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-4 text-sm outline-none focus:border-primary-300"
           />
         </div>
@@ -260,7 +267,7 @@ export function ComplaintsPage() {
             severity === 'all' ? 'bg-primary-600 text-white' : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
           )}
         >
-          Barcha darajalar
+          {t('complaints.filters.allSeverities')}
         </button>
         {(['high', 'medium', 'low'] as const).map((s) => (
           <button
@@ -285,8 +292,8 @@ export function ComplaintsPage() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((c, i) => {
           const deputy = getDeputy(c.deputyId);
-          const sev = severityMeta(c.severity);
-          const st = statusMeta(c.status);
+          const sev = severityMeta(c.severity, t);
+          const st = statusMeta(c.status, t);
           return (
             <motion.button
               key={c.id}
@@ -306,7 +313,7 @@ export function ComplaintsPage() {
                   >
                     {sev.label}
                   </span>
-                  {c.isRepeat && <Badge tone="warning">Takroriy</Badge>}
+                  {c.isRepeat && <Badge tone="warning">{t('complaints.repeatBadge')}</Badge>}
                 </div>
                 <Badge tone={st.tone} dot>
                   {st.label}
@@ -318,7 +325,7 @@ export function ComplaintsPage() {
                 <span className="rounded-md bg-surface-2 px-1.5 py-0.5 font-medium text-ink-soft">{c.topic}</span>
                 {c.escalated && (
                   <span className="flex items-center gap-0.5 font-medium text-danger">
-                    <Flag size={12} variant="Bulk" /> Yuqoriga ko'tarilgan
+                    <Flag size={12} variant="Bulk" /> {t('complaints.escalatedLabel')}
                   </span>
                 )}
               </div>
@@ -346,7 +353,7 @@ export function ComplaintsPage() {
                     <span className="truncate text-[11.5px] text-ink-soft">{deputy.shortDirection}</span>
                   </div>
                 ) : (
-                  <span className="text-[11.5px] text-ink-muted">Biriktirilmagan</span>
+                  <span className="text-[11.5px] text-ink-muted">{t('complaints.unassigned')}</span>
                 )}
                 <DeadlineChip c={c} />
               </div>
@@ -360,17 +367,17 @@ export function ComplaintsPage() {
           <Danger size={40} variant="Bulk" className="text-ink-muted" />
           {complaints.length === 0 ? (
             <>
-              <p className="text-sm text-ink-muted">Hozircha shikoyatlar mavjud emas</p>
+              <p className="text-sm text-ink-muted">{t('complaints.empty.none')}</p>
               <Button variant="secondary" size="sm" onClick={() => fetchComplaints()}>
-                <RotateRight size={15} /> Qayta yuklash
+                <RotateRight size={15} /> {t('complaints.reload')}
               </Button>
             </>
           ) : (
             <>
-              <p className="text-sm text-ink-muted">Mos shikoyatlar topilmadi</p>
+              <p className="text-sm text-ink-muted">{t('complaints.empty.noMatch')}</p>
               {hasActiveFilters && (
                 <Button variant="secondary" size="sm" onClick={resetFilters}>
-                  Filtrlarni tozalash
+                  {t('common.clearFilters')}
                 </Button>
               )}
             </>
@@ -391,23 +398,23 @@ export function ComplaintsPage() {
 type TransitionStatus = 'reviewing' | 'resolved' | 'rejected';
 const STATUS_CONFIRM: Record<
   TransitionStatus,
-  { title: string; message: string; tone: 'primary' | 'warning' | 'danger'; icon: IconType }
+  { titleKey: string; messageKey: string; tone: 'primary' | 'warning' | 'danger'; icon: IconType }
 > = {
   reviewing: {
-    title: "Ko'rib chiqishga o'tkazilsinmi?",
-    message: 'Shikoyat holati "Ko\'rib chiqilmoqda"ga o\'zgaradi. Fuqaro ilovada buni ko\'radi.',
+    titleKey: 'complaints.confirmStatus.reviewing.title',
+    messageKey: 'complaints.confirmStatus.reviewing.message',
     tone: 'primary',
     icon: Clock,
   },
   resolved: {
-    title: 'Shikoyat hal qilindi deb belgilansinmi?',
-    message: 'Holat "Hal qilindi"ga o\'zgaradi va yopilgan sana qayd etiladi.',
+    titleKey: 'complaints.confirmStatus.resolved.title',
+    messageKey: 'complaints.confirmStatus.resolved.message',
     tone: 'primary',
     icon: TickCircle,
   },
   rejected: {
-    title: 'Shikoyat rad etilsinmi?',
-    message: 'Holat "Rad etildi"ga o\'zgaradi. Sababini rasmiy javobda ko\'rsatishni tavsiya qilamiz.',
+    titleKey: 'complaints.confirmStatus.rejected.title',
+    messageKey: 'complaints.confirmStatus.rejected.message',
     tone: 'danger',
     icon: CloseCircle,
   },
@@ -422,9 +429,10 @@ function ComplaintDetail({
   complaint: Complaint | null;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const c = complaint;
   const deputy = c ? getDeputy(c.deputyId) : undefined;
-  const author = deputy?.name ?? 'Hokimiyat';
+  const author = deputy?.name ?? t('app.org');
   const addResponse = useComplaints((s) => s.addResponse);
   const setStatus = useComplaints((s) => s.setStatus);
   const deleteComplaint = useComplaints((s) => s.deleteComplaint);
@@ -470,7 +478,7 @@ function ComplaintDetail({
       setSent(true);
       window.setTimeout(() => setSent(false), 2500);
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : "Javobni yuborib bo'lmadi");
+      setSendError(err instanceof Error ? err.message : t('complaints.replyFailed'));
     } finally {
       setSending(false);
     }
@@ -490,7 +498,7 @@ function ComplaintDetail({
       setPendingStatus(null);
       setStatusError(null);
     } catch (err) {
-      setStatusError(err instanceof Error ? err.message : "Holatni yangilab bo'lmadi");
+      setStatusError(err instanceof Error ? err.message : t('complaints.statusUpdateFailed'));
     } finally {
       setStatusChanging(false);
     }
@@ -511,7 +519,7 @@ function ComplaintDetail({
       setDeleteOpen(false);
       onClose();
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Shikoyatni o'chirib bo'lmadi");
+      setDeleteError(err instanceof Error ? err.message : t('complaints.deleteFailed'));
     } finally {
       setDeleting(false);
     }
@@ -523,8 +531,8 @@ function ComplaintDetail({
     setDeleteError(null);
   }
 
-  const sev = c ? severityMeta(c.severity) : null;
-  const st = c ? statusMeta(c.status) : null;
+  const sev = c ? severityMeta(c.severity, t) : null;
+  const st = c ? statusMeta(c.status, t) : null;
   const sortedResponses = c
     ? [...c.responses].sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
@@ -535,7 +543,7 @@ function ComplaintDetail({
     <Drawer
       open={!!c}
       onClose={onClose}
-      title="Shikoyat tafsilotlari"
+      title={t('complaints.detail.title')}
       subtitle={c ? `#${c.id}` : undefined}
       width={500}
     >
@@ -548,25 +556,25 @@ function ComplaintDetail({
                   className="rounded-lg px-2.5 py-1 text-[12px] font-semibold text-white"
                   style={{ background: sev.color }}
                 >
-                  {sev.label} daraja
+                  {t('complaints.detail.severityDegree').replace('{severity}', sev.label)}
                 </span>
                 <Badge tone={st.tone} dot>
                   {st.label}
                 </Badge>
-                {c.isRepeat && <Badge tone="warning">Takroriy</Badge>}
+                {c.isRepeat && <Badge tone="warning">{t('complaints.repeatBadge')}</Badge>}
                 {c.escalated && (
                   <Badge tone="danger">
-                    <Flag size={12} variant="Bulk" /> Nazoratda
+                    <Flag size={12} variant="Bulk" /> {t('complaints.detail.underControl')}
                   </Badge>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => setDeleteOpen(true)}
-                aria-label="Shikoyatni o'chirish"
+                aria-label={t('complaints.detail.deleteAria')}
                 className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-danger-soft bg-danger-soft px-3 text-[12.5px] font-medium text-red-700 transition-colors hover:brightness-95"
               >
-                <Trash size={16} variant="Bulk" /> O'chirish
+                <Trash size={16} variant="Bulk" /> {t('common.delete')}
               </button>
             </div>
             <h3 className="mt-3 text-lg font-bold text-ink">{c.title}</h3>
@@ -577,7 +585,7 @@ function ComplaintDetail({
           {deputy && (
             <div className="rounded-2xl border border-line bg-surface p-4">
               <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                <Hierarchy size={16} variant="Bulk" className="text-primary-600" /> Mas'ul hokim o'rinbosari
+                <Hierarchy size={16} variant="Bulk" className="text-primary-600" /> {t('common.responsibleDeputy')}
               </p>
               <div className="flex items-center gap-3">
                 <Avatar src={deputy.photo} name={deputy.name} color={deputy.color} size={44} />
@@ -597,7 +605,7 @@ function ComplaintDetail({
 
           {/* Citizen */}
           <div className="rounded-2xl border border-line bg-surface p-4">
-            <p className="mb-3 text-[13px] font-semibold text-ink">Shikoyatchi</p>
+            <p className="mb-3 text-[13px] font-semibold text-ink">{t('complaints.detail.complainant')}</p>
             <div className="flex items-center gap-3">
               <Avatar src={c.citizenPhoto} name={c.citizenName} size={44} />
               <div className="min-w-0 flex-1">
@@ -615,7 +623,7 @@ function ComplaintDetail({
           {/* Location & meta */}
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <Location size={16} variant="Bulk" className="text-ink-muted" /> Manzil
+              <Location size={16} variant="Bulk" className="text-ink-muted" /> {t('common.address')}
             </p>
             <p className="text-[13px] text-ink-soft">{c.address}</p>
           </div>
@@ -623,20 +631,20 @@ function ComplaintDetail({
           <div className="divide-y divide-line rounded-2xl border border-line bg-surface px-4">
             <div className="flex items-center justify-between py-2.5">
               <span className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <Calendar size={15} variant="Bulk" className="text-ink-muted" /> Kelgan sana
+                <Calendar size={15} variant="Bulk" className="text-ink-muted" /> {t('common.receivedDate')}
               </span>
               <span className="text-sm font-medium text-ink">{formatDate(c.createdAt)} · {timeAgo(c.createdAt)}</span>
             </div>
             <div className="flex items-center justify-between py-2.5">
               <span className="flex items-center gap-2 text-[13px] text-ink-soft">
-                <Clock size={15} variant="Bulk" className="text-amber-500" /> Javob muddati
+                <Clock size={15} variant="Bulk" className="text-amber-500" /> {t('complaints.detail.responseDeadline')}
               </span>
               <DeadlineChip c={c} />
             </div>
             {c.resolvedAt && (
               <div className="flex items-center justify-between py-2.5">
                 <span className="flex items-center gap-2 text-[13px] text-ink-soft">
-                  <TickCircle size={15} variant="Bulk" className="text-primary-500" /> Yopilgan sana
+                  <TickCircle size={15} variant="Bulk" className="text-primary-500" /> {t('complaints.detail.closedDate')}
                 </span>
                 <span className="text-sm font-medium text-ink">{formatDate(c.resolvedAt)}</span>
               </div>
@@ -645,10 +653,10 @@ function ComplaintDetail({
 
           {/* Holatni o'zgartirish */}
           <div className="rounded-2xl border border-line bg-surface p-4">
-            <p className="mb-2.5 text-[13px] font-semibold text-ink">Holatni o'zgartirish</p>
+            <p className="mb-2.5 text-[13px] font-semibold text-ink">{t('common.changeStatus')}</p>
             <div className="flex flex-wrap gap-1.5">
               {(['reviewing', 'resolved', 'rejected'] as TransitionStatus[]).map((s) => {
-                const meta = statusMeta(s);
+                const meta = statusMeta(s, t);
                 const active = c.status === s;
                 return (
                   <button
@@ -674,7 +682,7 @@ function ComplaintDetail({
           {/* Rasmiy javoblar */}
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-              <Messages1 size={16} variant="Bulk" className="text-primary-600" /> Rasmiy javoblar
+              <Messages1 size={16} variant="Bulk" className="text-primary-600" /> {t('complaints.detail.officialReplies')}
               <span className="rounded-full bg-surface-2 px-1.5 text-[11px] text-ink-muted">
                 {c.responses.length}
               </span>
@@ -694,14 +702,14 @@ function ComplaintDetail({
               </div>
             ) : (
               <p className="rounded-xl bg-surface-2 px-3 py-4 text-center text-[12.5px] text-ink-muted">
-                Hozircha rasmiy javob yozilmagan
+                {t('complaints.detail.noReplies')}
               </p>
             )}
 
             {/* Javob yozish */}
             <div className="mt-3">
               <label htmlFor="complaint-reply" className="sr-only">
-                Rasmiy javob matni
+                {t('complaints.detail.replyLabel')}
               </label>
               <textarea
                 id="complaint-reply"
@@ -712,7 +720,7 @@ function ComplaintDetail({
                 }}
                 onBlur={() => setTouched(true)}
                 rows={3}
-                placeholder="Fuqaroga rasmiy javob yozing..."
+                placeholder={t('complaints.detail.replyPlaceholder')}
                 disabled={sending}
                 aria-invalid={replyEmpty || replyTooShort || !!sendError}
                 aria-describedby="complaint-reply-hint"
@@ -724,24 +732,28 @@ function ComplaintDetail({
               <div id="complaint-reply-hint" className="mt-1.5 min-h-[16px] text-[11.5px]">
                 {replyEmpty ? (
                   <span role="alert" className="font-medium text-danger">
-                    Javob matnini kiriting
+                    {t('complaints.detail.replyRequired')}
                   </span>
                 ) : replyTooShort ? (
                   <span role="alert" className="font-medium text-danger">
-                    Javob kamida {MIN_REPLY_LEN} ta belgidan iborat bo'lsin
+                    {t('complaints.detail.replyTooShort').replace('{min}', String(MIN_REPLY_LEN))}
                   </span>
                 ) : sendError ? (
                   <span role="alert" className="font-medium text-danger">
                     {sendError}
                   </span>
                 ) : (
-                  <span className="text-ink-muted">Fuqaro ushbu javobni ilovada ko'radi</span>
+                  <span className="text-ink-muted">{t('complaints.detail.replyHint')}</span>
                 )}
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span aria-live="polite" className="flex items-center gap-1.5 text-[11.5px] text-ink-muted">
                   {sent && <TickCircle size={13} variant="Bold" className="text-primary-600" />}
-                  {sent ? 'Yuborildi' : deputy ? `${deputy.name} nomidan` : 'Hokimiyat nomidan'}
+                  {sent
+                    ? t('complaints.detail.sent')
+                    : deputy
+                      ? t('complaints.detail.onBehalfOf').replace('{name}', deputy.name)
+                      : t('complaints.detail.onBehalfOfAdmin')}
                 </span>
                 <button
                   type="button"
@@ -754,7 +766,7 @@ function ComplaintDetail({
                   ) : (
                     <Send2 size={16} variant="Bulk" />
                   )}
-                  {sending ? 'Yuborilmoqda...' : 'Javob yuborish'}
+                  {sending ? t('common.sending') : t('complaints.detail.sendReply')}
                 </button>
               </div>
             </div>
@@ -767,10 +779,10 @@ function ComplaintDetail({
         open={!!pendingStatus}
         onClose={closeStatusDialog}
         onConfirm={confirmStatus}
-        title={pendingStatus ? STATUS_CONFIRM[pendingStatus].title : ''}
+        title={pendingStatus ? t(STATUS_CONFIRM[pendingStatus].titleKey) : ''}
         message={
           <>
-            {pendingStatus && STATUS_CONFIRM[pendingStatus].message}
+            {pendingStatus && t(STATUS_CONFIRM[pendingStatus].messageKey)}
             {statusError && (
               <span role="alert" className="mt-2 block font-medium text-danger">
                 {statusError}
@@ -778,7 +790,7 @@ function ComplaintDetail({
             )}
           </>
         }
-        confirmLabel="Tasdiqlash"
+        confirmLabel={t('common.confirm')}
         tone={pendingStatus ? STATUS_CONFIRM[pendingStatus].tone : 'primary'}
         icon={pendingStatus ? STATUS_CONFIRM[pendingStatus].icon : undefined}
         loading={statusChanging}
@@ -789,10 +801,10 @@ function ComplaintDetail({
         open={deleteOpen}
         onClose={closeDeleteDialog}
         onConfirm={confirmDelete}
-        title="Shikoyatni o'chirasizmi?"
+        title={t('complaints.confirmDelete.title')}
         message={
           <>
-            {c && <>"{c.title}" nomli shikoyat butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.</>}
+            {c && <>{t('complaints.confirmDelete.message').replace('{title}', c.title)}</>}
             {deleteError && (
               <span role="alert" className="mt-2 block font-medium text-danger">
                 {deleteError}
@@ -800,7 +812,7 @@ function ComplaintDetail({
             )}
           </>
         }
-        confirmLabel="Ha, o'chirish"
+        confirmLabel={t('common.confirmDeleteLabel')}
         tone="danger"
         icon={Trash}
         loading={deleting}
