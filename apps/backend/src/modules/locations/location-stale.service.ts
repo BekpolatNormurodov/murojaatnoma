@@ -5,6 +5,7 @@ import { NotificationType } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { STALE_LOCATION_CRON } from '../../common/config/constants';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { PushService } from '../push/push.service';
 
 /** Uzbekistan is UTC+5 year-round (no daylight saving). */
 const UZ_UTC_OFFSET_HOURS = 5;
@@ -22,6 +23,7 @@ export class LocationStaleService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly push: PushService,
   ) {}
 
   @Cron(STALE_LOCATION_CRON, { name: 'location-stale-scan' })
@@ -47,14 +49,18 @@ export class LocationStaleService {
     }
 
     const now = new Date();
+    const title = 'Lokatsiya aniqlanmadi';
+    const bodyFor = (lastLocationAt: Date | null): string =>
+      lastLocationAt
+        ? `${staleMinutes} daqiqadan beri joylashuvingiz serverga kelmadi. Iltimos ilovani oching va internet aloqasini tekshiring.`
+        : 'Bugun joylashuvingiz hali aniqlanmadi. Iltimos ilovani oching va joylashuvga ruxsat bering.';
+
     await this.prisma.$transaction([
       this.prisma.notification.createMany({
         data: stale.map((e) => ({
           employeeId: e.id,
-          title: 'Lokatsiya aniqlanmadi',
-          body: e.lastLocationAt
-            ? `${staleMinutes} daqiqadan beri joylashuvingiz serverga kelmadi. Iltimos ilovani oching va internet aloqasini tekshiring.`
-            : 'Bugun joylashuvingiz hali aniqlanmadi. Iltimos ilovani oching va joylashuvga ruxsat bering.',
+          title,
+          body: bodyFor(e.lastLocationAt),
           type: NotificationType.LOCATION,
         })),
       }),
@@ -63,6 +69,18 @@ export class LocationStaleService {
         data: { staleAlertedAt: now },
       }),
     ]);
+
+    // Deliver a real push too, so the alert reaches the employee even with the
+    // app backgrounded (best-effort; disabled FCM / no registered token = no-op).
+    const bodyById = new Map(stale.map((e) => [e.id, bodyFor(e.lastLocationAt)]));
+    await this.push.sendToEmployees(
+      stale.map((e) => e.id),
+      (id) => ({
+        title,
+        body: bodyById.get(id) ?? title,
+        data: { type: NotificationType.LOCATION },
+      }),
+    );
 
     this.logger.warn(`Raised location-stale alerts for ${stale.length} employee(s)`);
   }

@@ -66,4 +66,10 @@ export const envValidationSchema = Joi.object({
   // and POST /applications/:id/attachments/upload.
   UPLOADS_DIR: Joi.string().default(DEFAULT_UPLOADS_DIR),
   PUBLIC_BASE_URL: Joi.string().default(DEFAULT_PUBLIC_BASE_URL),
+
+  // Firebase Cloud Messaging (push). Both optional: when the service-account
+  // b64 is empty, push is disabled and the app logs payloads instead. The
+  // secret lives only in the server's gitignored .env (repo is public).
+  FIREBASE_PROJECT_ID: Joi.string().allow('').default(''),
+  FIREBASE_SERVICE_ACCOUNT_B64: Joi.string().allow('').default(''),
 });

@@ -61,6 +61,12 @@ export interface AppConfig {
     /** Public origin used to build the attachment URL returned to clients: `${publicBaseUrl}/uploads/<file>`. */
     publicBaseUrl: string;
   };
+  firebase: {
+    /** Firebase project id (informational; the real credential is the service account). */
+    projectId: string;
+    /** Base64-encoded service-account JSON. Empty ⇒ push notifications disabled. */
+    serviceAccountB64: string;
+  };
 }
 
 export default (): AppConfig => ({
@@ -116,5 +122,9 @@ export default (): AppConfig => ({
   uploads: {
     dir: process.env.UPLOADS_DIR ?? DEFAULT_UPLOADS_DIR,
     publicBaseUrl: process.env.PUBLIC_BASE_URL ?? DEFAULT_PUBLIC_BASE_URL,
+  },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID ?? '',
+    serviceAccountB64: process.env.FIREBASE_SERVICE_ACCOUNT_B64 ?? '',
   },
 });

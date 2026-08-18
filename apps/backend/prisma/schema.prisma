@@ -141,6 +141,7 @@ model Employee {
   attendanceRecords    AttendanceRecord[]
   refreshTokens        RefreshToken[]
   notifications        Notification[]
+  deviceTokens         DeviceToken[]
   assignedApplications Application[]
   locations            EmployeeLocation[]
   pointsEntries        PointsEntry[]
@@ -283,6 +284,34 @@ model Notification {
 
   @@index([employeeId, isRead])
   @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Push notification device tokens (FCM)
+// ---------------------------------------------------------------------------
+// One row per installed app instance. The worker-app registers its Firebase
+// Cloud Messaging token after login; the backend fans a push out to every
+// token an employee owns. Tokens rotate, so `token` is unique and dead tokens
+// are pruned automatically when FCM reports them unregistered on send.
+
+model DeviceToken {
+  id         String         @id @default(uuid())
+  employeeId String
+  token      String         @unique
+  platform   DevicePlatform @default(ANDROID)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("device_tokens")
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
 }
 
 // ---------------------------------------------------------------------------
