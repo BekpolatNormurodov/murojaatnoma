@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "245000470630",
+    "project_id": "murojaatnoma",
+    "storage_bucket": "murojaatnoma.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:245000470630:android:ffc37955336c7abd896da7",
+        "android_client_info": {
+          "package_name": "uz.gov.hokimiyat.user_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrIbxdp3TLF3fPn4avhssI8XdSTcvJgVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:245000470630:android:58801eccdc47cba5896da7",
+        "android_client_info": {
+          "package_name": "uz.gov.hokimiyat.worker_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCrIbxdp3TLF3fPn4avhssI8XdSTcvJgVc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
