@@ -7,6 +7,7 @@ import {
   Clock,
   MoneyRecive,
   Gallery,
+  DocumentText,
   TickCircle,
   ArrowRight,
   Timer1,
@@ -43,6 +44,47 @@ import { cn } from '@/shared/lib/cn';
 import { getDeadline, urgencyMeta } from './deadline';
 import { pushRequestToast } from './toastStore';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
+import { useRequestAttachments, type Attachment } from './useRequestAttachments';
+
+/** Bitta biriktirilgan faylni turiga qarab chizadi: rasm inline, video <video>,
+ *  ovoz <audio>, boshqasi — yuklab olish havolasi. */
+function AttachmentItem({ a }: { a: Attachment }) {
+  const mime = a.mimeType ?? '';
+  const isImage = a.type === 'PHOTO' || mime.startsWith('image/');
+  const isVideo = mime.startsWith('video/');
+  const isAudio = mime.startsWith('audio/');
+  if (isImage) {
+    return (
+      <a href={a.url} target="_blank" rel="noreferrer" className="block max-h-56 overflow-hidden rounded-xl border border-line bg-surface-2">
+        <img src={a.url} alt={a.fileName ?? ''} className="h-full w-full object-cover" loading="lazy" />
+      </a>
+    );
+  }
+  if (isVideo) {
+    return <video src={a.url} controls preload="metadata" className="w-full rounded-xl border border-line bg-black" />;
+  }
+  if (isAudio) {
+    return <audio src={a.url} controls preload="metadata" className="w-full" />;
+  }
+  return (
+    <a
+      href={a.url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-[13px] text-ink transition-colors hover:bg-surface"
+    >
+      <DocumentText size={18} variant="Bulk" className="shrink-0 text-ink-muted" />
+      <span className="min-w-0 flex-1 truncate">{a.fileName ?? a.url.split('/').pop() ?? 'Fayl'}</span>
+      {a.sizeBytes ? <span className="shrink-0 text-[11px] text-ink-muted">{formatBytes(a.sizeBytes)}</span> : null}
+    </a>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
 
 const PRIORITY_META: Record<Priority, { tone: 'danger' | 'warning' | 'neutral' }> = {
   high: { tone: 'danger' },
@@ -108,6 +150,8 @@ export function RequestDetail({
   const deputy = r
     ? deputies?.find((d) => d.categories.includes(r.category)) ?? null
     : null;
+  // Mobil ilovadan / fuqaro tomonidan yuklangan media (rasm/video/ovoz/hujjat).
+  const { data: attachments } = useRequestAttachments(r?.id ?? null);
   const dl = r ? getDeadline(r, t) : null;
   const meta = dl ? urgencyMeta(dl.urgency, t) : null;
   const assignWorker = useRequests((s) => s.assignWorker);
@@ -286,6 +330,22 @@ export function RequestDetail({
                   <div key={i} className="aspect-square overflow-hidden rounded-xl border border-line bg-surface-2">
                     <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Biriktirilgan fayllar (video/ovoz/hujjat) — mobil ilovadan yoki
+              fuqaro tomonidan yuklangan media. Oddiy rasmlar yuqorida
+              (r.photos); bu yerda Attachment yozuvlari (video/ovoz/fayl). */}
+          {attachments && attachments.length > 0 && (
+            <div>
+              <p className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <DocumentText size={16} variant="Bulk" className="text-ink-muted" /> Biriktirilgan fayllar
+              </p>
+              <div className="space-y-2">
+                {attachments.map((a) => (
+                  <AttachmentItem key={a.id} a={a} />
                 ))}
               </div>
             </div>
