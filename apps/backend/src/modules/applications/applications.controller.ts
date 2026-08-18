@@ -16,6 +16,7 @@ import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nes
 import { Application, ApplicationMessage, Attachment, AttachmentType, EmployeeRole } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AllowCitizen } from '../../common/decorators/allow-citizen.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
@@ -62,8 +63,11 @@ export class ApplicationsController {
   }
 
   @ApiBearerAuth()
+  @AllowCitizen()
   @Get()
-  @ApiOperation({ summary: 'List applications, optionally filtered by status' })
+  @ApiOperation({
+    summary: 'List applications (staff: all; CITIZEN: scoped to their own phone)',
+  })
   findAll(
     @Query() query: ListApplicationsQueryDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -72,8 +76,9 @@ export class ApplicationsController {
   }
 
   @ApiBearerAuth()
+  @AllowCitizen()
   @Get(':id')
-  @ApiOperation({ summary: 'Get a single application' })
+  @ApiOperation({ summary: 'Get a single application (CITIZEN: own only, else 403)' })
   findOne(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
