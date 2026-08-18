@@ -114,6 +114,359 @@ export const DICT: Record<Lang, Dict> = {
     "news.featured": "Muhim",
     "news.readMore": "Batafsil",
     "news.views": "ko‘rishlar",
+
+    // ============================================================
+    // common (feature-page'lar orasida takrorlanadigan so'z/iboralar)
+    // ============================================================
+    "common.retry": "Qayta urinish",
+    "common.loadError": "Ma'lumotlarni yuklab bo'lmadi",
+    "common.unknownError": "Noma'lum xatolik yuz berdi",
+    "common.unknown": "Noma'lum",
+    "common.clear": "Tozalash",
+    "common.clearFilters": "Filtrlarni tozalash",
+    "common.confirm": "Tasdiqlash",
+    "common.confirmDeleteLabel": "Ha, o'chirish",
+    "common.new": "Yangi",
+    "common.resolved": "Hal qilingan",
+    "common.rejected": "Rad etilgan",
+    "common.inProgress": "Jarayonda",
+    "common.reviewing": "Ko'rib chiqilmoqda",
+    "common.priorityHigh": "Yuqori",
+    "common.priorityMedium": "O'rta",
+    "common.priorityLow": "Past",
+    "common.address": "Manzil",
+    "common.receivedDate": "Kelgan sana",
+    "common.changeStatus": "Holatni o'zgartirish",
+    "common.responsibleDeputy": "Mas'ul hokim o'rinbosari",
+    "common.change": "O'zgartirish",
+    "common.searchPlaceholder": "Qidirish...",
+    "common.sending": "Yuborilmoqda...",
+
+    "common.deadline.closed": "Yopildi",
+    "common.deadline.overdueTemplate": "{days} kun kechikdi",
+    "common.deadline.remainingTemplate": "{days} kun qoldi",
+    "common.deadline.dueToday": "Bugun tugaydi",
+    "common.deadline.onTime": "Muddatida bajarildi",
+    "common.deadline.lateDone": "Kechikib bajarildi",
+    "common.deadline.overdueStatus": "Muddati o'tgan",
+    "common.deadline.critical": "Shoshilinch",
+    "common.deadline.approaching": "Yaqinlashmoqda",
+    "common.deadline.onTimeStatus": "Muddatida",
+    "common.deadline.finished": "Yakunlangan",
+
+    // ============================================================
+    // appUsers (src/features/app-users/**)
+    // ============================================================
+    "appUsers.subtitle":
+      "Mobil ilovadan foydalanayotgan Mirzo Ulug'bek fuqarolari va ular bo'yicha hisobot",
+    "appUsers.userCountSuffix": "foydalanuvchi",
+
+    "appUsers.filters.allStatuses": "Barcha holatlar",
+    "appUsers.statusBlocked": "Bloklangan",
+    "appUsers.filters.allDevices": "Barcha qurilmalar",
+    "appUsers.deviceAndroid": "Android",
+    "appUsers.deviceIos": "iOS",
+    "appUsers.filters.allRegions": "Barcha mahallalar",
+    "appUsers.sort.recent": "Oxirgi faollik",
+    "appUsers.sort.requests": "Murojaatlar soni",
+    "appUsers.sort.points": "Faollik balli",
+
+    "appUsers.actionFailed": "Amalni bajarib bo'lmadi",
+    "appUsers.toast.activated": "{name} faollashtirildi",
+    "appUsers.toast.blocked": "{name} bloklandi",
+    "appUsers.toast.verified": "{name} shaxsi tasdiqlandi",
+    "appUsers.toast.unverified": "{name} tasdig'i bekor qilindi",
+
+    "appUsers.kpi.total": "Jami foydalanuvchilar",
+    "appUsers.kpi.active": "Faol foydalanuvchilar",
+    "appUsers.verifiedLabel": "Tasdiqlangan",
+    "appUsers.kpi.totalRequests": "Jami murojaatlar",
+
+    "appUsers.chart.dauTitle": "Kunlik faol foydalanuvchilar",
+    "appUsers.chart.last14Days": "So'nggi 14 kun",
+    "appUsers.chart.dauAcronym": "DAU",
+    "appUsers.chart.dauUnavailable": "DAU statistikasi mavjud emas",
+    "appUsers.chart.deviceStatusTitle": "Qurilma va holat",
+    "appUsers.chart.distribution": "Taqsimot",
+    "appUsers.chart.growthTitle": "Ro'yxatdan o'tish o'sishi",
+    "appUsers.chart.growthSubtitle": "So'nggi 8 oy · yangi va jami",
+    "appUsers.chart.growthUnavailable": "O'sish statistikasi mavjud emas",
+
+    "appUsers.leaderboard.title": "Eng faol foydalanuvchilar",
+
+    "appUsers.search.placeholder": "Ism, telefon yoki mahalla bo'yicha qidirish...",
+    "appUsers.search.ariaLabel": "Foydalanuvchilarni qidirish",
+
+    "appUsers.table.user": "Foydalanuvchi",
+    "appUsers.regionLabel": "Mahalla",
+    "appUsers.requestsLabel": "Murojaat",
+    "appUsers.lastActiveLabel": "Oxirgi faollik",
+    "appUsers.table.status": "Holat",
+
+    "appUsers.openProfileAria": "{name} profilini ochish",
+    "appUsers.actionsForAria": "{name} uchun amallar",
+
+    "appUsers.actions.activate": "Faollashtirish",
+    "appUsers.actions.block": "Bloklash",
+    "appUsers.actions.unverify": "Tasdiqni bekor qilish",
+
+    "appUsers.empty.title": "Foydalanuvchi topilmadi",
+    "appUsers.empty.hasFilters": "Qidiruv yoki filtrlarni o'zgartirib ko'ring",
+    "appUsers.empty.noUsers": "Hozircha ilova foydalanuvchilari mavjud emas",
+
+    "appUsers.confirmBlock.title": "Foydalanuvchini bloklash",
+    "appUsers.confirmBlock.message":
+      "ilovaga kira olmay qoladi. Bu amalni keyinroq bekor qilishingiz mumkin.",
+    "appUsers.confirmBlock.confirmLabel": "Ha, bloklash",
+
+    "appUsers.detail.title": "Foydalanuvchi profili",
+    "appUsers.detail.points": "Ball",
+    "appUsers.detail.rating": "Baho",
+    "appUsers.detail.activity14d": "So'nggi 14 kunlik faollik",
+    "appUsers.detail.resolveRate": "Murojaatlar hal qilinishi",
+    "appUsers.detail.resolveRateFootnote": "{resolved} / {total} murojaat ijobiy yakunlangan",
+    "appUsers.detail.registeredAt": "Ro'yxatdan o'tgan",
+    "appUsers.detail.identityVerification": "Shaxs tasdig'i",
+    "appUsers.detail.notVerified": "Tasdiqlanmagan",
+    "appUsers.detail.notifOn": "Yoqilgan",
+    "appUsers.detail.notifOff": "O'chirilgan",
+    "appUsers.detail.sendMessage": "Xabar yuborish",
+    "appUsers.detail.contact": "Aloqa",
+
+    // ============================================================
+    // complaints (src/features/complaints/**)
+    // ============================================================
+    "complaints.subtitle":
+      "Fuqarolarning rasmiy shikoyatlari — yo'nalish bo'yicha hokim o'rinbosarlariga biriktiriladi",
+    "complaints.escalatedBadge": "{count} ta nazoratda",
+
+    "complaints.kpi.total": "Jami shikoyatlar",
+
+    "complaints.search.ariaLabel": "Shikoyatlar orasidan qidirish",
+
+    "complaints.filters.allSeverities": "Barcha darajalar",
+
+    "complaints.repeatBadge": "Takroriy",
+    "complaints.escalatedLabel": "Yuqoriga ko'tarilgan",
+    "complaints.unassigned": "Biriktirilmagan",
+
+    "complaints.empty.none": "Hozircha shikoyatlar mavjud emas",
+    "complaints.reload": "Qayta yuklash",
+    "complaints.empty.noMatch": "Mos shikoyatlar topilmadi",
+
+    "complaints.confirmStatus.reviewing.title": "Ko'rib chiqishga o'tkazilsinmi?",
+    "complaints.confirmStatus.reviewing.message":
+      "Shikoyat holati \"Ko'rib chiqilmoqda\"ga o'zgaradi. Fuqaro ilovada buni ko'radi.",
+    "complaints.confirmStatus.resolved.title": "Shikoyat hal qilindi deb belgilansinmi?",
+    "complaints.confirmStatus.resolved.message":
+      "Holat \"Hal qilindi\"ga o'zgaradi va yopilgan sana qayd etiladi.",
+    "complaints.confirmStatus.rejected.title": "Shikoyat rad etilsinmi?",
+    "complaints.confirmStatus.rejected.message":
+      "Holat \"Rad etildi\"ga o'zgaradi. Sababini rasmiy javobda ko'rsatishni tavsiya qilamiz.",
+
+    "complaints.replyFailed": "Javobni yuborib bo'lmadi",
+    "complaints.statusUpdateFailed": "Holatni yangilab bo'lmadi",
+    "complaints.deleteFailed": "Shikoyatni o'chirib bo'lmadi",
+
+    "complaints.detail.title": "Shikoyat tafsilotlari",
+    "complaints.detail.severityDegree": "{severity} daraja",
+    "complaints.detail.underControl": "Nazoratda",
+    "complaints.detail.deleteAria": "Shikoyatni o'chirish",
+    "complaints.detail.complainant": "Shikoyatchi",
+    "complaints.detail.responseDeadline": "Javob muddati",
+    "complaints.detail.closedDate": "Yopilgan sana",
+    "complaints.detail.officialReplies": "Rasmiy javoblar",
+    "complaints.detail.noReplies": "Hozircha rasmiy javob yozilmagan",
+    "complaints.detail.replyLabel": "Rasmiy javob matni",
+    "complaints.detail.replyPlaceholder": "Fuqaroga rasmiy javob yozing...",
+    "complaints.detail.replyRequired": "Javob matnini kiriting",
+    "complaints.detail.replyTooShort": "Javob kamida {min} ta belgidan iborat bo'lsin",
+    "complaints.detail.replyHint": "Fuqaro ushbu javobni ilovada ko'radi",
+    "complaints.detail.sent": "Yuborildi",
+    "complaints.detail.onBehalfOf": "{name} nomidan",
+    "complaints.detail.onBehalfOfAdmin": "Hokimiyat nomidan",
+    "complaints.detail.sendReply": "Javob yuborish",
+
+    "complaints.confirmDelete.title": "Shikoyatni o'chirasizmi?",
+    "complaints.confirmDelete.message":
+      "\"{title}\" nomli shikoyat butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.",
+
+    // ============================================================
+    // requests (src/features/requests/**, deadline.ts shu jumladan)
+    // ============================================================
+    "requests.subtitle":
+      "Fuqaro murojaatlari turiga qarab belgilangan muddatda hal qilinishi shart",
+    "requests.dateRange.all": "Butun davr",
+    "requests.dateRange.today": "Bugun",
+    "requests.dateRange.7d": "7 kun",
+    "requests.dateRange.30d": "30 kun",
+    "requests.dateRange.custom": "Sana oralig'i",
+
+    "requests.kpi.open": "Ochiq murojaatlar",
+    "requests.kpi.critical": "Shoshilinch (≤2 kun)",
+    "requests.kpi.soon": "Yaqin muddat (≤5 kun)",
+
+    "requests.addButton": "Murojaat qo'shish",
+    "requests.sort.byDeadline": "Muddat bo‘yicha",
+    "requests.sort.byDate": "Sana bo‘yicha",
+
+    "requests.dateFilterHeading": "Sana bo'yicha",
+
+    "requests.activeFilterLabel": "Faol filtr:",
+    "requests.openFallback": "Ochiq",
+    "requests.resultsCountSuffix": "ta natija",
+
+    "requests.card.slaDaysSuffix": "kun muddat",
+    "requests.assignButton": "Biriktirish",
+
+    "requests.empty.none": "Hozircha murojaatlar yo'q",
+    "requests.empty.noMatch": "Filtrga mos murojaat topilmadi",
+    "requests.empty.noneHint": "Birinchi murojaatni qo'shib, ishni boshlang.",
+    "requests.empty.noMatchHint": "Qidiruv so‘zi yoki filtrlarni o‘zgartirib ko‘ring.",
+
+    "requests.detail.title": "Murojaat tafsilotlari",
+    "requests.detail.deadlineTitle": "Hal qilish muddati",
+    "requests.detail.slaDaysCategory": "kun ({category})",
+    "requests.detail.dueDateLabel": "tugash sanasi",
+    "requests.detail.finishedLabel": "yakunlangan",
+    "requests.detail.overdueUnit": "kun kechikdi",
+    "requests.detail.remainingUnit": "kun qoldi",
+    "requests.detail.overdueWarning":
+      "Murojaat muddati o‘tib ketgan — zudlik bilan hal qilish talab etiladi!",
+    "requests.detail.criticalWarning":
+      "Muddat tugashiga oz qoldi — shoshilinch choralar ko‘ring!",
+    "requests.detail.attachedPhotos": "Biriktirilgan rasmlar",
+    "requests.detail.citizen": "Murojaatchi",
+    "requests.detail.responseTime": "Javob vaqti",
+    "requests.detail.hoursSuffix": "soat",
+    "requests.detail.cost": "Xarajat",
+    "requests.detail.citizenRating": "Fuqaro bahosi",
+    "requests.detail.autoAssignedNote":
+      "Murojaat yo'nalishi bo'yicha avtomatik biriktirildi.",
+    "requests.detail.responsibleWorker": "Mas'ul xodim",
+    "requests.detail.unassign": "Olib tashlash",
+    "requests.detail.assignWorker": "Xodim biriktirish",
+
+    "requests.confirmDelete.title": "Murojaatni o'chirasizmi?",
+    "requests.confirmDelete.message":
+      "\"{title}\" nomli murojaat butunlay o'chiriladi. Bu amalni ortga qaytarib bo'lmaydi.",
+
+    "requests.workerStatus.onTask": "Vazifada",
+    "requests.workerStatus.break": "Tanaffus",
+
+    "requests.workerPicker.searchPlaceholder": "Xodim qidirish...",
+    "requests.workerPicker.matchingSpecialist": "Mos mutaxassis",
+    "requests.workerPicker.sameDistrict": "shu hudud",
+    "requests.workerPicker.activeTasksSuffix": "faol",
+    "requests.workerPicker.assigned": "Biriktirilgan",
+    "requests.workerPicker.noResults": "Xodim topilmadi",
+
+    "requests.toast.assignError":
+      "Xodim biriktirishda xatolik yuz berdi. Qaytadan urining.",
+    "requests.toast.unassignError":
+      "Xodimni olib tashlashda xatolik yuz berdi. Qaytadan urining.",
+    "requests.toast.statusError":
+      "Holatni o'zgartirishda xatolik yuz berdi. Qaytadan urining.",
+    "requests.toast.deleted": "Murojaat o'chirildi",
+    "requests.toast.deleteError": "Murojaatni o'chirib bo'lmadi. Qaytadan urining.",
+    "requests.toast.created": "Murojaat muvaffaqiyatli qo'shildi",
+    "requests.toast.createError": "Murojaatni saqlab bo'lmadi. Qaytadan urining.",
+    "requests.toast.closeAria": "Xabarni yopish",
+
+    "requests.addModal.subtitle": "Fuqaro murojaatini tizimga kiriting",
+    "requests.addModal.fixOneField": "1 ta maydonni to'g'irlang.",
+    "requests.addModal.fixFieldsTemplate": "{count} ta maydonni to'g'irlang.",
+    "requests.addModal.checkFieldsBelow": "Pastdagi maydonlarga qarang.",
+    "requests.addModal.titleLabel": "Sarlavha",
+    "requests.addModal.titlePlaceholder": "Muammo qisqacha nomi",
+    "requests.addModal.categoryLabel": "Kategoriya",
+    "requests.addModal.districtLabel": "Tuman",
+    "requests.addModal.addressPlaceholder": "Ko'cha, uy raqami",
+    "requests.addModal.citizenNameLabel": "Fuqaro F.I.O.",
+    "requests.addModal.namePlaceholder": "Ism familiya",
+    "requests.addModal.phoneLabel": "Telefon",
+    "requests.addModal.phonePlaceholder": "+998 90 123 45 67",
+    "requests.addModal.priorityLabel": "Muhimlik darajasi",
+    "requests.addModal.descriptionLabel": "Tavsif",
+    "requests.addModal.descriptionPlaceholder": "Muammo tafsiloti...",
+
+    "requests.validation.titleRequired": "Sarlavhani kiriting",
+    "requests.validation.titleMinLen": "Sarlavha kamida 4 ta belgidan iborat bo'lsin",
+    "requests.validation.descriptionRequired": "Muammo tavsifini kiriting",
+    "requests.validation.descriptionMinLen":
+      "Tavsif kamida 10 ta belgidan iborat bo'lsin",
+    "requests.validation.addressRequired": "Manzilni kiriting",
+    "requests.validation.addressMinLen": "Manzil kamida 3 ta belgidan iborat bo'lsin",
+    "requests.validation.nameRequired": "Fuqaro F.I.O. sini kiriting",
+    "requests.validation.nameMinLen": "F.I.O. kamida 2 ta belgidan iborat bo'lsin",
+    "requests.validation.phoneRequired": "Telefon raqamni kiriting",
+    "requests.validation.phoneInvalid":
+      "Telefon raqam noto'g'ri (masalan: +998 90 123 45 67)",
+
+    // ============================================================
+    // settings (src/features/settings/**) — sahifadagi haqiqiy
+    // tab/maydonlar; yuqoridagi settings.* kalitlari (appearance,
+    // org, workhours...) boshqa maqsad uchun, tegilmadi.
+    // ============================================================
+    "settings.tabs.profile": "Profil",
+    "settings.tabs.system": "Tizim",
+    "settings.pageSubtitle": "Hisobingiz, bildirishnomalar va tizim sozlamalarini boshqaring",
+    "settings.savedShort": "Saqlandi",
+    "settings.saveChanges": "O'zgarishlarni saqlash",
+
+    "settings.confirmClear.title": "Ma'lumotlarni tozalaymizmi?",
+    "settings.confirmClear.message":
+      "Barcha keshlangan ma'lumotlar va sozlamalar dastlabki holatiga qaytariladi. Bu amalni ortga qaytarib bo'lmaydi.",
+    "settings.confirmClear.confirmLabel": "Ha, tozalash",
+
+    "settings.profile.sectionTitle": "Shaxsiy ma'lumotlar",
+    "settings.profile.sectionSubtitle": "Profil rasmi va asosiy ma'lumotlaringiz",
+    "settings.profile.defaultUserName": "Foydalanuvchi",
+    "settings.profile.noRole": "Lavozim ko'rsatilmagan",
+    "settings.profile.changePhoto": "Rasmni o'zgartirish",
+    "settings.profile.firstName": "Ism",
+    "settings.profile.lastName": "Familiya",
+    "settings.profile.email": "Email",
+    "settings.profile.phone": "Telefon",
+    "settings.profile.position": "Lavozim",
+    "settings.profile.region": "Hudud",
+    "settings.profile.notEntered": "Kiritilmagan",
+
+    "settings.notif.sectionSubtitle": "Qaysi hodisalar haqida xabar olishni tanlang",
+    "settings.notif.newRequests": "Yangi murojaatlar",
+    "settings.notif.newRequestsDesc": "Fuqarolardan yangi murojaat kelganda xabar berish",
+    "settings.notif.workerReports": "Ishchi hisobotlari",
+    "settings.notif.workerReportsDesc": "Ishchilar vazifani yakunlaganda bildirish",
+    "settings.notif.geofenceAlerts": "Geofence ogohlantirishlari",
+    "settings.notif.geofenceAlertsDesc": "Ishchi belgilangan hududdan chiqib ketganda",
+    "settings.notif.weeklyAnalytics": "Haftalik analitika",
+    "settings.notif.weeklyAnalyticsDesc": "Har dushanba kunlik umumiy hisobot",
+    "settings.notif.emailChannel": "Email orqali",
+    "settings.notif.emailChannelDesc": "Bildirishnomalarni emailga ham yuborish",
+
+    "settings.security.changePasswordTitle": "Parolni o'zgartirish",
+    "settings.security.changePasswordSubtitle": "Hisobingiz xavfsizligini ta'minlang",
+    "settings.security.currentPassword": "Joriy parol",
+    "settings.security.newPassword": "Yangi parol",
+    "settings.security.confirmPassword": "Yangi parolni tasdiqlang",
+    "settings.security.updatePassword": "Parolni yangilash",
+    "settings.security.additionalProtectionTitle": "Qo'shimcha himoya",
+    "settings.security.twoFactorAuth": "Ikki bosqichli autentifikatsiya (2FA)",
+    "settings.security.twoFactorDesc": "Kirishda SMS orqali tasdiqlash kodi so'raladi",
+    "settings.security.newDeviceAlert": "Yangi qurilmadan kirishni eslatish",
+    "settings.security.newDeviceAlertDesc": "Notanish qurilmadan kirilganda email yuborish",
+    "settings.security.autoLogout": "Faol sessiyalarni avtomatik tugatish",
+    "settings.security.autoLogoutDesc": "30 daqiqa harakatsizlikdan keyin",
+
+    "settings.system.aboutTitle": "Tizim haqida",
+    "settings.system.platformVersion": "Platforma versiyasi",
+    "settings.system.lastUpdate": "Oxirgi yangilanish",
+    "settings.system.serverStatus": "Server holati",
+    "settings.system.database": "Ma‘lumotlar bazasi",
+    "settings.system.dangerZoneTitle": "Xavfli hudud",
+    "settings.system.dangerZoneSubtitle": "Bu amallar ortga qaytarilmaydi",
+    "settings.system.clearCacheTitle": "Keshni tozalash",
+    "settings.system.clearCacheDesc": "Barcha lokal sozlamalar dastlabki holatiga qaytadi",
   },
   ru: {
     "app.org": "Хокимият",
@@ -216,6 +569,356 @@ export const DICT: Record<Lang, Dict> = {
     "news.featured": "Важное",
     "news.readMore": "Подробнее",
     "news.views": "просмотров",
+
+    // ============================================================
+    // common (общие слова/фразы для страниц-разделов)
+    // ============================================================
+    "common.retry": "Повторить",
+    "common.loadError": "Не удалось загрузить данные",
+    "common.unknownError": "Произошла неизвестная ошибка",
+    "common.unknown": "Неизвестно",
+    "common.clear": "Очистить",
+    "common.clearFilters": "Сбросить фильтры",
+    "common.confirm": "Подтвердить",
+    "common.confirmDeleteLabel": "Да, удалить",
+    "common.new": "Новые",
+    "common.resolved": "Решено",
+    "common.rejected": "Отклонено",
+    "common.inProgress": "В процессе",
+    "common.reviewing": "Рассматривается",
+    "common.priorityHigh": "Высокий",
+    "common.priorityMedium": "Средний",
+    "common.priorityLow": "Низкий",
+    "common.address": "Адрес",
+    "common.receivedDate": "Дата поступления",
+    "common.changeStatus": "Изменить статус",
+    "common.responsibleDeputy": "Ответственный заместитель хокима",
+    "common.change": "Изменить",
+    "common.searchPlaceholder": "Поиск...",
+    "common.sending": "Отправка...",
+
+    "common.deadline.closed": "Закрыто",
+    "common.deadline.overdueTemplate": "Просрочено на {days} дн.",
+    "common.deadline.remainingTemplate": "Осталось {days} дн.",
+    "common.deadline.dueToday": "Истекает сегодня",
+    "common.deadline.onTime": "Выполнено в срок",
+    "common.deadline.lateDone": "Выполнено с опозданием",
+    "common.deadline.overdueStatus": "Просрочено",
+    "common.deadline.critical": "Срочно",
+    "common.deadline.approaching": "Приближается",
+    "common.deadline.onTimeStatus": "В срок",
+    "common.deadline.finished": "Завершено",
+
+    // ============================================================
+    // appUsers (src/features/app-users/**)
+    // ============================================================
+    "appUsers.subtitle":
+      "Жители Мирзо-Улугбекского района, использующие мобильное приложение, и отчёт по ним",
+    "appUsers.userCountSuffix": "пользователей",
+
+    "appUsers.filters.allStatuses": "Все статусы",
+    "appUsers.statusBlocked": "Заблокирован",
+    "appUsers.filters.allDevices": "Все устройства",
+    "appUsers.deviceAndroid": "Android",
+    "appUsers.deviceIos": "iOS",
+    "appUsers.filters.allRegions": "Все махалли",
+    "appUsers.sort.recent": "Последняя активность",
+    "appUsers.sort.requests": "Количество обращений",
+    "appUsers.sort.points": "Баллы активности",
+
+    "appUsers.actionFailed": "Не удалось выполнить действие",
+    "appUsers.toast.activated": "{name} активирован(а)",
+    "appUsers.toast.blocked": "{name} заблокирован(а)",
+    "appUsers.toast.verified": "Личность {name} подтверждена",
+    "appUsers.toast.unverified": "Подтверждение {name} отменено",
+
+    "appUsers.kpi.total": "Всего пользователей",
+    "appUsers.kpi.active": "Активные пользователи",
+    "appUsers.verifiedLabel": "Подтверждено",
+    "appUsers.kpi.totalRequests": "Всего обращений",
+
+    "appUsers.chart.dauTitle": "Ежедневные активные пользователи",
+    "appUsers.chart.last14Days": "Последние 14 дней",
+    "appUsers.chart.dauAcronym": "DAU",
+    "appUsers.chart.dauUnavailable": "Статистика DAU недоступна",
+    "appUsers.chart.deviceStatusTitle": "Устройство и статус",
+    "appUsers.chart.distribution": "Распределение",
+    "appUsers.chart.growthTitle": "Рост регистраций",
+    "appUsers.chart.growthSubtitle": "Последние 8 месяцев · новые и всего",
+    "appUsers.chart.growthUnavailable": "Статистика роста недоступна",
+
+    "appUsers.leaderboard.title": "Самые активные пользователи",
+
+    "appUsers.search.placeholder": "Поиск по имени, телефону или махалле...",
+    "appUsers.search.ariaLabel": "Поиск пользователей",
+
+    "appUsers.table.user": "Пользователь",
+    "appUsers.regionLabel": "Махалля",
+    "appUsers.requestsLabel": "Обращения",
+    "appUsers.lastActiveLabel": "Последняя активность",
+    "appUsers.table.status": "Статус",
+
+    "appUsers.openProfileAria": "Открыть профиль {name}",
+    "appUsers.actionsForAria": "Действия для {name}",
+
+    "appUsers.actions.activate": "Активировать",
+    "appUsers.actions.block": "Заблокировать",
+    "appUsers.actions.unverify": "Отменить подтверждение",
+
+    "appUsers.empty.title": "Пользователь не найден",
+    "appUsers.empty.hasFilters": "Измените параметры поиска или фильтры",
+    "appUsers.empty.noUsers": "Пока нет пользователей приложения",
+
+    "appUsers.confirmBlock.title": "Заблокировать пользователя",
+    "appUsers.confirmBlock.message":
+      "потеряет доступ к приложению. Это действие можно будет отменить позже.",
+    "appUsers.confirmBlock.confirmLabel": "Да, заблокировать",
+
+    "appUsers.detail.title": "Профиль пользователя",
+    "appUsers.detail.points": "Баллы",
+    "appUsers.detail.rating": "Оценка",
+    "appUsers.detail.activity14d": "Активность за последние 14 дней",
+    "appUsers.detail.resolveRate": "Решаемость обращений",
+    "appUsers.detail.resolveRateFootnote": "{resolved} / {total} обращений успешно завершено",
+    "appUsers.detail.registeredAt": "Дата регистрации",
+    "appUsers.detail.identityVerification": "Подтверждение личности",
+    "appUsers.detail.notVerified": "Не подтверждено",
+    "appUsers.detail.notifOn": "Включены",
+    "appUsers.detail.notifOff": "Отключены",
+    "appUsers.detail.sendMessage": "Отправить сообщение",
+    "appUsers.detail.contact": "Связаться",
+
+    // ============================================================
+    // complaints (src/features/complaints/**)
+    // ============================================================
+    "complaints.subtitle":
+      "Официальные жалобы граждан — распределяются по направлениям среди заместителей хокима",
+    "complaints.escalatedBadge": "{count} на контроле",
+
+    "complaints.kpi.total": "Всего жалоб",
+
+    "complaints.search.ariaLabel": "Поиск среди жалоб",
+
+    "complaints.filters.allSeverities": "Все уровни",
+
+    "complaints.repeatBadge": "Повторная",
+    "complaints.escalatedLabel": "Передана выше",
+    "complaints.unassigned": "Не назначено",
+
+    "complaints.empty.none": "Пока нет жалоб",
+    "complaints.reload": "Загрузить заново",
+    "complaints.empty.noMatch": "Подходящих жалоб не найдено",
+
+    "complaints.confirmStatus.reviewing.title": "Перевести в рассмотрение?",
+    "complaints.confirmStatus.reviewing.message":
+      "Статус жалобы изменится на «Рассматривается». Гражданин увидит это в приложении.",
+    "complaints.confirmStatus.resolved.title": "Отметить жалобу как решённую?",
+    "complaints.confirmStatus.resolved.message":
+      "Статус изменится на «Решено», будет зафиксирована дата закрытия.",
+    "complaints.confirmStatus.rejected.title": "Отклонить жалобу?",
+    "complaints.confirmStatus.rejected.message":
+      "Статус изменится на «Отклонено». Рекомендуем указать причину в официальном ответе.",
+
+    "complaints.replyFailed": "Не удалось отправить ответ",
+    "complaints.statusUpdateFailed": "Не удалось обновить статус",
+    "complaints.deleteFailed": "Не удалось удалить жалобу",
+
+    "complaints.detail.title": "Детали жалобы",
+    "complaints.detail.severityDegree": "Уровень: {severity}",
+    "complaints.detail.underControl": "На контроле",
+    "complaints.detail.deleteAria": "Удалить жалобу",
+    "complaints.detail.complainant": "Заявитель",
+    "complaints.detail.responseDeadline": "Срок ответа",
+    "complaints.detail.closedDate": "Дата закрытия",
+    "complaints.detail.officialReplies": "Официальные ответы",
+    "complaints.detail.noReplies": "Официальный ответ пока не написан",
+    "complaints.detail.replyLabel": "Текст официального ответа",
+    "complaints.detail.replyPlaceholder": "Напишите официальный ответ гражданину...",
+    "complaints.detail.replyRequired": "Введите текст ответа",
+    "complaints.detail.replyTooShort": "Ответ должен содержать не менее {min} символов",
+    "complaints.detail.replyHint": "Гражданин увидит этот ответ в приложении",
+    "complaints.detail.sent": "Отправлено",
+    "complaints.detail.onBehalfOf": "От имени {name}",
+    "complaints.detail.onBehalfOfAdmin": "От имени хокимията",
+    "complaints.detail.sendReply": "Отправить ответ",
+
+    "complaints.confirmDelete.title": "Удалить жалобу?",
+    "complaints.confirmDelete.message":
+      "Жалоба «{title}» будет полностью удалена. Это действие нельзя отменить.",
+
+    // ============================================================
+    // requests (src/features/requests/**, включая deadline.ts)
+    // ============================================================
+    "requests.subtitle":
+      "Обращения граждан должны решаться в срок, установленный по их типу",
+    "requests.dateRange.all": "Весь период",
+    "requests.dateRange.today": "Сегодня",
+    "requests.dateRange.7d": "7 дней",
+    "requests.dateRange.30d": "30 дней",
+    "requests.dateRange.custom": "Диапазон дат",
+
+    "requests.kpi.open": "Открытые обращения",
+    "requests.kpi.critical": "Срочно (≤2 дней)",
+    "requests.kpi.soon": "Близкий срок (≤5 дней)",
+
+    "requests.addButton": "Добавить обращение",
+    "requests.sort.byDeadline": "По сроку",
+    "requests.sort.byDate": "По дате",
+
+    "requests.dateFilterHeading": "По дате",
+
+    "requests.activeFilterLabel": "Активный фильтр:",
+    "requests.openFallback": "Открыто",
+    "requests.resultsCountSuffix": "результатов",
+
+    "requests.card.slaDaysSuffix": "дней срок",
+    "requests.assignButton": "Назначить",
+
+    "requests.empty.none": "Пока нет обращений",
+    "requests.empty.noMatch": "Обращений, соответствующих фильтру, не найдено",
+    "requests.empty.noneHint": "Добавьте первое обращение, чтобы начать работу.",
+    "requests.empty.noMatchHint": "Измените поисковый запрос или фильтры.",
+
+    "requests.detail.title": "Детали обращения",
+    "requests.detail.deadlineTitle": "Срок исполнения",
+    "requests.detail.slaDaysCategory": "дней ({category})",
+    "requests.detail.dueDateLabel": "дата завершения",
+    "requests.detail.finishedLabel": "завершено",
+    "requests.detail.overdueUnit": "дн. просрочено",
+    "requests.detail.remainingUnit": "дн. осталось",
+    "requests.detail.overdueWarning":
+      "Срок обращения истёк — требуется немедленное решение!",
+    "requests.detail.criticalWarning":
+      "До истечения срока осталось мало времени — примите срочные меры!",
+    "requests.detail.attachedPhotos": "Прикреплённые фото",
+    "requests.detail.citizen": "Заявитель",
+    "requests.detail.responseTime": "Время ответа",
+    "requests.detail.hoursSuffix": "ч.",
+    "requests.detail.cost": "Затраты",
+    "requests.detail.citizenRating": "Оценка гражданина",
+    "requests.detail.autoAssignedNote":
+      "Назначено автоматически по направлению обращения.",
+    "requests.detail.responsibleWorker": "Ответственный сотрудник",
+    "requests.detail.unassign": "Убрать",
+    "requests.detail.assignWorker": "Назначить сотрудника",
+
+    "requests.confirmDelete.title": "Удалить обращение?",
+    "requests.confirmDelete.message":
+      "Обращение «{title}» будет полностью удалено. Это действие нельзя отменить.",
+
+    "requests.workerStatus.onTask": "На задании",
+    "requests.workerStatus.break": "Перерыв",
+
+    "requests.workerPicker.searchPlaceholder": "Поиск сотрудника...",
+    "requests.workerPicker.matchingSpecialist": "Подходящий специалист",
+    "requests.workerPicker.sameDistrict": "тот же район",
+    "requests.workerPicker.activeTasksSuffix": "активных",
+    "requests.workerPicker.assigned": "Назначен",
+    "requests.workerPicker.noResults": "Сотрудник не найден",
+
+    "requests.toast.assignError": "Ошибка при назначении сотрудника. Попробуйте снова.",
+    "requests.toast.unassignError": "Ошибка при снятии сотрудника. Попробуйте снова.",
+    "requests.toast.statusError": "Ошибка при изменении статуса. Попробуйте снова.",
+    "requests.toast.deleted": "Обращение удалено",
+    "requests.toast.deleteError": "Не удалось удалить обращение. Попробуйте снова.",
+    "requests.toast.created": "Обращение успешно добавлено",
+    "requests.toast.createError": "Не удалось сохранить обращение. Попробуйте снова.",
+    "requests.toast.closeAria": "Закрыть уведомление",
+
+    "requests.addModal.subtitle": "Внесите обращение гражданина в систему",
+    "requests.addModal.fixOneField": "Исправьте 1 поле.",
+    "requests.addModal.fixFieldsTemplate": "Исправьте полей: {count}.",
+    "requests.addModal.checkFieldsBelow": "Проверьте поля ниже.",
+    "requests.addModal.titleLabel": "Заголовок",
+    "requests.addModal.titlePlaceholder": "Краткое название проблемы",
+    "requests.addModal.categoryLabel": "Категория",
+    "requests.addModal.districtLabel": "Район",
+    "requests.addModal.addressPlaceholder": "Улица, номер дома",
+    "requests.addModal.citizenNameLabel": "Ф.И.О. гражданина",
+    "requests.addModal.namePlaceholder": "Имя и фамилия",
+    "requests.addModal.phoneLabel": "Телефон",
+    "requests.addModal.phonePlaceholder": "+998 90 123 45 67",
+    "requests.addModal.priorityLabel": "Уровень приоритета",
+    "requests.addModal.descriptionLabel": "Описание",
+    "requests.addModal.descriptionPlaceholder": "Подробности проблемы...",
+
+    "requests.validation.titleRequired": "Введите заголовок",
+    "requests.validation.titleMinLen": "Заголовок должен содержать не менее 4 символов",
+    "requests.validation.descriptionRequired": "Введите описание проблемы",
+    "requests.validation.descriptionMinLen":
+      "Описание должно содержать не менее 10 символов",
+    "requests.validation.addressRequired": "Введите адрес",
+    "requests.validation.addressMinLen": "Адрес должен содержать не менее 3 символов",
+    "requests.validation.nameRequired": "Введите Ф.И.О. гражданина",
+    "requests.validation.nameMinLen": "Ф.И.О. должно содержать не менее 2 символов",
+    "requests.validation.phoneRequired": "Введите номер телефона",
+    "requests.validation.phoneInvalid":
+      "Неверный номер телефона (например: +998 90 123 45 67)",
+
+    // ============================================================
+    // settings (src/features/settings/**) — реальные вкладки/поля
+    // страницы; ключи settings.* выше (appearance, org, workhours...)
+    // относятся к другому назначению и не изменены.
+    // ============================================================
+    "settings.tabs.profile": "Профиль",
+    "settings.tabs.system": "Система",
+    "settings.pageSubtitle": "Управляйте своим аккаунтом, уведомлениями и системными настройками",
+    "settings.savedShort": "Сохранено",
+    "settings.saveChanges": "Сохранить изменения",
+
+    "settings.confirmClear.title": "Очистить данные?",
+    "settings.confirmClear.message":
+      "Все кэшированные данные и настройки вернутся к исходному состоянию. Это действие нельзя отменить.",
+    "settings.confirmClear.confirmLabel": "Да, очистить",
+
+    "settings.profile.sectionTitle": "Личные данные",
+    "settings.profile.sectionSubtitle": "Фото профиля и основные данные",
+    "settings.profile.defaultUserName": "Пользователь",
+    "settings.profile.noRole": "Должность не указана",
+    "settings.profile.changePhoto": "Изменить фото",
+    "settings.profile.firstName": "Имя",
+    "settings.profile.lastName": "Фамилия",
+    "settings.profile.email": "Email",
+    "settings.profile.phone": "Телефон",
+    "settings.profile.position": "Должность",
+    "settings.profile.region": "Регион",
+    "settings.profile.notEntered": "Не указано",
+
+    "settings.notif.sectionSubtitle": "Выберите, о каких событиях получать уведомления",
+    "settings.notif.newRequests": "Новые обращения",
+    "settings.notif.newRequestsDesc": "Уведомлять при поступлении нового обращения от граждан",
+    "settings.notif.workerReports": "Отчёты работников",
+    "settings.notif.workerReportsDesc": "Уведомлять, когда работники завершают задачу",
+    "settings.notif.geofenceAlerts": "Оповещения геозоны",
+    "settings.notif.geofenceAlertsDesc": "Когда работник покидает установленную зону",
+    "settings.notif.weeklyAnalytics": "Еженедельная аналитика",
+    "settings.notif.weeklyAnalyticsDesc": "Общий отчёт каждый понедельник",
+    "settings.notif.emailChannel": "По email",
+    "settings.notif.emailChannelDesc": "Также отправлять уведомления на email",
+
+    "settings.security.changePasswordTitle": "Изменение пароля",
+    "settings.security.changePasswordSubtitle": "Обеспечьте безопасность своего аккаунта",
+    "settings.security.currentPassword": "Текущий пароль",
+    "settings.security.newPassword": "Новый пароль",
+    "settings.security.confirmPassword": "Подтвердите новый пароль",
+    "settings.security.updatePassword": "Обновить пароль",
+    "settings.security.additionalProtectionTitle": "Дополнительная защита",
+    "settings.security.twoFactorAuth": "Двухфакторная аутентификация (2FA)",
+    "settings.security.twoFactorDesc": "При входе будет запрашиваться код подтверждения по SMS",
+    "settings.security.newDeviceAlert": "Уведомление о входе с нового устройства",
+    "settings.security.newDeviceAlertDesc": "Отправлять email при входе с незнакомого устройства",
+    "settings.security.autoLogout": "Автоматическое завершение активных сессий",
+    "settings.security.autoLogoutDesc": "После 30 минут бездействия",
+
+    "settings.system.aboutTitle": "О системе",
+    "settings.system.platformVersion": "Версия платформы",
+    "settings.system.lastUpdate": "Последнее обновление",
+    "settings.system.serverStatus": "Статус сервера",
+    "settings.system.database": "База данных",
+    "settings.system.dangerZoneTitle": "Опасная зона",
+    "settings.system.dangerZoneSubtitle": "Эти действия нельзя отменить",
+    "settings.system.clearCacheTitle": "Очистить кэш",
+    "settings.system.clearCacheDesc": "Все локальные настройки вернутся к исходному состоянию",
   },
   en: {
     "app.org": "Hokimiyat",
