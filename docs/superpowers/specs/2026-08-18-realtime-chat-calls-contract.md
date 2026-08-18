@@ -13,8 +13,12 @@ backend only relays signaling and persists history.
 
 - **Socket.IO** (`@nestjs/websockets` + `@nestjs/platform-socket.io`). Default
   path `/socket.io`. Rides the existing nginx WS upgrade.
-- **Connect URL:** `wss://api.murojaatnoma.uz` (the 1:1 host — no `/api` strip),
-  default path. (Dev: `ws://<host>:3000`.)
+- **Connect URL (clients):** `wss://murojaatnoma.uz`, default path `/socket.io`
+  (an nginx `/socket.io` route on the main host proxies to the gateway — commit
+  1d58c74). **This is the host web + mobile clients MUST use.**
+  NOTE: `api.murojaatnoma.uz` has **no public DNS** — it resolves only inside the
+  VPN, so it's for server-side / VPN-internal testing only, never for real
+  clients. (Dev: `ws://<host>:3000`.)
 - **Handshake auth:** `io(url, { auth: { token: <JWT access token> } })`.
   - Backend validates the JWT with the same secret as `JwtStrategy`
     (`config.jwt.accessSecret`). On success attaches an identity to the socket:
