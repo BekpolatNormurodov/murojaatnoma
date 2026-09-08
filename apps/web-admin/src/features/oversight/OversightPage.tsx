@@ -48,6 +48,32 @@ const ATT_META: Record<OversightRow['attendance']['status'], { label: string; to
   absent: { label: 'Kelmagan', tone: 'danger' },
 };
 
+type FlagFilter = 'all' | 'absent' | 'late' | 'outside' | 'noface';
+
+/** Does a row match the active quick-filter (problem categories for oversight)? */
+function matchesFlag(r: OversightRow, f: FlagFilter): boolean {
+  switch (f) {
+    case 'absent':
+      return r.attendance.status === 'absent';
+    case 'late':
+      return r.attendance.status === 'late';
+    case 'outside':
+      return r.location.hasLocation && !r.location.insideAssignedZone;
+    case 'noface':
+      return !r.hasFace;
+    default:
+      return true;
+  }
+}
+
+const FLAGS: { key: FlagFilter; label: string }[] = [
+  { key: 'all', label: 'Barchasi' },
+  { key: 'absent', label: 'Kelmagan' },
+  { key: 'late', label: 'Kechikkan' },
+  { key: 'outside', label: 'Hududdan tashqari' },
+  { key: 'noface', label: 'Yuzsiz' },
+];
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
@@ -60,14 +86,17 @@ export function OversightPage() {
 
   const { data, isLoading, isError, error, refetch, isFetching } = useOversight(year, month);
   const [query, setQuery] = useState('');
+  const [flag, setFlag] = useState<FlagFilter>('all');
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.fullName.toLowerCase().includes(q) || r.position.toLowerCase().includes(q));
-  }, [rows, query]);
+    return rows.filter((r) => {
+      if (q && !r.fullName.toLowerCase().includes(q) && !r.position.toLowerCase().includes(q)) return false;
+      return matchesFlag(r, flag);
+    });
+  }, [rows, query, flag]);
 
   const s = data?.summary;
 
@@ -128,7 +157,37 @@ export function OversightPage() {
             )}
           </div>
 
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mt-5 flex flex-wrap gap-2">
+            {FLAGS.map((f) => {
+              const count = f.key === 'all' ? rows.length : rows.filter((r) => matchesFlag(r, f.key)).length;
+              const active = flag === f.key;
+              const danger = f.key !== 'all' && count > 0;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setFlag(f.key)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                    active
+                      ? 'border-primary-300 bg-primary-50 text-primary-700'
+                      : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
+                  )}
+                >
+                  {f.label}
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 text-[11px] tabular-nums',
+                      active ? 'bg-primary-100 text-primary-700' : danger ? 'bg-danger-soft text-red-600' : 'bg-surface-2 text-ink-muted',
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Profile2User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
