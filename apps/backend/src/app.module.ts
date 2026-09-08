@@ -29,11 +29,13 @@ import { HealthModule } from './modules/health/health.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { LocationsModule } from './modules/locations/locations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OversightModule } from './modules/oversight/oversight.module';
 import { PointsModule } from './modules/points/points.module';
 import { PremyaModule } from './modules/premya/premya.module';
 import { PushModule } from './modules/push/push.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RequestsModule } from './modules/requests/requests.module';
+import { SalariesModule } from './modules/salaries/salaries.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { WorkforceModule } from './modules/workforce/workforce.module';
 import { ZonesModule } from './modules/zones/zones.module';
@@ -80,6 +82,10 @@ import { ZonesModule } from './modules/zones/zones.module';
     LeaveModule,
     BonusesModule,
     PremyaModule,
+    // Monthly salary (oylik maosh) — web-admin sets, worker-app reads own
+    SalariesModule,
+    // Hokimiyat nazorati — read-only fusion of face + davomat + hudud + oylik
+    OversightModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -25,6 +25,8 @@ const FinancePage = lazy(() => import('@/features/finance/FinancePage').then((m)
 const DocumentsPage = lazy(() => import('@/features/documents/DocumentsPage').then((m) => ({ default: m.DocumentsPage })));
 const StaffPage = lazy(() => import('@/features/staff/StaffPage').then((m) => ({ default: m.StaffPage })));
 const BonusesPage = lazy(() => import('@/features/bonuses/BonusesPage').then((m) => ({ default: m.BonusesPage })));
+const SalariesPage = lazy(() => import('@/features/salaries/SalariesPage').then((m) => ({ default: m.SalariesPage })));
+const OversightPage = lazy(() => import('@/features/oversight/OversightPage').then((m) => ({ default: m.OversightPage })));
 const NewsPage = lazy(() => import('@/features/news/NewsPage').then((m) => ({ default: m.NewsPage })));
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AdminsPage = lazy(() => import('@/features/admins/AdminsPage').then((m) => ({ default: m.AdminsPage })));
@@ -59,6 +61,8 @@ export const router = createBrowserRouter([
       { path: 'attendance', element: <RoleRoute feature="attendance"><AttendancePage /></RoleRoute> },
       { path: 'staff', element: <RoleRoute feature="staff"><StaffPage /></RoleRoute> },
       { path: 'bonuses', element: <RoleRoute feature="bonuses"><BonusesPage /></RoleRoute> },
+      { path: 'salaries', element: <RoleRoute feature="salaries"><SalariesPage /></RoleRoute> },
+      { path: 'oversight', element: <RoleRoute feature="oversight"><OversightPage /></RoleRoute> },
       { path: 'map', element: <RoleRoute feature="map"><MapPage /></RoleRoute> },
       { path: 'app-users', element: <RoleRoute feature="appUsers"><AppUsersPage /></RoleRoute> },
       { path: 'cameras', element: <RoleRoute feature="cameras"><CamerasPage /></RoleRoute> },

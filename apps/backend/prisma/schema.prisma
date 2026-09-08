@@ -124,6 +124,11 @@ model Employee {
   officeRadiusM   Int?
   homeMahallaCode String?
 
+  // --- Territory oversight: mahalla codes this employee is assigned to patrol/
+  // serve. Empty = the whole district counts as "in zone". A live report is
+  // "in zone" when its resolved mahalla is one of these (see locations.service).
+  assignedMahallaCodes String[] @default([])
+
   // --- Denormalized "latest location" for fast admin live-map + stale checks ---
   lastLat            Float?
   lastLng            Float?
@@ -133,6 +138,9 @@ model Employee {
   lastMahallaName    String?
   lastInsideDistrict Boolean   @default(false)
   lastInsideOffice   Boolean   @default(false)
+  // Whether the latest report fell inside this employee's assigned territory
+  // (assignedMahallaCodes; falls back to lastInsideDistrict when unassigned).
+  lastInsideAssignedZone Boolean @default(true)
   // Set when a "no location for N minutes" alert has already been raised for the
   // current stale episode, so the scheduler doesn't spam. Cleared on next report.
   staleAlertedAt     DateTime?
@@ -149,6 +157,7 @@ model Employee {
   suggestionVotes      SuggestionVote[]
   leaveRequests        LeaveRequest[]
   bonusRequests        BonusRequest[]
+  salaries             EmployeeSalary[]
 
   @@map("employees")
 }
@@ -429,6 +438,7 @@ model EmployeeLocation {
   mahallaName       String?
   insideDistrict    Boolean        @default(false)
   insideOffice      Boolean        @default(false)
+  insideAssignedZone Boolean       @default(true)
   distanceToOfficeM Float?
   recordedAt        DateTime // device timestamp
   createdAt         DateTime       @default(now()) // server receive timestamp
@@ -437,6 +447,31 @@ model EmployeeLocation {
 
   @@index([employeeId, recordedAt])
   @@map("employee_locations")
+}
+
+// ---------------------------------------------------------------------------
+// Monthly salary (Oylik maosh) — one row per employee per calendar month.
+// `amount` is the base salary; `bonus`/`penalty` adjust it; `net` is derived
+// (amount + bonus - penalty) in the serializer. Set/edited from web-admin.
+// ---------------------------------------------------------------------------
+model EmployeeSalary {
+  id         String    @id @default(uuid())
+  employeeId String
+  year       Int
+  month      Int // 1..12
+  amount     Int // base salary for the month, so'm (UZS)
+  bonus      Int       @default(0)
+  penalty    Int       @default(0)
+  note       String?
+  paidAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year, month])
+  @@index([year, month])
+  @@map("employee_salaries")
 }
 
 // ===========================================================================

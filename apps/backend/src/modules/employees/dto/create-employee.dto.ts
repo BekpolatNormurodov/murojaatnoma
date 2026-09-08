@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { EmployeeRole } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsArray, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { E164_PHONE_REGEX } from '../../../common/constants/validation.constants';
 
 export class CreateEmployeeDto {
@@ -31,4 +31,15 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsEnum(EmployeeRole)
   role?: EmployeeRole;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['1090102', '1090103'],
+    description:
+      'Mahalla codes (from mahallas.geojson) this employee is assigned to for territory oversight. Empty = the whole district counts as in-zone.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  assignedMahallaCodes?: string[];
 }

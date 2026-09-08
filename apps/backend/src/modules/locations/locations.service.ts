@@ -19,6 +19,7 @@ interface EmployeeIngestInfo {
   officeLat: number | null;
   officeLng: number | null;
   officeRadiusM: number | null;
+  assignedMahallaCodes: string[];
   lastLocationAt: Date | null;
 }
 
@@ -35,6 +36,7 @@ interface DerivedLocation {
   mahallaName: string | null;
   insideDistrict: boolean;
   insideOffice: boolean;
+  insideAssignedZone: boolean;
   distanceToOfficeM: number;
   recordedAt: Date;
 }
@@ -45,6 +47,7 @@ export interface IngestResult {
   mahalla: { code: string; name: string } | null;
   insideDistrict: boolean;
   insideOffice: boolean;
+  insideAssignedZone: boolean;
   distanceToOfficeM: number;
 }
 
@@ -84,6 +87,7 @@ export class LocationsService {
         officeLat: true,
         officeLng: true,
         officeRadiusM: true,
+        assignedMahallaCodes: true,
         lastLocationAt: true,
       },
     });
@@ -93,8 +97,31 @@ export class LocationsService {
     return emp;
   }
 
+  /**
+   * Territory oversight: is this report inside the employee's assigned zone?
+   * Being at the office always counts (staff at their desk are never "out of
+   * territory"). When no mahallas are assigned, the whole district counts
+   * (falls back to `insideDistrict`); otherwise the resolved mahalla must be
+   * one of the assigned ones.
+   */
+  private computeInsideAssignedZone(
+    assignedMahallaCodes: string[],
+    mahallaCode: string | null,
+    insideDistrict: boolean,
+    insideOffice: boolean,
+  ): boolean {
+    if (insideOffice) {
+      return true;
+    }
+    if (assignedMahallaCodes.length === 0) {
+      return insideDistrict;
+    }
+    return mahallaCode != null && assignedMahallaCodes.includes(mahallaCode);
+  }
+
   private async derive(
     office: OfficeGeofence,
+    assignedMahallaCodes: string[],
     dto: CreateLocationDto,
     fallbackSource: LocationSource,
   ): Promise<DerivedLocation> {
@@ -102,6 +129,8 @@ export class LocationsService {
     const distanceToOfficeM = Math.round(
       distanceInMeters(dto.latitude, dto.longitude, office.lat, office.lng),
     );
+    const mahallaCode = locate.mahalla?.code ?? null;
+    const insideOffice = distanceToOfficeM <= office.radiusM;
     return {
       latitude: dto.latitude,
       longitude: dto.longitude,
@@ -110,10 +139,16 @@ export class LocationsService {
       heading: dto.heading ?? null,
       battery: dto.battery ?? null,
       source: dto.source ?? fallbackSource,
-      mahallaCode: locate.mahalla?.code ?? null,
+      mahallaCode,
       mahallaName: locate.mahalla?.nameUzLat ?? null,
       insideDistrict: locate.insideDistrict,
-      insideOffice: distanceToOfficeM <= office.radiusM,
+      insideOffice,
+      insideAssignedZone: this.computeInsideAssignedZone(
+        assignedMahallaCodes,
+        mahallaCode,
+        locate.insideDistrict,
+        insideOffice,
+      ),
       distanceToOfficeM,
       recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
     };
@@ -131,6 +166,7 @@ export class LocationsService {
         lastMahallaName: d.mahallaName,
         lastInsideDistrict: d.insideDistrict,
         lastInsideOffice: d.insideOffice,
+        lastInsideAssignedZone: d.insideAssignedZone,
         // A fresh report clears any active "no location" alert episode.
         staleAlertedAt: null,
       },
@@ -144,6 +180,7 @@ export class LocationsService {
       mahalla: d.mahallaCode ? { code: d.mahallaCode, name: d.mahallaName ?? '' } : null,
       insideDistrict: d.insideDistrict,
       insideOffice: d.insideOffice,
+      insideAssignedZone: d.insideAssignedZone,
       distanceToOfficeM: d.distanceToOfficeM,
     };
   }
@@ -152,7 +189,7 @@ export class LocationsService {
   async ingest(employeeId: string, dto: CreateLocationDto): Promise<IngestResult> {
     const emp = await this.getEmployeeForIngest(employeeId);
     const office = this.resolveOffice(emp);
-    const d = await this.derive(office, dto, LocationSource.FOREGROUND);
+    const d = await this.derive(office, emp.assignedMahallaCodes, dto, LocationSource.FOREGROUND);
 
     const created = await this.prisma.employeeLocation.create({
       data: { employeeId, ...d },
@@ -171,7 +208,7 @@ export class LocationsService {
     const emp = await this.getEmployeeForIngest(employeeId);
     const office = this.resolveOffice(emp);
     const derived = await Promise.all(
-      items.map((it) => this.derive(office, it, LocationSource.BACKGROUND)),
+      items.map((it) => this.derive(office, emp.assignedMahallaCodes, it, LocationSource.BACKGROUND)),
     );
 
     await this.prisma.employeeLocation.createMany({
@@ -206,6 +243,7 @@ export class LocationsService {
         lastMahallaName: true,
         lastInsideDistrict: true,
         lastInsideOffice: true,
+        lastInsideAssignedZone: true,
       },
     });
     if (!e) {
@@ -220,6 +258,7 @@ export class LocationsService {
       mahallaName: e.lastMahallaName,
       insideDistrict: e.lastInsideDistrict,
       insideOffice: e.lastInsideOffice,
+      insideAssignedZone: e.lastInsideAssignedZone,
     };
   }
 
@@ -243,6 +282,8 @@ export class LocationsService {
         lastMahallaName: true,
         lastInsideDistrict: true,
         lastInsideOffice: true,
+        lastInsideAssignedZone: true,
+        assignedMahallaCodes: true,
       },
       orderBy: { fullName: 'asc' },
     });
@@ -264,6 +305,8 @@ export class LocationsService {
         mahallaName: e.lastMahallaName,
         insideDistrict: e.lastInsideDistrict,
         insideOffice: e.lastInsideOffice,
+        insideAssignedZone: e.lastInsideAssignedZone,
+        assignedMahallaCodes: e.assignedMahallaCodes,
         lastLocationAt: e.lastLocationAt,
         ageMinutes,
         hasLocation: e.lastLat !== null && e.lastLng !== null,

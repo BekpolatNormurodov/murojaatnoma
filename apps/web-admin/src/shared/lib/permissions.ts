@@ -26,6 +26,8 @@ export type Feature =
   | "chat"
   | "analytics"
   | "bonuses"
+  | "salaries"
+  | "oversight"
   | "finance"
   | "settings"
   | "adminUsers";
@@ -48,6 +50,8 @@ const OPERATIONAL_FEATURES: readonly Feature[] = [
   "chat",
   "analytics",
   "bonuses",
+  "salaries",
+  "oversight",
 ];
 
 /** Faqat SUPER_ADMIN ko'ra oladigan bo'limlar. */

@@ -23,6 +23,7 @@ import {
   ShieldTick,
   ArrowLeft2,
   MedalStar,
+  Moneys,
   Crown1,
   type Icon as IconType,
 } from 'iconsax-react';
@@ -73,11 +74,15 @@ const SECTIONS: NavSection[] = [
       // qaytaradi (I18nProvider fallback), shu sababli literal so'z
       // to'g'ridan-to'g'ri ko'rsatiladi (uz/ru/en'da bir xil).
       { to: '/bonuses', labelKey: 'Premyalar', icon: MedalStar, feature: 'bonuses' },
+      { to: '/salaries', labelKey: 'Oyliklar', icon: Moneys, feature: 'salaries' },
     ],
   },
   {
     titleKey: 'nav.section.monitoring',
-    items: [{ to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' }],
+    items: [
+      { to: '/oversight', labelKey: 'Nazorat', icon: ShieldTick, feature: 'oversight' },
+      { to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' },
+    ],
   },
   {
     titleKey: 'nav.section.finance',
