@@ -86,7 +86,7 @@ export function WorkersPage() {
   const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null);
 
   const { data, isLoading, isError, error, refetch } = useWorkers();
-  const workers = useMemo(() => data ?? [], [data]);
+  const workers = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
   const createWorker = useCreateWorker();
   const updateWorker = useUpdateWorker();

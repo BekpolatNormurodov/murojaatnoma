@@ -270,10 +270,16 @@ export function ChatPage() {
   // header'dagi "Arxiv" tugmasi bilan almashtiriladi. Ikkalasi alohida keshda.
   const [archivedView, setArchivedView] = useState(false);
   const conversationsQuery = useConversations(archivedView);
-  const conversations = useMemo(() => conversationsQuery.data ?? [], [conversationsQuery.data]);
+  const conversations = useMemo(
+    () => (Array.isArray(conversationsQuery.data) ? conversationsQuery.data : []),
+    [conversationsQuery.data],
+  );
 
   const messagesQuery = useMessages(activeId);
-  const activeMessages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
+  const activeMessages = useMemo(
+    () => (Array.isArray(messagesQuery.data) ? messagesQuery.data : []),
+    [messagesQuery.data],
+  );
 
   const sendMessage = useSendMessage();
   const { mutate: markRead } = useMarkRead();
@@ -311,7 +317,10 @@ export function ChatPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const openDirect = useOpenDirectConversation();
   const employeesQuery = useLiveEmployees();
-  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+  const employees = useMemo(
+    () => (Array.isArray(employeesQuery.data) ? employeesQuery.data : []),
+    [employeesQuery.data],
+  );
   // Guruh chatida jo'natuvchini `senderId` (haqiqiy xodim id'si) bo'yicha tez
   // topish uchun — ism/rasm shu jonli ro'yxatdan olinadi.
   const employeesById = useMemo(

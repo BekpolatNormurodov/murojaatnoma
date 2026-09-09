@@ -157,7 +157,10 @@ export function CamerasPage() {
   const { canWrite } = usePermissions();
 
   const { data: baseCameras, isLoading, isError, error, refetch } = useCameras();
-  const { cameras, events, addCamera, removeCamera } = useLiveCameras(baseCameras ?? [], live);
+  const { cameras, events, addCamera, removeCamera } = useLiveCameras(
+    Array.isArray(baseCameras) ? baseCameras : [],
+    live,
+  );
 
   useEffect(() => {
     const fmt = () => {

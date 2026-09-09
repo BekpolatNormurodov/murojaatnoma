@@ -76,11 +76,13 @@ export function AnalyticsPage() {
   const hourlyQuery = useHourlyActivity();
   const requestStatsQuery = useRequestStats();
 
-  const kpiTrend = kpiTrendQuery.data ?? [];
-  const categoryDistribution = categoryQuery.data ?? [];
+  const kpiTrend = Array.isArray(kpiTrendQuery.data) ? kpiTrendQuery.data : [];
+  const categoryDistribution = Array.isArray(categoryQuery.data) ? categoryQuery.data : [];
   // Faqat Mirzo Ulug'bek tumani (ilova bitta tuman uchun) — boshqa tumanlarsiz.
-  const regionStats = (regionQuery.data ?? []).filter((r) => r.region === HOME_DISTRICT.name);
-  const hourlyActivity = hourlyQuery.data ?? [];
+  const regionStats = (Array.isArray(regionQuery.data) ? regionQuery.data : []).filter(
+    (r) => r.region === HOME_DISTRICT.name,
+  );
+  const hourlyActivity = Array.isArray(hourlyQuery.data) ? hourlyQuery.data : [];
   const requestStats = requestStatsQuery.data;
 
   const radarData = useMemo(

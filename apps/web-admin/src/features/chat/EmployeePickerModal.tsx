@@ -24,7 +24,10 @@ export function EmployeePickerModal({
 }) {
   const [query, setQuery] = useState('');
   const employeesQuery = useLiveEmployees();
-  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+  const employees = useMemo(
+    () => (Array.isArray(employeesQuery.data) ? employeesQuery.data : []),
+    [employeesQuery.data],
+  );
 
   const filtered = useMemo(() => {
     const sorted = [...employees].sort((a, b) => a.fullName.localeCompare(b.fullName, 'uz'));

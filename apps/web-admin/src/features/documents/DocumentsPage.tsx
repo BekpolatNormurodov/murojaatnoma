@@ -85,7 +85,7 @@ export function DocumentsPage() {
   const { canWrite } = usePermissions();
 
   useEffect(() => {
-    if (data) setDocs(data.map((d) => ({ ...d })));
+    if (Array.isArray(data)) setDocs(data.map((d) => ({ ...d })));
   }, [data]);
 
   // POST /documents — yaratilgan yozuv backenddan qaytadi va ro'yxat

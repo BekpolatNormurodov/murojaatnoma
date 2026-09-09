@@ -116,13 +116,17 @@ export function DashboardPage() {
   }, [hydrate]);
 
   const summary = summaryQuery.data;
-  const kpiTrend = kpiTrendQuery.data ?? [];
-  const categoryDistribution = categoryQuery.data ?? [];
+  const kpiTrend = Array.isArray(kpiTrendQuery.data) ? kpiTrendQuery.data : [];
+  const categoryDistribution = Array.isArray(categoryQuery.data) ? categoryQuery.data : [];
   // Ilova faqat Mirzo Ulug'bek tumani uchun — analitikada boshqa tumanlar ko'rinmasin.
-  const regionStats = (regionQuery.data ?? []).filter((r) => r.region === HOME_DISTRICT.name);
-  const districtLoads = (districtLoadsQuery.data ?? []).filter((dl) => dl.district.name === HOME_DISTRICT.name);
-  const news = newsQuery.data ?? [];
-  const workers = workersQuery.data ?? [];
+  const regionStats = (Array.isArray(regionQuery.data) ? regionQuery.data : []).filter(
+    (r) => r.region === HOME_DISTRICT.name,
+  );
+  const districtLoads = (Array.isArray(districtLoadsQuery.data) ? districtLoadsQuery.data : []).filter(
+    (dl) => dl.district.name === HOME_DISTRICT.name,
+  );
+  const news = Array.isArray(newsQuery.data) ? newsQuery.data : [];
+  const workers = Array.isArray(workersQuery.data) ? workersQuery.data : [];
 
   const recent = [...requests]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

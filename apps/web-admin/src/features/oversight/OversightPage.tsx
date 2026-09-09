@@ -116,6 +116,7 @@ export function OversightPage() {
       },
       { header: 'Mahalla', value: (r) => r.location.mahallaName ?? '—' },
       { header: "Oylik (sof, so'm)", value: (r) => r.salaryNet ?? 0, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + (r.salaryNet ?? 0), 0)) },
+      { header: "Premya (so'm)", value: (r) => r.premyaThisMonth, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + r.premyaThisMonth, 0)) },
     ];
     exportToExcel(`nazorat_${year}-${String(month).padStart(2, '0')}`, cols, filtered, {
       title: `Xodimlar nazorati — ${MONTH_NAMES[month - 1]} ${year}`,
@@ -339,8 +340,13 @@ function OversightRowView({ row, onAssign }: { row: OversightRow; onAssign: () =
           </span>
         </button>
       </td>
-      <td className="px-5 py-3 text-right font-semibold tabular-nums text-primary-600">
-        {row.salaryNet != null ? formatSom(row.salaryNet) : '—'}
+      <td className="px-5 py-3 text-right tabular-nums">
+        <div className="font-semibold text-primary-600">
+          {row.salaryNet != null ? formatSom(row.salaryNet) : '—'}
+        </div>
+        {row.premyaThisMonth > 0 && (
+          <div className="text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
+        )}
       </td>
     </tr>
   );

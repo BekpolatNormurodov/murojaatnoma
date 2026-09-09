@@ -463,7 +463,7 @@ export function MapPage() {
                 </span>
               </span>
               <span className="shrink-0 text-right text-[11px] text-ink-muted">
-                {relTime(loc.lastLocationAt, t)}
+                {loc.hasLocation ? relTime(loc.lastLocationAt, t) : t.never}
               </span>
             </button>
           ))}

@@ -73,7 +73,7 @@ export function StaffPage() {
   // tahriri va o'chirish backendga PATCH/DELETE yuboradi va keshni optimistik
   // yangilaydi — mahalliy nusxa (setStaff) yo'q, shu sababli "soxta" (faqat
   // UI'da qoladigan, serverga bormaydigan) o'zgarishlar bo'lmaydi.
-  const staff = useMemo(() => data ?? [], [data]);
+  const staff = useMemo(() => (Array.isArray(data) ? data : []), [data]);
 
   const [roleFilter, setRoleFilter] = useState<StaffRole | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<StaffStatus | 'all'>('all');

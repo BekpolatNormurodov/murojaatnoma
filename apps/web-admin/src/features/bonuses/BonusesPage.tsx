@@ -40,7 +40,7 @@ function Skeleton({ className }: { className?: string }) {
 export function BonusesPage() {
   const [monthFilter, setMonthFilter] = useState('');
   const { data, isLoading, isError, error, refetch } = useBonuses(monthFilter || undefined);
-  const bonuses = useMemo(() => data ?? [], [data]);
+  const bonuses = useMemo(() => (Array.isArray(data) ? data : []), [data]);
   const reducedMotion = usePrefersReducedMotion();
   const { canWrite } = usePermissions();
 

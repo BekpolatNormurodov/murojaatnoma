@@ -27,6 +27,8 @@ export interface OversightRow {
   };
   assignedMahallaCodes: string[];
   salaryNet: number | null;
+  /** Bu oy jami premya (bonus), so'm. */
+  premyaThisMonth: number;
 }
 
 export interface OversightSummary {

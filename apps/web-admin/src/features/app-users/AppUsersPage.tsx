@@ -156,7 +156,7 @@ export function AppUsersPage() {
   const growthQuery = useAppUserGrowth();
   const updateMutation = useUpdateAppUser();
 
-  const users = usersQuery.data?.data ?? [];
+  const users = Array.isArray(usersQuery.data?.data) ? usersQuery.data!.data : [];
   const stats = statsQuery.data ?? EMPTY_STATS;
   const selected = useMemo(
     () => users.find((u) => u.id === selectedId) ?? null,
@@ -223,7 +223,7 @@ export function AppUsersPage() {
 
   const dauData = useMemo(
     () =>
-      (dauQuery.data ?? []).map((d) => ({
+      (Array.isArray(dauQuery.data) ? dauQuery.data : []).map((d) => ({
         kun: formatDate(d.date).split(' ').slice(0, 2).join(' '),
         faol: d.faol,
       })),

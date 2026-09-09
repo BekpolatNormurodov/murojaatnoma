@@ -115,7 +115,7 @@ export function RequestsPage() {
   }, []);
 
   const { data: workersData } = useWorkers();
-  const workers = workersData ?? [];
+  const workers = Array.isArray(workersData) ? workersData : [];
   const [tab, setTab] = useState<RequestStatus | 'all'>('all');
   const [query, setQuery] = useState('');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');

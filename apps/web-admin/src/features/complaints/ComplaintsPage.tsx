@@ -308,7 +308,7 @@ export function ComplaintsPage() {
       {/* List */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {filtered.map((c, i) => {
-          const deputy = deputies?.find((d) => d.id === c.deputyId) ?? undefined;
+          const deputy = (Array.isArray(deputies) ? deputies : []).find((d) => d.id === c.deputyId) ?? undefined;
           const sev = severityMeta(c.severity, t);
           const st = statusMeta(c.status, t);
           return (
@@ -536,7 +536,7 @@ function ComplaintDetail({
   // VIEWER faqat o'qiy oladi — o'chirish/holat/javob/yo'nalish amallari yashiriladi.
   const { canWrite } = usePermissions();
   const { data: deputies } = useDeputies();
-  const deputy = c ? deputies?.find((d) => d.id === c.deputyId) ?? undefined : undefined;
+  const deputy = c ? (Array.isArray(deputies) ? deputies : []).find((d) => d.id === c.deputyId) ?? undefined : undefined;
   const author = deputy?.name ?? t('app.org');
   const addResponse = useComplaints((s) => s.addResponse);
   const setStatus = useComplaints((s) => s.setStatus);

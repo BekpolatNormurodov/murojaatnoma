@@ -265,7 +265,7 @@ export function MeetingsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (data) setMeetings(data);
+    if (Array.isArray(data)) setMeetings(data);
   }, [data, setMeetings]);
 
   async function confirmDelete() {

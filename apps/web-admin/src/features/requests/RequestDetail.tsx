@@ -218,13 +218,14 @@ export function RequestDetail({
   const { t } = useI18n();
   const r = request;
   const { data: workersData } = useWorkers();
-  const workers = workersData ?? [];
+  const workers = Array.isArray(workersData) ? workersData : [];
   const worker = workers.find((w) => w.id === r?.assignedWorkerId);
   const cat = r ? CATEGORY_META[r.category] : null;
   // Mas'ul o'rinbosar yo'nalish (category) bo'yicha jonli /deputies ro'yxatidan olinadi
   const { data: deputies } = useDeputies();
+  const deputyList = Array.isArray(deputies) ? deputies : [];
   const deputy = r
-    ? deputies?.find((d) => d.categories.includes(r.category)) ?? null
+    ? deputyList.find((d) => d.categories.includes(r.category)) ?? null
     : null;
   // Mobil ilovadan / fuqaro tomonidan yuklangan media (rasm/video/ovoz/hujjat).
   const { data: attachments } = useRequestAttachments(r?.id ?? null);

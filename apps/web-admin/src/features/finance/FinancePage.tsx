@@ -94,9 +94,11 @@ export function FinancePage() {
   const paymentsQuery = useUtilityPayments();
   const monthlyQuery = useUtilityMonthly();
 
-  const financeMonthly = financeQuery.data ?? [];
-  const utilityPayments = paymentsQuery.data ?? [];
-  const utilityMonthly = monthlyQuery.data ?? [];
+  // Array.isArray guard: a non-array response (error page during a backend
+  // restart) must not crash the page with ".map is not a function".
+  const financeMonthly = Array.isArray(financeQuery.data) ? financeQuery.data : [];
+  const utilityPayments = Array.isArray(paymentsQuery.data) ? paymentsQuery.data : [];
+  const utilityMonthly = Array.isArray(monthlyQuery.data) ? monthlyQuery.data : [];
 
   const kpiLoading = financeQuery.isLoading || paymentsQuery.isLoading;
   const kpiError = financeQuery.isError || paymentsQuery.isError;

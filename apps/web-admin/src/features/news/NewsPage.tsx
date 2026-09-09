@@ -38,7 +38,7 @@ export function NewsPage() {
   const { canWrite } = usePermissions();
 
   useEffect(() => {
-    if (data) setItems(data);
+    if (Array.isArray(data)) setItems(data);
   }, [data]);
 
   // POST /news — yaratilgan yozuv backenddan qaytadi va ro'yxat boshiga
