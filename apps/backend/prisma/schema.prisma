@@ -935,8 +935,12 @@ model Meeting {
   durationMin   Int
   location      String
   chairDeputyId String
+  /** Raislik qiluvchining ismi (chairDeputyId endi Deputy jadvaliga bog'liq emas). */
+  chairName     String?
   agenda        String[]
   participants  Int
+  /** Ishtirokchilarning ismlari (real xodimlar) — detailda ro'yxat sifatida ko'rsatiladi. */
+  participantNames String[] @default([])
   districtId    String
 
   @@index([status])

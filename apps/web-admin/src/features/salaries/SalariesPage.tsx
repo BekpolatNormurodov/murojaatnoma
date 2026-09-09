@@ -17,6 +17,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
+import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
@@ -158,13 +159,7 @@ export function SalariesPage() {
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-primary-300"
               />
             </div>
-            <input
-              type="month"
-              value={monthValue}
-              onChange={(e) => setMonthValue(e.target.value || currentMonthValue())}
-              aria-label="Oy tanlash"
-              className="h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink outline-none focus:border-primary-300"
-            />
+            <MonthPicker value={monthValue} onChange={setMonthValue} className="sm:w-52" />
             <Button
               variant="secondary"
               onClick={handleExport}
@@ -213,6 +208,18 @@ export function SalariesPage() {
                         />
                       ))}
                 </tbody>
+                {!isLoading && filtered.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-line bg-surface-2 text-[13px] font-bold">
+                      <td className="px-5 py-3 text-ink">Jami ({filtered.length})</td>
+                      <td className="px-3 py-3 tabular-nums text-ink">{formatSom(filtered.reduce((a, r) => a + (r.salary?.amount ?? 0), 0))}</td>
+                      <td className="px-3 py-3 tabular-nums text-emerald-600">{formatSom(filtered.reduce((a, r) => a + (r.salary?.bonus ?? 0), 0))}</td>
+                      <td className="px-3 py-3 tabular-nums text-red-500">{formatSom(filtered.reduce((a, r) => a + (r.salary?.penalty ?? 0), 0))}</td>
+                      <td className="px-3 py-3 tabular-nums text-primary-600">{formatSom(filtered.reduce((a, r) => a + (r.salary?.net ?? 0), 0))}</td>
+                      <td colSpan={2} />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
               {!isLoading && filtered.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">

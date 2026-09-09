@@ -17,6 +17,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
+import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
@@ -199,13 +200,7 @@ export function OversightPage() {
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-primary-300"
               />
             </div>
-            <input
-              type="month"
-              value={monthValue}
-              onChange={(e) => setMonthValue(e.target.value || currentMonthValue())}
-              aria-label="Oy tanlash"
-              className="h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink outline-none focus:border-primary-300"
-            />
+            <MonthPicker value={monthValue} onChange={setMonthValue} className="sm:w-52" />
             <Button variant="secondary" onClick={handleExport} disabled={isLoading || filtered.length === 0} title="Excel'ga chiqarish">
               <DocumentDownload size={17} /> Excel
             </Button>

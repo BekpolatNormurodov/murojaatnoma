@@ -52,6 +52,17 @@ export class CreateMeetingDto {
   @IsString()
   chairDeputyId!: string;
 
+  @ApiPropertyOptional({ description: 'Raislik qiluvchining ismi' })
+  @IsOptional()
+  @IsString()
+  chairName?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Ishtirokchilar ismlari' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  participantNames?: string[];
+
   @ApiProperty({ type: [String] })
   @IsArray()
   @ArrayMinSize(1)

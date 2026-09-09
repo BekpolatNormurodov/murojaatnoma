@@ -120,10 +120,35 @@ export function MeetingDetail({
                   <div className="text-[12px] text-ink-muted">{chair.shortDirection}</div>
                 </div>
               </div>
+            ) : m.chairName ? (
+              <div className="flex items-center gap-3">
+                <Avatar name={m.chairName} size={42} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-ink">{m.chairName}</div>
+                  <div className="text-[12px] text-ink-muted">Raislik qiluvchi</div>
+                </div>
+              </div>
             ) : (
               <p className="text-[13px] text-ink-muted">Raislik belgilanmagan</p>
             )}
           </div>
+
+          {/* Ishtirokchilar ro'yxati */}
+          {m.participantNames && m.participantNames.length > 0 && (
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <People size={16} variant="Bulk" className="text-ink-muted" /> Ishtirokchilar ({m.participantNames.length})
+              </p>
+              <ul className="space-y-2">
+                {m.participantNames.map((name, i) => (
+                  <li key={i} className="flex items-center gap-2.5 text-[13px] text-ink-soft">
+                    <Avatar name={name} size={30} />
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Kun tartibi */}
           <div className="rounded-2xl border border-line bg-surface p-4">

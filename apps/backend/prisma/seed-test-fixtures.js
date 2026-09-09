@@ -15,6 +15,11 @@ const prisma = new PrismaClient();
 
 const DISTRICT = 'mirzo';
 const CHAIR = 'mirzo-gulyamov'; // a real seeded Staff id
+const CHAIR_NAME = 'ГУЛЯМОВ Абдулазиз Исмаилович';
+// Real seeded staff (subset of the 29) used as meeting participants.
+const P1 = ['ПУЛАТОВ Нигматжон Набиджанович', 'ХУСАИНОВ Сарварбек Эрназарович', 'НАЗАРОВ Бехзод Адхамжонович'];
+const P2 = ['ШАКИРОВА Шохида Юсуповна', 'МАХМУДОВ Достонбек Даврон ўғли'];
+const P3 = ['ДАЛАЕВ Шухрат Ширматович', 'РИХСИЕВА Дилорам Хамидуллаевна', 'САЛИЖАНОВ Шерзод Садикжанович'];
 
 function at(daysFromNow, hour, min = 0) {
   const d = new Date();
@@ -36,18 +41,18 @@ function at(daysFromNow, hour, min = 0) {
     data: [
       {
         id: 'YIG-M1', title: "Haftalik apparat yig'ilishi", type: 'apparat', status: 'scheduled',
-        startAt: at(1, 9), durationMin: 90, location: 'Katta majlislar zali', chairDeputyId: CHAIR,
-        agenda: ['Joriy masalalar', 'Murojaatlar tahlili', 'Topshiriqlar ijrosi'], participants: 29, districtId: DISTRICT,
+        startAt: at(1, 9), durationMin: 90, location: 'Katta majlislar zali', chairDeputyId: CHAIR, chairName: CHAIR_NAME,
+        agenda: ['Joriy masalalar', 'Murojaatlar tahlili', 'Topshiriqlar ijrosi'], participants: P1.length, participantNames: P1, districtId: DISTRICT,
       },
       {
         id: 'YIG-M2', title: 'Fuqarolar qabuli', type: 'qabul', status: 'scheduled',
-        startAt: at(2, 14), durationMin: 120, location: 'Qabulxona', chairDeputyId: CHAIR,
-        agenda: ['Shaxsiy qabul', 'Ariza va shikoyatlar'], participants: 12, districtId: DISTRICT,
+        startAt: at(2, 14), durationMin: 120, location: 'Qabulxona', chairDeputyId: CHAIR, chairName: CHAIR_NAME,
+        agenda: ['Shaxsiy qabul', 'Ariza va shikoyatlar'], participants: P2.length, participantNames: P2, districtId: DISTRICT,
       },
       {
         id: 'YIG-M3', title: 'Video selektor — viloyat hokimligi', type: 'video', status: 'done',
-        startAt: at(-1, 10), durationMin: 60, location: 'https://murojaatnoma.uz/meet/selektor', chairDeputyId: CHAIR,
-        agenda: ['Hisobot', 'Kelgusi vazifalar'], participants: 15, districtId: DISTRICT,
+        startAt: at(-1, 10), durationMin: 60, location: 'https://murojaatnoma.uz/meet/selektor', chairDeputyId: CHAIR, chairName: CHAIR_NAME,
+        agenda: ['Hisobot', 'Kelgusi vazifalar'], participants: P3.length, participantNames: P3, districtId: DISTRICT,
       },
     ],
   });

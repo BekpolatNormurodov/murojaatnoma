@@ -456,7 +456,9 @@ export interface Meeting {
   durationMin: number;
   location: string;
   chairDeputyId: string; // raislik qiluvchi hokim o'rinbosari
+  chairName?: string | null; // raislik qiluvchining ismi (Deputy jadvalisiz)
   agenda: string[]; // kun tartibi
   participants: number; // ishtirokchilar soni
+  participantNames?: string[]; // ishtirokchilar ismlari
   districtId: string;
 }
