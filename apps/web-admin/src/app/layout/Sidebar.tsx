@@ -18,7 +18,6 @@ import {
   Danger,
   Calendar,
   Messages2,
-  Hierarchy,
   Mobile,
   ShieldTick,
   ArrowLeft2,
@@ -66,7 +65,6 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.staff',
     items: [
-      { to: '/deputies', labelKey: 'nav.deputies', icon: Hierarchy, feature: 'deputies' },
       { to: '/workers', labelKey: 'nav.workers', icon: Profile2User, feature: 'workers' },
       { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick, feature: 'attendance' },
       { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser, feature: 'staff' },

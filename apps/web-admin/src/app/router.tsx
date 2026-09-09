@@ -13,7 +13,6 @@ const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').th
 const RequestsPage = lazy(() => import('@/features/requests/RequestsPage').then((m) => ({ default: m.RequestsPage })));
 const ComplaintsPage = lazy(() => import('@/features/complaints/ComplaintsPage').then((m) => ({ default: m.ComplaintsPage })));
 const MeetingsPage = lazy(() => import('@/features/meetings/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
-const DeputiesPage = lazy(() => import('@/features/deputies/DeputiesPage').then((m) => ({ default: m.DeputiesPage })));
 const ChatPage = lazy(() => import('@/features/chat/ChatPage').then((m) => ({ default: m.ChatPage })));
 const WorkersPage = lazy(() => import('@/features/workers/WorkersPage').then((m) => ({ default: m.WorkersPage })));
 const MapPage = lazy(() => import('@/features/map/MapPage').then((m) => ({ default: m.MapPage })));
@@ -56,7 +55,6 @@ export const router = createBrowserRouter([
       { path: 'complaints', element: <RoleRoute feature="complaints"><ComplaintsPage /></RoleRoute> },
       { path: 'meetings', element: <RoleRoute feature="meetings"><MeetingsPage /></RoleRoute> },
       { path: 'chat', element: <RoleRoute feature="chat"><ChatPage /></RoleRoute> },
-      { path: 'deputies', element: <RoleRoute feature="deputies"><DeputiesPage /></RoleRoute> },
       { path: 'workers', element: <RoleRoute feature="workers"><WorkersPage /></RoleRoute> },
       { path: 'attendance', element: <RoleRoute feature="attendance"><AttendancePage /></RoleRoute> },
       { path: 'staff', element: <RoleRoute feature="staff"><StaffPage /></RoleRoute> },
