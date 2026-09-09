@@ -64,8 +64,10 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.staff',
     items: [
+      // "Xodimlar boshqaruvi" = the oversight page: face + keldi-ketdi + hudud +
+      // oylik + CRUD in one place (Nazorat funksiyalari shu yerga ko'chdi).
+      { to: '/oversight', labelKey: 'Xodimlar boshqaruvi', icon: SecurityUser, feature: 'oversight' },
       { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick, feature: 'attendance' },
-      { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser, feature: 'staff' },
       // dict.ts'da tarjima kaliti yo'q — t() topilmagan kalitni o'zini
       // qaytaradi (I18nProvider fallback), shu sababli literal so'z
       // to'g'ridan-to'g'ri ko'rsatiladi (uz/ru/en'da bir xil).
@@ -76,7 +78,6 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.monitoring',
     items: [
-      { to: '/oversight', labelKey: 'Nazorat', icon: ShieldTick, feature: 'oversight' },
       { to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' },
     ],
   },
