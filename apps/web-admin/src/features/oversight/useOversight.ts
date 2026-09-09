@@ -14,7 +14,10 @@ export interface OversightRow {
     checkInAt: string | null;
     checkOutAt: string | null;
     isLate: boolean;
+    /** Bugun necha soat. */
     hoursWorked: number | null;
+    /** Bu oy jami necha soat. */
+    monthHours: number;
   };
   location: {
     hasLocation: boolean;

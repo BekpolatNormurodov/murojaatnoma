@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import { AttendanceType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AttendanceService, TodayAttendanceStatus } from '../attendance/attendance.service';
+import { formatLocalDate } from '../attendance/utils/date.util';
 import { LocationsService } from '../locations/locations.service';
 import { SalariesService } from '../salaries/salaries.service';
 
@@ -17,7 +19,10 @@ export interface OversightRow {
     checkInAt: Date | null;
     checkOutAt: Date | null;
     isLate: boolean;
+    /** Hours worked TODAY (bugun necha soat). */
     hoursWorked: number | null;
+    /** Total hours worked THIS MONTH (bu oy necha soat). */
+    monthHours: number;
   };
   location: {
     hasLocation: boolean;
@@ -55,15 +60,58 @@ export class OversightService {
     private readonly salaries: SalariesService,
   ) {}
 
+  /**
+   * Total hours worked this month per employee: pair each local day's first
+   * CHECK_IN with its last CHECK_OUT and sum. Approximate (same local-day bucket
+   * as the daily report) — enough for a "bu oy necha soat" figure.
+   */
+  private async monthHoursByEmployee(year: number, month: number): Promise<Map<string, number>> {
+    const from = new Date(year, month - 1, 1);
+    const to = new Date(year, month, 1);
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { recordedAt: { gte: from, lt: to } },
+      select: { employeeId: true, type: true, recordedAt: true },
+      orderBy: { recordedAt: 'asc' },
+    });
+    const perDay = new Map<string, { in: Date | null; out: Date | null }>();
+    for (const r of records) {
+      const key = `${r.employeeId}|${formatLocalDate(r.recordedAt)}`;
+      const e = perDay.get(key) ?? { in: null, out: null };
+      if (r.type === AttendanceType.CHECK_IN) {
+        if (!e.in) {
+          e.in = r.recordedAt;
+        }
+      } else if (r.type === AttendanceType.CHECK_OUT) {
+        e.out = r.recordedAt;
+      }
+      perDay.set(key, e);
+    }
+    const hours = new Map<string, number>();
+    for (const [key, e] of perDay) {
+      if (e.in && e.out && e.out > e.in) {
+        const h = (e.out.getTime() - e.in.getTime()) / 3_600_000;
+        const emp = key.slice(0, key.indexOf('|'));
+        hours.set(emp, (hours.get(emp) ?? 0) + h);
+      }
+    }
+    for (const [k, v] of hours) {
+      hours.set(k, Math.round(v * 10) / 10);
+    }
+    return hours;
+  }
+
   async overview(
     year?: number,
     month?: number,
   ): Promise<{ year: number; month: number; rows: OversightRow[]; summary: OversightSummary }> {
-    const [today, locs, roster, facedEmployees] = await Promise.all([
+    const now = new Date();
+    const period = { year: year ?? now.getFullYear(), month: month ?? now.getMonth() + 1 };
+    const [today, locs, roster, facedEmployees, monthHours] = await Promise.all([
       this.attendance.today({}),
       this.locations.getLatestForAll(),
-      this.salaries.monthlyRoster(year, month),
+      this.salaries.monthlyRoster(period.year, period.month),
       this.prisma.faceTemplate.findMany({ distinct: ['employeeId'], select: { employeeId: true } }),
+      this.monthHoursByEmployee(period.year, period.month),
     ]);
 
     const faceSet = new Set(facedEmployees.map((f) => f.employeeId));
@@ -87,6 +135,7 @@ export class OversightService {
           checkOutAt: att?.checkOut?.time ?? null,
           isLate: att?.checkIn?.isLate ?? false,
           hoursWorked: att?.hoursWorked ?? null,
+          monthHours: monthHours.get(base.employeeId) ?? 0,
         },
         location: {
           hasLocation: loc?.hasLocation ?? false,

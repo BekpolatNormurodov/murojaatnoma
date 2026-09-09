@@ -39,7 +39,9 @@ export class LocationStaleService {
       where: {
         isActive: true,
         staleAlertedAt: null,
-        OR: [{ lastLocationAt: { lt: threshold } }, { lastLocationAt: null }],
+        // Only employees who WERE reporting and stopped — never-reported staff
+        // (app not installed yet) must NOT trigger a "no location" alert/push.
+        lastLocationAt: { lt: threshold },
       },
       select: { id: true, fullName: true, lastLocationAt: true },
     });

@@ -108,7 +108,8 @@ export function OversightPage() {
       { header: 'Holat', value: (r) => ATT_META[r.attendance.status].label },
       { header: 'Keldi', value: (r) => hhmm(r.attendance.checkInAt) },
       { header: 'Ketdi', value: (r) => hhmm(r.attendance.checkOutAt) },
-      { header: 'Soat', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
+      { header: 'Bugun (soat)', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
+      { header: 'Bu oy (soat)', value: (r) => r.attendance.monthHours.toFixed(1), align: 'right' },
       {
         header: 'Hudud',
         value: (r) => (!r.location.hasLocation ? "Ma'lumot yo'q" : r.location.insideAssignedZone ? 'Hududda' : 'Tashqarida'),
@@ -300,8 +301,16 @@ function OversightRowView({ row, onAssign }: { row: OversightRow; onAssign: () =
         {hhmm(row.attendance.checkInAt)}
       </td>
       <td className="px-3 py-3 tabular-nums text-ink-soft">{hhmm(row.attendance.checkOutAt)}</td>
-      <td className="px-3 py-3 tabular-nums text-ink-soft">
-        {row.attendance.hoursWorked != null ? `${row.attendance.hoursWorked.toFixed(1)} s` : '—'}
+      <td className="px-3 py-3 tabular-nums">
+        <div className="leading-tight">
+          <span className="font-semibold text-ink">
+            {row.attendance.hoursWorked != null ? `${row.attendance.hoursWorked.toFixed(1)}s` : '—'}
+          </span>
+          <span className="text-ink-muted"> bugun</span>
+        </div>
+        <div className="text-[11px] leading-tight text-ink-muted">
+          {row.attendance.monthHours.toFixed(1)}s bu oy
+        </div>
       </td>
       <td className="px-3 py-3">
         <button

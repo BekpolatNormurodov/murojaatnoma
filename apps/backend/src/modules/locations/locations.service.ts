@@ -355,7 +355,14 @@ export class LocationsService {
     return { employee, count: points.length, points };
   }
 
-  /** Active employees with no location for > staleMinutes (or never) — admin alerts. */
+  /**
+   * Admin alerts = employees who WERE reporting and then went stale
+   * (no location for > staleMinutes). Employees who have NEVER reported
+   * (lastLocationAt = null — e.g. the mobile app isn't installed yet) are
+   * deliberately EXCLUDED: that's a "not started" state, not an anomaly, so it
+   * doesn't belong in the alert feed (the live map / Nazorat already show them
+   * as "Lokatsiya yo'q"). Prevents a wall of false alerts for freshly-seeded staff.
+   */
   async getAlerts() {
     const staleMinutes = this.staleMinutes;
     const now = Date.now();
@@ -363,7 +370,7 @@ export class LocationsService {
     const emps = await this.prisma.employee.findMany({
       where: {
         isActive: true,
-        OR: [{ lastLocationAt: { lt: threshold } }, { lastLocationAt: null }],
+        lastLocationAt: { lt: threshold },
       },
       select: {
         id: true,
@@ -398,7 +405,7 @@ export class LocationsService {
   async getStats() {
     const staleMinutes = this.staleMinutes;
     const threshold = new Date(Date.now() - staleMinutes * 60_000);
-    const [totalActive, reportingNow, insideOffice, stale] = await Promise.all([
+    const [totalActive, reportingNow, insideOffice, stale, neverReported] = await Promise.all([
       this.prisma.employee.count({ where: { isActive: true } }),
       this.prisma.employee.count({
         where: { isActive: true, lastLocationAt: { gte: threshold } },
@@ -406,13 +413,15 @@ export class LocationsService {
       this.prisma.employee.count({
         where: { isActive: true, lastInsideOffice: true, lastLocationAt: { gte: threshold } },
       }),
+      // Stale = was reporting, now silent (an anomaly). Excludes never-reported.
       this.prisma.employee.count({
-        where: {
-          isActive: true,
-          OR: [{ lastLocationAt: { lt: threshold } }, { lastLocationAt: null }],
-        },
+        where: { isActive: true, lastLocationAt: { lt: threshold } },
+      }),
+      // Never reported = mobile app not installed / not started yet (info, not an alert).
+      this.prisma.employee.count({
+        where: { isActive: true, lastLocationAt: null },
       }),
     ]);
-    return { totalActive, reportingNow, insideOffice, stale, staleMinutes };
+    return { totalActive, reportingNow, insideOffice, stale, neverReported, staleMinutes };
   }
 }
