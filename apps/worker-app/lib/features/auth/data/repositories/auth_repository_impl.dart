@@ -57,6 +57,12 @@ class AuthRepositoryImpl implements AuthRepository {
       final session = await remote.verifyOtp(phone: phone, code: code);
       // `AuthInterceptor` har bir so'rovga shu kalitdan JWT o'qib qo'shadi.
       await prefs.setString(AuthInterceptor.tokenKey, session.token);
+      // Refresh token ham `SharedPreferences`da — `AuthInterceptor` 401'da shu
+      // kalitdan o'qib access tokenni avtomatik yangilaydi (auto-refresh).
+      final refreshToken = session.refreshToken;
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await prefs.setString(AuthInterceptor.refreshTokenKey, refreshToken);
+      }
       await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
       await _persistSecureTokens(session);
       return Right(session);
@@ -79,6 +85,12 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       // Sessiya/token saqlash — `verifyOtp` bilan bir xil (yagona seam).
       await prefs.setString(AuthInterceptor.tokenKey, session.token);
+      // Refresh token ham `SharedPreferences`da — `AuthInterceptor` 401'da shu
+      // kalitdan o'qib access tokenni avtomatik yangilaydi (auto-refresh).
+      final refreshToken = session.refreshToken;
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await prefs.setString(AuthInterceptor.refreshTokenKey, refreshToken);
+      }
       await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
       await _persistSecureTokens(session);
       return Right(session);
@@ -116,12 +128,24 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthSession?> currentSession() async {
     final raw = prefs.getString(_sessionKey);
     if (raw == null) return null;
-    return AuthSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    final session =
+        AuthSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    // Migratsiya: eski sessiyalarda refresh token `SharedPreferences`ga
+    // yozilmagan bo'lishi mumkin — `AuthInterceptor` auto-refresh qila olishi
+    // uchun uni bir marta ko'chirib qo'yamiz (qayta login talab qilinmaydi).
+    final refreshToken = session.refreshToken;
+    if (refreshToken != null &&
+        refreshToken.isNotEmpty &&
+        (prefs.getString(AuthInterceptor.refreshTokenKey) ?? '').isEmpty) {
+      await prefs.setString(AuthInterceptor.refreshTokenKey, refreshToken);
+    }
+    return session;
   }
 
   @override
   Future<void> logout() async {
     await prefs.remove(AuthInterceptor.tokenKey);
+    await prefs.remove(AuthInterceptor.refreshTokenKey);
     await prefs.remove(_sessionKey);
     try {
       await _secureStorage.delete(key: _secureAccessTokenKey);
