@@ -47,7 +47,12 @@ class TodayStatusCard extends StatelessWidget {
               children: [
                 Text(l10n.todayStatusTitle, style: AppTextStyles.caption),
                 const SizedBox(height: 2),
-                Text(visual.label, style: AppTextStyles.h3),
+                Text(
+                  visual.label,
+                  style: AppTextStyles.h3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),

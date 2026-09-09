@@ -47,6 +47,8 @@ import 'package:worker_app/features/requests/presentation/bloc/requests_cubit.da
 import 'package:worker_app/features/requests/presentation/pages/request_detail_page.dart';
 import 'package:worker_app/features/requests/presentation/pages/request_respond_page.dart';
 import 'package:worker_app/features/requests/presentation/pages/requests_page.dart';
+import 'package:worker_app/features/salary/presentation/bloc/salary_cubit.dart';
+import 'package:worker_app/features/salary/presentation/pages/salary_page.dart';
 import 'package:worker_app/features/suggestions/presentation/bloc/suggestions_cubit.dart';
 import 'package:worker_app/features/suggestions/presentation/pages/submit_suggestion_page.dart';
 import 'package:worker_app/features/suggestions/presentation/pages/suggestions_page.dart';
@@ -303,6 +305,16 @@ class AppRouter {
           builder: (context, _) => BlocProvider(
             create: (_) => getIt<PointsCubit>()..load(),
             child: const PointsPage(),
+          ),
+        ),
+        // `/salaries` — profil sahifasidagi "Oyliklarim" qatoridan PUSH
+        // qilinadigan to'liq ekranli oylik maosh tarixi sahifasi (`/points`
+        // bilan bir xil naqsh): shell darajasidan TASHQARIDA.
+        GoRoute(
+          path: '/salaries',
+          builder: (context, _) => BlocProvider(
+            create: (_) => getIt<SalaryCubit>()..load(),
+            child: const SalaryPage(),
           ),
         ),
         // `/suggestions` va `/suggestions/create` — bosh sahifadagi

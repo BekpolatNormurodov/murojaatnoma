@@ -99,6 +99,11 @@ import 'package:worker_app/features/requests/domain/usecases/rate_application.da
 import 'package:worker_app/features/requests/domain/usecases/respond_application.dart';
 import 'package:worker_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:worker_app/features/requests/presentation/bloc/requests_cubit.dart';
+import 'package:worker_app/features/salary/data/datasources/salary_remote_data_source.dart';
+import 'package:worker_app/features/salary/data/repositories/salary_repository_impl.dart';
+import 'package:worker_app/features/salary/domain/repositories/salary_repository.dart';
+import 'package:worker_app/features/salary/domain/usecases/get_my_salaries.dart';
+import 'package:worker_app/features/salary/presentation/bloc/salary_cubit.dart';
 import 'package:worker_app/features/suggestions/data/datasources/suggestions_remote_data_source.dart';
 import 'package:worker_app/features/suggestions/data/repositories/suggestions_repository_impl.dart';
 import 'package:worker_app/features/suggestions/domain/repositories/suggestions_repository.dart';
@@ -499,6 +504,25 @@ Future<void> configureDependencies() async {
     // bilan bir xil naqsh): har PUSH'da yangi instansiya (factory).
     ..registerFactory<PointsCubit>(
       () => PointsCubit(getCurrentPoints: getIt<GetCurrentPoints>()),
+    )
+    // ---- Oyliklar/Salary (xodim o'z oylik maosh tarixi) ----
+    // Mock/Api seam (`AppConfig.useMock` tanlaydi) — `Points` bilan bir xil
+    // naqsh. Real rejimda `GET /salaries/me` (auth interceptor tokeni bilan).
+    ..registerLazySingleton<SalaryRemoteDataSource>(
+      () => AppConfig.useMock
+          ? SalaryRemoteDataSourceMockImpl()
+          : SalaryRemoteDataSourceApiImpl(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<SalaryRepository>(
+      () => SalaryRepositoryImpl(remote: getIt<SalaryRemoteDataSource>()),
+    )
+    ..registerLazySingleton<GetMySalaries>(
+      () => GetMySalaries(getIt<SalaryRepository>()),
+    )
+    // `SalaryCubit` — `/salaries` marshrutida yaratiladi (`PointsCubit` bilan
+    // bir xil naqsh): har PUSH'da yangi instansiya (factory).
+    ..registerFactory<SalaryCubit>(
+      () => SalaryCubit(getMySalaries: getIt<GetMySalaries>()),
     )
     // ---- Takliflar/Suggestions (ratsionalizatorlik g'oyalari) ----
     ..registerLazySingleton<SuggestionsRemoteDataSource>(

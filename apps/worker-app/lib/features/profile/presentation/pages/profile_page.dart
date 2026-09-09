@@ -193,6 +193,16 @@ class ProfilePage extends StatelessWidget {
                             onTap: () => context.push('/schedule'),
                           ),
                           const Divider(height: 1),
+                          // "Oyliklarim" — xodimning o'z oylik maosh tarixi
+                          // (`GET /salaries/me`). Yorliq hozircha uz (l10n
+                          // `app_core`da, bu yerdan tashqarida) — `HomePage`
+                          // dagi "Ishdan chiqish" bilan bir xil naqsh.
+                          AppListTile(
+                            title: 'Oyliklarim',
+                            leadingIcon: AppIcons.wallet,
+                            onTap: () => context.push('/salaries'),
+                          ),
+                          const Divider(height: 1),
                           AppListTile(
                             title: l10n.profileDepartmentLabel,
                             leadingIcon: AppIcons.building,
