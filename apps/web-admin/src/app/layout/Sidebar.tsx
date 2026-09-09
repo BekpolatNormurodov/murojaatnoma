@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import {
   Element3,
   MessageQuestion,
-  Profile2User,
   Map1,
   Chart21,
   Setting2,
@@ -65,7 +64,6 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.staff',
     items: [
-      { to: '/workers', labelKey: 'nav.workers', icon: Profile2User, feature: 'workers' },
       { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick, feature: 'attendance' },
       { to: '/staff', labelKey: 'nav.staff', icon: SecurityUser, feature: 'staff' },
       // dict.ts'da tarjima kaliti yo'q — t() topilmagan kalitni o'zini
