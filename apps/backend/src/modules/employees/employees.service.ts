@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Employee, FaceTemplate } from '@prisma/client';
+import { Employee, FaceTemplate, Prisma } from '@prisma/client';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 
 /**
@@ -66,7 +66,27 @@ export class EmployeesService {
 
   async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {
     await this.findOne(id);
-    return this.prisma.employee.update({ where: { id }, data: dto });
+    const data: Prisma.EmployeeUncheckedUpdateInput = { ...dto };
+    // Territory reassignment must re-evaluate the denormalized in-zone flag
+    // against the LAST known position immediately — otherwise the admin live-map
+    // keeps showing stale "Hududda/Tashqarida" until the employee's next report
+    // (which may never come if the app isn't installed). Office presence always
+    // counts; empty assignment => whole district.
+    if (dto.assignedMahallaCodes !== undefined) {
+      const last = await this.prisma.employee.findUnique({
+        where: { id },
+        select: { lastMahallaCode: true, lastInsideDistrict: true, lastInsideOffice: true },
+      });
+      if (last) {
+        const codes = dto.assignedMahallaCodes;
+        data.lastInsideAssignedZone =
+          last.lastInsideOffice ||
+          (codes.length === 0
+            ? last.lastInsideDistrict
+            : last.lastMahallaCode != null && codes.includes(last.lastMahallaCode));
+      }
+    }
+    return this.prisma.employee.update({ where: { id }, data });
   }
 
   async remove(id: string): Promise<void> {

@@ -126,12 +126,11 @@ export class SalariesService {
     if (!employee) {
       throw new NotFoundException('Employee not found');
     }
-    const data = {
+    const base = {
       amount: dto.amount,
       bonus: dto.bonus ?? 0,
       penalty: dto.penalty ?? 0,
       note: dto.note ?? null,
-      paidAt: dto.paidAt ? new Date(dto.paidAt) : null,
     };
     const row = await this.prisma.employeeSalary.upsert({
       where: {
@@ -141,8 +140,16 @@ export class SalariesService {
           month: dto.month,
         },
       },
-      update: data,
-      create: { employeeId: dto.employeeId, year: dto.year, month: dto.month, ...data },
+      // On edit, only touch paidAt when the caller sends it — otherwise a plain
+      // amount edit must NOT wipe an already-recorded payment date.
+      update: { ...base, ...(dto.paidAt !== undefined ? { paidAt: new Date(dto.paidAt) } : {}) },
+      create: {
+        employeeId: dto.employeeId,
+        year: dto.year,
+        month: dto.month,
+        ...base,
+        paidAt: dto.paidAt ? new Date(dto.paidAt) : null,
+      },
     });
     return this.serialize(row);
   }
