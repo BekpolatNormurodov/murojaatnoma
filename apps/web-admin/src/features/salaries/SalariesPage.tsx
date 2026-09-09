@@ -18,6 +18,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { MonthPicker } from '@/shared/ui/MonthPicker';
+import { Pagination } from '@/shared/ui/Pagination';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
@@ -49,6 +50,9 @@ export function SalariesPage() {
   const { isSuperAdmin } = usePermissions();
 
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
   const [editing, setEditing] = useState<SalaryRosterRow | null>(null);
   const [deleting, setDeleting] = useState<SalaryRosterRow | null>(null);
   const [history, setHistory] = useState<SalaryRosterRow | null>(null);
@@ -63,12 +67,22 @@ export function SalariesPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => r.fullName.toLowerCase().includes(q) || r.position.toLowerCase().includes(q));
-  }, [rows, query]);
+    return rows.filter((r) => {
+      if (q && !r.fullName.toLowerCase().includes(q) && !r.position.toLowerCase().includes(q)) return false;
+      if (statusFilter === 'assigned' && !r.salary) return false;
+      if (statusFilter === 'unassigned' && r.salary) return false;
+      return true;
+    });
+  }, [rows, query, statusFilter]);
+
+  // Reset to page 1 whenever the result set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter, monthValue]);
+  const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -148,8 +162,34 @@ export function SalariesPage() {
             )}
           </div>
 
+          {/* Status filter chips */}
+          <div className="mt-5 flex flex-wrap gap-2">
+            {([
+              ['all', 'Barchasi', stats.total],
+              ['assigned', 'Belgilangan', stats.assigned],
+              ['unassigned', 'Belgilanmagan', stats.unassigned],
+            ] as const).map(([key, label, count]) => {
+              const active = statusFilter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setStatusFilter(key)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                    active ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
+                  )}
+                >
+                  {label}
+                  <span className={cn('rounded-full px-1.5 text-[11px] tabular-nums', active ? 'bg-primary-100 text-primary-700' : 'bg-surface-2 text-ink-muted')}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Filters + month picker */}
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
               <Profile2User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
@@ -197,7 +237,7 @@ export function SalariesPage() {
                           </td>
                         </tr>
                       ))
-                    : filtered.map((r) => (
+                    : paged.map((r) => (
                         <SalaryRow
                           key={r.employeeId}
                           row={r}
@@ -228,6 +268,9 @@ export function SalariesPage() {
                 </div>
               )}
             </div>
+            {!isLoading && (
+              <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} className="border-t border-line" />
+            )}
           </Card>
         </>
       )}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CloseCircle,
   DocumentDownload,
@@ -18,6 +18,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { MonthPicker } from '@/shared/ui/MonthPicker';
+import { Pagination } from '@/shared/ui/Pagination';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
@@ -88,6 +89,8 @@ export function OversightPage() {
   const { data, isLoading, isError, error, refetch, isFetching } = useOversight(year, month);
   const [query, setQuery] = useState('');
   const [flag, setFlag] = useState<FlagFilter>('all');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
 
   const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
@@ -98,6 +101,11 @@ export function OversightPage() {
       return matchesFlag(r, flag);
     });
   }, [rows, query, flag]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, flag, monthValue]);
+  const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
   const s = data?.summary;
 
@@ -237,7 +245,7 @@ export function OversightPage() {
                           </td>
                         </tr>
                       ))
-                    : filtered.map((r) => (
+                    : paged.map((r) => (
                         <OversightRowView key={r.employeeId} row={r} onAssign={() => setAssigning(r)} />
                       ))}
                 </tbody>
@@ -249,6 +257,9 @@ export function OversightPage() {
                 </div>
               )}
             </div>
+            {!isLoading && (
+              <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} className="border-t border-line" />
+            )}
           </Card>
 
           {s && (
