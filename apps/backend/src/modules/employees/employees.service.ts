@@ -9,7 +9,8 @@ import { Paginated } from '../../common/interfaces/paginated.interface';
  * embeddings themselves. `hasFace` is derived from a count — NOT a schema
  * column, so it needs no migration.
  */
-export type EmployeeWithFace = Employee & { hasFace: boolean };
+/** Public employee shape — NEVER includes the bcrypt `passwordHash`. */
+export type EmployeeWithFace = Omit<Employee, 'passwordHash'> & { hasFace: boolean };
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EnrollFaceDto } from './dto/enroll-face.dto';
@@ -44,7 +45,7 @@ export class EmployeesService {
       this.prisma.employee.count({ where }),
     ]);
 
-    const data = rows.map(({ _count, ...employee }) => ({
+    const data = rows.map(({ _count, passwordHash: _pw, ...employee }) => ({
       ...employee,
       hasFace: _count.faceTemplates > 0,
     }));
@@ -60,11 +61,11 @@ export class EmployeesService {
     if (!employee) {
       throw new NotFoundException(`Employee ${id} not found`);
     }
-    const { _count, ...rest } = employee;
+    const { _count, passwordHash: _pw, ...rest } = employee;
     return { ...rest, hasFace: _count.faceTemplates > 0 };
   }
 
-  async update(id: string, dto: UpdateEmployeeDto): Promise<Employee> {
+  async update(id: string, dto: UpdateEmployeeDto): Promise<EmployeeWithFace> {
     await this.findOne(id);
     const data: Prisma.EmployeeUncheckedUpdateInput = { ...dto };
     // Territory reassignment must re-evaluate the denormalized in-zone flag
@@ -86,7 +87,13 @@ export class EmployeesService {
             : last.lastMahallaCode != null && codes.includes(last.lastMahallaCode));
       }
     }
-    return this.prisma.employee.update({ where: { id }, data });
+    const updated = await this.prisma.employee.update({
+      where: { id },
+      data,
+      include: { _count: { select: { faceTemplates: true } } },
+    });
+    const { _count, passwordHash: _pw, ...rest } = updated;
+    return { ...rest, hasFace: _count.faceTemplates > 0 };
   }
 
   async remove(id: string): Promise<void> {

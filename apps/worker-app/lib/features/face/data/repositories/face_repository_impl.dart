@@ -1,6 +1,5 @@
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
-import 'package:flutter/foundation.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/features/face/data/datasources/face_local_data_source.dart';
 import 'package:worker_app/features/face/data/datasources/face_remote_data_source.dart';
@@ -31,40 +30,45 @@ class FaceRepositoryImpl implements FaceRepository {
 
   @override
   Future<Either<Failure, Unit>> enroll(FaceTemplate t) async {
+    // 1) Save the local copy (offline verify uses it).
     try {
       await local.write(t);
-      await _syncToBackend(t);
-      return const Right(unit);
     } on CacheException catch (e) {
       return Left(CacheFailure(e.message));
     } on Exception catch (_) {
       return const Left(CacheFailure('Kutilmagan keshda xatolik yuz berdi'));
     }
+    // 2) The SERVER copy is REQUIRED, not best-effort: server check-in
+    //    scores the live face against the SERVER-stored template, so a lost
+    //    upload = the employee can never check in. Surface it (local copy is
+    //    already saved) so the UI prompts a retry instead of faking success.
+    try {
+      await _syncToBackend(t);
+    } on Exception catch (_) {
+      return const Left(
+        ServerFailure(
+          'Yuz serverga yuklanmadi — internetni tekshirib qayta urining',
+        ),
+      );
+    }
+    return const Right(unit);
   }
 
   /// Mahalliy shablon saqlangandan KEYIN, jonli backendda (`useMock ==
   /// false`) HAM hisoblangan embeddingni yuklashga urinadi (`POST
   /// /employees/:id/face-template`, qarang: `FaceRemoteDataSourceApiImpl`).
   ///
-  /// **BEST-EFFORT, hech qachon enrollmentni bekor qilmaydi**: yuklash
-  /// muvaffaqiyatsiz bo'lsa (tarmoq yo'q, server band) — mahalliy shablon
-  /// allaqachon saqlangan bo'lgani uchun offline check-in (mahalliy
-  /// `FaceMatcher`) baribir ishlayveradi; xatolik faqat debug logga
-  /// yumshoq ogohlantirish sifatida yoziladi ("soft warning"), `enroll()`
-  /// natijasi (`Right(unit)`) o'zgarmaydi.
+  /// Uploads the computed embedding to the live backend (`POST
+  /// /employees/:id/face-template`, see `FaceRemoteDataSourceApiImpl`).
+  ///
+  /// No-op ONLY when there is genuinely no server to sync to (`useMock == true`
+  /// or `remote == null`, e.g. tests/mock flow). Otherwise a failed upload is
+  /// REthrown — the server template is mandatory for check-in, so `enroll()`
+  /// must surface the failure rather than pretend enrollment succeeded.
   Future<void> _syncToBackend(FaceTemplate t) async {
     final remoteDs = remote;
     if (AppConfig.useMock || remoteDs == null) return;
-    try {
-      await remoteDs.uploadEmbedding(t.workerId, t.embedding);
-    } on Object catch (e) {
-      if (kDebugMode) {
-        debugPrint(
-          'FaceRepositoryImpl: backendga yuz shablonini yuklab '
-          "bo'lmadi (mahalliy ro'yxatdan o'tish saqlanib qoldi): $e",
-        );
-      }
-    }
+    await remoteDs.uploadEmbedding(t.workerId, t.embedding);
   }
 
   @override

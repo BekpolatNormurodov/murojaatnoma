@@ -80,7 +80,7 @@ export class EmployeesController {
   @Patch(':id')
   @Roles(EmployeeRole.ADMIN)
   @ApiOperation({ summary: 'Update an employee profile' })
-  update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto): Promise<Employee> {
+  update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto): Promise<EmployeeWithFace> {
     return this.employeesService.update(id, dto);
   }
 

@@ -92,19 +92,22 @@ export class AttendanceController {
   }
 
   @Get('report/daily')
-  @ApiOperation({ summary: 'Daily attendance report, optionally filtered by employee' })
+  @Roles(EmployeeRole.ADMIN)
+  @ApiOperation({ summary: 'Daily attendance report, optionally filtered by employee (admin)' })
   dailyReport(@Query() query: DailyReportQueryDto): Promise<AttendanceReport> {
     return this.attendanceService.dailyReport(query);
   }
 
   @Get('report/monthly')
-  @ApiOperation({ summary: 'Monthly attendance report, optionally filtered by employee' })
+  @Roles(EmployeeRole.ADMIN)
+  @ApiOperation({ summary: 'Monthly attendance report, optionally filtered by employee (admin)' })
   monthlyReport(@Query() query: MonthlyReportQueryDto): Promise<AttendanceReport> {
     return this.attendanceService.monthlyReport(query);
   }
 
   @Get('report/range')
-  @ApiOperation({ summary: 'Attendance report over a date range (from..to), optional employee' })
+  @Roles(EmployeeRole.ADMIN)
+  @ApiOperation({ summary: 'Attendance report over a date range (from..to), optional employee (admin)' })
   rangeReport(@Query() query: RangeReportQueryDto): Promise<AttendanceReport> {
     return this.attendanceService.rangeReport(query);
   }

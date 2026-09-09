@@ -438,7 +438,7 @@ export function ComplaintsPage() {
         person={person}
         onClose={() => setPerson(null)}
         onViewPage={(p) => {
-          if (p.kind === 'deputy') navigate('/deputies');
+          if (p.kind === 'deputy') navigate('/staff');
           else if (p.kind === 'citizen') navigate('/app-users');
         }}
       />

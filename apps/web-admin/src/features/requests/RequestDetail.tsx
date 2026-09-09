@@ -708,7 +708,7 @@ export function RequestDetail({
         onClose={() => setPerson(null)}
         onViewPage={(p) => {
           if (p.kind === 'worker') navigate('/workers');
-          else if (p.kind === 'deputy') navigate('/deputies');
+          else if (p.kind === 'deputy') navigate('/staff');
           else if (p.kind === 'citizen') navigate('/app-users');
         }}
       />
