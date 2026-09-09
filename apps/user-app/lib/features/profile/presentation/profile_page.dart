@@ -272,15 +272,15 @@ class _LogoutButton extends StatelessWidget {
             if (!context.mounted) return;
             final auth = context.read<AuthCubit>();
             final router = GoRouter.of(context);
-            // QORA EKRAN tuzatildi: magic 220ms delay o'rniga — tasdiqlash
-            // oynasi (0.45-qora barrier'li showDialog) pop transaksiyasi
-            // tugagach, KEYINGI kadrda sessiyani tozalab, `/login`ga ANIQ
-            // o'tamiz. Router stack'i almashishi dialog pop bilan poyga
-            // qilmaydi va qora barrier ekran ustida osilib qolmaydi.
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              auth.reset();
-              router.go('/login');
-            });
+            final rootNav = Navigator.of(context, rootNavigator: true);
+            // QORA EKRAN tuzatildi (web-admin "hard redirect" bilan bir xil
+            // sabab): logout'da YOPILMAY qolgan popup/dialog/sheet barrier'i
+            // (0.45-qora) ekran ustida osilib qolardi — soft `go` uni olib
+            // tashlamaydi. Avval BARCHA popup route'larini tozalaymiz (GoRouter
+            // sahifalari PopupRoute EMAS — saqlanadi), keyin reset + `/login`.
+            auth.reset();
+            rootNav.popUntil((route) => route is! PopupRoute);
+            router.go('/login');
           },
         )
         .animate(delay: 200.ms)

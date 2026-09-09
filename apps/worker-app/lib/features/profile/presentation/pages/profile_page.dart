@@ -75,20 +75,19 @@ class ProfilePage extends StatelessWidget {
       // bo'ladi.
     }
     if (!context.mounted) return;
-    // Cubit + router ma'lumotnomalarini frame gap'idan OLDIN olamiz (keyin
-    // context unmount bo'lishi mumkin — ular esa app-darajali, xavfsiz).
     final auth = context.read<AuthCubit>();
     final router = GoRouter.of(context);
-    // QORA EKRAN tuzatildi: avval magic 220ms delay ishlatilardi — release'da
-    // ishonchsiz edi. Tasdiqlash oynasi (0.45-qora barrier'li showDialog) pop
-    // transaksiyasi TUGAGACH, KEYINGI kadrda sessiyani tozalab, `/login`ga
-    // ANIQ o'tamiz. Shunda router stack'i almashishi dialog pop bilan poyga
-    // qilmaydi va qora barrier ekran ustida "osilib" qolmaydi. Vaqtga emas,
-    // kadrga bog'langan — deterministik.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      auth.reset();
-      router.go('/login');
-    });
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    // QORA EKRAN tuzatildi (web-admin "hard redirect" bilan bir xil sabab):
+    // logout'da YOPILMAY qolgan popup/dialog/sheet route'ining barrier'i
+    // (showDialog 0.45-qora barrier, yoki qo'ng'iroq overlay'i) ekran ustida
+    // osilib qolardi — soft `go('/login')` uni olib tashlamaydi. Shuning uchun
+    // avval BARCHA popup route'larini tozalaymiz (GoRouter sahifalari
+    // `PopupRoute` EMAS — saqlanadi), keyin sessiyani reset qilib `/login`ga
+    // aniq o'tamiz. Endi hech qanday overlay osilib qolmaydi.
+    auth.reset();
+    rootNav.popUntil((route) => route is! PopupRoute);
+    router.go('/login');
   }
 
   @override
