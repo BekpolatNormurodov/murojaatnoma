@@ -34,6 +34,8 @@ export interface OversightRow {
   assignedMahallaCodes: string[];
   /** Net salary for the requested month (null when unset). */
   salaryNet: number | null;
+  /** Total premya (bonus) awarded this month (so'm). */
+  premyaThisMonth: number;
 }
 
 export interface OversightSummary {
@@ -100,18 +102,36 @@ export class OversightService {
     return hours;
   }
 
+  /** Total premya (bonus) awarded this month, per employee. */
+  private async premyaByEmployee(year: number, month: number): Promise<Map<string, number>> {
+    const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+    const grouped = await this.prisma.bonus.groupBy({
+      by: ['employeeId'],
+      where: { month: monthStr, employeeId: { not: null } },
+      _sum: { amount: true },
+    });
+    const map = new Map<string, number>();
+    for (const g of grouped) {
+      if (g.employeeId) {
+        map.set(g.employeeId, g._sum.amount ?? 0);
+      }
+    }
+    return map;
+  }
+
   async overview(
     year?: number,
     month?: number,
   ): Promise<{ year: number; month: number; rows: OversightRow[]; summary: OversightSummary }> {
     const now = new Date();
     const period = { year: year ?? now.getFullYear(), month: month ?? now.getMonth() + 1 };
-    const [today, locs, roster, facedEmployees, monthHours] = await Promise.all([
+    const [today, locs, roster, facedEmployees, monthHours, premya] = await Promise.all([
       this.attendance.today({}),
       this.locations.getLatestForAll(),
       this.salaries.monthlyRoster(period.year, period.month),
       this.prisma.faceTemplate.findMany({ distinct: ['employeeId'], select: { employeeId: true } }),
       this.monthHoursByEmployee(period.year, period.month),
+      this.premyaByEmployee(period.year, period.month),
     ]);
 
     const faceSet = new Set(facedEmployees.map((f) => f.employeeId));
@@ -145,6 +165,7 @@ export class OversightService {
         },
         assignedMahallaCodes: loc?.assignedMahallaCodes ?? [],
         salaryNet: base.salary?.net ?? null,
+        premyaThisMonth: premya.get(base.employeeId) ?? 0,
       };
     });
 
