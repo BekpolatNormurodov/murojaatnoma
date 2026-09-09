@@ -4,6 +4,7 @@ export interface LiveLocation {
   employeeId: string;
   fullName: string;
   position: string;
+  phone: string;
   avatarUrl: string | null;
   district: string;
   latitude: number | null;

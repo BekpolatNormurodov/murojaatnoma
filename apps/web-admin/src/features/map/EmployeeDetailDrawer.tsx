@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Buildings2,
+  Call,
   CloseCircle,
   Gps,
   LocationTick,
@@ -187,15 +188,28 @@ export function EmployeeDetailDrawer({
               </span>
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate(`/chat?to=${loc.employeeId}`)}
-            aria-label={`${t.message} — ${loc.fullName}`}
-            className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
-          >
-            <Messages size={18} variant="Bold" />
-            {t.message}
-          </button>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => navigate(`/chat?to=${loc.employeeId}`)}
+              aria-label={`${t.message} — ${loc.fullName}`}
+              className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700"
+            >
+              <Messages size={18} variant="Bold" />
+              {t.message}
+            </button>
+            {loc.phone && (
+              <a
+                href={`tel:${loc.phone}`}
+                aria-label={`Qo'ng'iroq — ${loc.fullName} (${loc.phone})`}
+                title={loc.phone}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-4 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+              >
+                <Call size={18} variant="Bold" />
+                {loc.phone}
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Status badges */}
