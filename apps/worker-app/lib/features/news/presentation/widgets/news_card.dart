@@ -60,18 +60,22 @@ class NewsCard extends StatelessWidget {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(AppRadii.lg),
               ),
+              // Rasm TO'LIQ ko'rinsin (kesilmasin) — `contain` + neytral fon.
               child: AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Image.network(
-                  item.cover,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, progress) =>
-                      progress == null
-                      ? child
-                      : ColoredBox(color: surfaceAlt),
-                  errorBuilder: (context, error, stackTrace) => ColoredBox(
-                    color: surfaceAlt,
-                    child: Icon(AppIcons.imageIcon, color: inkMuted),
+                child: ColoredBox(
+                  color: surfaceAlt,
+                  child: Image.network(
+                    item.cover,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) =>
+                        progress == null
+                        ? child
+                        : ColoredBox(color: surfaceAlt),
+                    errorBuilder: (context, error, stackTrace) => ColoredBox(
+                      color: surfaceAlt,
+                      child: Icon(AppIcons.imageIcon, color: inkMuted),
+                    ),
                   ),
                 ),
               ),
