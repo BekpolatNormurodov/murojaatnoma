@@ -24,6 +24,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { EmployeesModule } from './modules/employees/employees.module';
+import { EmployeeStatsModule } from './modules/employee-stats/employee-stats.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeaveModule } from './modules/leave/leave.module';
@@ -86,6 +87,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     SalariesModule,
     // Hokimiyat nazorati — read-only fusion of face + davomat + hudud + oylik
     OversightModule,
+    // Per-employee period stats (bu oy/o'tgan oy/oraliq) for the detail drawer
+    EmployeeStatsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
