@@ -4,6 +4,7 @@ import {
   CloseCircle,
   DocumentDownload,
   Edit2,
+  Eye,
   Judge,
   Location,
   Profile2User,
@@ -12,6 +13,7 @@ import {
   ShieldTick,
   TickCircle,
   Timer1,
+  Trash,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { StatCard } from '@/shared/ui/StatCard';
@@ -21,6 +23,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { Pagination } from '@/shared/ui/Pagination';
+import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
 import { exportWorkbook, type ExportColumn } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
@@ -29,6 +32,8 @@ import { usePermissions } from '@/shared/lib/permissions';
 import { useOversight, type OversightRow } from './useOversight';
 import { AssignZonesModal } from './AssignZonesModal';
 import { EmployeeFormModal } from './EmployeeFormModal';
+import { EmployeeStatsDrawer } from './EmployeeStatsDrawer';
+import { useDeleteEmployee } from './useEmployeeMutations';
 
 const MONTH_NAMES = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -98,8 +103,23 @@ export function OversightPage() {
   const PAGE_SIZE = 12;
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
   const [empModal, setEmpModal] = useState<{ open: boolean; row: OversightRow | null }>({ open: false, row: null });
+  const [detail, setDetail] = useState<OversightRow | null>(null);
+  const [deleting, setDeleting] = useState<OversightRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const { isSuperAdmin } = usePermissions();
+  const del = useDeleteEmployee();
+
+  async function confirmDelete() {
+    if (!deleting) return;
+    const name = deleting.fullName;
+    try {
+      await del.mutateAsync(deleting.employeeId);
+      setToast(`${name} o'chirildi`);
+      setDeleting(null);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "O'chirib bo'lmadi");
+    }
+  }
 
   useEffect(() => {
     if (!toast) return;
@@ -262,48 +282,33 @@ export function OversightPage() {
           <Card className="mt-5 overflow-hidden">
             <div className="flex items-center justify-between px-5 pt-5">
               <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
-                <ShieldTick size={18} variant="Bulk" className="text-primary-600" /> Xodimlar nazorati
+                <ShieldTick size={18} variant="Bulk" className="text-primary-600" /> Xodimlar ro'yxati
                 {isFetching && <RotateRight size={14} className="animate-spin text-ink-muted" />}
               </h3>
               <span className="text-xs text-ink-muted">{filtered.length} ta</span>
             </div>
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-210 text-left text-sm">
-                <thead>
-                  <tr className="border-y border-line text-[11px] uppercase tracking-wider text-ink-muted">
-                    <th className="px-5 py-3 font-semibold">Xodim</th>
-                    <th className="px-3 py-3 font-semibold">Yuz</th>
-                    <th className="px-3 py-3 font-semibold">Holat</th>
-                    <th className="px-3 py-3 font-semibold">Keldi</th>
-                    <th className="px-3 py-3 font-semibold">Ketdi</th>
-                    <th className="px-3 py-3 font-semibold">Soat</th>
-                    <th className="px-3 py-3 font-semibold">Hudud</th>
-                    <th className="px-5 py-3 text-right font-semibold">Oylik (sof)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {isLoading
-                    ? Array.from({ length: 8 }).map((_, i) => (
-                        <tr key={i} className="border-b border-line/70">
-                          <td className="px-5 py-3.5" colSpan={8}>
-                            <Skeleton className="h-9" />
-                          </td>
-                        </tr>
-                      ))
-                    : paged.map((r) => (
-                        <OversightRowView
-                          key={r.employeeId}
-                          row={r}
-                          onAssign={() => setAssigning(r)}
-                          onEdit={isSuperAdmin ? () => setEmpModal({ open: true, row: r }) : undefined}
-                        />
-                      ))}
-                </tbody>
-              </table>
-              {!isLoading && filtered.length === 0 && (
+            <div className="mt-3 px-4 pb-2">
+              {isLoading ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[142px]" />)}
+                </div>
+              ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Judge size={40} variant="Bulk" className="text-ink-muted" />
                   <p className="mt-3 text-sm text-ink-soft">Xodim topilmadi</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {paged.map((r) => (
+                    <OversightCard
+                      key={r.employeeId}
+                      row={r}
+                      onAssign={() => setAssigning(r)}
+                      onDetail={() => setDetail(r)}
+                      onEdit={isSuperAdmin ? () => setEmpModal({ open: true, row: r }) : undefined}
+                      onDelete={isSuperAdmin ? () => setDeleting(r) : undefined}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -327,6 +332,29 @@ export function OversightPage() {
         onClose={() => setEmpModal({ open: false, row: null })}
         onDone={(msg) => setToast(msg)}
       />
+      <EmployeeStatsDrawer
+        employeeId={detail?.employeeId ?? null}
+        fullName={detail?.fullName}
+        position={detail?.position}
+        avatarUrl={detail?.avatarUrl}
+        onClose={() => setDetail(null)}
+      />
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => (del.isPending ? undefined : setDeleting(null))}
+        onConfirm={confirmDelete}
+        tone="danger"
+        icon={Trash}
+        title="Xodimni o'chirish"
+        message={
+          <>
+            <span className="font-semibold text-ink">{deleting?.fullName}</span> butunlay o'chiriladi —
+            davomat, lokatsiya va oylik tarixi bilan birga. Bu amalni ortga qaytarib bo'lmaydi.
+          </>
+        }
+        confirmLabel="O'chirish"
+        loading={del.isPending}
+      />
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-pop">
           {toast}
@@ -336,64 +364,62 @@ export function OversightPage() {
   );
 }
 
-function OversightRowView({ row, onAssign, onEdit }: { row: OversightRow; onAssign: () => void; onEdit?: () => void }) {
+function OversightCard({
+  row,
+  onAssign,
+  onDetail,
+  onEdit,
+  onDelete,
+}: {
+  row: OversightRow;
+  onAssign: () => void;
+  onDetail: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+}) {
   const att = ATT_META[row.attendance.status];
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
   return (
-    <tr className="border-b border-line/70 transition-colors hover:bg-surface-2">
-      <td className="px-5 py-3">
-        {onEdit ? (
-          <button onClick={onEdit} title="Xodimni tahrirlash" className="flex items-center gap-3 rounded-lg text-left transition-opacity hover:opacity-80">
-            <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={36} />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 font-medium text-ink">
-                <span className="truncate">{row.fullName}</span>
-                <Edit2 size={13} className="shrink-0 text-ink-muted" />
-              </div>
-              <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 transition-shadow hover:shadow-card">
+      {/* Avatar + ism (bosilsa — o'ng drawer) + amallar */}
+      <div className="flex items-start gap-3">
+        <button
+          onClick={onDetail}
+          title="Batafsil — davr bo'yicha soat, kechikish va statistika"
+          className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={44} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 font-semibold text-ink">
+              <span className="truncate">{row.fullName}</span>
+              <Eye size={13} className="shrink-0 text-ink-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </div>
-          </button>
-        ) : (
-          <div className="flex items-center gap-3">
-            <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={36} />
-            <div className="min-w-0">
-              <div className="truncate font-medium text-ink">{row.fullName}</div>
-              <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
-            </div>
+            <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
           </div>
-        )}
-      </td>
-      <td className="px-3 py-3">
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {onEdit && <RowAction icon={Edit2} label="Tahrirlash" onClick={onEdit} />}
+          {onDelete && <RowAction icon={Trash} label="O'chirish" onClick={onDelete} danger />}
+        </div>
+      </div>
+
+      {/* Yuz + davomat holati */}
+      <div className="flex flex-wrap items-center gap-2">
         {row.hasFace ? (
-          <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-emerald-600">
-            <ScanBarcode size={15} variant="Bulk" /> Bor
+          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11.5px] font-medium text-emerald-600">
+            <ScanBarcode size={13} variant="Bulk" /> Yuz bor
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted">
-            <CloseCircle size={15} variant="Bulk" /> Yo'q
+          <span className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[11.5px] text-ink-muted">
+            <CloseCircle size={13} variant="Bulk" /> Yuzsiz
           </span>
         )}
-      </td>
-      <td className="px-3 py-3">
         <Badge tone={att.tone} dot>{att.label}</Badge>
-      </td>
-      <td className={cn('px-3 py-3 tabular-nums', row.attendance.isLate ? 'font-semibold text-amber-600' : 'text-ink-soft')}>
-        {hhmm(row.attendance.checkInAt)}
-      </td>
-      <td className="px-3 py-3 tabular-nums text-ink-soft">{hhmm(row.attendance.checkOutAt)}</td>
-      <td className="px-3 py-3 tabular-nums">
-        <div className="leading-tight">
-          <span className="font-semibold text-ink">
-            {row.attendance.hoursWorked != null ? `${row.attendance.hoursWorked.toFixed(1)}s` : '—'}
-          </span>
-          <span className="text-ink-muted"> bugun</span>
-        </div>
-        <div className="text-[11px] leading-tight text-ink-muted">
-          {row.attendance.monthHours.toFixed(1)}s bu oy
-        </div>
-      </td>
-      <td className="px-3 py-3">
+      </div>
+
+      {/* Hudud (biriktirish) + oylik/premya */}
+      <div className="flex items-end justify-between gap-2 border-t border-line pt-3">
         <button
           onClick={onAssign}
           title={`Hudud biriktirish${assignedCount ? ` (${assignedCount} ta mahalla)` : ' (hozircha butun tuman)'}`}
@@ -419,15 +445,42 @@ function OversightRowView({ row, onAssign, onEdit }: { row: OversightRow; onAssi
             {assignedCount || 'tuman'}
           </span>
         </button>
-      </td>
-      <td className="px-5 py-3 text-right tabular-nums">
-        <div className="font-semibold text-primary-600">
-          {row.salaryNet != null ? formatSom(row.salaryNet) : '—'}
+        <div className="text-right tabular-nums">
+          <div className="font-semibold text-primary-600">
+            {row.salaryNet != null ? formatSom(row.salaryNet) : '—'}
+          </div>
+          {row.premyaThisMonth > 0 && (
+            <div className="text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
+          )}
         </div>
-        {row.premyaThisMonth > 0 && (
-          <div className="text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
-        )}
-      </td>
-    </tr>
+      </div>
+    </div>
+  );
+}
+
+/** Kichik doira-tugma — Xodimlar boshqaruvi jadvalidagi amallar uchun. */
+function RowAction({
+  icon: Icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: typeof Eye;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={cn(
+        'grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface transition-colors',
+        danger ? 'text-ink-muted hover:border-danger/40 hover:bg-danger-soft hover:text-danger' : 'text-ink-soft hover:border-primary-200 hover:bg-primary-50 hover:text-primary-600',
+      )}
+    >
+      <Icon size={16} variant="Linear" />
+    </button>
   );
 }
