@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Buildings2,
@@ -26,6 +26,19 @@ import {
   type Labels,
   type TrackWindow,
 } from './mapShared';
+
+// Track gaps ≥ this long are flagged as a "lokatsiya uzilgan" break in the route
+// list (GPS off / no signal / app closed) — monitoring cue between two points.
+const GAP_MIN_MS = 15 * 60 * 1000;
+
+/** Human duration for a track gap: "45 daqiqa" / "4 soat 32 daqiqa". */
+function fmtGap(ms: number): string {
+  const min = Math.round(ms / 60000);
+  if (min < 60) return `${min} daqiqa`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} soat ${m} daqiqa` : `${h} soat`;
+}
 
 const WINDOWS: { key: TrackWindow; label: (t: Labels) => string }[] = [
   { key: 'today', label: (t) => t.today },
@@ -261,30 +274,46 @@ export function EmployeeDetailDrawer({
           ) : points.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-ink-muted">{t.noTrack}</p>
           ) : (
-            points.map((p, i) => (
-              <button
-                key={`${p.recordedAt}-${i}`}
-                onClick={() => onFocusPoint(p)}
-                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-surface-2"
-              >
-                <span className="w-11 shrink-0 font-mono text-[11px] font-semibold text-ink-soft">
-                  {clockTime(p.recordedAt)}
-                </span>
-                <LocationTick
-                  size={13}
-                  variant="Bulk"
-                  className={p.insideOffice ? 'text-emerald-600' : 'text-ink-muted'}
-                />
-                <span className="min-w-0 flex-1 truncate text-xs text-ink">
-                  {p.mahallaName ?? '—'}
-                </span>
-                {i === 0 && (
-                  <span className="shrink-0 rounded-full bg-primary-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary-700">
-                    {t.live}
-                  </span>
-                )}
-              </button>
-            ))
+            points.map((p, i) => {
+              const older = points[i + 1];
+              const gapMs = older
+                ? new Date(p.recordedAt).getTime() - new Date(older.recordedAt).getTime()
+                : 0;
+              return (
+                <Fragment key={`${p.recordedAt}-${i}`}>
+                  <button
+                    onClick={() => onFocusPoint(p)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-surface-2"
+                  >
+                    <span className="w-11 shrink-0 font-mono text-[11px] font-semibold text-ink-soft">
+                      {clockTime(p.recordedAt)}
+                    </span>
+                    <LocationTick
+                      size={13}
+                      variant="Bulk"
+                      className={p.insideOffice ? 'text-emerald-600' : 'text-ink-muted'}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-xs text-ink">
+                      {p.mahallaName ?? '—'}
+                    </span>
+                    {i === 0 && (
+                      <span className="shrink-0 rounded-full bg-primary-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary-700">
+                        {t.live}
+                      </span>
+                    )}
+                  </button>
+                  {older && gapMs >= GAP_MIN_MS && (
+                    <div className="my-0.5 flex items-center gap-2 px-3 py-1" aria-label={`${fmtGap(gapMs)} lokatsiya uzilgan`}>
+                      <span className="h-px flex-1 bg-amber-200" />
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                        <Timer1 size={11} variant="Bulk" /> {fmtGap(gapMs)} uzilgan
+                      </span>
+                      <span className="h-px flex-1 bg-amber-200" />
+                    </div>
+                  )}
+                </Fragment>
+              );
+            })
           )}
         </div>
       </aside>

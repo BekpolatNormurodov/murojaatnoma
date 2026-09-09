@@ -392,7 +392,9 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         onConfirm={() => {
           setLogoutOpen(false);
           logout();
-          navigate('/login', { replace: true });
+          // Hard redirect: fully resets in-memory state (active call overlay,
+          // sockets, stuck modals) so logout never lands on a black/stuck screen.
+          window.location.assign('/login');
         }}
         tone="danger"
         icon={LogoutCurve}

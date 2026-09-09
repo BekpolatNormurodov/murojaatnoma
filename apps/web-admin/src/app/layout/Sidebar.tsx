@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   Element3,
@@ -102,7 +102,6 @@ export function SidebarContent({
   collapsed?: boolean;
 }) {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const logout = useAuth((s) => s.logout);
   const { can } = usePermissions();
   // Rol ko'ra olmaydigan bo'limlar menyudan yashiriladi (bo'sh qolgan bo'lim ham
@@ -276,7 +275,9 @@ export function SidebarContent({
           setLogoutOpen(false);
           onNavigate?.();
           logout();
-          navigate('/login', { replace: true });
+          // Hard redirect: fully resets in-memory state (active call overlay,
+          // sockets, stuck modals) so logout never lands on a black/stuck screen.
+          window.location.assign('/login');
         }}
         tone="danger"
         icon={LogoutCurve}

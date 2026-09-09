@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Clock, CloseCircle, DocumentDownload, RotateRight, TickCircle, Timer1 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Avatar } from '@/shared/ui/Avatar';
-import { Badge } from '@/shared/ui/Badge';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
