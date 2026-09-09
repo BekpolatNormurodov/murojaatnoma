@@ -175,8 +175,8 @@ export function OversightPage() {
   return (
     <div>
       <PageHeader
-        title="Nazorat"
-        subtitle="Har bir xodim: yuz (face), keldi-ketdi, hudud va oylik — jonli oversight"
+        title="Xodimlar boshqaruvi"
+        subtitle="Har bir xodim: yuz, keldi-ketdi, ish hududi, oylik va premya — nazorat va boshqaruv"
       />
 
       {isError ? (
