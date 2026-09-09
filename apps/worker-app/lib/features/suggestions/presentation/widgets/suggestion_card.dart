@@ -115,8 +115,13 @@ class _VoteButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: voting ? null : onTap,
+      behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
+        // Min 44x44 tap target (iOS) — matn/ikon kichik bo'lsa ham bosish
+        // sohasi barmoq uchun yetarli katta bo'ladi.
+        constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.primary.withValues(alpha: 0.12),
