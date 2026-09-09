@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Pagination } from '@/shared/ui/Pagination';
 import {
   ResponsiveContainer,
   BarChart,
@@ -102,7 +103,7 @@ export function AttendancePage() {
   const [year, month] = useMemo(() => date.split('-').map(Number), [date]);
   const monthly = useAttendanceMonthlyReport(year, month);
 
-  const roster: EmployeeTodayEntry[] = data?.roster ?? [];
+  const roster: EmployeeTodayEntry[] = Array.isArray(data?.roster) ? data!.roster : [];
   const summary = data?.summary;
 
   const rows = useMemo(() => {
@@ -116,6 +117,13 @@ export function AttendancePage() {
           (r.department ?? '').toLowerCase().includes(q)),
     );
   }, [roster, filter, query]);
+
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 12;
+  useEffect(() => {
+    setPage(1);
+  }, [filter, query, date]);
+  const paged = useMemo(() => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [rows, page]);
 
   const checkedIn = summary ? summary.total - summary.absent : 0;
   const workingNow = roster.filter((r) => r.checkIn && !r.checkOut).length;
@@ -333,7 +341,7 @@ export function AttendancePage() {
                           </td>
                         </tr>
                       ))
-                    : rows.map((r, i) => (
+                    : paged.map((r, i) => (
                         <motion.tr
                           key={r.employeeId}
                           initial={{ opacity: 0 }}
@@ -403,6 +411,9 @@ export function AttendancePage() {
               <div className="py-16 text-center text-ink-muted">
                 {query.trim() ? `"${query}" bo'yicha xodim topilmadi` : "Bu holatda xodim yo'q"}
               </div>
+            )}
+            {!isLoading && (
+              <Pagination page={page} pageSize={PAGE_SIZE} total={rows.length} onPage={setPage} className="border-t border-line" />
             )}
           </Card>
         </>
