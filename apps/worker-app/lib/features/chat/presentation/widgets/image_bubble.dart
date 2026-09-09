@@ -93,8 +93,9 @@ class _FullImagePage extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
                   child: Container(
-                    width: 40,
-                    height: 40,
+                    // 44×44 — iOS min tap target.
+                    width: 44,
+                    height: 44,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: AppColors.surface.withValues(alpha: 0.15),

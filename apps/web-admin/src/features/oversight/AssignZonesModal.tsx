@@ -30,7 +30,9 @@ export function AssignZonesModal({ row, onClose }: { row: OversightRow | null; o
   }, [row]);
 
   const list = useMemo(() => {
-    const all = mahallas ?? [];
+    // Defensive: never assume the API returned an array (a transient error page
+    // or envelope would otherwise crash the list render with `.map is not a function`).
+    const all = Array.isArray(mahallas) ? mahallas : [];
     const s = q.trim().toLowerCase();
     if (!s) return all;
     return all.filter((m) => m.nameUzLat.toLowerCase().includes(s) || (m.nameUzCyr ?? '').toLowerCase().includes(s) || m.code.includes(s));

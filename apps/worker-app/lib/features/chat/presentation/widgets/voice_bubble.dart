@@ -84,8 +84,9 @@ class _VoiceBubbleState extends State<VoiceBubble> {
               GestureDetector(
                 onTap: () => unawaited(_playback.toggle()),
                 child: Container(
-                  width: 38,
-                  height: 38,
+                  // 44×44 — iOS min tap target (AttachmentTile bilan bir xil).
+                  width: 44,
+                  height: 44,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: accent,

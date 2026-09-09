@@ -401,7 +401,8 @@ class _PillIconButton extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        // 22px ikon + 2×11 padding = 44×44 (iOS min tap target).
+        padding: const EdgeInsets.all(11),
         child: Icon(icon, size: 22, color: color),
       ),
     );

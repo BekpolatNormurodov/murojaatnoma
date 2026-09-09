@@ -89,7 +89,7 @@ export function OversightPage() {
   const [flag, setFlag] = useState<FlagFilter>('all');
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
 
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
@@ -270,7 +270,7 @@ export function OversightPage() {
 function OversightRowView({ row, onAssign }: { row: OversightRow; onAssign: () => void }) {
   const att = ATT_META[row.attendance.status];
   const loc = row.location;
-  const assignedCount = row.assignedMahallaCodes.length;
+  const assignedCount = (row.assignedMahallaCodes ?? []).length;
   return (
     <tr className="border-b border-line/70 transition-colors hover:bg-surface-2">
       <td className="px-5 py-3">
@@ -310,7 +310,12 @@ function OversightRowView({ row, onAssign }: { row: OversightRow; onAssign: () =
           className="group inline-flex items-center gap-1.5"
         >
           {!loc.hasLocation ? (
-            <span className="text-[12.5px] text-ink-muted group-hover:text-primary-600">Biriktirish</span>
+            <span
+              className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted group-hover:text-primary-600"
+              title="Mobil ilova o'rnatilmagan yoki lokatsiya hali yuborilmagan"
+            >
+              <Location size={14} variant="Outline" /> Lokatsiya yo'q
+            </span>
           ) : loc.insideAssignedZone ? (
             <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-emerald-600" title={loc.mahallaName ?? undefined}>
               <Location size={14} variant="Bulk" /> Hududda{loc.isStale ? ' (eski)' : ''}

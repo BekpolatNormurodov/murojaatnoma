@@ -390,8 +390,13 @@ Future<void> _openRateSheet(BuildContext context) async {
                 for (var i = 1; i <= 5; i++)
                   GestureDetector(
                     onTap: () => setSheetState(() => stars = i),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                    // Butun 44×44 maydon bosiladi (iOS min tap target) —
+                    // 36px yulduz markazda, oraliqlar ham bosiladi.
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      alignment: Alignment.center,
                       child: Icon(
                         AppIcons.star,
                         size: 36,

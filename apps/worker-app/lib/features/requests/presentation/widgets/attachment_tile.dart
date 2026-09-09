@@ -81,10 +81,18 @@ class AttachmentTile extends StatelessWidget {
           ? null
           : GestureDetector(
               onTap: onRemove,
-              child: const Icon(
-                IconsaxPlusLinear.close_circle,
-                size: 20,
-                color: AppColors.danger,
+              behavior: HitTestBehavior.opaque,
+              // 20px ikon 44×44 markazida — iOS min tap target (ikonning
+              // o'zi kichik bo'lsa ham butun maydon bosiladi).
+              child: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                child: const Icon(
+                  IconsaxPlusLinear.close_circle,
+                  size: 20,
+                  color: AppColors.danger,
+                ),
               ),
             ),
     );
