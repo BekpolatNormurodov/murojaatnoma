@@ -75,17 +75,20 @@ class ProfilePage extends StatelessWidget {
       // bo'ladi.
     }
     if (!context.mounted) return;
-    // MUHIM: tasdiqlash oynasi (dialog) pop transaksiyasi TO'LIQ tugashini
-    // kutamiz — aks holda `reset()` -> `refreshListenable` -> redirect dialog
-    // pop bilan bir vaqtda ishlab (Navigator qulflangan holatda), GoRouter
-    // `currentConfiguration.isNotEmpty` / `!_debugLocked` assert bilan
-    // chiqishdan keyin QORA ekran berardi. Kadr yakunlangach navigator
-    // qulfi bo'shaydi va redirect toza `/login`ga o'tadi.
-    await Future<void>.delayed(const Duration(milliseconds: 220));
-    if (!context.mounted) return;
-    // `reset()` -> unauthenticated -> `refreshListenable` -> redirect
-    // AVTOMATIK `/login`ga yo'naltiradi (qo'lda `go` shart emas).
-    context.read<AuthCubit>().reset();
+    // Cubit + router ma'lumotnomalarini frame gap'idan OLDIN olamiz (keyin
+    // context unmount bo'lishi mumkin — ular esa app-darajali, xavfsiz).
+    final auth = context.read<AuthCubit>();
+    final router = GoRouter.of(context);
+    // QORA EKRAN tuzatildi: avval magic 220ms delay ishlatilardi — release'da
+    // ishonchsiz edi. Tasdiqlash oynasi (0.45-qora barrier'li showDialog) pop
+    // transaksiyasi TUGAGACH, KEYINGI kadrda sessiyani tozalab, `/login`ga
+    // ANIQ o'tamiz. Shunda router stack'i almashishi dialog pop bilan poyga
+    // qilmaydi va qora barrier ekran ustida "osilib" qolmaydi. Vaqtga emas,
+    // kadrga bog'langan — deterministik.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      auth.reset();
+      router.go('/login');
+    });
   }
 
   @override

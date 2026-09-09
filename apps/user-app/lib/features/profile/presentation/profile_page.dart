@@ -270,15 +270,17 @@ class _LogoutButton extends StatelessWidget {
             // qo'shib yuboraveradi.
             await getIt<AuthRepository>().logout();
             if (!context.mounted) return;
-            // MUHIM: tasdiqlash oynasi pop transaksiyasi TO'LIQ tugashini
-            // kutamiz — aks holda reset()->redirect dialog pop bilan poyga
-            // qilib (Navigator qulflangan), GoRouter assert bilan chiqishdan
-            // keyin QORA ekran berardi.
-            await Future<void>.delayed(const Duration(milliseconds: 220));
-            if (!context.mounted) return;
-            // `reset()` -> unauthenticated -> `refreshListenable` -> router
-            // AVTOMATIK `/login`ga yo'naltiradi.
-            context.read<AuthCubit>().reset();
+            final auth = context.read<AuthCubit>();
+            final router = GoRouter.of(context);
+            // QORA EKRAN tuzatildi: magic 220ms delay o'rniga — tasdiqlash
+            // oynasi (0.45-qora barrier'li showDialog) pop transaksiyasi
+            // tugagach, KEYINGI kadrda sessiyani tozalab, `/login`ga ANIQ
+            // o'tamiz. Router stack'i almashishi dialog pop bilan poyga
+            // qilmaydi va qora barrier ekran ustida osilib qolmaydi.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              auth.reset();
+              router.go('/login');
+            });
           },
         )
         .animate(delay: 200.ms)
