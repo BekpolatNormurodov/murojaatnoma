@@ -1,7 +1,8 @@
 /* ============================================================
    Eksport / chop etish / yuklab olish yordamchilari
-   — tashqi kutubxonasiz (Blob + brauzer API)
+   Excel — SheetJS (real .xlsx: Numbers ham, Excel ham to'g'ri ochadi).
    ============================================================ */
+import * as XLSX from 'xlsx';
 
 /** Faylni brauzer orqali yuklab olish (Blob). */
 export function downloadBlob(blob: Blob, filename: string) {
@@ -82,9 +83,36 @@ export function exportToCSV<T>(
   );
 }
 
+export interface SheetSpec<T> {
+  /** Sheet (tab) nomi — Excel 31 belgigacha ruxsat beradi. */
+  name: string;
+  columns: ExportColumn<T>[];
+  rows: T[];
+  opts?: { title?: string; subtitle?: string };
+}
+
+/** Ustunlar + qatorlardan SheetJS worksheet (sarlavha + jami qatori bilan). */
+function buildSheet<T>(columns: ExportColumn<T>[], rows: T[], opts: { title?: string; subtitle?: string } = {}) {
+  const aoa: (string | number)[][] = [];
+  if (opts.title) aoa.push([opts.title]);
+  if (opts.subtitle) aoa.push([opts.subtitle]);
+  aoa.push([`Yaratilgan: ${new Date().toLocaleString("uz-UZ")} · Qatorlar: ${rows.length}`]);
+  aoa.push([]);
+  aoa.push(columns.map((c) => c.header));
+  for (const r of rows) aoa.push(columns.map((c) => c.value(r)));
+  if (columns.some((c) => c.total)) {
+    aoa.push(columns.map((c, i) => (c.total ? c.total(rows) : i === 0 ? "JAMI" : "")));
+  }
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = columns.map((c) => ({ wch: Math.max(12, c.header.length + 2) }));
+  return ws;
+}
+
+const cleanSheetName = (s: string) => (s || "Sheet").replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
+
 /**
- * Massivni Excel (.xls) sifatida yuklab olish.
- * Excel HTML-jadvalni native ochadi — stillar va ustunlar saqlanadi.
+ * Massivni REAL Excel (.xlsx) sifatida yuklab olish (SheetJS) — Numbers ham,
+ * Excel ham to'g'ri ochadi (eski HTML-`.xls` hiylasidan farqli).
  */
 export function exportToExcel<T>(
   filename: string,
@@ -92,60 +120,21 @@ export function exportToExcel<T>(
   rows: T[],
   opts: { title?: string; sheet?: string; subtitle?: string } = {},
 ) {
-  const title = opts.title ?? "Hisobot";
-  const align = (c: ExportColumn<T>) => c.align ?? "left";
-  const thead = `<tr>${columns
-    .map(
-      (c) =>
-        `<th style="background:#0f766e;color:#fff;border:1px solid #0b5d57;padding:8px 12px;font-family:Segoe UI,Arial;font-size:12px;text-align:${align(c)}">${c.header}</th>`,
-    )
-    .join("")}</tr>`;
-  const tbody = rows
-    .map(
-      (r, i) =>
-        `<tr style="background:${i % 2 ? "#f1f5f9" : "#ffffff"}">${columns
-          .map(
-            (c) =>
-              `<td style="border:1px solid #e2e8f0;padding:6px 12px;font-family:Segoe UI,Arial;font-size:12px;color:#0f172a;text-align:${align(c)}">${
-                c.value(r) ?? ""
-              }</td>`,
-          )
-          .join("")}</tr>`,
-    )
-    .join("");
-  const hasTotals = columns.some((c) => c.total);
-  const tfoot = hasTotals
-    ? `<tr>${columns
-        .map(
-          (c, i) =>
-            `<td style="background:#ecfdf5;border:1px solid #0b5d57;padding:8px 12px;font-family:Segoe UI,Arial;font-size:12px;font-weight:bold;color:#065f46;text-align:${align(c)}">${
-              c.total ? c.total(rows) : i === 0 ? "JAMI" : ""
-            }</td>`,
-        )
-        .join("")}</tr>`
-    : "";
-
-  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8" />
-<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-<x:Name>${opts.sheet ?? "Hisobot"}</x:Name>
-<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
-</head>
-<body>
-<h2 style="font-family:Segoe UI,Arial;color:#0f172a;margin-bottom:2px">${title}</h2>
-${opts.subtitle ? `<p style="font-family:Segoe UI,Arial;color:#475569;font-size:12px;margin:0 0 2px">${opts.subtitle}</p>` : ""}
-<p style="font-family:Segoe UI,Arial;color:#64748b;font-size:12px;margin:0 0 10px">Yaratilgan: ${new Date().toLocaleString("uz-UZ")} · Qatorlar: ${rows.length}</p>
-<table cellspacing="0" cellpadding="0">${thead}${tbody}${tfoot}</table>
-</body></html>`;
-
-  downloadBlob(
-    new Blob(["\uFEFF" + html], {
-      type: "application/vnd.ms-excel;charset=utf-8",
-    }),
-    filename.endsWith(".xls") ? filename : `${filename}.xls`,
-  );
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildSheet(columns, rows, opts), cleanSheetName(opts.sheet ?? "Hisobot"));
+  XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }
+
+/** Ko'p varaqli (2-3 tab) Excel workbook — har varaq alohida ustun/qatorlar. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function exportWorkbook(filename: string, sheets: SheetSpec<any>[]) {
+  const wb = XLSX.utils.book_new();
+  for (const s of sheets) {
+    XLSX.utils.book_append_sheet(wb, buildSheet(s.columns, s.rows, s.opts ?? {}), cleanSheetName(s.name));
+  }
+  XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
+}
+
 
 /** Hujjat element stillari — print va Word eksport o'rtasida umumiy. */
 const DOC_ELEMENT_CSS = `

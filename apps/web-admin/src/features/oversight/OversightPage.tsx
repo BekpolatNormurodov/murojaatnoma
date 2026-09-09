@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Add,
   CloseCircle,
   DocumentDownload,
+  Edit2,
   Judge,
   Location,
   Profile2User,
@@ -20,10 +22,13 @@ import { Button } from '@/shared/ui/Button';
 import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { Pagination } from '@/shared/ui/Pagination';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
-import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
+import { exportWorkbook, type ExportColumn } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
+import { usePermissions } from '@/shared/lib/permissions';
 import { useOversight, type OversightRow } from './useOversight';
 import { AssignZonesModal } from './AssignZonesModal';
+import { EmployeeFormModal } from './EmployeeFormModal';
 
 const MONTH_NAMES = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -92,12 +97,21 @@ export function OversightPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 12;
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
+  const [empModal, setEmpModal] = useState<{ open: boolean; row: OversightRow | null }>({ open: false, row: null });
+  const [toast, setToast] = useState<string | null>(null);
+  const { isSuperAdmin } = usePermissions();
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (q && !r.fullName.toLowerCase().includes(q) && !r.position.toLowerCase().includes(q)) return false;
+      // Kirill/lotin farqisiz qidiruv ("Ismoilov" ↔ "Исмоилов").
+      if (!matchesSearch(query, r.fullName, r.position)) return false;
       return matchesFlag(r, flag);
     });
   }, [rows, query, flag]);
@@ -127,11 +141,35 @@ export function OversightPage() {
       { header: "Oylik (sof, so'm)", value: (r) => r.salaryNet ?? 0, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + (r.salaryNet ?? 0), 0)) },
       { header: "Premya (so'm)", value: (r) => r.premyaThisMonth, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + r.premyaThisMonth, 0)) },
     ];
-    exportToExcel(`nazorat_${year}-${String(month).padStart(2, '0')}`, cols, filtered, {
-      title: `Xodimlar nazorati — ${MONTH_NAMES[month - 1]} ${year}`,
-      subtitle: "Mirzo Ulug'bek tumani hokimligi",
-      sheet: 'Nazorat',
-    });
+    const summaryRows = s
+      ? [
+          { k: 'Jami xodim', v: s.total },
+          { k: "Yuz ro'yxatdan o'tgan", v: `${s.faceEnrolled}/${s.total}` },
+          { k: 'Hozir ish joyida', v: s.presentNow },
+          { k: 'Kechikkan', v: s.lateNow },
+          { k: 'Hududdan tashqarida', v: s.outsideZone },
+          { k: "Jami oylik fondi (sof, so'm)", v: s.salaryTotalNet },
+        ]
+      : [];
+    const sumCols: ExportColumn<{ k: string; v: string | number }>[] = [
+      { header: "Ko'rsatkich", value: (r) => r.k },
+      { header: 'Qiymat', value: (r) => r.v, align: 'right' },
+    ];
+    const label = `${MONTH_NAMES[month - 1]} ${year}`;
+    exportWorkbook(`xodimlar_boshqaruvi_${year}-${String(month).padStart(2, '0')}`, [
+      {
+        name: 'Umumiy',
+        columns: sumCols,
+        rows: summaryRows,
+        opts: { title: `Xodimlar boshqaruvi — ${label}`, subtitle: "Mirzo Ulug'bek tumani hokimligi" },
+      },
+      {
+        name: 'Xodimlar',
+        columns: cols,
+        rows: filtered,
+        opts: { title: `Xodimlar ro'yxati — ${label}`, subtitle: `${filtered.length} ta xodim` },
+      },
+    ]);
   }
 
   return (
@@ -154,6 +192,13 @@ export function OversightPage() {
         </Card>
       ) : (
         <>
+          {isSuperAdmin && (
+            <div className="mb-4 flex justify-end">
+              <Button onClick={() => setEmpModal({ open: true, row: null })}>
+                <Add size={18} /> Xodim qo'shish
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
             {isLoading || !s ? (
               Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[118px]" />)
@@ -246,7 +291,12 @@ export function OversightPage() {
                         </tr>
                       ))
                     : paged.map((r) => (
-                        <OversightRowView key={r.employeeId} row={r} onAssign={() => setAssigning(r)} />
+                        <OversightRowView
+                          key={r.employeeId}
+                          row={r}
+                          onAssign={() => setAssigning(r)}
+                          onEdit={isSuperAdmin ? () => setEmpModal({ open: true, row: r }) : undefined}
+                        />
                       ))}
                 </tbody>
               </table>
@@ -271,24 +321,48 @@ export function OversightPage() {
       )}
 
       <AssignZonesModal row={assigning} onClose={() => setAssigning(null)} />
+      <EmployeeFormModal
+        open={empModal.open}
+        row={empModal.row}
+        onClose={() => setEmpModal({ open: false, row: null })}
+        onDone={(msg) => setToast(msg)}
+      />
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-pop">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
 
-function OversightRowView({ row, onAssign }: { row: OversightRow; onAssign: () => void }) {
+function OversightRowView({ row, onAssign, onEdit }: { row: OversightRow; onAssign: () => void; onEdit?: () => void }) {
   const att = ATT_META[row.attendance.status];
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
   return (
     <tr className="border-b border-line/70 transition-colors hover:bg-surface-2">
       <td className="px-5 py-3">
-        <div className="flex items-center gap-3">
-          <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={36} />
-          <div className="min-w-0">
-            <div className="truncate font-medium text-ink">{row.fullName}</div>
-            <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
+        {onEdit ? (
+          <button onClick={onEdit} title="Xodimni tahrirlash" className="flex items-center gap-3 rounded-lg text-left transition-opacity hover:opacity-80">
+            <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={36} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 font-medium text-ink">
+                <span className="truncate">{row.fullName}</span>
+                <Edit2 size={13} className="shrink-0 text-ink-muted" />
+              </div>
+              <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
+            </div>
+          </button>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={36} />
+            <div className="min-w-0">
+              <div className="truncate font-medium text-ink">{row.fullName}</div>
+              <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
+            </div>
           </div>
-        </div>
+        )}
       </td>
       <td className="px-3 py-3">
         {row.hasFace ? (
