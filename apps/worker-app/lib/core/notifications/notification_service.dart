@@ -274,3 +274,20 @@ Future<void> showIncomingCallNotificationBackground({
     // socket orqali ishlaydi).
   }
 }
+
+/// FON/YOPIQ ISOLATE'da kiruvchi qo'ng'iroq bildirishnomasini olib tashlaydi —
+/// chaqiruvchi bekor qilgan/tugatgan (`type == 'call_cancelled'` data-push)
+/// bo'lsa jiringlash osilib qolmasligi uchun. O'z plagin nusxasini ishga
+/// tushiradi (background isolate singletonga ega emas).
+@pragma('vm:entry-point')
+Future<void> cancelIncomingCallNotificationBackground() async {
+  try {
+    final plugin = FlutterLocalNotificationsPlugin();
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const settings = InitializationSettings(android: androidInit);
+    await plugin.initialize(settings);
+    await plugin.cancel(kCallNotificationId);
+  } on Object {
+    // best-effort
+  }
+}

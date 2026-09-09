@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/features/calls/data/datasources/call_remote_data_source.dart';
 import 'package:worker_app/features/calls/domain/entities/call.dart';
@@ -33,14 +34,17 @@ class CallCubit extends Cubit<CallState> {
   CallCubit({
     required RealtimeSocketService socket,
     required CallRepository repository,
+    required NotificationService notifications,
   }) : _socket = socket,
        _repository = repository,
+       _notifications = notifications,
        super(const CallState.idle()) {
     _subscribe();
   }
 
   final RealtimeSocketService _socket;
   final CallRepository _repository;
+  final NotificationService _notifications;
 
   final RTCVideoRenderer localRenderer = RTCVideoRenderer();
   final RTCVideoRenderer remoteRenderer = RTCVideoRenderer();
@@ -58,6 +62,21 @@ class CallCubit extends Cubit<CallState> {
 
   Timer? _elapsedTimer;
   DateTime? _connectedAt;
+
+  /// "Ulanmoqda…" bosqichi qo'riqchisi — media (P2P/TURN) shu vaqt ichida
+  /// ulanmasa qo'ng'iroqni toza yakunlaymiz (aks holda ekran cheksiz
+  /// "Ulanmoqda…"da osilib qoladi — ayniqsa TURN yetib bormaganda).
+  Timer? _connectTimer;
+  static const _connectDeadline = Duration(seconds: 30);
+
+  /// Faol suhbat davomida media yo'li uzilsa (mobil tarmoq) — shu grace ichida
+  /// tiklanmasa qo'ng'iroq yakunlanadi.
+  Timer? _disconnectTimer;
+  static const _disconnectGrace = Duration(seconds: 10);
+
+  /// `accept()` uzoq `await`lar (getUserMedia/ICE) davomida "incoming"da
+  /// qoladi — ikki marta bosilsa qayta kirmasligi uchun qo'riqchi.
+  bool _accepting = false;
 
   /// Faol qo'ng'iroq bormi (2-qo'ng'iroq qo'riqchisi uchun).
   bool get _busy =>
@@ -123,9 +142,12 @@ class CallCubit extends Cubit<CallState> {
   /// Kiruvchi qo'ng'iroqni qabul qiladi (jiringlash ekranidan). Chaqiruvchi
   /// `call:accepted`ni olib offer yasaydi; biz answer beramiz.
   Future<void> accept() async {
-    if (state.phase != CallPhase.incoming) return;
+    if (state.phase != CallPhase.incoming || _accepting) return;
     final callId = state.callId;
     if (callId == null) return;
+    _accepting = true;
+    // Jiringlash (FCM to'liq-ekran) bildirishnomasini darhol olib tashlaymiz.
+    unawaited(_notifications.cancelIncomingCall());
 
     final mediaReady = await _openLocalMedia(state.media);
     if (!mediaReady) {
@@ -138,6 +160,7 @@ class CallCubit extends Cubit<CallState> {
     await _addLocalTracks();
     _socket.acceptCall(callId);
     emit(state.copyWith(phase: CallPhase.connecting));
+    _armConnectWatchdog();
   }
 
   /// FCM to'liq-ekran bildirishnomasi bosilganda (`incoming_call` push) —
@@ -252,6 +275,7 @@ class CallCubit extends Cubit<CallState> {
     final pc = _pc;
     if (pc == null) return;
     emit(state.copyWith(phase: CallPhase.connecting));
+    _armConnectWatchdog();
     try {
       final offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -404,11 +428,28 @@ class CallCubit extends Cubit<CallState> {
       ..onConnectionState = (RTCPeerConnectionState connState) {
         switch (connState) {
           case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
+            _disconnectTimer?.cancel();
+            _disconnectTimer = null;
             _markActive();
           case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
             _fail('Ulanish uzildi');
-          case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
           case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
+            // Qisqa uzilishlar (mobil tarmoq) o'z-o'zidan tiklanishi mumkin —
+            // grace beramiz; tiklanmasa qo'ng'iroqni toza yakunlaymiz (aks
+            // holda ekran "faol" holatda, taymer ishlab osilib qoladi).
+            if (state.phase != CallPhase.active &&
+                state.phase != CallPhase.connecting) {
+              break;
+            }
+            _disconnectTimer?.cancel();
+            _disconnectTimer = Timer(_disconnectGrace, () {
+              if (state.phase != CallPhase.active &&
+                  state.phase != CallPhase.connecting) {
+                return;
+              }
+              _fail('Ulanish uzildi'); // _fail o'zi `call:end` yuboradi
+            });
+          case RTCPeerConnectionState.RTCPeerConnectionStateClosed:
           case RTCPeerConnectionState.RTCPeerConnectionStateNew:
           case RTCPeerConnectionState.RTCPeerConnectionStateConnecting:
             break;
@@ -449,8 +490,25 @@ class CallCubit extends Cubit<CallState> {
     }
   }
 
+  /// "Ulanmoqda…" qo'riqchisini yoqadi (qabul qilgach / accepted kelgach).
+  void _armConnectWatchdog() {
+    _connectTimer?.cancel();
+    _connectTimer = Timer(_connectDeadline, () {
+      // Hali ham media ulanmadi — toza yakunlaymiz. `_fail` connecting
+      // bosqichida `call:end`ni o'zi yuboradi (suhbatdosh ham yopiladi).
+      if (state.phase != CallPhase.connecting) return;
+      _fail("Ulanib bo'lmadi");
+    });
+  }
+
+  void _cancelConnectWatchdog() {
+    _connectTimer?.cancel();
+    _connectTimer = null;
+  }
+
   void _markActive() {
     if (state.phase == CallPhase.active) return;
+    _cancelConnectWatchdog();
     _connectedAt = DateTime.now();
     emit(state.copyWith(phase: CallPhase.active));
     _elapsedTimer?.cancel();
@@ -465,6 +523,16 @@ class CallCubit extends Cubit<CallState> {
 
   /// Media/ulanish xatosi — holatni [CallEndReason.failed] bilan tugatadi.
   void _fail(String message) {
+    unawaited(_notifications.cancelIncomingCall());
+    // Agar media allaqachon muzokara qilinayotgan bo'lsa (connecting/active),
+    // SUHBATDOSHNI ham yakunlash haqida xabardor qilamiz — aks holda u tomonda
+    // ekran "Ulanmoqda…"/faol holda osilib qoladi.
+    final callId = state.callId;
+    final wasNegotiating = state.phase == CallPhase.connecting ||
+        state.phase == CallPhase.active;
+    if (callId != null && wasNegotiating) {
+      _socket.endCall(callId);
+    }
     _teardownMedia();
     emit(
       CallState(
@@ -480,6 +548,7 @@ class CallCubit extends Cubit<CallState> {
 
   /// Qo'ng'iroqni [reason] bilan tugatadi va mediani tozalaydi.
   void _finish(CallEndReason reason) {
+    unawaited(_notifications.cancelIncomingCall());
     if (state.phase == CallPhase.idle || state.phase == CallPhase.ended) {
       _teardownMedia();
       return;
@@ -509,6 +578,11 @@ class CallCubit extends Cubit<CallState> {
   /// TREKLAR to'xtaydi, PC yopiladi, rendererlar bo'shatiladi — kamera
   /// hech qachon "osilib" qolmaydi.
   void _teardownMedia() {
+    _accepting = false;
+    _connectTimer?.cancel();
+    _connectTimer = null;
+    _disconnectTimer?.cancel();
+    _disconnectTimer = null;
     _elapsedTimer?.cancel();
     _elapsedTimer = null;
     _connectedAt = null;

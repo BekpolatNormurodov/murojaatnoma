@@ -343,8 +343,11 @@ class RealtimeSocketService {
       )
       ..onConnectError((Object? e) => debugPrint('[socket] connect_error: $e'))
       ..onDisconnect((_) {
+        // Faqat "tayyor emas" deb belgilaymiz. `_pendingCallEmits`ni
+        // TOZALAMAYMIZ: socket qisqa uzilib qayta ulanganda (Wi-Fi<->mobil
+        // almashuvi) qabul/tugatish (`call:accept`/`call:end`) kabi terminal
+        // signallar yo'qolmasligi va `_onReady`da qayta yuborilishi kerak.
         _ready = false;
-        _pendingCallEmits.clear();
       });
   }
 

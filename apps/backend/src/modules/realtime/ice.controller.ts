@@ -26,11 +26,20 @@ export class IceController {
     const rt = this.config.get('realtime', { infer: true });
     const iceServers: IceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }];
     if (rt.turnUrl) {
-      iceServers.push({
-        urls: rt.turnUrl,
-        username: rt.turnUsername,
-        credential: rt.turnCredential,
-      });
+      // Bir xil TURN hostini HAM UDP, HAM TCP transport bilan e'lon qilamiz:
+      // ba'zi mobil/korporativ tarmoqlar UDPni bloklaydi, TCP relay orqali
+      // media baribir o'tadi. `?transport=...` allaqachon berilgan bo'lsa,
+      // qiymatni o'zgartirmaymiz.
+      const urls = rt.turnUrl.includes('?transport=')
+        ? [rt.turnUrl]
+        : [`${rt.turnUrl}?transport=udp`, `${rt.turnUrl}?transport=tcp`];
+      for (const urlEntry of urls) {
+        iceServers.push({
+          urls: urlEntry,
+          username: rt.turnUsername,
+          credential: rt.turnCredential,
+        });
+      }
     }
     return { iceServers };
   }

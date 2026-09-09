@@ -113,6 +113,10 @@ interface Session {
   pending: RTCIceCandidateInit[];
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  /** callId hali ma'lum bo'lmasdan bekor qilingan bo'lsa — ack kelganda
+   *  serverga call:cancel yuboriladi (aks holda chaqirilgan tomon jiringlab
+   *  qolaveradi). */
+  cancelled?: boolean;
 }
 
 const BUSY_PHASES: CallPhase[] = ['outgoing', 'incoming', 'connecting', 'active'];
@@ -156,6 +160,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const phaseRef = useRef<CallPhase>('idle');
   const timerRef = useRef<number | null>(null);
   const resetTimerRef = useRef<number | null>(null);
+  // "Ulanmoqda…" qo'riqchisi — media shu vaqt ichida ulanmasa qo'ng'iroq
+  // toza yakunlanadi (aks holda cheksiz osilib qoladi — masalan TURN yetmasa).
+  const connectTimerRef = useRef<number | null>(null);
 
   const setPhase = useCallback((p: CallPhase) => {
     phaseRef.current = p;
@@ -178,6 +185,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   /** Barcha oqimlarni to'xtatadi, PC'ni yopadi, sessiyani tozalaydi (idempotent). */
   const teardown = useCallback(() => {
+    if (connectTimerRef.current) {
+      window.clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = null;
+    }
     const s = sessionRef.current;
     if (s) {
       s.localStream?.getTracks().forEach((t) => t.stop());
@@ -240,6 +251,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [stopTimer]);
 
   /**
+   * "Ulanmoqda…" qo'riqchisini yoqadi: belgilangan vaqt ichida media
+   * (P2P/TURN) ulanmasa, suhbatdoshni ham xabardor qilib (call:end) qo'ng'iroqni
+   * 'failed' bilan yakunlaydi — aks holda oyna cheksiz "Ulanmoqda…"da qoladi.
+   */
+  const armConnectTimer = useCallback(() => {
+    if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
+    connectTimerRef.current = window.setTimeout(() => {
+      if (phaseRef.current !== 'connecting') return;
+      const s = sessionRef.current;
+      if (s?.callId && socket) socket.emit('call:end', { callId: s.callId });
+      finish('failed', "Ulanib bo‘lmadi");
+    }, 30_000);
+  }, [socket, finish]);
+
+  /**
    * ICE serverlarni oladi, RTCPeerConnection yaratadi, ontrack/onicecandidate/
    * onconnectionstatechange'ni ulaydi va mahalliy treklarni qo'shadi.
    */
@@ -268,6 +294,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
         if (st === 'connected') {
+          if (connectTimerRef.current) {
+            window.clearTimeout(connectTimerRef.current);
+            connectTimerRef.current = null;
+          }
           if (phaseRef.current !== 'active') {
             setPhase('active');
             startTimer();
@@ -336,7 +366,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setPhase('outgoing');
 
       socket.emit('call:invite', { toUserId, media }, (ack?: { callId?: string }) => {
-        // Javob kelguncha bekor qilingan bo'lishi mumkin.
+        // Ack kelguncha bekor qilingan bo'lsa — endi callId ma'lum, serverga
+        // call:cancel yuboramiz (chaqirilgan tomonning jiringlashi to'xtaydi).
+        if (session.cancelled) {
+          if (ack?.callId) socket.emit('call:cancel', { callId: ack.callId });
+          return;
+        }
         if (sessionRef.current !== session) return;
         if (!ack?.callId) {
           finish('failed');
@@ -357,8 +392,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       stream = await getMedia(s.media);
     } catch (e) {
-      if (s.callId) socket.emit('call:reject', { callId: s.callId });
-      finish('error', mediaErrorMessage(e));
+      // Ruxsat so'ralayotganda qo'ng'iroq allaqachon o'lgan bo'lishi mumkin.
+      if (sessionRef.current === s) {
+        if (s.callId) socket.emit('call:reject', { callId: s.callId });
+        finish('error', mediaErrorMessage(e));
+      }
+      return;
+    }
+    // Ruxsat prompti paytida qo'ng'iroq bekor/missed bo'lgan bo'lsa — kamerani
+    // yopib chiqamiz (o'lgan qo'ng'iroqni "tiriltirmaymiz").
+    if (sessionRef.current !== s || phaseRef.current !== 'incoming') {
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     s.localStream = stream;
@@ -372,12 +416,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
     try {
       await createPeer(s);
     } catch {
-      if (s.callId) socket.emit('call:reject', { callId: s.callId });
-      finish('failed');
+      if (sessionRef.current === s) {
+        if (s.callId) socket.emit('call:reject', { callId: s.callId });
+        finish('failed');
+      } else {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      return;
+    }
+    // ICE-serverlarni olayotganda o'lgan bo'lsa — media/PC'ni tozalaymiz.
+    if (sessionRef.current !== s) {
+      stream.getTracks().forEach((t) => t.stop());
+      s.pc?.close();
       return;
     }
     socket.emit('call:accept', { callId: s.callId });
-  }, [socket, createPeer, finish, setPhase]);
+    armConnectTimer();
+  }, [socket, createPeer, finish, setPhase, armConnectTimer]);
 
   const reject = useCallback(() => {
     const s = sessionRef.current;
@@ -387,6 +442,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const cancel = useCallback(() => {
     const s = sessionRef.current;
+    // callId hali kelmagan bo'lsa — niyatni belgilaymiz; invite-ack callback'i
+    // (s aynan o'sha obyekt) uni ko'rib call:cancel yuboradi.
+    if (s && !s.callId) s.cancelled = true;
     if (socket && s?.callId) socket.emit('call:cancel', { callId: s.callId });
     goIdle();
   }, [socket, goIdle]);
@@ -460,13 +518,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const s = sessionRef.current;
     if (!s || s.role !== 'caller' || s.callId !== p.callId || !socket) return;
     setPhase('connecting');
+    armConnectTimer();
     try {
       const pc = await createPeer(s);
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      // ICE-fetch/offer paytida qo'ng'iroq tugagan bo'lsa — SDP yubormaymiz.
+      if (sessionRef.current !== s) {
+        pc.close();
+        return;
+      }
       socket.emit('call:sdp', { callId: s.callId, description: offer });
     } catch {
-      hangup();
+      if (sessionRef.current === s) hangup();
     }
   };
 

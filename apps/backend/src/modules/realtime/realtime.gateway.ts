@@ -32,6 +32,7 @@ import { CallMedia, SocketIdentity } from './interfaces/socket-identity.interfac
 
 const ADMIN_ID = 'me';
 const DM_PREFIX = 'dm-emp-';
+const GROUP_ID = 'group-all';
 
 /**
  * Single Socket.IO gateway for BOTH live chat and WebRTC call signaling
@@ -45,6 +46,14 @@ const DM_PREFIX = 'dm-emp-';
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() private readonly server!: Server;
   private readonly logger = new Logger(RealtimeGateway.name);
+  /**
+   * Users whose call teardown is deferred after their last socket dropped —
+   * cancelled if they reconnect within the grace window. Socket.IO makes a NEW
+   * socket on a cellular reconnect, so tearing calls down on every disconnect
+   * kills a healthy P2P session on a 1-2s blip.
+   */
+  private readonly pendingCallTeardown = new Map<string, ReturnType<typeof setTimeout>>();
+  private static readonly DISCONNECT_GRACE_MS = 10_000;
 
   constructor(
     private readonly jwt: JwtService,
@@ -64,7 +73,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     try {
       const identity = await this.resolveIdentity(client);
       client.data.identity = identity;
+      // A reconnect within the grace window keeps the live call alive.
+      const pending = this.pendingCallTeardown.get(identity.id);
+      if (pending) {
+        clearTimeout(pending);
+        this.pendingCallTeardown.delete(identity.id);
+      }
       await client.join(`user:${identity.id}`);
+      // Everyone who can use realtime (admin + employees; citizens are rejected
+      // in resolveIdentity) listens on the shared group thread, so admin
+      // broadcasts to "group-all" reach every connected employee live. Without
+      // this, toConversation('group-all') targets only conv:group-all + user:me
+      // and no employee is ever a member — group messages reached no one.
+      await client.join(`conv:${GROUP_ID}`);
       const newlyOnline = this.presence.addSocket(identity.id, client.id);
       if (newlyOnline) {
         this.broadcastPresence(identity.id, true);
@@ -88,7 +109,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   async handleDisconnect(client: Socket): Promise<void> {
     const identity = this.identityOf(client);
     if (!identity) return;
-    await this.endCallsFor(identity.id);
+    // Meeting cleanup is per-socket (keyed by client.id) — always run it.
     for (const meetingId of this.meetings.meetingsOf(client.id)) {
       this.leaveMeeting(client, meetingId);
     }
@@ -96,6 +117,23 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (nowOffline) {
       this.broadcastPresence(identity.id, false);
       await this.mirrorConversationOnline(identity, false);
+      // Defer call teardown: a transient cellular reconnect spins up a NEW
+      // socket ~1-2s later, so ending the call immediately would kill a healthy
+      // session. Only tear down if the user is STILL offline after the grace
+      // window (handleConnection cancels this timer on reconnect). While the
+      // user has another live socket (multi-tab admin), nowOffline is false and
+      // the call is never touched.
+      const existing = this.pendingCallTeardown.get(identity.id);
+      if (existing) clearTimeout(existing);
+      this.pendingCallTeardown.set(
+        identity.id,
+        setTimeout(() => {
+          this.pendingCallTeardown.delete(identity.id);
+          if (!this.presence.isOnline(identity.id)) {
+            void this.endCallsFor(identity.id);
+          }
+        }, RealtimeGateway.DISCONNECT_GRACE_MS),
+      );
     }
   }
 
@@ -331,6 +369,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.calls.clearRing(call);
     await this.calls.finish(body.callId, 'cancelled');
     this.server.to(`user:${call.calleeId}`).emit('call:cancelled', { callId: body.callId });
+    void this.pushCallCancelled(call.calleeId, body.callId);
     return { ok: true };
   }
 
@@ -385,6 +424,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const durationSec = await this.calls.finish(body.callId, 'ended');
     const other = call.callerId === identity.id ? call.calleeId : call.callerId;
     this.server.to(`user:${other}`).emit('call:ended', { callId: body.callId, durationSec });
+    void this.pushCallCancelled(other, body.callId);
     return { ok: true };
   }
 
@@ -466,6 +506,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     await this.calls.finish(callId, 'missed');
     this.server.to(`user:${call.callerId}`).emit('call:missed', { callId });
     this.server.to(`user:${call.calleeId}`).emit('call:missed', { callId });
+    void this.pushCallCancelled(call.calleeId, callId);
   }
 
   private async endCallsFor(userId: string): Promise<void> {
@@ -477,6 +518,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.server
         .to(`user:${other}`)
         .emit('call:ended', { callId: call.callId, durationSec });
+      void this.pushCallCancelled(other, call.callId);
     }
   }
 
@@ -496,6 +538,26 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       );
     } catch {
       /* push disabled / no tokens — in-app ringing only */
+    }
+  }
+
+  /**
+   * Dismiss a backgrounded callee's ring: when the invite was delivered ONLY by
+   * FCM (no live socket), the later call:cancelled/ended/missed goes to an empty
+   * room and the full-screen notification never clears. A data-only cancel push
+   * lets the device dismiss it. Self-guards: skips admins (no device token) and
+   * anyone with a live socket (they already got the socket event).
+   */
+  private async pushCallCancelled(userId: string, callId: string): Promise<void> {
+    if (userId === ADMIN_ID) return;
+    if (this.presence.isOnline(userId)) return;
+    try {
+      await this.push.sendToEmployee(userId, "Qo'ng'iroq tugadi", '', {
+        type: 'call_cancelled',
+        callId,
+      });
+    } catch {
+      /* push disabled / no tokens */
     }
   }
 

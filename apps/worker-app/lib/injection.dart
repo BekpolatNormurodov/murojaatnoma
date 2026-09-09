@@ -346,7 +346,10 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<ChatRemoteDataSource>(
       () => AppConfig.useMock
           ? ChatRemoteDataSourceMockImpl()
-          : ChatRemoteDataSourceApiImpl(getIt<DioClient>()),
+          : ChatRemoteDataSourceApiImpl(
+              getIt<DioClient>(),
+              getIt<SharedPreferences>(),
+            ),
     )
     ..registerLazySingleton<ChatRepository>(
       () => ChatRepositoryImpl(remote: getIt<ChatRemoteDataSource>()),
@@ -400,6 +403,7 @@ Future<void> configureDependencies() async {
       () => CallCubit(
         socket: getIt<RealtimeSocketService>(),
         repository: getIt<CallRepository>(),
+        notifications: getIt<NotificationService>(),
       ),
     )
     // ---- Majlislar/Meetings (Zoom-uslubidagi ichki yig'ilishlar) ----

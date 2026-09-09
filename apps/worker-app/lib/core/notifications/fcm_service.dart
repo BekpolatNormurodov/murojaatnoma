@@ -112,6 +112,12 @@ class FcmService {
       return;
     }
 
+    // Chaqiruvchi bekor qildi/tugatdi — jiringlash bildirishnomasini yopamiz.
+    if (message.data['type'] == 'call_cancelled') {
+      unawaited(_local.cancelIncomingCall());
+      return;
+    }
+
     final notification = message.notification;
     if (notification == null) {
       return;
@@ -145,6 +151,12 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
         media: (message.data['media'] as String?) ?? 'audio',
       );
     }
+    return;
+  }
+  // Chaqiruvchi bekor qildi/tugatdi — osilib qolgan jiringlashni yopamiz.
+  if (message.data['type'] == 'call_cancelled') {
+    await cancelIncomingCallNotificationBackground();
+    return;
   }
   // Boshqa push'larni tizim o'zi ko'rsatadi; alohida ish talab qilinmaydi.
 }
