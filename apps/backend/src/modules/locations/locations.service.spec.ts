@@ -41,6 +41,7 @@ function buildDeps() {
   };
   const zones = {
     locate: jest.fn().mockResolvedValue(LOCATE_RESULT),
+    isWithinToleranceOfMahallas: jest.fn().mockResolvedValue(false),
   };
   const config = {
     get: jest.fn((key: string) => {
@@ -94,6 +95,7 @@ describe('LocationsService', () => {
         officeLng: null,
         officeRadiusM: null,
         lastLocationAt: null,
+        assignedMahallaCodes: [],
       });
 
       // ~0.05 deg latitude north ≈ 5.5km, outside the 2000m geofence.
@@ -110,12 +112,14 @@ describe('LocationsService', () => {
   describe('getStats', () => {
     it('returns the counts from prisma and the configured staleMinutes', async () => {
       const { service, prisma } = buildDeps();
-      // Order matches Promise.all: [totalActive, reportingNow, insideOffice, stale].
+      // Order matches Promise.all:
+      // [totalActive, reportingNow, insideOffice, stale, neverReported].
       prisma.employee.count
         .mockResolvedValueOnce(10)
         .mockResolvedValueOnce(7)
         .mockResolvedValueOnce(5)
-        .mockResolvedValueOnce(3);
+        .mockResolvedValueOnce(3)
+        .mockResolvedValueOnce(2);
 
       const stats = await service.getStats();
 
@@ -124,9 +128,10 @@ describe('LocationsService', () => {
         reportingNow: 7,
         insideOffice: 5,
         stale: 3,
+        neverReported: 2,
         staleMinutes: 30,
       });
-      expect(prisma.employee.count).toHaveBeenCalledTimes(4);
+      expect(prisma.employee.count).toHaveBeenCalledTimes(5);
     });
   });
 
