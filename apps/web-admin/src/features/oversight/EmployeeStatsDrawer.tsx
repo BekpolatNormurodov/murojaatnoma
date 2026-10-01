@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Clock, CloseCircle, DocumentDownload, RotateRight, TickCircle, Timer1 } from 'iconsax-react';
+import { Call, Clock, CloseCircle, DocumentDownload, RotateRight, TickCircle, Timer1 } from 'iconsax-react';
 import { Drawer } from '@/shared/ui/Drawer';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
 import { useEmployeeStats, periodRange, type StatsPeriod, type DayStat } from './useEmployeeStats';
+import { AttendanceDayDetail } from '@/features/attendance/AttendanceDayDetail';
+import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
+import { useAttendanceToday } from '@/features/attendance/useAttendanceToday';
 
 const PERIODS: { key: StatsPeriod; label: string }[] = [
   { key: 'thisMonth', label: 'Bu oy' },
@@ -33,16 +36,31 @@ export function EmployeeStatsDrawer({
   fullName,
   position,
   avatarUrl,
+  phone,
+  day,
+  dayLabel = 'Bugun',
   onClose,
 }: {
   employeeId: string | null;
   fullName?: string;
   position?: string;
   avatarUrl?: string | null;
+  phone?: string;
+  /** Davomat sahifasi/dashboard'dan ochilganda — o'sha kunning to'liq tafsiloti. */
+  day?: EmployeeTodayEntry | null;
+  dayLabel?: string;
   onClose: () => void;
 }) {
   const [period, setPeriod] = useState<StatsPeriod>('thisMonth');
   const { data, isLoading, isError, refetch } = useEmployeeStats(employeeId, period);
+  // Nazorat sahifasidan ochilganda `day` berilmaydi — bugungi holatni o'zimiz
+  // olamiz (dashboard/davomat bilan bir xil kesh, qo'shimcha so'rov yo'q).
+  const today = useAttendanceToday(undefined, { enabled: !!employeeId && day === undefined });
+  const shownDay =
+    day !== undefined
+      ? day
+      : (today.data?.roster?.find((r) => r.employeeId === employeeId) ?? null);
+  const shownPhone = phone ?? shownDay?.phone;
 
   function handleExport() {
     if (!data) return;
@@ -67,11 +85,23 @@ export function EmployeeStatsDrawer({
         <div className="flex-1 overflow-y-auto p-5">
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4">
             <Avatar name={fullName ?? ''} src={avatarUrl ?? undefined} size={46} />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="truncate font-semibold text-ink">{fullName}</div>
               <div className="truncate text-[12.5px] text-ink-muted">{position}</div>
             </div>
+            {shownPhone && (
+              <a
+                href={`tel:${shownPhone}`}
+                aria-label={`Qo'ng'iroq: ${shownPhone}`}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12.5px] font-medium text-primary-600 hover:bg-surface-2"
+              >
+                <Call size={15} variant="Bulk" />
+                <span className="hidden sm:inline">{shownPhone}</span>
+              </a>
+            )}
           </div>
+
+          {shownDay && <AttendanceDayDetail entry={shownDay} dayLabel={dayLabel} />}
 
           {/* Davr tanlagich */}
           <div className="mt-4 flex flex-wrap gap-2">

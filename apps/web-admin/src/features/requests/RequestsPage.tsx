@@ -131,6 +131,14 @@ export function RequestsPage() {
   // `?id=` — dashboard/xarita/bildirishnomadan to'g'ridan-to'g'ri ochish.
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedIdState] = useState<string | null>(() => searchParams.get('id'));
+  // Sahifa ochiq turganda URL'dagi ?id= o'zgarsa (bildirishnoma, qidiruv,
+  // dashboard havolasi) — o'sha murojaatni ochamiz.
+  const urlId = searchParams.get('id');
+  const [seenUrlId, setSeenUrlId] = useState(urlId);
+  if (urlId !== seenUrlId) {
+    setSeenUrlId(urlId);
+    if (urlId) setSelectedIdState(urlId);
+  }
   const selected = requests.find((r) => r.id === selectedId) ?? null;
   const ensureRequest = useRequests((s) => s.ensure);
   const setSelectedId = (id: string | null) => {
@@ -145,9 +153,17 @@ export function RequestsPage() {
       { replace: true },
     );
   };
-  // Havola bilan kelgan murojaat birinchi sahifada bo'lmasa — alohida olamiz.
+  // Havola bilan kelgan murojaat birinchi sahifada bo'lmasa — alohida olamiz;
+  // umuman topilmasa (o'chirilgan / noto'g'ri havola) — jim qolmay aytamiz.
+  const [missingId, setMissingId] = useState<string | null>(null);
   useEffect(() => {
-    if (selectedId && !selected && !loading) void ensureRequest(selectedId);
+    if (!selectedId || selected || loading) return;
+    void ensureRequest(selectedId).then((found) => {
+      if (!found) {
+        setMissingId(selectedId);
+        setSelectedId(null);
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, loading]);
   const addRequest = useRequests((s) => s.add);
@@ -177,11 +193,17 @@ export function RequestsPage() {
     };
   }, [dateRange, customFrom, customTo]);
 
-  // Har bir murojaat uchun muddatni hisoblaymiz
-  const items = useMemo(() => {
-    const now = Date.now();
-    return requests.map((r) => ({ r, dl: getDeadline(r, t, now) }));
-  }, [requests, t]);
+  // Har bir murojaat uchun muddatni hisoblaymiz; "hozir" har daqiqada
+  // yangilanadi — qolgan vaqt / kechikish sahifa ochiq turganda ham to'g'ri.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  const items = useMemo(
+    () => requests.map((r) => ({ r, dl: getDeadline(r, t, now) })),
+    [requests, t, now],
+  );
 
   // Muddat bo'yicha statistika (faqat ochiq murojaatlar)
   const stats = useMemo(() => {
@@ -289,6 +311,24 @@ export function RequestsPage() {
           </div>
         }
       />
+
+      {missingId && (
+        <div
+          role="alert"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-warning-soft px-4 py-3 text-[13px] text-amber-800 dark:border-amber-900/50 dark:text-amber-300"
+        >
+          <Warning2 size={18} variant="Bulk" className="shrink-0" />
+          <span className="min-w-0 flex-1">
+            «{missingId}» raqamli murojaat topilmadi — o'chirilgan yoki havola noto'g'ri.
+          </span>
+          <button
+            onClick={() => setMissingId(null)}
+            className="shrink-0 rounded-md px-2 py-1 font-medium hover:bg-amber-100 dark:hover:bg-amber-900/30"
+          >
+            Yopish
+          </button>
+        </div>
+      )}
 
       {error ? (
         <Card className="flex flex-col items-center gap-3 p-14 text-center">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Add, Location, Profile, Call, Warning2, CloseCircle } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Select } from '@/shared/ui/Select';
@@ -142,9 +142,11 @@ export function AddRequestModal({
 
   // Har safar oyna ochilganda formani toza holatda boshlaymiz — oldingi
   // urinishdan qolgan qiymat/xatolar ko'rinmasin.
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) reset();
-  }, [open, reset]);
+  }
 
   function handleBlur(key: TextFieldKey) {
     setTouched((prev) => ({ ...prev, [key]: true }));

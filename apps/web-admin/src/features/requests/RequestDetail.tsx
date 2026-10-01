@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Location,
   Calendar,
@@ -269,13 +269,15 @@ export function RequestDetail({
 
   // Boshqa murojaat tanlanganda (yoki drawer yopilganda) — oldingi
   // murojaatga tegishli lokal holatlarni (tanlagich, o'chirish tasdig'i)
-  // tozalaymiz.
-  useEffect(() => {
+  // tozalaymiz (render paytida — effect'dagi qo'shimcha render'siz).
+  const [shownId, setShownId] = useState(r?.id);
+  if (shownId !== r?.id) {
+    setShownId(r?.id);
     setPickerOpen(false);
     setDeleteOpen(false);
     setDeleteError(null);
     setDeleting(false);
-  }, [r?.id]);
+  }
 
   async function handleAssign(workerId: string) {
     setPickerOpen(false);

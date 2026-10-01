@@ -17,13 +17,16 @@ export function todayIso(): string {
  * `date` berilmasa — bugungi kun. Sana o'zgarganda oldingi natija ekranda
  * qoladi (keepPreviousData), shu bilan bo'sh skeleton miltillashi oldini oladi.
  */
-export function useAttendanceToday(date?: string) {
+export function useAttendanceToday(date?: string, opts?: { enabled?: boolean }) {
   const resolvedDate = date ?? todayIso();
   return useQuery({
+    enabled: opts?.enabled ?? true,
     queryKey: ['attendance', 'today', resolvedDate],
     queryFn: () =>
       api.get<TodayAttendance>(`/attendance/today?date=${encodeURIComponent(resolvedDate)}`),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+    // Bugungi taxta jonli: keldi/ketdi har 30 soniyada yangilanadi.
+    refetchInterval: resolvedDate === todayIso() ? 30_000 : false,
   });
 }

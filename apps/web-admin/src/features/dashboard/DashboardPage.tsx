@@ -15,7 +15,6 @@ import {
   TickCircle,
   Clock,
   ArrowRight,
-  CalendarTick,
   Video,
   WalletMoney,
   Location,
@@ -51,6 +50,7 @@ import {
   type TrendPoint,
 } from './api/overview';
 import { DashboardMap } from './DashboardMap';
+import { AttendanceBoard } from './AttendanceBoard';
 import { MediaDashboardWidget } from '@/features/media/MediaDashboardWidget';
 import { usePermissions } from '@/shared/lib/permissions';
 
@@ -98,7 +98,12 @@ export function DashboardPage() {
   const overviewQ = useOverview();
   const data = overviewQ.data;
   const [focusCode, setFocusCode] = useState<string | null>(null);
-  const canSeeMedia = usePermissions().can('media');
+  const perms = usePermissions();
+  const canSeeMedia = perms.can('media');
+  const canSeeAttendance = perms.can('attendance');
+  // Murojaat ko'rsatkichlari yuklanmasa ham davomat, OAV, modullar va
+  // yangiliklar o'z manbalaridan mustaqil ko'rinaveradi.
+  const overviewDown = overviewQ.isError && !data;
 
   return (
     <div>
@@ -126,30 +131,40 @@ export function DashboardPage() {
         }
       />
 
-      {overviewQ.isError && !data ? (
-        <Card className="flex flex-col items-center gap-3 p-10 text-center">
-          <CloseCircle size={36} variant="Bulk" className="text-danger" />
-          <div>
-            <p className="font-semibold text-ink">Ko'rsatkichlarni yuklab bo'lmadi</p>
-            <p className="mt-1 text-sm text-ink-muted">
-              {overviewQ.error instanceof Error ? overviewQ.error.message : "Noma'lum xatolik"}
+      {overviewDown ? (
+        <Card className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+          <CloseCircle size={30} variant="Bulk" className="shrink-0 text-danger" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-ink">Murojaat ko'rsatkichlarini yuklab bo'lmadi</p>
+            <p className="mt-0.5 text-sm text-ink-muted">
+              {overviewQ.error instanceof Error ? overviewQ.error.message : "Noma'lum xatolik"} ·
+              davomat va boshqa bo'limlar ishlayapti
             </p>
           </div>
-          <Button variant="secondary" onClick={() => overviewQ.refetch()}>
-            <RotateRight size={16} /> Qayta urinish
+          <Button variant="secondary" size="sm" onClick={() => overviewQ.refetch()}>
+            <RotateRight size={15} /> Qayta urinish
           </Button>
         </Card>
       ) : (
+        <KpiRow data={data} />
+      )}
+
+      {/* Xodimlar davomati — jonli (alohida manba: /attendance/today) */}
+      {canSeeAttendance && (
+        <div className="mt-5">
+          <AttendanceBoard />
+        </div>
+      )}
+
+      {/* OAV monitoringi — tuman haqida OAV nima demoqda (xulosa + diqqat talab qiladiganlar) */}
+      {canSeeMedia && (
+        <div className="mt-5">
+          <MediaDashboardWidget />
+        </div>
+      )}
+
+      {!overviewDown && (
         <>
-          <KpiRow data={data} />
-
-          {/* OAV monitoringi — tuman haqida OAV nima demoqda (xulosa + diqqat talab qiladiganlar) */}
-          {canSeeMedia && (
-            <div className="mt-5">
-              <MediaDashboardWidget />
-            </div>
-          )}
-
           <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
             <TrendCard data={data} className="xl:col-span-2" />
             <QualityCard data={data} />
@@ -178,19 +193,19 @@ export function DashboardPage() {
           </div>
 
           <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-            <WorkforceCard data={data} />
+            <LocationCard data={data} />
             <TopEmployeesCard data={data} />
             <CategoryCard data={data} className="md:col-span-2 xl:col-span-1" />
           </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <RecentCard data={data} className="xl:col-span-2" />
-            <ModulesCard />
-          </div>
-
-          <NewsCard />
         </>
       )}
+
+      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+        {!overviewDown && <RecentCard data={data} className="xl:col-span-2" />}
+        <ModulesCard />
+      </div>
+
+      <NewsCard />
     </div>
   );
 }
@@ -535,24 +550,26 @@ function MahallaCard({
 
 /* ───────────────────────────── Workforce ───────────────────────────── */
 
-function WorkforceCard({ data }: { data: Overview | undefined }) {
+function LocationCard({ data }: { data: Overview | undefined }) {
   const w = data?.workforce;
+  const live = w ? w.insideZone + w.outsideZone : 0;
+  const pct = (n: number) => (w && w.total ? (n / w.total) * 100 : 0);
   return (
-    <Card className="p-5">
+    <Card className="flex flex-col p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-info-soft text-accent-600">
-            <CalendarTick size={19} variant="Bulk" />
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10">
+            <Location size={19} variant="Bulk" />
           </span>
           <div>
-            <h3 className="text-[15px] font-semibold text-ink">Xodimlar · bugun</h3>
-            <p className="text-xs text-ink-muted">Davomat va joylashuv</p>
+            <h3 className="text-[15px] font-semibold text-ink">Jonli joylashuv</h3>
+            <p className="text-xs text-ink-muted">Xodimlar hozir qayerda</p>
           </div>
         </div>
         <Link
-          to="/attendance"
-          aria-label="Davomat"
-          className="rounded-lg p-1.5 text-primary-600 hover:bg-primary-50"
+          to="/map"
+          aria-label="Xarita"
+          className="rounded-lg p-1.5 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-500/10"
         >
           <ArrowRight size={18} />
         </Link>
@@ -561,86 +578,39 @@ function WorkforceCard({ data }: { data: Overview | undefined }) {
         <div className="mt-4 space-y-3">
           <Skeleton className="h-10" />
           <Skeleton className="h-2.5" />
-          <div className="grid grid-cols-3 gap-2">
-            <Skeleton className="h-14" />
-            <Skeleton className="h-14" />
-            <Skeleton className="h-14" />
-          </div>
           <Skeleton className="h-24" />
         </div>
       ) : (
         <>
           <div className="mt-4 flex items-end justify-between">
             <div>
-              <span className="text-3xl font-bold text-ink tabular-nums">{w.checkedIn}</span>
-              <span className="text-sm text-ink-muted"> / {w.total} ishga keldi</span>
+              <span className="text-3xl font-bold text-ink tabular-nums">{live}</span>
+              <span className="text-sm text-ink-muted"> / {w.total} signal bermoqda</span>
             </div>
             <span className="pb-1 text-xs font-semibold text-ink-soft">
-              O'z vaqtida: {pctText(w.onTimeRate)}
+              {w.reportingNow} faol
             </span>
           </div>
-          <Progress
-            value={w.total ? (w.checkedIn / w.total) * 100 : 0}
-            height={7}
-            color="#0ea5e9"
-            className="mt-2"
-          />
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <MiniStat label="Kechikdi" value={w.lateToday} tone={w.lateToday ? 'amber' : 'ink'} />
-            <MiniStat
-              label="Kelmadi"
-              value={w.notCheckedIn}
-              tone={w.notCheckedIn ? 'red' : 'ink'}
-            />
-            <MiniStat label="Jami" value={w.total} tone="ink" />
+          <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-surface-2">
+            <div className="bg-primary-500" style={{ width: `${pct(w.insideZone)}%` }} />
+            <div className="bg-red-500" style={{ width: `${pct(w.outsideZone)}%` }} />
+            <div className="bg-slate-400" style={{ width: `${pct(w.stale)}%` }} />
           </div>
-
+          <div className="mt-4 space-y-2 text-[13px]">
+            <Row dot="#10b981" label="Hududida" value={w.insideZone} />
+            <Row dot="#ef4444" label="Hududdan tashqarida" value={w.outsideZone} />
+            <Row dot="#94a3b8" label={`Aloqa yo'q (${w.staleMinutes}+ daq)`} value={w.stale} />
+            <Row dot="#cbd5e1" label="Ilova ishga tushmagan" value={w.neverReported} />
+          </div>
           <Link
             to="/map"
-            className="mt-4 block rounded-xl border border-line p-3 transition-colors hover:bg-surface-2"
+            className="mt-auto block pt-4 text-[13px] font-medium text-primary-600 hover:underline"
           >
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 font-semibold text-ink">
-                <Location size={14} variant="Bulk" className="text-primary-600" /> Jonli joylashuv
-              </span>
-              <span className="text-ink-muted">{w.reportingNow} faol</span>
-            </div>
-            <div className="space-y-1.5 text-[13px]">
-              <Row dot="#10b981" label="Hududida" value={w.insideZone} />
-              <Row dot="#ef4444" label="Hududdan tashqarida" value={w.outsideZone} />
-              <Row dot="#94a3b8" label={`Aloqa yo'q (${w.staleMinutes}+ daq)`} value={w.stale} />
-              {w.neverReported > 0 && (
-                <Row dot="#cbd5e1" label="Ilova ishga tushmagan" value={w.neverReported} />
-              )}
-            </div>
+            Xaritada ko'rish →
           </Link>
         </>
       )}
     </Card>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: 'ink' | 'amber' | 'red';
-}) {
-  return (
-    <div className="rounded-xl bg-surface-2 px-2 py-2 text-center">
-      <div
-        className={cn(
-          'text-lg font-bold tabular-nums',
-          tone === 'amber' ? 'text-amber-600' : tone === 'red' ? 'text-red-600' : 'text-ink',
-        )}
-      >
-        {value}
-      </div>
-      <div className="text-[11px] text-ink-muted">{label}</div>
-    </div>
   );
 }
 
