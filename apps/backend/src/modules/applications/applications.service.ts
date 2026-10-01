@@ -379,8 +379,13 @@ export class ApplicationsService {
   }
 
   /** Ordered audit history for an application, with actor/target names resolved. */
-  async findEvents(applicationId: string): Promise<ApplicationEventWithNames[]> {
-    await this.findOne(applicationId);
+  async findEvents(
+    applicationId: string,
+    user?: AuthenticatedUser,
+  ): Promise<ApplicationEventWithNames[]> {
+    // Citizens see the history of their OWN murojaat (transparency: who took
+    // it and when); findOne enforces that ownership.
+    await this.findOne(applicationId, user);
 
     const events = await this.prisma.applicationEvent.findMany({
       where: { applicationId },

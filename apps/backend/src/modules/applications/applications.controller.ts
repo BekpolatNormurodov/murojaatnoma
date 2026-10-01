@@ -123,11 +123,16 @@ export class ApplicationsController {
   }
 
   @ApiBearerAuth()
+  @AllowCitizen()
   @Get(':id/events')
-  @Roles(EmployeeRole.ADMIN, EmployeeRole.EMPLOYEE)
-  @ApiOperation({ summary: 'Ordered audit history (created/status/assigned/message events)' })
-  findEvents(@Param('id') id: string): Promise<ApplicationEventWithNames[]> {
-    return this.applicationsService.findEvents(id);
+  @ApiOperation({
+    summary: 'Ordered audit history (created/status/assigned/message events; CITIZEN: own only)',
+  })
+  findEvents(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApplicationEventWithNames[]> {
+    return this.applicationsService.findEvents(id, user);
   }
 
   @ApiBearerAuth()

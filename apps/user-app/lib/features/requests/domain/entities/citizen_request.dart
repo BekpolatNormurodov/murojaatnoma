@@ -76,6 +76,48 @@ class CitizenRequestResponse extends Equatable {
   Map<String, dynamic> toJson() => {'text': text, 'responded_at': respondedAt};
 }
 
+/// Murojaat tarixidagi bitta hodisa (backend `ApplicationEvent`):
+/// `CREATED` / `ASSIGNED` / `STATUS_CHANGED` / `RATED` / `REOPENED` / `MESSAGE`.
+class RequestHistoryEvent extends Equatable {
+  const RequestHistoryEvent({
+    required this.type,
+    required this.createdAt,
+    this.toStatus,
+    this.note,
+    this.employeeName,
+  });
+
+  factory RequestHistoryEvent.fromJson(Map<String, dynamic> json) =>
+      RequestHistoryEvent(
+        type: json['type'] as String? ?? '',
+        createdAt: json['created_at'] as String,
+        toStatus: json['to_status'] as String?,
+        note: json['note'] as String?,
+        employeeName: json['employee_name'] as String?,
+      );
+
+  final String type;
+  final String createdAt;
+
+  /// `NEW` / `IN_PROGRESS` / `RESOLVED` / `REJECTED` (holat o'zgarishida).
+  final String? toStatus;
+  final String? note;
+
+  /// Biriktirilgan xodim (ASSIGNED) yoki amalni bajargan xodim.
+  final String? employeeName;
+
+  @override
+  List<Object?> get props => [type, createdAt, toStatus, note, employeeName];
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'created_at': createdAt,
+    'to_status': toStatus,
+    'note': note,
+    'employee_name': employeeName,
+  };
+}
+
 /// Fuqaro tomonidan yuborilgan bitta ariza yoki shikoyat.
 ///
 /// Ikkala turni ([RequestKind.ariza]/[RequestKind.shikoyat]) BITTA entity
@@ -95,6 +137,11 @@ class CitizenRequest extends Equatable {
     this.region,
     this.district,
     this.rating,
+    this.ratingComment,
+    this.address,
+    this.dueAt,
+    this.resolvedAt,
+    this.history = const [],
   });
 
   factory CitizenRequest.fromJson(Map<String, dynamic> json) {
@@ -117,6 +164,13 @@ class CitizenRequest extends Equatable {
       region: json['region'] as String?,
       district: json['district'] as String?,
       rating: (json['rating'] as num?)?.toInt(),
+      ratingComment: json['rating_comment'] as String?,
+      address: json['address'] as String?,
+      dueAt: json['due_at'] as String?,
+      resolvedAt: json['resolved_at'] as String?,
+      history: (json['history'] as List<dynamic>? ?? const [])
+          .map((e) => RequestHistoryEvent.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -147,6 +201,25 @@ class CitizenRequest extends Equatable {
 
   /// Fuqaro bergan baho (1..5) — hal qilingandan keyin; `null` = baholanmagan.
   final int? rating;
+  final String? ratingComment;
+
+  /// Fuqaro ko'rsatgan manzil.
+  final String? address;
+
+  /// Hokimiyat hal qilishi kerak bo'lgan muddat (SLA, ISO).
+  final String? dueAt;
+  final String? resolvedAt;
+
+  /// Murojaat yo'li: kim, qachon qabul qildi / biriktirildi / hal qildi.
+  final List<RequestHistoryEvent> history;
+
+  /// So'nggi biriktirilgan mas'ul xodim (tarixdan).
+  String? get assigneeName {
+    for (final e in history.reversed) {
+      if (e.type == 'ASSIGNED' && e.employeeName != null) return e.employeeName;
+    }
+    return null;
+  }
 
   @override
   List<Object?> get props => [
@@ -162,6 +235,11 @@ class CitizenRequest extends Equatable {
     region,
     district,
     rating,
+    ratingComment,
+    address,
+    dueAt,
+    resolvedAt,
+    history,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -177,5 +255,10 @@ class CitizenRequest extends Equatable {
     'region': region,
     'district': district,
     'rating': rating,
+    'rating_comment': ratingComment,
+    'address': address,
+    'due_at': dueAt,
+    'resolved_at': resolvedAt,
+    'history': history.map((h) => h.toJson()).toList(),
   };
 }

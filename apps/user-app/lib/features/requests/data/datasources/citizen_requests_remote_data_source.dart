@@ -259,7 +259,10 @@ String _normalizePhone(String raw) =>
 /// Backendning `Application` JSON'ini `CitizenRequest` domen entity'siga
 /// o'giradi. Har bir maydon himoyalangan (`as String?` + fallback) — server
 /// javobi kutilmagan shaklda bo'lsa ham qulamaydi.
-CitizenRequest _requestFromApplicationJson(Map<String, dynamic> json) {
+CitizenRequest _requestFromApplicationJson(
+  Map<String, dynamic> json, {
+  List<dynamic> events = const [],
+}) {
   final decoded = _decodeSubject(json['subject'] as String? ?? '');
   return CitizenRequest(
     id: json['id'] as String? ?? '',
@@ -275,6 +278,22 @@ CitizenRequest _requestFromApplicationJson(Map<String, dynamic> json) {
     region: json['region'] as String?,
     district: json['district'] as String?,
     rating: (json['rating'] as num?)?.toInt(),
+    ratingComment: json['ratingComment'] as String?,
+    address: json['address'] as String?,
+    dueAt: json['dueAt'] as String?,
+    resolvedAt: json['resolvedAt'] as String?,
+    history: [
+      for (final raw in events)
+        if (raw is Map<String, dynamic> && raw['createdAt'] is String)
+          RequestHistoryEvent(
+            type: raw['type'] as String? ?? '',
+            createdAt: raw['createdAt'] as String,
+            toStatus: raw['toStatus'] as String?,
+            note: raw['note'] as String?,
+            employeeName:
+                (raw['toEmployeeName'] ?? raw['actorName']) as String?,
+          ),
+    ],
   );
 }
 
@@ -412,7 +431,20 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
       final response = await _client.dio.get<Map<String, dynamic>>(
         '/applications/$id',
       );
-      return _requestFromApplicationJson(response.data ?? const {});
+      // Tarix BEST-EFFORT: bo'lmasa ham murojaat ko'rsatiladi.
+      var events = const <dynamic>[];
+      try {
+        final r = await _client.dio.get<List<dynamic>>(
+          '/applications/$id/events',
+        );
+        events = r.data ?? const [];
+      } on Object {
+        events = const [];
+      }
+      return _requestFromApplicationJson(
+        response.data ?? const {},
+        events: events,
+      );
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }
@@ -469,7 +501,7 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
   @override
   Future<CitizenRequest> rate(String id, int rating, {String? comment}) async {
     try {
-      final response = await _client.dio.post<Map<String, dynamic>>(
+      await _client.dio.post<Map<String, dynamic>>(
         '/applications/$id/rate',
         data: {
           'rating': rating,
@@ -477,7 +509,8 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
             'comment': comment.trim(),
         },
       );
-      return _requestFromApplicationJson(response.data ?? const {});
+      // To'liq qayta o'qiymiz — tarix (Baholandi bosqichi vaqti) ham yangilansin.
+      return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }
@@ -486,11 +519,11 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
   @override
   Future<CitizenRequest> reopen(String id, String reason) async {
     try {
-      final response = await _client.dio.post<Map<String, dynamic>>(
+      await _client.dio.post<Map<String, dynamic>>(
         '/applications/$id/reopen',
         data: {'reason': reason.trim()},
       );
-      return _requestFromApplicationJson(response.data ?? const {});
+      return await getById(id);
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }

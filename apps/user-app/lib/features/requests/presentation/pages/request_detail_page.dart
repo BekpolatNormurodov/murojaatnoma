@@ -124,9 +124,11 @@ class _DetailContent extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 16),
-            child: _StatusTimeline(status: request.status),
+            padding: const EdgeInsets.fromLTRB(8, 16, 8, 14),
+            child: _StatusTimeline(request: request),
           ),
+          const SizedBox(height: 12),
+          _ProgressInfo(request: request),
           const SizedBox(height: 20),
           _SectionTitle(l10n.requestDescriptionTitle),
           const SizedBox(height: 8),
@@ -171,6 +173,12 @@ class _DetailContent extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           _MessageComposer(sending: sendingMessage),
+          if (request.history.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            _SectionTitle(_t(context, 'Murojaat tarixi', 'История обращения')),
+            const SizedBox(height: 8),
+            AppCard(child: _HistoryList(events: request.history)),
+          ],
         ],
       ),
     );
@@ -284,9 +292,7 @@ class _FeedbackCardState extends State<_FeedbackCard> {
                 size: 22,
               ),
             const SizedBox(width: 10),
-            const Expanded(
-              child: Text('Bahoyingiz uchun rahmat'),
-            ),
+            const Expanded(child: Text('Bahoyingiz uchun rahmat')),
           ],
         ),
       );
@@ -326,11 +332,7 @@ class _FeedbackCardState extends State<_FeedbackCard> {
               ),
             ),
             const SizedBox(height: 10),
-            AppButton(
-              label: 'Baholash',
-              loading: _busy,
-              onPressed: _submit,
-            ),
+            AppButton(label: 'Baholash', loading: _busy, onPressed: _submit),
           ],
           const SizedBox(height: 4),
           Center(
@@ -495,94 +497,369 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// Murojaat holatining bosqichma-bosqich vizual ko'rsatkichi. Haqiqiy
-/// holat-tarixi (har bosqich qachon sodir bo'lgani) domenda saqlanmaydi —
-/// shu tufayli bu FAQAT joriy holatning oqim ichidagi o'rnini ko'rsatadi,
-/// tarixiy jurnal emas.
+/// uz/ru matn — sahifaga xos yangi yorliqlar uchun (ARB'ga tegmasdan).
+String _t(BuildContext context, String uz, String ru) =>
+    Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
+
+/// "12.09, 14:05".
+String _stamp(String iso) {
+  final d = DateTime.tryParse(iso)?.toLocal();
+  if (d == null) return '—';
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.day)}.${two(d.month)}, ${two(d.hour)}:${two(d.minute)}';
+}
+
+class _Step {
+  const _Step(this.label, this.at, {required this.done, this.danger = false});
+  final String label;
+  final String? at;
+  final bool done;
+  final bool danger;
+}
+
+/// Murojaat yo'li: Yuborildi → Ko'rib chiqilmoqda → Hal qilindi →
+/// Baholandi (rad etilsa: Yuborildi → Rad etildi). Har bosqich ostida
+/// sodir bo'lgan vaqti — hokimiyat tomonidagi tarixdan.
 class _StatusTimeline extends StatelessWidget {
-  const _StatusTimeline({required this.status});
+  const _StatusTimeline({required this.request});
 
-  final RequestStatus status;
-
-  static const _flow = [
-    RequestStatus.yuborilgan,
-    RequestStatus.korilmoqda,
-    RequestStatus.javobBerildi,
-    RequestStatus.yopildi,
-  ];
-
-  /// Bosqich yorlig'i uchun ATAYLAB kichraytirilgan (`AppTextStyles.caption`
-  /// 13sp emas, 10.5sp) uslub — 4 ta teng `Expanded` ustunga sig'ishi
-  /// kerak bo'lgan yagona so'zlar ("Ko'rilmoqda", ruscha
-  /// "Рассматривается" kabi) BO'SH JOY yo'q, ya'ni Flutter ularni faqat
-  /// bitta qatorga sig'masa so'z O'RTASIDAN sindirib tashlaydi ("Yuborilga/
-  /// n" kabi chiroyli emas natija). Kichikroq shrift bilan bu so'zlar odatda
-  /// bitta qatorga to'liq sig'adi; `overflow: ellipsis` esa faqat haqiqatan
-  /// ham sig'may qolgan chekka holatlar (masalan juda tor ekranlarda uzun
-  /// ruscha matn) uchun oxirgi chora sifatida qoladi.
-  static TextStyle _labelStyle(Color color, {required bool active}) =>
-      AppTextStyles.caption.copyWith(
-        fontSize: 10.5,
-        height: 1.15,
-        color: color,
-        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-      );
+  final CitizenRequest request;
 
   @override
   Widget build(BuildContext context) {
-    final currentIndex = _flow.indexOf(status);
+    final r = request;
+    String? firstAt(bool Function(RequestHistoryEvent) test) {
+      for (final e in r.history) {
+        if (test(e)) return e.createdAt;
+      }
+      return null;
+    }
+
+    String? lastAt(bool Function(RequestHistoryEvent) test) {
+      for (final e in r.history.reversed) {
+        if (test(e)) return e.createdAt;
+      }
+      return null;
+    }
+
+    final rejected = r.status == RequestStatus.yopildi;
+    final working = r.status != RequestStatus.yuborilgan;
+    final resolved = r.status == RequestStatus.javobBerildi;
+    final steps = rejected
+        ? [
+            _Step(
+              _t(context, 'Yuborildi', 'Отправлено'),
+              r.createdAt,
+              done: true,
+            ),
+            _Step(
+              _t(context, 'Rad etildi', 'Отклонено'),
+              lastAt((e) => e.toStatus == 'REJECTED'),
+              done: true,
+              danger: true,
+            ),
+          ]
+        : [
+            _Step(
+              _t(context, 'Yuborildi', 'Отправлено'),
+              r.createdAt,
+              done: true,
+            ),
+            _Step(
+              _t(context, "Ko'rib chiqilmoqda", 'В работе'),
+              firstAt(
+                (e) => e.type == 'ASSIGNED' || e.toStatus == 'IN_PROGRESS',
+              ),
+              done: working,
+            ),
+            _Step(
+              _t(context, 'Hal qilindi', 'Решено'),
+              r.resolvedAt ?? lastAt((e) => e.toStatus == 'RESOLVED'),
+              done: resolved,
+            ),
+            _Step(
+              _t(context, 'Baholandi', 'Оценено'),
+              lastAt((e) => e.type == 'RATED'),
+              done: r.rating != null,
+            ),
+          ];
+    var current = 0;
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i].done) current = i;
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final line = isDark ? AppColors.darkLine : AppColors.line;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    Color colorOf(int i) => !steps[i].done
+        ? line
+        : steps[i].danger
+        ? AppColors.danger
+        : AppColors.primary;
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < _flow.length; i++) ...[
+        for (var i = 0; i < steps.length; i++)
           Expanded(
             child: Column(
               children: [
-                Container(
-                  width: 14,
-                  height: 14,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i <= currentIndex
-                        ? RequestStatusChip.colorOf(_flow[i])
-                        : line,
+                SizedBox(
+                  height: 22,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: i == 0
+                            ? const SizedBox.shrink()
+                            : Container(height: 2, color: colorOf(i)),
+                      ),
+                      Container(
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: steps[i].done
+                              ? colorOf(i)
+                              : Colors.transparent,
+                          border: Border.all(color: colorOf(i), width: 2),
+                          boxShadow: i == current
+                              ? [
+                                  BoxShadow(
+                                    color: colorOf(i).withValues(alpha: 0.25),
+                                    spreadRadius: 4,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        child: steps[i].done
+                            ? Icon(
+                                steps[i].danger
+                                    ? AppIcons.close
+                                    : AppIcons.tick,
+                                size: 13,
+                                color: Colors.white,
+                              )
+                            : null,
+                      ),
+                      Expanded(
+                        child: i == steps.length - 1
+                            ? const SizedBox.shrink()
+                            : Container(height: 2, color: colorOf(i + 1)),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Text(
+                    steps[i].label,
+                    maxLines: 2,
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 11,
+                      height: 1.15,
+                      color: steps[i].done ? ink : inkMuted,
+                      fontWeight: i == current
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
                 Text(
-                  RequestStatusChip.labelOf(context, _flow[i]),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  softWrap: true,
+                  steps[i].done && steps[i].at != null
+                      ? _stamp(steps[i].at!)
+                      : '—',
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: _labelStyle(
-                    i <= currentIndex ? ink : inkMuted,
-                    active: i == currentIndex,
+                  style: AppTextStyles.caption.copyWith(
+                    fontSize: 10,
+                    color: inkMuted,
                   ),
                 ),
               ],
             ),
           ),
-          if (i != _flow.length - 1)
-            Padding(
-              // Doiraning vertikal markazi bilan tekislash uchun — pastki
-              // bo'shliq shu chiziqni doiralar qatoriga ko'taradi (endi
-              // yorliq balandligi qisqarganidan bir oz kamroq offset ham
-              // yetarli, lekin izchillik uchun oldingi qiymat saqlanadi).
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Container(
-                width: 12,
-                height: 2,
-                color: i < currentIndex
-                    ? RequestStatusChip.colorOf(_flow[i])
-                    : line,
-              ),
+      ],
+    );
+  }
+}
+
+/// Mas'ul xodim, hal qilish muddati va manzil — fuqaro murojaati qayerda
+/// ekanini aniq bilsin.
+class _ProgressInfo extends StatelessWidget {
+  const _ProgressInfo({required this.request});
+
+  final CitizenRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = request;
+    final open =
+        r.status == RequestStatus.yuborilgan ||
+        r.status == RequestStatus.korilmoqda;
+    final due = r.dueAt == null ? null : DateTime.tryParse(r.dueAt!)?.toLocal();
+    final rows = <Widget>[
+      AppListTile(
+        title:
+            r.assigneeName ??
+            _t(context, 'Hali biriktirilmagan', 'Ещё не назначен'),
+        subtitle: _t(context, "Mas'ul xodim", 'Ответственный'),
+        leadingIcon: AppIcons.profile,
+        showChevron: false,
+      ),
+    ];
+    if (due != null && open) {
+      final left = due.difference(DateTime.now());
+      final overdue = left.isNegative;
+      final days = left.abs().inDays;
+      final hours = left.abs().inHours % 24;
+      final span = days > 0
+          ? _t(context, '$days kun', '$days дн')
+          : _t(context, '$hours soat', '$hours ч');
+      rows.add(
+        AppListTile(
+          title: formatIsoDate(r.dueAt!),
+          subtitle: overdue
+              ? _t(
+                  context,
+                  'Muddat $span oldin tugagan',
+                  'Срок истёк $span назад',
+                )
+              : _t(
+                  context,
+                  'Hal qilish muddati · $span qoldi',
+                  'Срок решения · осталось $span',
+                ),
+          leadingIcon: AppIcons.timer,
+          showChevron: false,
+        ),
+      );
+    }
+    if ((r.address ?? '').trim().isNotEmpty) {
+      rows.add(
+        AppListTile(
+          title: r.address!.trim(),
+          subtitle: _t(context, 'Manzil', 'Адрес'),
+          leadingIcon: AppIcons.location,
+          showChevron: false,
+        ),
+      );
+    }
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(children: rows),
+    );
+  }
+}
+
+/// Murojaat tarixi — fuqaroga ko'rinadigan bosqichlar (vaqt va izoh bilan).
+class _HistoryList extends StatelessWidget {
+  const _HistoryList({required this.events});
+
+  final List<RequestHistoryEvent> events;
+
+  String? _label(BuildContext context, RequestHistoryEvent e) =>
+      switch (e.type) {
+        'CREATED' => _t(context, 'Murojaat qabul qilindi', 'Обращение принято'),
+        'ASSIGNED' =>
+          e.employeeName != null
+              ? _t(
+                  context,
+                  "Mas'ul xodim: ${e.employeeName}",
+                  'Ответственный: ${e.employeeName}',
+                )
+              : _t(context, 'Xodim biriktirildi', 'Назначен сотрудник'),
+        'STATUS_CHANGED' => switch (e.toStatus) {
+          'IN_PROGRESS' => _t(
+            context,
+            "Ko'rib chiqish boshlandi",
+            'Взято в работу',
+          ),
+          'RESOLVED' => _t(context, 'Hal qilindi', 'Решено'),
+          'REJECTED' => _t(context, 'Rad etildi', 'Отклонено'),
+          'NEW' => _t(
+            context,
+            "Qayta navbatga qo'yildi",
+            'Возвращено в очередь',
+          ),
+          _ => null,
+        },
+        'RATED' => _t(context, 'Siz baholadingiz', 'Вы оценили'),
+        'REOPENED' => _t(context, 'Siz qayta ochdingiz', 'Вы переоткрыли'),
+        _ => null,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      for (final e in events)
+        if (_label(context, e) case final label?) (e, label),
+    ];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+    return Column(
+      children: [
+        for (var i = 0; i < items.length; i++)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 5),
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: i == items.length - 1 ? AppColors.primary : line,
+                      ),
+                    ),
+                    if (i < items.length - 1)
+                      Expanded(child: Container(width: 1.5, color: line)),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: i < items.length - 1 ? 14 : 0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(items[i].$2, style: AppTextStyles.bodyStrong),
+                        if ((items[i].$1.note ?? '').trim().isNotEmpty &&
+                            items[i].$1.type != 'RATED') ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            items[i].$1.note!.trim(),
+                            style: AppTextStyles.caption.copyWith(
+                              color: inkSoft,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          formatIsoDateTime(items[i].$1.createdAt),
+                          style: AppTextStyles.caption.copyWith(
+                            fontSize: 11,
+                            color: inkMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-        ],
+          ),
       ],
     );
   }
