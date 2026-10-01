@@ -1,4 +1,3 @@
-import 'package:app_ui/src/theme/app_colors.dart';
 import 'package:app_ui/src/theme/app_radii.dart';
 import 'package:flutter/material.dart';
 
@@ -33,15 +32,39 @@ class AppSkeleton extends StatefulWidget {
 
 class _AppSkeletonState extends State<AppSkeleton>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
+  /// Faqat har kadrda qayta chizish uchun. Porlash FAZASI soatdan olinadi
+  /// (pastda [_phase]) — shu tufayli ekrandagi BARCHA skeletonlar bitta
+  /// to'lqin bo'lib, bir xil tezlikda o'tadi. Ilgari har bo'lak o'z
+  /// kontrolleri bilan, o'z kengligi bo'yicha porlardi: kichik bloklar
+  /// tez, kattalari sekin, hammasi har xil fazada — "miltillash" tartibsiz
+  /// ko'rinardi.
+  late final AnimationController _ticker = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1300),
-  )..repeat();
+    duration: _period,
+  );
+
+  static const _period = Duration(milliseconds: 1500);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // "Animatsiyalarni kamaytirish" yoqilgan bo'lsa — statik plashka.
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _ticker.stop();
+    } else if (!_ticker.isAnimating) {
+      _ticker.repeat();
+    }
+  }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ticker.dispose();
     super.dispose();
+  }
+
+  static double _phase() {
+    final ms = DateTime.now().millisecondsSinceEpoch;
+    return (ms % _period.inMilliseconds) / _period.inMilliseconds;
   }
 
   @override
@@ -50,50 +73,49 @@ class _AppSkeletonState extends State<AppSkeleton>
         ? BorderRadius.circular(widget.height / 2)
         : widget.borderRadius ?? BorderRadius.circular(AppRadii.xs);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final line = isDark ? AppColors.darkLine : AppColors.line;
-    final glint = isDark ? AppColors.darkInkMuted : AppColors.surface;
+    // Asos karta foni ustida aniq ko'rinadigan bo'lsin (ilgari line*0.55
+    // oq kartada deyarli ko'rinmasdi).
+    final base = isDark ? const Color(0xFF243044) : const Color(0xFFE8EDF3);
+    final shine = isDark
+        ? const Color(0xFF34425A)
+        : Colors.white.withValues(alpha: 0.95);
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
-    return ClipRRect(
-      borderRadius: radius,
-      child: SizedBox(
-        width: widget.circle ? widget.height : widget.width,
-        height: widget.height,
-        child: ColoredBox(
-          color: line.withValues(alpha: 0.55),
-          child: AnimatedBuilder(
-            animation: _controller,
-            builder: (context, _) {
-              return DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      line.withValues(alpha: 0),
-                      glint.withValues(alpha: 0.75),
-                      line.withValues(alpha: 0),
-                    ],
-                    stops: const [0.3, 0.5, 0.7],
-                    transform: _SweepTransform(_controller.value),
-                  ),
-                ),
+    final block = DecoratedBox(
+      decoration: BoxDecoration(color: base, borderRadius: radius),
+    );
+
+    return SizedBox(
+      width: widget.circle ? widget.height : widget.width,
+      height: widget.height,
+      child: AnimatedBuilder(
+        animation: _ticker,
+        child: block,
+        builder: (context, child) {
+          if (!_ticker.isAnimating) return child!;
+          final t = _phase();
+          return ShaderMask(
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (bounds) {
+              // Porlash ekran koordinatalarida yuradi: bo'lakning global
+              // X'ini ayirib, hamma bloklar bitta to'lqinni "kesib" ko'rsatadi.
+              final box = context.findRenderObject() as RenderBox?;
+              final dx = box != null && box.attached && box.hasSize
+                  ? box.localToGlobal(Offset.zero).dx
+                  : 0.0;
+              final band = screenWidth * 0.55;
+              final center = -band + t * (screenWidth + band * 2) - dx;
+              return LinearGradient(
+                colors: [base, shine, base],
+              ).createShader(
+                Rect.fromLTWH(center - band / 2, 0, band, bounds.height),
               );
             },
-          ),
-        ),
+            child: child,
+          );
+        },
       ),
     );
-  }
-}
-
-/// [AppSkeleton] uchun gradientni chapdan o'ngga suradi — `t` 0..1 bo'ylab
-/// belgi to'liq chap tashqarisidan to'liq o'ng tashqarisiga o'tadi.
-class _SweepTransform extends GradientTransform {
-  const _SweepTransform(this.t);
-
-  final double t;
-
-  @override
-  Matrix4? transform(Rect bounds, {TextDirection? textDirection}) {
-    return Matrix4.translationValues(bounds.width * (t * 3 - 1.5), 0, 0);
   }
 }
 

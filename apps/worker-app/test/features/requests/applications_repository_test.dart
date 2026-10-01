@@ -53,6 +53,13 @@ class _FakeApplicationsRemoteDataSource
     if (err != null) throw err;
     return rateResult!;
   }
+
+  @override
+  Future<Application> sendMessage(String id, String text) async {
+    final err = rateError;
+    if (err != null) throw err;
+    return rateResult!;
+  }
 }
 
 void main() {
@@ -291,7 +298,57 @@ void main() {
         expect(app.response, isNull);
         expect(app.attachments, isEmpty);
         expect(app.points, 0);
+        expect(app.messages, isEmpty);
+        expect(app.history, isEmpty);
+        expect(app.hasLocation, isFalse);
+        expect(app.isComplaint, isFalse);
       },
     );
+
+    test('thread, history, location and rating survive a JSON round-trip', () {
+      const app = Application(
+        id: 'a1',
+        title: 'Chiroq',
+        description: 'Yonmayapti',
+        category: 'Elektr',
+        status: ApplicationStatus.javobBerildi,
+        priority: ApplicationPriority.yuqori,
+        createdAt: '2026-10-01T07:25:00Z',
+        assignedToMe: true,
+        points: 0,
+        citizenName: 'Fuqaro',
+        citizenPhone: '+998901112233',
+        isComplaint: true,
+        address: "Yalang'och MFY",
+        latitude: 41.346,
+        longitude: 69.37,
+        resolvedAt: '2026-10-02T10:00:00Z',
+        rating: 4,
+        ratingComment: 'Rahmat',
+        messages: [
+          ThreadMessage(
+            fromCitizen: true,
+            text: 'Qachon?',
+            createdAt: '2026-10-01T08:00:00Z',
+            senderName: 'Fuqaro',
+          ),
+        ],
+        history: [
+          ApplicationHistoryEvent(
+            type: 'STATUS_CHANGED',
+            createdAt: '2026-10-02T10:00:00Z',
+            fromStatus: 'IN_PROGRESS',
+            toStatus: 'RESOLVED',
+            note: 'Almashtirildi',
+            actorName: 'Xodim',
+          ),
+        ],
+      );
+
+      final back = Application.fromJson(app.toJson());
+
+      expect(back, app);
+      expect(back.hasLocation, isTrue);
+    });
   });
 }

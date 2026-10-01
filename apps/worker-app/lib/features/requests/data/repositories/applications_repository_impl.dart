@@ -70,4 +70,19 @@ class ApplicationsRepositoryImpl implements ApplicationsRepository {
       return const Left(ServerFailure('Serverda xatolik yuz berdi'));
     }
   }
+
+  @override
+  Future<Either<Failure, Application>> sendMessage(
+    String id,
+    String text,
+  ) async {
+    try {
+      final app = await remote.sendMessage(id, text);
+      return Right(app);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
 }

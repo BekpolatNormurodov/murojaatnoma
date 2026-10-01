@@ -341,6 +341,7 @@ Future<void> configureDependencies() async {
         getApplication: getIt<GetApplication>(),
         respondApplication: getIt<RespondApplication>(),
         rateApplication: getIt<RateApplication>(),
+        repository: getIt<ApplicationsRepository>(),
       ),
     )
     // ---- Chat/Xabarlar (Mock/Api seam — AppConfig.useMock tanlaydi) ----

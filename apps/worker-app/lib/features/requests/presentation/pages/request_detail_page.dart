@@ -3,19 +3,21 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 import 'package:worker_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:worker_app/features/requests/presentation/widgets/application_card.dart';
 import 'package:worker_app/features/requests/presentation/widgets/attachment_tile.dart';
 import 'package:worker_app/features/requests/presentation/widgets/status_chip.dart';
 
-/// "Murojaat tafsilotlari" sahifasi — to'liq murojaat (sarlavha, holat
-/// bosqichlari, tavsif, biriktirmalar, fuqaro ma'lumoti), xodim javobi
-/// (bo'lsa) va xodim uchun amallar (javob yozish / ball qo'yish).
+/// "Murojaat tafsilotlari" — xodim uchun to'liq ish kartasi: jarayon
+/// bosqichlari (vaqtlari bilan), SLA muddati, fuqaro + manzil (qo'ng'iroq,
+/// xaritada ochish), tavsif va fayllar, fuqaro bilan yozishma (oraliq xabar
+/// yozish), fuqaro bahosi va to'liq holatlar tarixi. Pastda — asosiy amal
+/// ("Hal qilish" — yakuniy javob + isbot).
 ///
 /// Konstruktor parametrsiz — kerakli ID router tomonidan
-/// `RequestDetailCubit.load(id)` orqali allaqachon berilgan bo'ladi
-/// (`HomePage`/`AttendanceCubit` bilan bir xil naqsh).
+/// `RequestDetailCubit.load(id)` orqali allaqachon berilgan bo'ladi.
 class RequestDetailPage extends StatelessWidget {
   const RequestDetailPage({super.key});
 
@@ -42,19 +44,20 @@ class RequestDetailPage extends StatelessWidget {
             child: _DetailErrorView(message: message),
           ),
           RequestDetailLoaded(:final application, :final submitting) =>
-            _DetailLoadedView(
-              application: application,
-              submitting: submitting,
-            ),
+            _DetailLoadedView(application: application, submitting: submitting),
         },
       ),
     );
   }
 }
 
-/// Yuklangan holat tartibi — skroll qiluvchi tafsilot ustida, pastda esa
-/// doimo ko'rinadigan (nav-bar ustidan `SafeArea` bilan himoyalangan)
-/// asosiy amal paneli.
+/// uz/ru matn — sahifaga xos yangi yorliqlar uchun (ARB'ga tegmasdan).
+String _t(BuildContext context, String uz, String ru) =>
+    Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
+
+bool _isOpen(ApplicationStatus s) =>
+    s == ApplicationStatus.yangi || s == ApplicationStatus.jarayonda;
+
 class _DetailLoadedView extends StatelessWidget {
   const _DetailLoadedView({
     required this.application,
@@ -66,20 +69,25 @@ class _DetailLoadedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showActions = application.status != ApplicationStatus.rad;
     return Column(
       children: [
-        Expanded(child: _DetailContent(application: application)),
-        if (showActions)
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: () => context.read<RequestDetailCubit>().retry(),
+            child: _DetailContent(
+              application: application,
+              submitting: submitting,
+            ),
+          ),
+        ),
+        if (_isOpen(application.status))
           _DetailBottomBar(application: application, submitting: submitting),
       ],
     );
   }
 }
 
-/// Ekran pastida qotirilgan amal paneli — yuqoridan nozik chegara, pastdan
-/// jest navigatsiya paneli ustidan to'liq ko'rinishni kafolatlovchi
-/// `SafeArea` + ichki padding.
+/// Pastki amal paneli: fuqaroga qo'ng'iroq + "Hal qilish" (yakuniy javob).
 class _DetailBottomBar extends StatelessWidget {
   const _DetailBottomBar({required this.application, required this.submitting});
 
@@ -100,9 +108,33 @@ class _DetailBottomBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: _DetailActions(
-            application: application,
-            submitting: submitting,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: AppButton(
+                  label: _t(context, "Qo'ng'iroq", 'Позвонить'),
+                  variant: AppButtonVariant.secondary,
+                  icon: AppIcons.call,
+                  onPressed: () => _call(context, application.citizenPhone),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 3,
+                child: AppButton(
+                  label: _t(context, 'Hal qilish', 'Решить'),
+                  icon: AppIcons.tick,
+                  loading: submitting,
+                  onPressed: submitting
+                      ? null
+                      : () => context.push(
+                          '/requests/${application.id}/respond',
+                          extra: context.read<RequestDetailCubit>(),
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -110,8 +142,55 @@ class _DetailBottomBar extends StatelessWidget {
   }
 }
 
-/// [ApplicationPriority] uchun chip rangi — `AppChip(filled: true)` bilan
-/// muhimlik va kategoriya chiplarini yagona uslubda ko'rsatish uchun.
+Future<void> _call(BuildContext context, String phone) async {
+  final digits = phone.replaceAll(RegExp('[^0-9+]'), '');
+  var ok = false;
+  if (digits.isNotEmpty) {
+    try {
+      ok = await launchUrl(Uri(scheme: 'tel', path: digits));
+    } on Object {
+      ok = false;
+    }
+  }
+  if (!ok && context.mounted) {
+    AppAlert.error(
+      context,
+      _t(context, "Qo'ng'iroq qilib bo'lmadi", 'Не удалось позвонить'),
+    );
+  }
+}
+
+/// Yandex Xaritalar ilovasida (bo'lmasa brauzerda) nuqtani ochadi.
+Future<void> _openMap(BuildContext context, Application a) async {
+  final Uri web;
+  if (a.hasLocation) {
+    final ll = '${a.longitude},${a.latitude}';
+    final app = Uri.parse('yandexmaps://maps.yandex.ru/?pt=$ll&z=17&l=map');
+    try {
+      if (await launchUrl(app, mode: LaunchMode.externalApplication)) return;
+    } on Object {
+      // ilova yo'q — brauzerga tushamiz
+    }
+    web = Uri.parse('https://yandex.uz/maps/?pt=$ll&z=17&l=map');
+  } else {
+    web = Uri.https('yandex.uz', '/maps/', {
+      'text': "${a.address}, Mirzo Ulug'bek, Toshkent",
+    });
+  }
+  var ok = false;
+  try {
+    ok = await launchUrl(web, mode: LaunchMode.externalApplication);
+  } on Object {
+    ok = false;
+  }
+  if (!ok && context.mounted) {
+    AppAlert.error(
+      context,
+      _t(context, "Xaritani ochib bo'lmadi", 'Не удалось открыть карту'),
+    );
+  }
+}
+
 Color _priorityColor(ApplicationPriority priority) => switch (priority) {
   ApplicationPriority.past => AppColors.inkMuted,
   ApplicationPriority.orta => AppColors.warning,
@@ -119,80 +198,79 @@ Color _priorityColor(ApplicationPriority priority) => switch (priority) {
 };
 
 class _DetailContent extends StatelessWidget {
-  const _DetailContent({required this.application});
+  const _DetailContent({required this.application, required this.submitting});
 
   final Application application;
+  final bool submitting;
 
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    final a = application;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final showThread =
+        a.messages.isNotEmpty || a.status != ApplicationStatus.rad;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       children: [
-        Text(application.title, style: AppTextStyles.h2),
+        Text(a.title, style: AppTextStyles.h2),
         const SizedBox(height: 12),
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
             AppChip(
-              label: ApplicationCard.priorityLabel(
-                context,
-                application.priority,
-              ),
-              color: _priorityColor(application.priority),
+              label: ApplicationCard.priorityLabel(context, a.priority),
+              color: _priorityColor(a.priority),
               filled: true,
             ),
-            const SizedBox(width: 8),
-            Flexible(child: AppChip(label: application.category)),
+            AppChip(label: a.category),
+            if (a.isComplaint)
+              AppChip(
+                label: _t(context, 'Shikoyat', 'Жалоба'),
+                color: AppColors.danger,
+              ),
+            StatusChip(status: a.status),
           ],
         ),
         const SizedBox(height: 20),
-        AppCard(child: _StatusTimeline(status: application.status)),
+        AppCard(child: _StatusTimeline(application: a)),
+        if (a.deadline != null && a.status != ApplicationStatus.rad) ...[
+          const SizedBox(height: 12),
+          _SlaCard(application: a),
+        ],
         const SizedBox(height: 20),
         _SectionTitle(l10n.requestDescriptionTitle),
         const SizedBox(height: 8),
-        AppCard(
-          child: Text(application.description, style: AppTextStyles.body),
-        ),
+        AppCard(child: Text(a.description, style: AppTextStyles.body)),
         const SizedBox(height: 20),
         _SectionTitle(l10n.requestCitizenInfoTitle),
         const SizedBox(height: 8),
-        AppCard(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            children: [
-              AppListTile(
-                title: application.citizenName,
-                subtitle: application.citizenPhone,
-                leadingIcon: AppIcons.profile,
-                showChevron: false,
-              ),
-              if (application.deadline != null)
-                AppListTile(
-                  title: l10n.requestDeadlineLabel,
-                  subtitle: formatIsoDate(application.deadline!),
-                  leadingIcon: AppIcons.calendar,
-                  showChevron: false,
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        _SectionTitle(l10n.requestAttachmentsTitle),
-        const SizedBox(height: 8),
-        if (application.attachments.isEmpty)
-          Text(
-            l10n.requestNoAttachments,
-            style: AppTextStyles.caption.copyWith(color: inkMuted),
-          )
-        else
-          for (final attachment in application.attachments) ...[
+        _CitizenCard(application: a),
+        if (a.attachments.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _SectionTitle(l10n.requestAttachmentsTitle),
+          const SizedBox(height: 8),
+          for (final attachment in a.attachments) ...[
             AttachmentTile(attachment: attachment),
             const SizedBox(height: 8),
           ],
-        if (application.response case final response?) ...[
+        ],
+        if (a.rating != null) ...[
+          const SizedBox(height: 20),
+          _SectionTitle(_t(context, 'Fuqaro bahosi', 'Оценка гражданина')),
+          const SizedBox(height: 8),
+          _RatingCard(rating: a.rating!, comment: a.ratingComment),
+        ],
+        if (showThread) ...[
+          const SizedBox(height: 20),
+          _SectionTitle(_t(context, 'Yozishma', 'Переписка')),
+          const SizedBox(height: 8),
+          _ThreadCard(application: a, submitting: submitting),
+        ] else if (a.response case final response?) ...[
           const SizedBox(height: 20),
           _SectionTitle(l10n.requestResponseTitle),
           const SizedBox(height: 8),
@@ -201,13 +279,6 @@ class _DetailContent extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(response.text, style: AppTextStyles.body),
-                if (response.attachments.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  for (final attachment in response.attachments) ...[
-                    AttachmentTile(attachment: attachment),
-                    const SizedBox(height: 8),
-                  ],
-                ],
                 const SizedBox(height: 8),
                 Text(
                   formatIsoDateTime(response.respondedAt),
@@ -216,6 +287,12 @@ class _DetailContent extends StatelessWidget {
               ],
             ),
           ),
+        ],
+        if (a.history.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          _SectionTitle(_t(context, 'Holatlar tarixi', 'История')),
+          const SizedBox(height: 8),
+          AppCard(child: _HistoryList(events: a.history)),
         ],
       ],
     );
@@ -239,40 +316,98 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// Murojaat holatining bosqichma-bosqich vizual ko'rsatkichi. Haqiqiy
-/// holat-tarixi (har bosqich qachon sodir bo'lgani) domenda saqlanmaydi —
-/// shu tufayli bu FAQAT joriy holatning oqim ichidagi o'rnini ko'rsatadi,
-/// tarixiy jurnal emas.
+/* ───────────────────────── Jarayon bosqichlari ───────────────────────── */
+
+class _Step {
+  const _Step(this.label, this.at, {required this.done, this.danger = false});
+  final String label;
+  final String? at;
+  final bool done;
+  final bool danger;
+}
+
+/// Qabul qilindi → Jarayonda → Hal qilindi → Baholandi (rad etilsa:
+/// Qabul qilindi → Rad etildi), har bosqich ostida sodir bo'lgan vaqti
+/// (backend `ApplicationEvent` tarixidan).
 class _StatusTimeline extends StatelessWidget {
-  const _StatusTimeline({required this.status});
+  const _StatusTimeline({required this.application});
 
-  final ApplicationStatus status;
-
-  static const _flow = [
-    ApplicationStatus.yangi,
-    ApplicationStatus.jarayonda,
-    ApplicationStatus.javobBerildi,
-    ApplicationStatus.yopildi,
-  ];
+  final Application application;
 
   @override
   Widget build(BuildContext context) {
-    final steps = status == ApplicationStatus.rad
-        ? const [ApplicationStatus.yangi, ApplicationStatus.rad]
-        : _flow;
-    final currentIndex = steps.indexOf(status);
+    final a = application;
+    String? firstAt(bool Function(ApplicationHistoryEvent) test) {
+      for (final e in a.history) {
+        if (test(e)) return e.createdAt;
+      }
+      return null;
+    }
+
+    String? lastAt(bool Function(ApplicationHistoryEvent) test) {
+      for (final e in a.history.reversed) {
+        if (test(e)) return e.createdAt;
+      }
+      return null;
+    }
+
+    final working = a.status != ApplicationStatus.yangi;
+    final resolved =
+        a.status == ApplicationStatus.javobBerildi ||
+        a.status == ApplicationStatus.yopildi;
+    final steps = a.status == ApplicationStatus.rad
+        ? [
+            _Step(
+              _t(context, 'Qabul qilindi', 'Принято'),
+              a.createdAt,
+              done: true,
+            ),
+            _Step(
+              _t(context, 'Rad etildi', 'Отклонено'),
+              lastAt((e) => e.toStatus == 'REJECTED'),
+              done: true,
+              danger: true,
+            ),
+          ]
+        : [
+            _Step(
+              _t(context, 'Qabul qilindi', 'Принято'),
+              a.createdAt,
+              done: true,
+            ),
+            _Step(
+              _t(context, 'Jarayonda', 'В работе'),
+              firstAt(
+                (e) => e.toStatus == 'IN_PROGRESS' || e.type == 'ASSIGNED',
+              ),
+              done: working,
+            ),
+            _Step(
+              _t(context, 'Hal qilindi', 'Решено'),
+              a.resolvedAt ?? lastAt((e) => e.toStatus == 'RESOLVED'),
+              done: resolved,
+            ),
+            _Step(
+              _t(context, 'Baholandi', 'Оценено'),
+              lastAt((e) => e.type == 'RATED'),
+              done: a.rating != null || a.status == ApplicationStatus.yopildi,
+            ),
+          ];
+    var current = 0;
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i].done) current = i;
+    }
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final line = isDark ? AppColors.darkLine : AppColors.line;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    Color colorOf(int i) => !steps[i].done
+        ? line
+        : steps[i].danger
+        ? AppColors.danger
+        : AppColors.primary;
 
-    Color segment(int i) =>
-        i <= currentIndex ? StatusChip.colorOf(steps[i]) : line;
-
-    // Classic stepper: each step owns an equal column; the connector runs
-    // from the previous dot to this one, so lines join dot-to-dot. Every
-    // label uses the SAME size and wraps at a word boundary ("Javob /
-    // berildi") instead of being shrunk by a FittedBox.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -281,33 +416,46 @@ class _StatusTimeline extends StatelessWidget {
             child: Column(
               children: [
                 SizedBox(
-                  height: 14,
+                  height: 22,
                   child: Row(
                     children: [
                       Expanded(
                         child: i == 0
                             ? const SizedBox.shrink()
-                            : Container(height: 2, color: segment(i)),
+                            : Container(height: 2, color: colorOf(i)),
                       ),
                       Container(
-                        width: 14,
-                        height: 14,
+                        width: 22,
+                        height: 22,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: segment(i),
-                          border: i == currentIndex
-                              ? Border.all(
-                                  color: segment(i).withValues(alpha: 0.25),
-                                  width: 3,
-                                  strokeAlign: BorderSide.strokeAlignOutside,
-                                )
+                          color: steps[i].done
+                              ? colorOf(i)
+                              : Colors.transparent,
+                          border: Border.all(color: colorOf(i), width: 2),
+                          boxShadow: i == current && steps[i].done
+                              ? [
+                                  BoxShadow(
+                                    color: colorOf(i).withValues(alpha: 0.25),
+                                    spreadRadius: 4,
+                                  ),
+                                ]
                               : null,
                         ),
+                        child: steps[i].done
+                            ? Icon(
+                                steps[i].danger
+                                    ? AppIcons.close
+                                    : AppIcons.tick,
+                                size: 13,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
                       Expanded(
                         child: i == steps.length - 1
                             ? const SizedBox.shrink()
-                            : Container(height: 2, color: segment(i + 1)),
+                            : Container(height: 2, color: colorOf(i + 1)),
                       ),
                     ],
                   ),
@@ -316,17 +464,606 @@ class _StatusTimeline extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Text(
-                    StatusChip.labelOf(context, steps[i]),
+                    steps[i].label,
                     maxLines: 2,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.caption.copyWith(
                       fontSize: 11.5,
                       height: 1.2,
-                      color: i <= currentIndex ? ink : inkMuted,
-                      fontWeight: i == currentIndex
+                      color: steps[i].done ? ink : inkMuted,
+                      fontWeight: i == current
                           ? FontWeight.w700
                           : FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  steps[i].done && steps[i].at != null
+                      ? _shortStamp(steps[i].at!)
+                      : '—',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    fontSize: 10.5,
+                    color: inkMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// "12.09, 14:05" — bosqich ostidagi ixcham vaqt.
+String _shortStamp(String iso) {
+  final d = DateTime.tryParse(iso)?.toLocal();
+  if (d == null) return '—';
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${two(d.day)}.${two(d.month)}, ${two(d.hour)}:${two(d.minute)}';
+}
+
+/* ───────────────────────── SLA ───────────────────────── */
+
+/// Hal qilish muddati: qolgan / o'tib ketgan vaqt + jarayon chizig'i.
+class _SlaCard extends StatelessWidget {
+  const _SlaCard({required this.application});
+
+  final Application application;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = application;
+    final created = DateTime.tryParse(a.createdAt)?.toLocal();
+    final due = DateTime.tryParse(a.deadline!)?.toLocal();
+    if (created == null || due == null) return const SizedBox.shrink();
+    final resolvedAt = a.resolvedAt == null
+        ? null
+        : DateTime.tryParse(a.resolvedAt!)?.toLocal();
+    final open = _isOpen(a.status);
+    final end = resolvedAt ?? DateTime.now();
+    final left = due.difference(end);
+    final total = due.difference(created).inMinutes.clamp(1, 1 << 30);
+    final progress = (end.difference(created).inMinutes / total).clamp(
+      0.0,
+      1.0,
+    );
+    final overdue = left.isNegative;
+
+    final Color color;
+    final String headline;
+    if (!open) {
+      color = overdue ? AppColors.danger : AppColors.primary;
+      headline = overdue
+          ? _t(
+              context,
+              '${_span(context, left.abs())} kechikib hal qilindi',
+              'Решено с опозданием ${_span(context, left.abs())}',
+            )
+          : _t(context, 'Muddatida hal qilindi', 'Решено в срок');
+    } else if (overdue) {
+      color = AppColors.danger;
+      headline = _t(
+        context,
+        '${_span(context, left.abs())} kechikdi',
+        'Просрочено на ${_span(context, left.abs())}',
+      );
+    } else {
+      color = left.inHours < 24 ? AppColors.warning : AppColors.primary;
+      headline = _t(
+        context,
+        '${_span(context, left)} qoldi',
+        'Осталось ${_span(context, left)}',
+      );
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+
+    return AppCard(
+      color: overdue && open
+          ? AppColors.danger.withValues(alpha: isDark ? 0.14 : 0.06)
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(AppIcons.timer, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  headline,
+                  style: AppTextStyles.body.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: open ? progress : 1,
+              minHeight: 6,
+              color: color,
+              backgroundColor: line,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${_t(context, 'Muddat', 'Срок')}: ${formatIsoDateTime(a.deadline!)}',
+            style: AppTextStyles.caption.copyWith(color: inkMuted),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 2 kun 4 soat / 5 soat / 20 daqiqa.
+String _span(BuildContext context, Duration d) {
+  final ru = Localizations.localeOf(context).languageCode == 'ru';
+  final days = d.inDays;
+  final hours = d.inHours % 24;
+  if (days > 0) {
+    final h = hours > 0 ? (ru ? ' $hours ч' : ' $hours soat') : '';
+    return ru ? '$days дн$h' : '$days kun$h';
+  }
+  if (d.inHours > 0) return ru ? '${d.inHours} ч' : '${d.inHours} soat';
+  final m = d.inMinutes.clamp(1, 59);
+  return ru ? '$m мин' : '$m daqiqa';
+}
+
+/* ───────────────────────── Fuqaro + manzil ───────────────────────── */
+
+class _CitizenCard extends StatelessWidget {
+  const _CitizenCard({required this.application});
+
+  final Application application;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = application;
+    final hasAddress = (a.address ?? '').trim().isNotEmpty;
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          AppListTile(
+            title: a.citizenName,
+            subtitle: a.citizenPhone,
+            leadingIcon: AppIcons.profile,
+            showChevron: false,
+            trailing: IconButton(
+              tooltip: _t(context, "Qo'ng'iroq", 'Позвонить'),
+              onPressed: () => _call(context, a.citizenPhone),
+              icon: const Icon(AppIcons.call, color: AppColors.primary),
+            ),
+          ),
+          if (hasAddress || a.hasLocation)
+            AppListTile(
+              title: hasAddress
+                  ? a.address!
+                  : _t(context, 'Joylashuv', 'Местоположение'),
+              subtitle: a.hasLocation
+                  ? _t(
+                      context,
+                      'Fuqaro joylashuvni yuborgan',
+                      'Гражданин отправил точку',
+                    )
+                  : _t(
+                      context,
+                      'Aniq nuqta yuborilmagan',
+                      'Точка не отправлена',
+                    ),
+              leadingIcon: AppIcons.location,
+              showChevron: false,
+              trailing: TextButton.icon(
+                onPressed: () => _openMap(context, a),
+                icon: const Icon(AppIcons.routing, size: 18),
+                label: Text(_t(context, 'Xaritada', 'На карте')),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/* ───────────────────────── Baho ───────────────────────── */
+
+class _RatingCard extends StatelessWidget {
+  const _RatingCard({required this.rating, this.comment});
+
+  final int rating;
+  final String? comment;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: 2),
+                  child: Icon(
+                    AppIcons.star,
+                    size: 22,
+                    color: i <= rating ? AppColors.warning : line,
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Text('$rating / 5', style: AppTextStyles.h3),
+            ],
+          ),
+          if ((comment ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              '“${comment!.trim()}”',
+              style: AppTextStyles.body.copyWith(
+                color: inkSoft,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/* ───────────────────────── Yozishma ───────────────────────── */
+
+class _ThreadCard extends StatefulWidget {
+  const _ThreadCard({required this.application, required this.submitting});
+
+  final Application application;
+  final bool submitting;
+
+  @override
+  State<_ThreadCard> createState() => _ThreadCardState();
+}
+
+class _ThreadCardState extends State<_ThreadCard> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || widget.submitting) return;
+    FocusScope.of(context).unfocus();
+    final error = await context.read<RequestDetailCubit>().sendMessage(text);
+    if (!mounted) return;
+    if (error == null) {
+      _controller.clear();
+    } else {
+      AppAlert.error(context, error);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = widget.application;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final surface2 = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
+    final canWrite = a.status != ApplicationStatus.rad;
+
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (a.messages.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                _t(
+                  context,
+                  "Hali xabar yo'q. Fuqaroga holat haqida qisqa xabar yozing.",
+                  'Сообщений пока нет. Напишите гражданину о ходе работ.',
+                ),
+                style: AppTextStyles.caption.copyWith(color: inkMuted),
+              ),
+            )
+          else
+            for (final m in a.messages) ...[
+              _Bubble(message: m),
+              const SizedBox(height: 8),
+            ],
+          if (canWrite) ...[
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    minLines: 1,
+                    maxLines: 4,
+                    maxLength: 1000,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: _t(
+                        context,
+                        'Fuqaroga xabar…',
+                        'Сообщение гражданину…',
+                      ),
+                      counterText: '',
+                      isDense: true,
+                      filled: true,
+                      fillColor: surface2,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadii.md),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 46,
+                  height: 46,
+                  child: IconButton.filled(
+                    onPressed: widget.submitting ? null : _send,
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                    ),
+                    icon: widget.submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            AppIcons.send,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Bubble extends StatelessWidget {
+  const _Bubble({required this.message});
+
+  final ThreadMessage message;
+
+  @override
+  Widget build(BuildContext context) {
+    final mine = !message.fromCitizen;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final bg = mine
+        ? AppColors.primary.withValues(alpha: isDark ? 0.22 : 0.10)
+        : (isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt);
+    final name =
+        message.senderName ??
+        (mine
+            ? _t(context, 'Xodim', 'Сотрудник')
+            : _t(context, 'Fuqaro', 'Гражданин'));
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.72,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(14),
+              topRight: const Radius.circular(14),
+              bottomLeft: Radius.circular(mine ? 14 : 4),
+              bottomRight: Radius.circular(mine ? 4 : 14),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: mine ? AppColors.primary : inkMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(message.text, style: AppTextStyles.body),
+                if (message.attachmentUrl != null) ...[
+                  const SizedBox(height: 6),
+                  AttachmentTile(
+                    attachment: AttachmentRef(
+                      type: AttachmentType.image,
+                      path: message.attachmentUrl!,
+                      name: message.attachmentUrl!.split('/').last,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 2),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    _shortStamp(message.createdAt),
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 10.5,
+                      color: inkMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/* ───────────────────────── Tarix ───────────────────────── */
+
+class _HistoryList extends StatelessWidget {
+  const _HistoryList({required this.events});
+
+  final List<ApplicationHistoryEvent> events;
+
+  String _status(BuildContext context, String? s) => switch (s) {
+    'NEW' => _t(context, 'Yangi', 'Новая'),
+    'IN_PROGRESS' => _t(context, 'Jarayonda', 'В работе'),
+    'RESOLVED' => _t(context, 'Hal qilindi', 'Решено'),
+    'REJECTED' => _t(context, 'Rad etildi', 'Отклонено'),
+    _ => s ?? '—',
+  };
+
+  ({IconData icon, Color color, String label}) _meta(
+    BuildContext context,
+    ApplicationHistoryEvent e,
+  ) => switch (e.type) {
+    'CREATED' => (
+      icon: AppIcons.documentUpload,
+      color: AppColors.info,
+      label: _t(context, 'Murojaat kelib tushdi', 'Обращение поступило'),
+    ),
+    'ASSIGNED' => (
+      icon: AppIcons.people,
+      color: AppColors.primary,
+      label: e.toEmployeeName != null
+          ? _t(
+              context,
+              'Biriktirildi: ${e.toEmployeeName}',
+              'Назначено: ${e.toEmployeeName}',
+            )
+          : _t(context, 'Xodim biriktirildi', 'Назначен сотрудник'),
+    ),
+    'STATUS_CHANGED' => (
+      icon: AppIcons.arrowRight,
+      color: AppColors.warning,
+      label:
+          '${_status(context, e.fromStatus)} → ${_status(context, e.toStatus)}',
+    ),
+    'RATED' => (
+      icon: AppIcons.star,
+      color: AppColors.warning,
+      label: _t(context, 'Fuqaro baholadi', 'Гражданин оценил'),
+    ),
+    'REOPENED' => (
+      icon: AppIcons.turnLeft,
+      color: AppColors.danger,
+      label: _t(context, 'Fuqaro qayta ochdi', 'Гражданин переоткрыл'),
+    ),
+    _ => (
+      icon: AppIcons.sms,
+      color: AppColors.inkMuted,
+      label: _t(context, 'Izoh', 'Комментарий'),
+    ),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
+    return Column(
+      children: [
+        for (var i = 0; i < events.length; i++)
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    Builder(
+                      builder: (context) {
+                        final m = _meta(context, events[i]);
+                        return Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: m.color.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(m.icon, size: 15, color: m.color),
+                        );
+                      },
+                    ),
+                    if (i < events.length - 1)
+                      Expanded(child: Container(width: 1.5, color: line)),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      top: 4,
+                      bottom: i < events.length - 1 ? 14 : 0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _meta(context, events[i]).label,
+                          style: AppTextStyles.body.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if ((events[i].note ?? '').trim().isNotEmpty) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            events[i].note!.trim(),
+                            style: AppTextStyles.caption.copyWith(
+                              color: inkSoft,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            if (events[i].actorName != null)
+                              events[i].actorName!,
+                            formatIsoDateTime(events[i].createdAt),
+                          ].join(' · '),
+                          style: AppTextStyles.caption.copyWith(
+                            fontSize: 11,
+                            color: inkMuted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -338,125 +1075,7 @@ class _StatusTimeline extends StatelessWidget {
   }
 }
 
-class _DetailActions extends StatelessWidget {
-  const _DetailActions({required this.application, required this.submitting});
-
-  final Application application;
-  final bool submitting;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = context.l10n;
-    if (application.status == ApplicationStatus.rad) {
-      return const SizedBox.shrink();
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: AppButton(
-            label: l10n.requestRespondCta,
-            variant: AppButtonVariant.secondary,
-            icon: AppIcons.send,
-            loading: submitting,
-            onPressed: submitting
-                ? null
-                : () => context.push(
-                    '/requests/${application.id}/respond',
-                    extra: context.read<RequestDetailCubit>(),
-                  ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: AppButton(
-            label: l10n.requestRateCta,
-            icon: AppIcons.star,
-            loading: submitting,
-            onPressed: submitting ? null : () => _openRateSheet(context),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-Future<void> _openRateSheet(BuildContext context) async {
-  final cubit = context.read<RequestDetailCubit>();
-  final l10n = context.l10n;
-  const pointsPerStar = 10;
-  final state = cubit.state;
-  var stars = state is RequestDetailLoaded
-      ? (state.application.points / pointsPerStar).round().clamp(0, 5)
-      : 0;
-
-  await showAppSheet<void>(
-    context: context,
-    title: l10n.requestRateSheetTitle,
-    subtitle: l10n.requestRateHint,
-    child: StatefulBuilder(
-      builder: (sheetContext, setSheetState) {
-        final isDark = Theme.of(sheetContext).brightness == Brightness.dark;
-        final line = isDark ? AppColors.darkLine : AppColors.line;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 1; i <= 5; i++)
-                  GestureDetector(
-                    onTap: () => setSheetState(() => stars = i),
-                    // Butun 44×44 maydon bosiladi (iOS min tap target) —
-                    // 36px yulduz markazda, oraliqlar ham bosiladi.
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      child: Icon(
-                        AppIcons.star,
-                        size: 36,
-                        color: i <= stars ? AppColors.warning : line,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '${stars * pointsPerStar} ${l10n.pointsSuffix}',
-              style: AppTextStyles.h3,
-            ),
-            const SizedBox(height: 20),
-            AppButton(
-              label: l10n.requestRateSubmit,
-              onPressed: stars == 0
-                  ? null
-                  : () async {
-                      final error = await cubit.rate(stars * pointsPerStar);
-                      if (!context.mounted) return;
-                      if (sheetContext.mounted) {
-                        Navigator.of(sheetContext).pop();
-                      }
-                      if (error == null) {
-                        await AppDialog.success(
-                          context: context,
-                          title: l10n.requestRateSuccessTitle,
-                          message: l10n.requestRateSuccessMessage,
-                          buttonLabel: l10n.closeLabel,
-                        );
-                      } else {
-                        AppAlert.error(context, error);
-                      }
-                    },
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
+/* ───────────────────────── Yuklanish / xato ───────────────────────── */
 
 class _DetailSkeleton extends StatelessWidget {
   const _DetailSkeleton({super.key});
@@ -464,26 +1083,34 @@ class _DetailSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(AppRadii.lg);
-    return Padding(
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const AppSkeleton(width: double.infinity, height: 24),
-          const SizedBox(height: 12),
-          const AppSkeleton(width: 160),
-          const SizedBox(height: 24),
-          AppSkeleton(width: double.infinity, height: 90, borderRadius: radius),
-          const SizedBox(height: 20),
-          AppSkeleton(
-            width: double.infinity,
-            height: 120,
-            borderRadius: radius,
-          ),
-          const SizedBox(height: 20),
-          AppSkeleton(width: double.infinity, height: 80, borderRadius: radius),
-        ],
-      ),
+      children: [
+        const AppSkeleton(width: 260, height: 24),
+        const SizedBox(height: 14),
+        const Row(
+          children: [
+            AppSkeleton(width: 70, height: 26),
+            SizedBox(width: 8),
+            AppSkeleton(width: 90, height: 26),
+            SizedBox(width: 8),
+            AppSkeleton(width: 80, height: 26),
+          ],
+        ),
+        const SizedBox(height: 22),
+        AppSkeleton(width: double.infinity, height: 92, borderRadius: radius),
+        const SizedBox(height: 12),
+        AppSkeleton(width: double.infinity, height: 84, borderRadius: radius),
+        const SizedBox(height: 22),
+        const AppSkeleton(width: 110, height: 14),
+        const SizedBox(height: 10),
+        AppSkeleton(width: double.infinity, height: 96, borderRadius: radius),
+        const SizedBox(height: 22),
+        const AppSkeleton(width: 130, height: 14),
+        const SizedBox(height: 10),
+        AppSkeleton(width: double.infinity, height: 120, borderRadius: radius),
+      ],
     );
   }
 }

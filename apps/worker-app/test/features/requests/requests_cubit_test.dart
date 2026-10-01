@@ -35,6 +35,11 @@ class _FakeApplicationsRepository implements ApplicationsRepository {
   Future<Either<Failure, Application>> rate(String id, int points) {
     throw UnimplementedError('RequestsCubit does not call rate');
   }
+
+  @override
+  Future<Either<Failure, Application>> sendMessage(String id, String text) {
+    throw UnimplementedError('RequestsCubit does not call sendMessage');
+  }
 }
 
 const _app = Application(

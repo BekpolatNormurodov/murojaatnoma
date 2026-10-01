@@ -3,6 +3,7 @@ import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
+import 'package:worker_app/features/requests/domain/repositories/applications_repository.dart';
 import 'package:worker_app/features/requests/domain/usecases/get_application.dart';
 import 'package:worker_app/features/requests/domain/usecases/rate_application.dart';
 import 'package:worker_app/features/requests/domain/usecases/respond_application.dart';
@@ -25,14 +26,17 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     required GetApplication getApplication,
     required RespondApplication respondApplication,
     required RateApplication rateApplication,
+    ApplicationsRepository? repository,
   }) : _getApplication = getApplication,
        _respondApplication = respondApplication,
        _rateApplication = rateApplication,
+       _repository = repository,
        super(const RequestDetailLoading());
 
   final GetApplication _getApplication;
   final RespondApplication _respondApplication;
   final RateApplication _rateApplication;
+  final ApplicationsRepository? _repository;
 
   /// So'nggi [load] bilan chaqirilgan ID — [retry] parametrsiz qayta
   /// yuklay olishi uchun saqlanadi.
@@ -87,6 +91,14 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
         RateApplicationParams(id: application.id, points: points),
       ),
     );
+  }
+
+  /// Fuqaroga oraliq xabar yozadi (murojaatni YOPMAYDI — yakuniy javob
+  /// [respond] orqali). Qaytadi: `null` — muvaffaqiyatli; aks holda xato.
+  Future<String?> sendMessage(String text) {
+    final repo = _repository;
+    if (repo == null) return Future.value("Xabar yuborib bo'lmadi");
+    return _mutate((application) => repo.sendMessage(application.id, text));
   }
 
   /// [respond]/[rate] uchun umumiy skelet: joriy holat yuklangan

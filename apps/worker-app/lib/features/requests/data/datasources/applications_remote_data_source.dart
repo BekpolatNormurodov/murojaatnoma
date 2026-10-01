@@ -20,6 +20,10 @@ abstract class ApplicationsRemoteDataSource {
   Future<Application> respond(String id, ApplicationResponse response);
 
   Future<Application> rate(String id, int points);
+
+  /// Yozishmaga xabar qo'shadi (murojaatni yopmaydi) va yangilangan
+  /// murojaatni qaytaradi.
+  Future<Application> sendMessage(String id, String text);
 }
 
 /// Mock implementatsiya (backend tayyor bo'lguncha) — [AppConfig.useMock]
@@ -87,6 +91,28 @@ class ApplicationsRemoteDataSourceMockImpl
     mockApplications[index] = updated;
     return updated;
   }
+
+  @override
+  Future<Application> sendMessage(String id, String text) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final index = mockApplications.indexWhere((a) => a.id == id);
+    if (index == -1) throw ServerException('Ariza topilmadi: $id');
+    final source = mockApplications[index];
+    final updated = _withUpdate(
+      source,
+      messages: [
+        ...source.messages,
+        ThreadMessage(
+          fromCitizen: false,
+          text: text,
+          createdAt: DateTime.now().toIso8601String(),
+          senderName: 'Siz',
+        ),
+      ],
+    );
+    mockApplications[index] = updated;
+    return updated;
+  }
 }
 
 /// Mavjud [Application]dan ba'zi maydonlarini almashtirib, yangisini
@@ -98,6 +124,7 @@ Application _withUpdate(
   ApplicationStatus? status,
   int? points,
   ApplicationResponse? response,
+  List<ThreadMessage>? messages,
 }) {
   return Application(
     id: source.id,
@@ -114,6 +141,15 @@ Application _withUpdate(
     response: response ?? source.response,
     citizenName: source.citizenName,
     citizenPhone: source.citizenPhone,
+    isComplaint: source.isComplaint,
+    address: source.address,
+    latitude: source.latitude,
+    longitude: source.longitude,
+    resolvedAt: source.resolvedAt,
+    rating: source.rating,
+    ratingComment: source.ratingComment,
+    messages: messages ?? source.messages,
+    history: source.history,
   );
 }
 
@@ -250,12 +286,12 @@ class ApplicationsRemoteDataSourceApiImpl
       final applicationResp = await _client.dio.get<Map<String, dynamic>>(
         '/applications/$id',
       );
-      final applicationJson =
-          applicationResp.data ?? const <String, dynamic>{};
+      final applicationJson = applicationResp.data ?? const <String, dynamic>{};
       final attachmentsJson = await _bestEffortList(
         '/applications/$id/attachments',
       );
       final messagesJson = await _bestEffortList('/applications/$id/messages');
+      final eventsJson = await _bestEffortList('/applications/$id/events');
 
       return Application.fromJson(
         _adaptApplicationJson(
@@ -265,6 +301,12 @@ class ApplicationsRemoteDataSourceApiImpl
               .map((e) => _adaptAttachmentJson(e as Map<String, dynamic>))
               .toList(),
           response: _adaptResponseFromMessages(messagesJson),
+          messages: messagesJson
+              .map((e) => _adaptMessageJson(e as Map<String, dynamic>))
+              .toList(),
+          history: eventsJson
+              .map((e) => _adaptEventJson(e as Map<String, dynamic>))
+              .toList(),
         ),
       );
     } on DioException catch (e) {
@@ -298,6 +340,34 @@ class ApplicationsRemoteDataSourceApiImpl
         },
       );
 
+      return await getById(id);
+    } on DioException catch (e) {
+      throw ServerException(e.message ?? 'Server xatosi');
+    }
+  }
+
+  @override
+  Future<Application> sendMessage(String id, String text) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      String? name;
+      try {
+        final raw = prefs.getString(_sessionPrefsKey);
+        if (raw != null) {
+          name = (jsonDecode(raw) as Map<String, dynamic>)['name'] as String?;
+        }
+      } on Object {
+        name = null;
+      }
+      await _client.dio.post<Map<String, dynamic>>(
+        '/applications/$id/messages',
+        data: {
+          // Rol tokendan olinadi (server); DTO maydoni majburiy.
+          'senderRole': 'EMPLOYEE',
+          if (name != null) 'senderName': name,
+          'text': text,
+        },
+      );
       return await getById(id);
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
@@ -382,6 +452,8 @@ Map<String, dynamic> _adaptApplicationJson(
   required String? currentEmployeeId,
   List<Map<String, dynamic>> attachments = const [],
   Map<String, dynamic>? response,
+  List<Map<String, dynamic>> messages = const [],
+  List<Map<String, dynamic>> history = const [],
 }) {
   final assignedEmployeeId = json['assignedEmployeeId'] as String?;
   // Fuqaro ilovasi mavzuni "[SHIKOYAT|Kategoriya] Sarlavha" ko'rinishida
@@ -414,8 +486,37 @@ Map<String, dynamic> _adaptApplicationJson(
     'response': response,
     'citizen_name': json['applicantFullName'],
     'citizen_phone': json['applicantPhone'],
+    'is_complaint': m?.group(1) == 'SHIKOYAT',
+    'address': json['address'] ?? json['district'],
+    'lat': json['lat'],
+    'lng': json['lng'],
+    'resolved_at': json['resolvedAt'],
+    'rating': json['rating'],
+    'rating_comment': json['ratingComment'],
+    'messages': messages,
+    'history': history,
   };
 }
+
+/// Backend `ApplicationMessage` → mobil [ThreadMessage] JSON.
+Map<String, dynamic> _adaptMessageJson(Map<String, dynamic> json) => {
+  'from_citizen': json['senderRole'] == 'CITIZEN',
+  'text': json['text'],
+  'created_at': json['createdAt'],
+  'sender_name': json['senderName'],
+  'attachment_url': json['attachmentUrl'],
+};
+
+/// Backend `ApplicationEvent` (ismlar bilan) → mobil [ApplicationHistoryEvent] JSON.
+Map<String, dynamic> _adaptEventJson(Map<String, dynamic> json) => {
+  'type': json['type'],
+  'created_at': json['createdAt'],
+  'from_status': json['fromStatus'],
+  'to_status': json['toStatus'],
+  'note': json['note'],
+  'actor_name': json['actorName'],
+  'to_employee_name': json['toEmployeeName'],
+};
 
 /// Backend `Attachment` (Prisma) satrini mobil `AttachmentRef.fromJson`
 /// shakliga moslashtiradi. Backendda faqat `PHOTO`/`VIDEO` turlari bor

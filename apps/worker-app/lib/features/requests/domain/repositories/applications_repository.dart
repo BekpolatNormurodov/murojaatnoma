@@ -28,4 +28,7 @@ abstract class ApplicationsRepository {
 
   /// Murojaatga ball qo'yadi (baholash/yopish bosqichi).
   Future<Either<Failure, Application>> rate(String id, int points);
+
+  /// Murojaat yozishmasiga xabar qo'shadi (holatni o'zgartirmaydi).
+  Future<Either<Failure, Application>> sendMessage(String id, String text);
 }
