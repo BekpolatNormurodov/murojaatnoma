@@ -29,6 +29,7 @@ import { RequestToastStack } from './RequestToasts';
 import { CATEGORY_META, STATUS_META } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
+import { useAssignableStaff } from './useAssignableStaff';
 import type { RequestStatus } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
@@ -116,7 +117,10 @@ export function RequestsPage() {
   }, []);
 
   const { data: workersData } = useWorkers();
-  const workers = Array.isArray(workersData) ? workersData : [];
+  // Haqiqiy xodimlar (biriktirish shularga) + eski demo ishchilar (eski
+  // murojaatlardagi biriktirishlarni ko'rsatish uchun).
+  const { staff } = useAssignableStaff();
+  const workers = [...staff, ...(Array.isArray(workersData) ? workersData : [])];
   const [tab, setTab] = useState<RequestStatus | 'all'>('all');
   const [query, setQuery] = useState('');
   const [deadlineFilter, setDeadlineFilter] = useState<DeadlineFilter>('all');
@@ -488,9 +492,15 @@ export function RequestsPage() {
                   </span>
                 </div>
 
-                <h3 className="mt-3 line-clamp-1 text-[15px] font-semibold text-ink">{r.title}</h3>
-                <div className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
-                  <span>#{r.id}</span>
+                <h3 className="mt-3 line-clamp-2 text-[15px] font-semibold text-ink">{r.title}</h3>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                  {/* uuid → qisqa ko'rinish; eski R-1000 o'zgarishsiz */}
+                  <span>#{r.id.startsWith('R-') ? r.id : r.id.slice(0, 8)}</span>
+                  {r.source === 'citizen' && (
+                    <span className="rounded-md bg-primary-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-primary-700">
+                      {r.kind === 'shikoyat' ? 'Shikoyat · ilova' : 'Fuqaro ilovasi'}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full" style={{ background: prio.color }} />
                     {t(prio.labelKey)}

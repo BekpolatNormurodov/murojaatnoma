@@ -34,6 +34,7 @@ import {
 } from '@/shared/data/mock';
 import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
+import { useAssignableStaff } from './useAssignableStaff';
 import { useDeputies } from '@/features/deputies/useDeputies';
 import type {
   CitizenRequest,
@@ -219,8 +220,15 @@ export function RequestDetail({
   const { t } = useI18n();
   const r = request;
   const { data: workersData } = useWorkers();
-  const workers = Array.isArray(workersData) ? workersData : [];
-  const worker = workers.find((w) => w.id === r?.assignedWorkerId);
+  const legacyWorkers = Array.isArray(workersData) ? workersData : [];
+  // Biriktirish — HAQIQIY xodimlarga (ishchi ilovasiga kiradiganlar). Eski
+  // demo "Worker"lar faqat oldin biriktirilgan eski murojaatlarni ko'rsatish
+  // uchun qidiruvda qoladi.
+  const { staff } = useAssignableStaff();
+  const workers = staff;
+  const worker =
+    staff.find((w) => w.id === r?.assignedWorkerId) ??
+    legacyWorkers.find((w) => w.id === r?.assignedWorkerId);
   const cat = r ? CATEGORY_META[r.category] : null;
   // Mas'ul o'rinbosar yo'nalish (category) bo'yicha jonli /deputies ro'yxatidan olinadi
   const { data: deputies } = useDeputies();
@@ -304,7 +312,7 @@ export function RequestDetail({
   }
 
   return (
-    <Drawer open={!!r} onClose={onClose} title={t('requests.detail.title')} subtitle={r ? `#${r.id}` : undefined} width={500}>
+    <Drawer open={!!r} onClose={onClose} title={t('requests.detail.title')} subtitle={r ? `#${shortId(r.id)}` : undefined} width={500}>
       {r && cat && (
         <div className="space-y-5">
           {/* Header */}
@@ -591,7 +599,7 @@ export function RequestDetail({
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
                   <span className="flex items-center gap-1 text-[13px] font-semibold text-amber-500">
-                    <Star1 size={14} variant="Bold" /> {worker.rating.toFixed(1)}
+                    <Star1 size={14} variant="Bold" /> {worker.rating > 0 ? worker.rating.toFixed(1) : '—'}
                   </span>
                   {canWrite && (
                     <button
@@ -762,7 +770,7 @@ function WorkerPickerModal({
       open={open}
       onClose={onClose}
       title={t('requests.detail.assignWorker')}
-      subtitle={`#${request.id} · ${cat.label}`}
+      subtitle={`#${shortId(request.id)} · ${cat.label}`}
       width={520}
     >
       <div className="relative mb-3">
@@ -820,7 +828,7 @@ function WorkerPickerModal({
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <span className="flex items-center gap-1 text-[12.5px] font-semibold text-amber-500">
-                  <Star1 size={13} variant="Bold" /> {w.rating.toFixed(1)}
+                  <Star1 size={13} variant="Bold" /> {w.rating > 0 ? w.rating.toFixed(1) : '—'}
                 </span>
                 <span className="text-[11px] text-ink-muted">{w.activeTasks} {t('requests.workerPicker.activeTasksSuffix')}</span>
                 {current && <span className="text-[10.5px] font-semibold text-primary-600">{t('requests.workerPicker.assigned')}</span>}
@@ -834,4 +842,9 @@ function WorkerPickerModal({
       </div>
     </Modal>
   );
+}
+
+/** uuid -> first 8 chars; legacy 'R-1000' unchanged. */
+function shortId(id: string): string {
+  return id.startsWith('R-') ? id : id.slice(0, 8);
 }

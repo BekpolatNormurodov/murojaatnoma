@@ -132,6 +132,16 @@ export interface CitizenRequest {
   responseHours: number | null; // javob vaqti
   feedback: number | null; // fuqaro bahosi 0..5
   cost: number; // hal qilish xarajati (so'm)
+  /** 'citizen' — fuqaro ilovasidan kelgan haqiqiy murojaat; 'legacy' — eski jadval. */
+  source?: "citizen" | "legacy";
+  /** Fuqaro ilovasi: ariza yoki shikoyat. */
+  kind?: "ariza" | "shikoyat";
+  /** Server SLA muddati (ISO) — muhimlikka qarab. */
+  dueAt?: string | null;
+  /** Biriktirilgan haqiqiy xodim. */
+  assignedEmployee?: { id: string; fullName: string; avatarUrl: string | null } | null;
+  /** Fuqaro bahosiga izoh. */
+  ratingComment?: string | null;
 }
 
 /* ------------------------------------------------------------

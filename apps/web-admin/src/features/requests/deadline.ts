@@ -48,9 +48,14 @@ export function getDeadline(
   t: (key: string) => string,
   now: number = Date.now(),
 ): DeadlineInfo {
-  const slaDays = CATEGORY_SLA[r.category] ?? DEFAULT_SLA;
   const created = new Date(r.createdAt).getTime();
-  const dueMs = created + slaDays * DAY;
+  // Citizen murojaats carry the SERVER's SLA deadline (by priority); legacy
+  // rows fall back to the per-category table.
+  const serverDue = r.dueAt ? new Date(r.dueAt).getTime() : NaN;
+  const dueMs = Number.isFinite(serverDue)
+    ? serverDue
+    : created + (CATEGORY_SLA[r.category] ?? DEFAULT_SLA) * DAY;
+  const slaDays = Math.max(1, Math.round((dueMs - created) / DAY));
   const dueAt = new Date(dueMs);
   const done = r.status === "resolved" || r.status === "rejected";
 
