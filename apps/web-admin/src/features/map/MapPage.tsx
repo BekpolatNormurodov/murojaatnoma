@@ -53,6 +53,15 @@ import {
 } from './mapShared';
 
 // Mirzo Ulug'bek district centroid (WGS84) — [lat, lng] for Leaflet.
+/**
+ * Yandex Maps raster tiles — Uzbek (Latin) street/place labels and the most
+ * detailed mahalla-level coverage of Tashkent. (Replaces CARTO, whose free
+ * basemaps now render an "API KEY REQUIRED" watermark.) `scale=2` on HiDPI.
+ */
+const YANDEX_TILE_URL = `https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=${
+  typeof window !== 'undefined' && window.devicePixelRatio > 1 ? 2 : 1
+}&lang=uz_UZ`;
+
 const DISTRICT_CENTER: [number, number] = [41.3354, 69.3737];
 
 type MahallaFilter = { code: string; name: string };
@@ -518,12 +527,18 @@ export function MapPage() {
         <MapContainer
           center={DISTRICT_CENTER}
           zoom={12}
+          maxZoom={19}
           scrollWheelZoom
+          // Yandex raster tiles are in EPSG:3395 (ellipsoidal Mercator). With
+          // Leaflet's default EPSG:3857 every overlay (mahalla polygons,
+          // markers) would sit ~250 m off at Tashkent's latitude.
+          crs={L.CRS.EPSG3395}
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer
-            attribution="&copy; OpenStreetMap, &copy; CARTO"
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+            attribution="&copy; Yandex"
+            url={YANDEX_TILE_URL}
+            maxZoom={19}
           />
 
           {districtQ.data && (
