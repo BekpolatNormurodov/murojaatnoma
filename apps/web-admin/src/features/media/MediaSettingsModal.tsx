@@ -432,13 +432,13 @@ const KEY_GUIDES = [
     title: 'Instagram',
     icon: <PLATFORM_META.instagram.Icon size={18} />,
     color: PLATFORM_META.instagram.color,
-    env: ['INSTAGRAM_ACCESS_TOKEN=EAA...', 'INSTAGRAM_BUSINESS_ID=1784...'],
+    env: ['INSTAGRAM_ACCESS_TOKEN=EAA...', '# ixtiyoriy — tokendan avtomatik topiladi: INSTAGRAM_BUSINESS_ID=1784...'],
     gives: 'Heshteglar va ochiq biznes akkauntlar (kun.uz, daryo.uz ...) postlari.',
     steps: [
       'Instagram akkauntni Business/Creator qiling va Facebook sahifaga ulang',
       'developers.facebook.com → App yarating → Instagram Graph API',
       'Ruxsatlar: instagram_basic, pages_read_engagement, Instagram Public Content Access',
-      'Uzoq muddatli (long-lived) token va IG business ID oling',
+      'Uzoq muddatli (long-lived) token oling — biznes akkaunt ID tokendan avtomatik aniqlanadi',
     ],
   },
 ] as const;

@@ -180,3 +180,56 @@ describe('media settings', () => {
     expect(m.rssFeeds.length).toBe(S.rssFeeds.length);
   });
 });
+
+describe('instagram collector', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+  const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+
+  it('finds the business account from the token when INSTAGRAM_BUSINESS_ID is empty', async () => {
+    const urls: string[] = [];
+    global.fetch = jest.fn(async (url: string | URL | Request) => {
+      const u = String(url);
+      urls.push(u);
+      if (u.includes('/me/accounts')) return json({ data: [{ id: 'page1' }, { id: 'page2', instagram_business_account: { id: '1784IG' } }] });
+      if (u.includes('business_discovery')) {
+        return json({
+          business_discovery: {
+            username: 'kun.uz',
+            name: 'Kun.uz',
+            media: { data: [{ id: 'm1', caption: "Mirzo Ulug'bek tumanida yangi park", permalink: 'https://instagram.com/p/1', timestamp: '2026-10-01T05:00:00+0000', media_type: 'IMAGE', media_url: 'https://cdn/x.jpg' }] },
+          },
+        });
+      }
+      return json({ data: [] });
+    }) as typeof fetch;
+    const { collectInstagram } = await import('./collectors/collectors');
+    const r = await collectInstagram(
+      { token: 'tok-a', businessId: '', version: 'v24.0' },
+      { instagramHashtags: [], instagramAccounts: ['kun.uz'] },
+      new Map(),
+      new Date('2026-10-01T10:00:00Z'),
+    );
+    expect(r.error).toBeUndefined();
+    expect(urls[0]).toContain('/me/accounts');
+    expect(urls[1]).toContain('/1784IG?fields=');
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).toMatchObject({ platform: 'instagram', sourceName: 'Kun.uz', url: 'https://instagram.com/p/1' });
+  });
+
+  it('explains what to do when no Page has an Instagram account linked', async () => {
+    global.fetch = jest.fn(async () => json({ data: [{ id: 'page1' }] })) as typeof fetch;
+    const { collectInstagram } = await import('./collectors/collectors');
+    const r = await collectInstagram({ token: 'tok-b', businessId: '', version: 'v24.0' }, { instagramHashtags: ['x'], instagramAccounts: [] }, new Map(), new Date());
+    expect(r.items).toEqual([]);
+    expect(r.error).toContain('INSTAGRAM_BUSINESS_ID');
+  });
+
+  it('is skipped without a token', async () => {
+    const { collectInstagram } = await import('./collectors/collectors');
+    const r = await collectInstagram({ token: '', businessId: '', version: 'v24.0' }, { instagramHashtags: [], instagramAccounts: [] }, new Map(), new Date());
+    expect(r.skipped).toContain('INSTAGRAM_ACCESS_TOKEN');
+  });
+});

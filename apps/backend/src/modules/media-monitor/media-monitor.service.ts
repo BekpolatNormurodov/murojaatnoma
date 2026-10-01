@@ -151,7 +151,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         ai: !!c.anthropicApiKey,
         aiModel: c.anthropicApiKey ? c.aiModel : null,
         youtube: !!c.youtubeApiKey,
-        instagram: !!(c.instagramAccessToken && c.instagramBusinessId),
+        instagram: !!c.instagramAccessToken,
       },
     };
   }
@@ -508,7 +508,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       lastRun: this.lastRun,
       nextRunAt: c.enabled ? nextQuarterHour(new Date()).toISOString() : null,
       ai: { enabled: !!c.anthropicApiKey, model: c.anthropicApiKey ? c.aiModel : null, lastError: this.lastRun?.aiError ?? null },
-      integrations: { youtube: !!c.youtubeApiKey, instagram: !!(c.instagramAccessToken && c.instagramBusinessId) },
+      integrations: { youtube: !!c.youtubeApiKey, instagram: !!c.instagramAccessToken },
       sources: [...this.health.values()].sort(
         (a, b) => platformOrder(a.platform) - platformOrder(b.platform) || a.name.localeCompare(b.name),
       ),

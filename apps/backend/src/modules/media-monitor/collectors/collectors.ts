@@ -194,6 +194,23 @@ interface IgMedia {
   comments_count?: number;
 }
 
+const discoveredIgIds = new Map<string, string>();
+
+/**
+ * INSTAGRAM_BUSINESS_ID is optional: with a Facebook-login token the IG
+ * business account is the one linked to the user's Facebook Page.
+ */
+async function discoverIgBusinessId(graph: string, token: string): Promise<string | undefined> {
+  const cached = discoveredIgIds.get(token);
+  if (cached) return cached;
+  const r = await fetchJson<{ data?: { instagram_business_account?: { id?: string } }[] }>(
+    `${graph}/me/accounts?fields=instagram_business_account&limit=50&access_token=${encodeURIComponent(token)}`,
+  );
+  const id = r.data?.find((p) => p.instagram_business_account?.id)?.instagram_business_account?.id;
+  if (id) discoveredIgIds.set(token, id);
+  return id;
+}
+
 const IG_FIELDS = 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count';
 
 function igItem(m: IgMedia, sourceName: string, viaSearch: boolean, now: Date): RawMediaItem | null {
@@ -216,8 +233,9 @@ function igItem(m: IgMedia, sourceName: string, viaSearch: boolean, now: Date): 
 }
 
 /**
- * Instagram Graph API (needs INSTAGRAM_ACCESS_TOKEN + INSTAGRAM_BUSINESS_ID of
- * an IG Business/Creator account linked to a Facebook Page):
+ * Instagram Graph API (needs INSTAGRAM_ACCESS_TOKEN of an IG Business/Creator
+ * account linked to a Facebook Page; INSTAGRAM_BUSINESS_ID is found from it
+ * when not set):
  *  - hashtags → ig_hashtag_search → /{hashtag}/recent_media (last 24h);
  *  - accounts → business_discovery (public business/creator profiles' recent posts).
  * Hashtag ids are cached: Instagram allows 30 unique hashtag lookups / 7 days.
@@ -229,12 +247,24 @@ export async function collectInstagram(
   now: Date,
 ): Promise<SourceRunResult> {
   const base: SourceRunResult = { key: 'instagram', name: 'Instagram', platform: 'instagram', items: [] };
-  if (!cfg.token || !cfg.businessId) {
-    return { ...base, skipped: 'INSTAGRAM_ACCESS_TOKEN / INSTAGRAM_BUSINESS_ID kiritilmagan' };
-  }
+  if (!cfg.token) return { ...base, skipped: 'INSTAGRAM_ACCESS_TOKEN kiritilmagan' };
   const g = `https://graph.facebook.com/${cfg.version}`;
   const tok = encodeURIComponent(cfg.token);
-  const uid = encodeURIComponent(cfg.businessId);
+  let businessId: string | undefined = cfg.businessId;
+  if (!businessId) {
+    try {
+      businessId = await discoverIgBusinessId(g, cfg.token);
+    } catch (err) {
+      return { ...base, error: `Instagram biznes akkaunti aniqlanmadi: ${errorText(err)}` };
+    }
+    if (!businessId) {
+      return {
+        ...base,
+        error: "Tokenga Instagram biznes akkaunt ulangan Facebook sahifa topilmadi — INSTAGRAM_BUSINESS_ID ni qo'lda kiriting",
+      };
+    }
+  }
+  const uid = encodeURIComponent(businessId);
   const errors: string[] = [];
   for (const tagName of settings.instagramHashtags.slice(0, 10)) {
     try {
