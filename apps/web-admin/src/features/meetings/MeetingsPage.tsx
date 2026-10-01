@@ -550,6 +550,8 @@ export function MeetingsPage() {
         meetingId={callTarget?.id}
         title={callTarget?.title}
         subtitle={callTarget ? `Video selektor · ${callTarget.location}` : undefined}
+        // Selektor — barcha xodimlar chaqiriladi (qayta kirganda qayta jiringlamaydi).
+        invite={{ all: true, media: 'video' }}
         onClose={() => setCallTarget(null)}
       />
 

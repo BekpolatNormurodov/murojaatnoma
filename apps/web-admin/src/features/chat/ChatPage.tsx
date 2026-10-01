@@ -33,6 +33,7 @@ import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { ApiError } from '@/shared/api/client';
 import { useCall } from '@/shared/realtime/CallProvider';
+import { MeetingCall, type MeetingInvite } from '@/shared/realtime/MeetingCall';
 import { ChatComposer } from './ChatComposer';
 import { EmployeePickerModal } from './EmployeePickerModal';
 import {
@@ -138,6 +139,7 @@ function previewText(m: ChatMessage): string {
   if (m.kind === 'file') return `📎 ${m.fileName ?? 'Fayl'}`;
   if (m.kind === 'voice') return '🎤 Ovozli xabar';
   if (m.kind === 'video') return '🎥 Video xabar';
+  if (m.kind === 'call' && m.meta?.meeting) return `📹 Guruh qo'ng'irog'i${m.meta.status === 'live' ? ' · jonli' : ''}`;
   if (m.kind === 'call') return `📞 ${callTitle(m)}`;
   return m.text ?? '';
 }
@@ -194,6 +196,48 @@ function CallRow({ msg }: { msg: ChatMessage }) {
             {duration ? ` · ${duration}` : ''}
           </p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Group-call announcement: live → join button; ended → duration. */
+function MeetingRow({ msg, onJoin }: { msg: ChatMessage; onJoin: (msg: ChatMessage) => void }) {
+  const live = msg.meta?.status === 'live';
+  const duration = callDuration(msg.meta?.durationSec ?? msg.durationSec);
+  return (
+    <div className="mt-3 flex justify-center">
+      <div
+        className={cn(
+          'flex w-full max-w-md items-center gap-3 rounded-2xl border px-4 py-3 shadow-card',
+          live ? 'border-primary-200 bg-primary-50 dark:border-primary-500/30 dark:bg-primary-500/10' : 'border-line bg-surface',
+        )}
+      >
+        <span
+          className={cn(
+            'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+            live ? 'bg-primary-600 text-white' : 'bg-surface-2 text-ink-muted',
+          )}
+        >
+          {msg.meta?.media === 'audio' ? <Call size={19} variant="Bold" /> : <Video size={19} variant="Bold" />}
+          {live && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 animate-pulse rounded-full bg-red-500 ring-2 ring-white" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13.5px] font-semibold text-ink">
+            {msg.meta?.title || "Guruh qo'ng'irog'i"}
+          </p>
+          <p className="text-[11.5px] text-ink-muted">
+            {live ? `${msg.meta?.hostName ?? "Ma'muriyat"} boshladi · ${timeHM(msg.createdAt)}` : `Tugadi${duration ? ` · ${duration}` : ''}`}
+          </p>
+        </div>
+        {live && (
+          <button
+            onClick={() => onJoin(msg)}
+            className="shrink-0 rounded-xl bg-primary-600 px-3.5 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-primary-700"
+          >
+            Qo'shilish
+          </button>
+        )}
       </div>
     </div>
   );
@@ -398,6 +442,12 @@ export function ChatPage() {
   // shu yerda ishga tushiriladi; kiruvchi/faol qo'ng'iroq UI'si esa butun ilova
   // bo'ylab <CallOverlay/> orqali ko'rsatiladi.
   const { startCall, phase: callPhase } = useCall();
+  const [meeting, setMeeting] = useState<{
+    meetingId: string;
+    title: string;
+    invite?: MeetingInvite;
+    audioOnly?: boolean;
+  } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -562,12 +612,32 @@ export function ChatPage() {
 
   // Qo'ng'iroq faqat 1:1 (direct) suhbatlarda va xodim id'si (staffId) mavjud
   // bo'lganda mumkin; guruh chatida o'chirilgan bo'ladi (kontrakt: 1:1 only).
-  const canCall = activeConv?.kind === 'direct' && !!activeConv.staffId;
+  // Umumiy chatda esa — hammani chaqiradigan guruh qo'ng'irog'i (Zoom kabi).
+  const isGroup = activeConv?.id === GROUP_ID;
+  const canCall = (activeConv?.kind === 'direct' && !!activeConv.staffId) || isGroup;
 
   function startChatCall(media: 'audio' | 'video') {
-    if (!activeConv || activeConv.kind !== 'direct' || !activeConv.staffId) return;
-    if (callPhase !== 'idle') return;
+    if (!activeConv || callPhase !== 'idle' || meeting) return;
+    if (activeConv.id === GROUP_ID) {
+      setMeeting({
+        meetingId: `m-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        title: "Umumiy yig'ilish",
+        invite: { all: true, media },
+        audioOnly: media === 'audio',
+      });
+      return;
+    }
+    if (activeConv.kind !== 'direct' || !activeConv.staffId) return;
     startCall(activeConv.staffId, activeConv.title, media);
+  }
+
+  function joinMeeting(msg: ChatMessage) {
+    if (!msg.meta?.meetingId || meeting) return;
+    setMeeting({
+      meetingId: msg.meta.meetingId,
+      title: msg.meta.title || "Guruh qo'ng'irog'i",
+      audioOnly: msg.meta.media === 'audio',
+    });
   }
 
   function openConv(id: string) {
@@ -943,7 +1013,7 @@ export function ChatPage() {
               <button
                 onClick={() => startChatCall('audio')}
                 disabled={!canCall || callPhase !== 'idle'}
-                title={canCall ? "Audio qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
+                title={isGroup ? "Guruh ovozli qo'ng'irog'i (hammani chaqiradi)" : canCall ? "Audio qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
                 className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-soft"
               >
                 <Call size={21} variant="Bulk" />
@@ -951,7 +1021,7 @@ export function ChatPage() {
               <button
                 onClick={() => startChatCall('video')}
                 disabled={!canCall || callPhase !== 'idle'}
-                title={canCall ? "Video qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
+                title={isGroup ? "Guruh video qo'ng'irog'i (hammani chaqiradi)" : canCall ? "Video qo'ng'iroq" : "Faqat xodim bilan 1:1 qo'ng'iroq"}
                 className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft transition-colors hover:bg-primary-50 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink-soft"
               >
                 <Video size={21} variant="Bulk" />
@@ -996,6 +1066,8 @@ export function ChatPage() {
                           {item.label}
                         </span>
                       </div>
+                    ) : item.msg.kind === 'call' && item.msg.meta?.meeting ? (
+                      <MeetingRow key={item.id} msg={item.msg} onJoin={joinMeeting} />
                     ) : item.msg.kind === 'call' ? (
                       <CallRow key={item.id} msg={item.msg} />
                     ) : (
@@ -1059,6 +1131,16 @@ export function ChatPage() {
           </div>
         )}
       </section>
+
+      {/* Guruh qo'ng'irog'i (mesh, Zoom kabi) */}
+      <MeetingCall
+        open={!!meeting}
+        meetingId={meeting?.meetingId}
+        title={meeting?.title}
+        invite={meeting?.invite}
+        audioOnly={meeting?.audioOnly}
+        onClose={() => setMeeting(null)}
+      />
 
       {/* "Xodimga yozish" — xodim tanlagich (umumiy chat entry-point) */}
       <EmployeePickerModal

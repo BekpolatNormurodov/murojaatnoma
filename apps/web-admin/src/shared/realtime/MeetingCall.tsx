@@ -12,8 +12,13 @@ import {
   Danger,
   Refresh2,
   CloseCircle,
+  UserAdd,
+  Screenmirroring,
+  StopCircle,
+  TickCircle,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
+import { EmployeePickerModal } from '@/features/chat/EmployeePickerModal';
 import { api } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
 import { useRealtime } from './RealtimeProvider';
@@ -48,6 +53,16 @@ interface Participant {
   id: string;
   name: string;
   avatar?: string;
+  /** Mic / camera state as signalled by `meeting:media` (newer servers). */
+  audio?: boolean;
+  video?: boolean;
+}
+
+/** Who to call into the meeting when it opens (host only). */
+export interface MeetingInvite {
+  all?: boolean;
+  inviteeIds?: string[];
+  media?: 'audio' | 'video';
 }
 
 /** Bitta uzoq peer bilan bog'lanish holati (imperativ, React'dan tashqari). */
@@ -74,7 +89,68 @@ interface RemoteTileData {
   camOff: boolean;
 }
 
-type Phase = 'connecting' | 'live' | 'error';
+type Phase = 'connecting' | 'live' | 'error' | 'ended';
+
+/** Mesh: every extra person is another upload — keep video light as the room grows. */
+function videoBitrateFor(people: number): number {
+  if (people <= 2) return 1_200_000;
+  if (people <= 4) return 600_000;
+  if (people <= 6) return 350_000;
+  return 200_000;
+}
+
+async function capVideoBitrate(pc: RTCPeerConnection, bps: number): Promise<void> {
+  for (const sender of pc.getSenders()) {
+    if (sender.track?.kind !== 'video') continue;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings?.length) params.encodings = [{}];
+      params.encodings[0].maxBitrate = bps;
+      await sender.setParameters(params);
+    } catch {
+      /* not supported on this browser — fine */
+    }
+  }
+}
+
+/**
+ * Who is talking right now: an analyser per audio stream, polled 4×/s.
+ * Returns the ids above a speaking threshold (the room highlights them).
+ */
+function useSpeaking(streams: { id: string; stream: MediaStream | null }[]): Set<string> {
+  const [speaking, setSpeaking] = useState<Set<string>>(() => new Set());
+  const key = streams.map((s) => `${s.id}:${s.stream?.id ?? ''}`).join('|');
+  useEffect(() => {
+    const withAudio = streams.filter((s) => s.stream && s.stream.getAudioTracks().length > 0);
+    if (withAudio.length === 0 || typeof AudioContext === 'undefined') return;
+    const ctx = new AudioContext();
+    const meters = withAudio.map((s) => {
+      const src = ctx.createMediaStreamSource(s.stream as MediaStream);
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      return { id: s.id, an, buf: new Uint8Array(an.fftSize) };
+    });
+    const iv = window.setInterval(() => {
+      const next = new Set<string>();
+      for (const m of meters) {
+        m.an.getByteTimeDomainData(m.buf);
+        let sum = 0;
+        for (const v of m.buf) sum += ((v - 128) / 128) ** 2;
+        if (Math.sqrt(sum / m.buf.length) > 0.04) next.add(m.id);
+      }
+      setSpeaking((prev) =>
+        prev.size === next.size && [...next].every((id) => prev.has(id)) ? prev : next,
+      );
+    }, 250);
+    return () => {
+      window.clearInterval(iv);
+      void ctx.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return speaking;
+}
 
 const UNSUPPORTED_MSG = 'Bu brauzer kamerani qo‘llab-quvvatlamaydi. Chrome yoki Edge’dan foydalaning.';
 
@@ -111,15 +187,28 @@ export function MeetingCall({
   meetingId,
   title = 'Video konferensiya',
   subtitle,
+  invite,
+  audioOnly = false,
   onClose,
 }: {
   open: boolean;
   meetingId?: string;
   title?: string;
   subtitle?: string;
+  /** Host: invite these people (or everyone) as the meeting opens. */
+  invite?: MeetingInvite;
+  /** Join with the microphone only (camera can still be turned on). */
+  audioOnly?: boolean;
   onClose: () => void;
 }) {
   const { socket } = useRealtime();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [hasVideo, setHasVideo] = useState(true);
+  const mutedRef = useRef(false);
+  const camOffRef = useRef(false);
+  const screenTrackRef = useRef<MediaStreamTrack | null>(null);
 
   const [phase, setPhase] = useState<Phase>('connecting');
   const [error, setError] = useState<string | null>(null);
@@ -230,6 +319,7 @@ export function MeetingCall({
 
       const local = localStreamRef.current;
       if (local) local.getTracks().forEach((t) => pc.addTrack(t, local));
+      void capVideoBitrate(pc, videoBitrateFor(peersRef.current.size + 1));
       publish();
       return entry;
     },
@@ -255,6 +345,26 @@ export function MeetingCall({
     [createPeer, socket, meetingId],
   );
 
+  /** Barcha peerlarni yopadi, mahalliy oqimni to'xtatadi (idempotent, setState'siz). */
+  const fullTeardown = useCallback(() => {
+    peersRef.current.forEach((entry) => {
+      entry.pc.onicecandidate = null;
+      entry.pc.ontrack = null;
+      entry.pc.onconnectionstatechange = null;
+      try {
+        entry.pc.close();
+      } catch {
+        /* ignore */
+      }
+    });
+    peersRef.current.clear();
+    namesRef.current.clear();
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current = null;
+    joinedRef.current = false;
+    pendingJoinRef.current = null;
+  }, []);
+
   /**
    * Xonaga qo'shiladi: meeting:join emit → ack'dagi mavjud har bir ishtirokchiga
    * offer qilaman (mesh konvensiyasi). FAQAT socket auth tayyor bo'lganda
@@ -263,17 +373,52 @@ export function MeetingCall({
   const joinRoom = useCallback(
     (runId: number) => {
       if (runIdRef.current !== runId || !socket || !meetingId) return;
-      socket.emit('meeting:join', { meetingId }, (ack?: { participants?: Participant[] }) => {
-        if (runIdRef.current !== runId) return;
-        joinedRef.current = true;
-        (ack?.participants ?? []).forEach((pt) => {
-          if (!pt?.id) return;
-          namesRef.current.set(pt.id, { name: pt.name, avatar: pt.avatar });
-          void offerTo(pt.id);
-        });
-        publish();
-      });
+      const join = () => socket.emit(
+        'meeting:join',
+        { meetingId, audio: !mutedRef.current, video: !camOffRef.current },
+        (ack?: { ok?: boolean; error?: string; participants?: Participant[] }) => {
+          if (runIdRef.current !== runId) return;
+          if (ack?.ok === false) {
+            fullTeardown();
+            setError(
+              ack.error === 'not-invited'
+                ? 'Bu yig‘ilish allaqachon tugagan yoki sizga taklif yo‘q.'
+                : 'Yig‘ilishga qo‘shilib bo‘lmadi.',
+            );
+            setPhase('error');
+            return;
+          }
+          joinedRef.current = true;
+          (ack?.participants ?? []).forEach((pt) => {
+            if (!pt?.id) return;
+            namesRef.current.set(pt.id, { name: pt.name, avatar: pt.avatar });
+            void offerTo(pt.id);
+            const entry = peersRef.current.get(pt.id);
+            if (entry) {
+              entry.muted = pt.audio === false;
+              entry.camOff = pt.video === false;
+            }
+          });
+          publish();
+        },
+      );
+      if (!invite) {
+        join();
+        return;
+      }
+      // Host: the invite registers the room (title, who may enter, chat
+      // announcement) — join only once the server has it (or after 3 s).
+      let joined = false;
+      const once = () => {
+        if (joined || runIdRef.current !== runId) return;
+        joined = true;
+        join();
+      };
+      socket.emit('meeting:invite', { meetingId, title, ...invite }, once);
+      window.setTimeout(once, 3000);
     },
+    // fullTeardown/invite/title are stable for the lifetime of one open meeting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [socket, meetingId, offerTo, publish],
   );
 
@@ -310,26 +455,6 @@ export function MeetingCall({
     [publish],
   );
 
-  /** Barcha peerlarni yopadi, mahalliy oqimni to'xtatadi (idempotent, setState'siz). */
-  const fullTeardown = useCallback(() => {
-    peersRef.current.forEach((entry) => {
-      entry.pc.onicecandidate = null;
-      entry.pc.ontrack = null;
-      entry.pc.onconnectionstatechange = null;
-      try {
-        entry.pc.close();
-      } catch {
-        /* ignore */
-      }
-    });
-    peersRef.current.clear();
-    namesRef.current.clear();
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
-    joinedRef.current = false;
-    pendingJoinRef.current = null;
-  }, []);
-
   /** Xonadan chiqadi (leave emit) + to'liq teardown. */
   const cleanup = useCallback(() => {
     if (socket && joinedRef.current && meetingId) {
@@ -349,7 +474,36 @@ export function MeetingCall({
     if (!part?.id) return;
     namesRef.current.set(part.id, { name: part.name, avatar: part.avatar });
     // U menga offer qiladi — biz shunchaki peer/tile ("ulanmoqda") tayyorlaymiz.
-    createPeer(part.id);
+    const entry = createPeer(part.id);
+    entry.muted = part.audio === false;
+    entry.camOff = part.video === false;
+    publish();
+    // The room grew — lighten every outgoing video stream.
+    const bps = videoBitrateFor(peersRef.current.size + 1);
+    peersRef.current.forEach((e) => void capVideoBitrate(e.pc, bps));
+  };
+
+  /** Explicit mic/camera state from the other side (reliable, unlike track mute). */
+  const onMedia = (p: { meetingId: string; userId: string; audio: boolean; video: boolean }) => {
+    if (p?.meetingId !== meetingId) return;
+    const entry = peersRef.current.get(p.userId);
+    if (!entry) return;
+    entry.muted = !p.audio;
+    entry.camOff = !p.video;
+    publish();
+  };
+
+  /** Host ended it (or the last person left). */
+  const onEnded = (p: { meetingId: string }) => {
+    if (p?.meetingId !== meetingId) return;
+    runIdRef.current++;
+    fullTeardown();
+    setPhase('ended');
+  };
+
+  const onDeclined = (p: { meetingId: string; name: string }) => {
+    if (p?.meetingId !== meetingId) return;
+    setNotice(`${p.name} qo‘shila olmasligini bildirdi`);
   };
 
   const onParticipantLeft = (p: { meetingId: string; userId: string }) => {
@@ -437,6 +591,9 @@ export function MeetingCall({
     onIce,
     onReady,
     onAuthError,
+    onMedia,
+    onEnded,
+    onDeclined,
   });
   useEffect(() => {
     engineRef.current = {
@@ -446,6 +603,9 @@ export function MeetingCall({
       onIce,
       onReady,
       onAuthError,
+      onMedia,
+      onEnded,
+      onDeclined,
     };
   });
 
@@ -457,6 +617,10 @@ export function MeetingCall({
     setError(null);
     setMuted(false);
     setCamOff(false);
+    mutedRef.current = false;
+    camOffRef.current = false;
+    setSharing(false);
+    setNotice(null);
     setTiles([]);
     setLocalStream(null);
     setElapsed(0);
@@ -473,14 +637,29 @@ export function MeetingCall({
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream = audioOnly
+        ? await navigator.mediaDevices.getUserMedia({ audio: true })
+        : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     } catch (e) {
-      if (runIdRef.current === runId) {
-        setError(mediaErrorMessage(e));
-        setPhase('error');
+      // No / busy camera: still join with the microphone instead of failing.
+      const name = (e as DOMException | undefined)?.name ?? '';
+      const permission = name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError';
+      try {
+        if (permission || audioOnly) throw e;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (runIdRef.current === runId) setNotice('Kamera topilmadi — faqat ovoz bilan qo‘shildingiz');
+      } catch (e2) {
+        if (runIdRef.current === runId) {
+          setError(mediaErrorMessage(e2));
+          setPhase('error');
+        }
+        return;
       }
-      return;
     }
+    const videoAvailable = stream.getVideoTracks().length > 0;
+    camOffRef.current = !videoAvailable;
+    setCamOff(!videoAvailable);
+    setHasVideo(videoAvailable);
     if (runIdRef.current !== runId) {
       stream.getTracks().forEach((t) => t.stop());
       return;
@@ -507,7 +686,7 @@ export function MeetingCall({
     } else {
       pendingJoinRef.current = runId;
     }
-  }, [fullTeardown, joinRoom, socket, meetingId]);
+  }, [fullTeardown, joinRoom, socket, meetingId, audioOnly]);
 
   // Ochilganda media olib xonaga qo'shilamiz; yopilganda/unmountda tozalaymiz.
   useEffect(() => {
@@ -533,10 +712,18 @@ export function MeetingCall({
     const ready = () => engineRef.current.onReady();
     const authErr = (p?: { message?: string }) => engineRef.current.onAuthError(p);
 
+    const md = (p: { meetingId: string; userId: string; audio: boolean; video: boolean }) =>
+      engineRef.current.onMedia(p);
+    const en = (p: { meetingId: string }) => engineRef.current.onEnded(p);
+    const dc = (p: { meetingId: string; name: string }) => engineRef.current.onDeclined(p);
+
     socket.on('meeting:participant-joined', j);
     socket.on('meeting:participant-left', l);
     socket.on('meeting:sdp', s);
     socket.on('meeting:ice', i);
+    socket.on('meeting:media', md);
+    socket.on('meeting:ended', en);
+    socket.on('meeting:declined', dc);
     socket.on('presence:snapshot', ready);
     socket.on('auth:error', authErr);
     return () => {
@@ -544,6 +731,9 @@ export function MeetingCall({
       socket.off('meeting:participant-left', l);
       socket.off('meeting:sdp', s);
       socket.off('meeting:ice', i);
+      socket.off('meeting:media', md);
+      socket.off('meeting:ended', en);
+      socket.off('meeting:declined', dc);
       socket.off('presence:snapshot', ready);
       socket.off('auth:error', authErr);
     };
@@ -566,30 +756,114 @@ export function MeetingCall({
     if (el && localStream && !camOff) el.srcObject = localStream;
   }, [localStream, camOff, phase]);
 
+  const sendMedia = useCallback(() => {
+    if (socket && meetingId && joinedRef.current) {
+      socket.emit('meeting:media', {
+        meetingId,
+        audio: !mutedRef.current,
+        video: !camOffRef.current || !!screenTrackRef.current,
+      });
+    }
+  }, [socket, meetingId]);
+
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    setMuted((prev) => {
-      const next = !prev;
-      stream.getAudioTracks().forEach((t) => (t.enabled = !next));
-      return next;
-    });
-  }, []);
+    const next = !mutedRef.current;
+    mutedRef.current = next;
+    stream.getAudioTracks().forEach((t) => (t.enabled = !next));
+    setMuted(next);
+    sendMedia();
+  }, [sendMedia]);
 
   const toggleCam = useCallback(() => {
     const stream = localStreamRef.current;
-    if (!stream) return;
-    setCamOff((prev) => {
-      const next = !prev;
-      stream.getVideoTracks().forEach((t) => (t.enabled = !next));
-      return next;
+    if (!stream || stream.getVideoTracks().length === 0) return;
+    const next = !camOffRef.current;
+    camOffRef.current = next;
+    stream.getVideoTracks().forEach((t) => (t.enabled = !next));
+    setCamOff(next);
+    sendMedia();
+  }, [sendMedia]);
+
+  /** Swap the outgoing camera track for the screen (and back) on every peer. */
+  const replaceVideo = useCallback((track: MediaStreamTrack | null) => {
+    peersRef.current.forEach((e) => {
+      const sender = e.pc.getSenders().find((s) => s.track?.kind === 'video' || (!s.track && track));
+      void sender?.replaceTrack(track).catch(() => undefined);
     });
   }, []);
 
+  const stopShare = useCallback(() => {
+    const t = screenTrackRef.current;
+    screenTrackRef.current = null;
+    t?.stop();
+    replaceVideo(localStreamRef.current?.getVideoTracks()[0] ?? null);
+    setSharing(false);
+    sendMedia();
+  }, [replaceVideo, sendMedia]);
+
+  const toggleShare = useCallback(async () => {
+    if (screenTrackRef.current) {
+      stopShare();
+      return;
+    }
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      const track = display.getVideoTracks()[0];
+      if (!track) return;
+      screenTrackRef.current = track;
+      track.onended = () => stopShare();
+      replaceVideo(track);
+      setSharing(true);
+      sendMedia();
+    } catch {
+      /* user cancelled the picker */
+    }
+  }, [replaceVideo, stopShare, sendMedia]);
+
   const leave = useCallback(() => {
+    screenTrackRef.current?.stop();
+    screenTrackRef.current = null;
     cleanup();
     onClose();
   }, [cleanup, onClose]);
+
+  /** Host / admin: close the meeting for everyone, then leave. */
+  const endForAll = useCallback(() => {
+    if (socket && meetingId) socket.emit('meeting:end', { meetingId });
+    leave();
+  }, [socket, meetingId, leave]);
+
+  const inviteMore = useCallback(
+    (ids: string[] | 'all') => {
+      if (!socket || !meetingId) return;
+      socket.emit(
+        'meeting:invite',
+        ids === 'all' ? { meetingId, title, all: true, ring: true } : { meetingId, title, inviteeIds: ids, ring: true },
+        (ack?: { ok?: boolean; invited?: number }) =>
+          setNotice(ack?.ok ? `Taklif yuborildi${ack.invited ? ` · ${ack.invited} kishi` : ''}` : 'Taklif yuborilmadi'),
+      );
+    },
+    [socket, meetingId, title],
+  );
+
+  // "Ended" screen closes itself; notices fade.
+  useEffect(() => {
+    if (phase !== 'ended') return;
+    const t = window.setTimeout(() => onClose(), 2500);
+    return () => window.clearTimeout(t);
+  }, [phase, onClose]);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
+
+  const speaking = useSpeaking([
+    { id: 'self', stream: muted ? null : localStream },
+    ...tiles.map((t) => ({ id: t.id, stream: t.muted ? null : t.stream })),
+  ]);
 
   const total = tiles.length + 1;
 
@@ -602,7 +876,21 @@ export function MeetingCall({
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-70 flex flex-col bg-slate-950 text-white"
         >
-          {phase === 'error' ? (
+          {phase === 'ended' ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-500/15 text-primary-300">
+                <TickCircle size={30} variant="Bulk" />
+              </span>
+              <h3 className="text-base font-semibold">Yig‘ilish yakunlandi</h3>
+              <p className="text-sm text-white/55">{fmt(elapsed)} davom etdi</p>
+              <button
+                onClick={onClose}
+                className="mt-1 rounded-xl bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/20"
+              >
+                Yopish
+              </button>
+            </div>
+          ) : phase === 'error' ? (
             /* ===================== XATOLIK (ruxsat berilmadi) ===================== */
             <div className="relative flex flex-1 items-center justify-center p-6">
               <button
@@ -652,9 +940,24 @@ export function MeetingCall({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="hidden items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium sm:flex">
+                  <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium">
                     <People size={15} variant="Bulk" /> {total}
                   </span>
+                  <button
+                    onClick={() => setPickerOpen(true)}
+                    title="Xodimni taklif qilish"
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3 text-xs font-medium transition-colors hover:bg-white/20"
+                  >
+                    <UserAdd size={16} variant="Bulk" />
+                    <span className="hidden sm:inline">Taklif</span>
+                  </button>
+                  <button
+                    onClick={() => inviteMore('all')}
+                    title="Barcha xodimlarni chaqirish"
+                    className="hidden h-9 items-center rounded-full bg-white/10 px-3 text-xs font-medium transition-colors hover:bg-white/20 md:flex"
+                  >
+                    Hammani chaqirish
+                  </button>
                   <button
                     onClick={leave}
                     title="Yopish"
@@ -669,7 +972,17 @@ export function MeetingCall({
               <div className="relative flex-1 overflow-y-auto p-3 sm:p-5">
                 <div className={cn('mx-auto grid h-full max-w-6xl auto-rows-fr gap-3', gridCols(total))}>
                   {/* Self */}
-                  <div className="relative h-full min-h-35 overflow-hidden rounded-2xl bg-slate-800 ring-2 ring-white/15">
+                  <div
+                    className={cn(
+                      'relative h-full min-h-35 overflow-hidden rounded-2xl bg-slate-800 ring-2 transition-shadow',
+                      speaking.has('self') ? 'ring-primary-400 shadow-[0_0_0_4px_rgba(16,185,129,0.25)]' : 'ring-white/15',
+                    )}
+                  >
+                    {sharing && (
+                      <span className="absolute left-2 top-2 z-10 flex items-center gap-1 rounded-full bg-primary-600 px-2 py-0.5 text-[10.5px] font-semibold">
+                        <Screenmirroring size={12} variant="Bold" /> Ekran ulashilmoqda
+                      </span>
+                    )}
                     {localStream && !camOff ? (
                       <video
                         ref={localVideoRef}
@@ -708,11 +1021,19 @@ export function MeetingCall({
                         transition={{ type: 'spring', damping: 24, stiffness: 280 }}
                         className="h-full"
                       >
-                        <RemoteTile tile={t} />
+                        <RemoteTile tile={t} speaking={speaking.has(t.id)} />
                       </motion.div>
                     ))}
                   </AnimatePresence>
                 </div>
+
+                {notice && (
+                  <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
+                    <span className="rounded-full bg-black/70 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm">
+                      {notice}
+                    </span>
+                  </div>
+                )}
 
                 {/* Bo'sh xona — faqat men bor */}
                 {phase === 'live' && tiles.length === 0 && (
@@ -735,19 +1056,44 @@ export function MeetingCall({
                 <ControlButton
                   active={!camOff}
                   onClick={toggleCam}
-                  label={camOff ? 'Yoqish' : 'Kamera'}
+                  label={!hasVideo ? 'Kamera yo‘q' : camOff ? 'Yoqish' : 'Kamera'}
                   icon={camOff ? VideoSlash : Video}
                 />
+                {hasVideo && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia && (
+                  <ControlButton
+                    active
+                    highlighted={sharing}
+                    onClick={() => void toggleShare()}
+                    label={sharing ? 'To‘xtatish' : 'Ekran'}
+                    icon={Screenmirroring}
+                  />
+                )}
                 <button
                   onClick={leave}
-                  className="flex h-14 items-center gap-2 rounded-full bg-red-500 px-7 font-semibold text-white shadow-lg transition-colors hover:bg-red-600"
+                  className="flex h-14 items-center gap-2 rounded-full bg-red-500 px-6 font-semibold text-white shadow-lg transition-colors hover:bg-red-600"
                 >
                   <CallSlash size={22} variant="Bold" />
                   <span className="hidden sm:inline">Chiqish</span>
                 </button>
+                <button
+                  onClick={endForAll}
+                  title="Yig‘ilishni hamma uchun yakunlash"
+                  className="flex h-14 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-medium text-red-300 transition-colors hover:bg-white/20"
+                >
+                  <StopCircle size={20} variant="Bulk" />
+                  <span className="hidden md:inline">Hamma uchun tugatish</span>
+                </button>
               </div>
             </>
           )}
+          <EmployeePickerModal
+            open={pickerOpen}
+            onClose={() => setPickerOpen(false)}
+            onSelect={(employee) => {
+              setPickerOpen(false);
+              inviteMore([employee.employeeId]);
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
@@ -758,7 +1104,7 @@ export function MeetingCall({
    Sub-komponentlar
    ============================================================ */
 
-function RemoteTile({ tile }: { tile: RemoteTileData }) {
+function RemoteTile({ tile, speaking }: { tile: RemoteTileData; speaking: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     if (ref.current && tile.stream) ref.current.srcObject = tile.stream;
@@ -768,7 +1114,12 @@ function RemoteTile({ tile }: { tile: RemoteTileData }) {
   const covered = connecting || tile.camOff; // avatar/spinner video ustidan
 
   return (
-    <div className="relative h-full min-h-35 overflow-hidden rounded-2xl bg-slate-800 ring-2 ring-white/10">
+    <div
+      className={cn(
+        'relative h-full min-h-35 overflow-hidden rounded-2xl bg-slate-800 ring-2 transition-shadow',
+        speaking ? 'ring-primary-400 shadow-[0_0_0_4px_rgba(16,185,129,0.25)]' : 'ring-white/10',
+      )}
+    >
       {/* Video har doim mavjud — audio uzoq tomondan eshitilishi uchun (muted EMAS). */}
       <video
         ref={ref}
@@ -817,11 +1168,13 @@ function ControlButton({
   icon: Icon,
   label,
   active,
+  highlighted = false,
   onClick,
 }: {
   icon: typeof Microphone2;
   label: string;
   active: boolean;
+  highlighted?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -829,7 +1182,11 @@ function ControlButton({
       <span
         className={cn(
           'flex h-12 w-12 items-center justify-center rounded-full transition-colors',
-          active ? 'bg-white/10 text-white hover:bg-white/20' : 'bg-red-500/90 text-white hover:bg-red-500',
+          highlighted
+            ? 'bg-primary-500 text-white hover:bg-primary-600'
+            : active
+              ? 'bg-white/10 text-white hover:bg-white/20'
+              : 'bg-red-500/90 text-white hover:bg-red-500',
         )}
       >
         <Icon size={21} variant="Bulk" />

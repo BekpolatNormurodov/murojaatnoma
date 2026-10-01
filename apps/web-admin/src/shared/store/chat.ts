@@ -15,11 +15,16 @@ export type ChatMessageKind = "text" | "image" | "file" | "voice" | "video" | "c
 
 /** `meta` of a `kind: "call"` row. */
 export interface ChatCallMeta {
-  callId: string;
+  callId?: string;
   media: "audio" | "video";
-  /** ended | missed | rejected | cancelled | busy */
+  /** ended | missed | rejected | cancelled | busy — or live/ended for a group call */
   status: string;
-  durationSec: number;
+  durationSec?: number;
+  /** Group call ("everyone") announcement: a join button while live. */
+  meeting?: boolean;
+  meetingId?: string;
+  title?: string;
+  hostName?: string;
 }
 /** "sending" — faqat klient tomonidagi optimistik holat (server javobidan
  *  oldin ko'rsatiladi); server hech qachon uni qaytarmaydi. */
