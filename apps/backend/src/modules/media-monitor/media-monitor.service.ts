@@ -98,8 +98,11 @@ const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
 const LOCAL_CHANNEL_RELEVANCE = 40;
 /** City / region hokimligi pages: every post is about that area. */
 const AREA_OWN_RELEVANCE = 90;
-/** City / region channels without a place name in the post: shown, below named mentions. */
-const AREA_CHANNEL_RELEVANCE = 55;
+/**
+ * City / region channels without a place name in the post: kept, but behind
+ * «Aniq bo'lmaganlar ham» — these channels also post quotes, jokes and national news.
+ */
+const AREA_CHANNEL_RELEVANCE = 45;
 /** City / region-only items below this are not stored (bare "Toshkent" in a long text). */
 const AREA_STORE_MIN = 45;
 /** City / region-only items are many — kept 45 days instead of 120. */
@@ -965,7 +968,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
 /**
  * Source-level evidence: the district's own page (95), its local channels
- * (40), city / region hokimliklar (90) and city / region channels (55).
+ * (40), city / region hokimliklar (90) and city / region channels (45).
  */
 interface SourceRoles {
   own: Set<string>;

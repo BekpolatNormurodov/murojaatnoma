@@ -519,7 +519,8 @@ describe('areas — Toshkent shahri / viloyati', () => {
     expect(a('Yunusobod tumanida yangi maktab ochildi').city).toBeGreaterThanOrEqual(80);
     expect(a('Poytaxtda kuchli shamol kutilmoqda').city).toBeGreaterThanOrEqual(60);
     expect(a('Тошкентда Spark автомобили пиёдани уриб юборди').city).toBeGreaterThanOrEqual(60);
-    expect(a('Uzbekistan presidential election', 'Votes were counted in Tashkent').city).toBeGreaterThanOrEqual(50);
+    // Only in the text: kept, but behind «Aniq bo'lmaganlar ham».
+    expect(a('Uzbekistan presidential election', 'Votes were counted in Tashkent').city).toBe(45);
   });
 
   it('does not take the region, a dateline or the time zone for the city', () => {
@@ -544,6 +545,34 @@ describe('areas — Toshkent shahri / viloyati', () => {
 
   it('weakens a bare "Toshkent" next to another region', () => {
     expect(a('Samarqand — Toshkent tezyurar poyezdi qatnovi koʻpaydi').city).toBeLessThan(50);
+  });
+
+  // Real misses from the first live run (2026-10-02).
+  it('reads the headline first: lists, by-the-way mentions and ads stay out', () => {
+    // A nation-wide IIV round-up listing every region.
+    const list = a('▫️ Toshkent shahri: Harakatdan to‘xtamaslik shiori ostida', 'Toshkent viloyati: 12 ta tadbir. Samarqand viloyati: 9 ta. Buxoro viloyati: 7 ta.');
+    expect(list.city).toBeGreaterThanOrEqual(90);
+    expect(list.region).toBeLessThan(50);
+    // Another region's story that mentions ours in passing.
+    expect(a('Surxondaryoda Cobalt gaz balloniga yashirilgan opiy aniqlandi', 'Haydovchi Toshkent viloyatiga ketayotgan edi').region).toBeLessThan(50);
+    // The national team played in Tashkent — sport, not city news.
+    expect(a('Futbol: O‘zbekiston o‘rtoqlik o‘yinida Suriyani yirik hisobda mag‘lub etdi', 'Uchrashuv Toshkentda bo‘lib o‘tdi').city).toBeLessThan(50);
+    // An ad with an address and a phone.
+    expect(a('Grant asosida 4 yil masofaviy ta’lim oling', 'Manzil: Toshkent shahri, Chilonzor tumani. Tel: +998 90 123 45 67').city).toBeLessThan(50);
+    expect(a('KURYERLAR KERAK — darhol ish', 'Chirchiq, Angren. Murojaat: 90 123 45 67').region).toBeLessThan(50);
+    // ... while real local news in the headline stays in.
+    expect(a('Ташкент открывает для себя творчество Зураба Церетели').city).toBeGreaterThanOrEqual(60);
+    expect(a('❗️ Чирчиқда машиналар сузиб юрибди!').region).toBeGreaterThanOrEqual(80);
+    expect(a('Bugun tunda Toshkent viloyatining ayrim tumanlarida kuchli yomg‘ir', '').region).toBeGreaterThanOrEqual(90);
+    // "Toshkent tumanlarida" = the capital's districts, not the region's Toshkent tumani.
+    const plural = a('Yashnobod: yangi xonadonlar, zamonaviy maktablar', 'Poytaxtimizda Toshkent tumanlarida 12 ta zamonaviy maktab quriladi');
+    expect(plural.region).toBe(0);
+    expect(plural.city).toBeGreaterThanOrEqual(90);
+    // A daily round-up names many places in passing.
+    expect(a('Kun dayjesti: 30-sentabr', 'Ohangaronda bog‘chada zaharlanish. Toshkentda yomg‘ir.').region).toBe(0);
+    expect(a('Бугун 29-Сентябр Сешанба :', 'Тошкент вилоятида зилзила. Чирчиқда сув тошқини.').region).toBe(0);
+    // A town only in the text: kept, hidden.
+    expect(a('Kelajak muhandislari: nazariyadan ishlab chiqarishgacha', 'Olmaliq davlat texnika instituti vakillari ham qatnashdi').region).toBeLessThan(50);
   });
 });
 
