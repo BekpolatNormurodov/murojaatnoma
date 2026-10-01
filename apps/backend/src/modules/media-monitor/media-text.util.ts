@@ -140,6 +140,20 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
+/**
+ * A headline worth showing: the first line with real words — not "🇺🇿 🇺🇿 🇺🇿",
+ * "#Kelajak_soati_haqida" or "#sessiya #poytaxtdeputatlari".
+ */
+export function meaningfulLine(text: string): string | null {
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const words = line.split(/\s+/).filter((w) => !w.startsWith('#') && /\p{L}{2,}/u.test(w));
+    if (words.length >= 2) return line;
+  }
+  return null;
+}
+
 /** Cuts at a word boundary and adds an ellipsis. */
 export function truncate(s: string, max: number): string {
   if (s.length <= max) return s;

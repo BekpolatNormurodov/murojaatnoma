@@ -61,8 +61,8 @@ const CITY_CONTEXT = ['toshkent', 'ташкент', 'тошкент', 'tashkent'
 /** Context of the astronomer / the university / the metro station — not the district. */
 const NOT_DISTRICT_CONTEXT = [
   'astronom', 'rasadxona', 'temuriy', 'madrasa', 'olim ', 'olimning', 'yulduz', 'zij', 'nomidagi', 'universitet',
-  'metro bekat', 'астроном', 'обсерватор', 'темурид', 'медресе', 'учен', 'имени', 'университет', 'станци',
-  '1394', '1449',
+  'metro bekat', 'amir temur', 'астроном', 'обсерватор', 'темурид', 'медресе', 'учен', 'имени', 'университет',
+  'станци', 'амир темур', '1394', '1449',
 ];
 
 const has = (text: string, stems: readonly string[]) => stems.some((s) => text.includes(s));
@@ -136,9 +136,13 @@ export function scoreRelevance(input: RelevanceInput): RelevanceResult {
     const cityCtx = has(all, CITY_CONTEXT);
     const notDistrictCtx = has(all, NOT_DISTRICT_CONTEXT);
     if (notDistrictCtx && !districtCtx) return { relevance: 0, keywords: [], reason: 'none' };
+    // Another region + astronomer context: Samarqand's Ulug'bek, not our tuman.
+    if (notDistrictCtx && elsewhere && !cityCtx) return { relevance: 0, keywords: [], reason: 'none' };
     let score = districtCtx ? 60 : cityCtx ? 50 : 40;
     if (m.inTitle) score += 10;
-    if (elsewhere && !districtCtx) score -= 15;
+    // Samarqand / Buxoro ... have a "Mirzo Ulug'bek ko'chasi" too: without Toshkent it is not ours.
+    if (elsewhere && !cityCtx) score -= 25;
+    else if (elsewhere && !districtCtx) score -= 15;
     return { relevance: Math.max(0, Math.min(100, score)), keywords: m.weak, reason: 'weak' };
   }
 

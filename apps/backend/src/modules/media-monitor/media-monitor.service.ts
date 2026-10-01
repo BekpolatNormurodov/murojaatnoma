@@ -45,7 +45,7 @@ import {
   digestWithClaude,
 } from './media-analyzer';
 import { DEFAULT_MEDIA_SETTINGS, MediaSettings, SOURCES_VERSION, cleanHandle, mergeSettings, upgradeSources } from './media-settings';
-import { fingerprintOf, truncate } from './media-text.util';
+import { fingerprintOf, meaningfulLine, truncate } from './media-text.util';
 import { PlaceGazetteer, buildGazetteer, scoreRelevance } from './media-relevance';
 import { StoryCandidate, assignStories, STORY_WINDOW_MS } from './media-story';
 
@@ -258,14 +258,17 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       // An admin's manual mood correction ("manual") is never overwritten.
       const sentiment = r.analyzedBy === 'manual' ? r.sentiment : ruleSentiment(r.title, r.excerpt ?? '');
       const topic = ruleTopic(r.title, r.excerpt ?? '');
+      // Telegram headlines that were only emoji / hashtags → first real line of the text.
+      const title = meaningfulLine(r.title) ? r.title : (meaningfulLine(r.excerpt ?? '')?.slice(0, 300) ?? r.title);
       if (
+        title !== r.title ||
         relevance !== r.relevance ||
         res.keywords.join('|') !== r.keywords.join('|') ||
         sentiment !== r.sentiment ||
         topic !== r.topic
       ) {
         updates.push(
-          this.prisma.mediaItem.update({ where: { id: r.id }, data: { relevance, keywords: res.keywords, sentiment, topic } }),
+          this.prisma.mediaItem.update({ where: { id: r.id }, data: { title, relevance, keywords: res.keywords, sentiment, topic } }),
         );
       }
     }

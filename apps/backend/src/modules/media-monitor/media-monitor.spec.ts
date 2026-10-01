@@ -471,3 +471,22 @@ describe('rules v2', () => {
     expect(by.tg).toMatchObject({ storyId: 'tg', isStoryLead: false });
   });
 });
+
+describe('rules v2.1', () => {
+  it('takes a real line as the Telegram headline', async () => {
+    const { meaningfulLine } = await import('./media-text.util');
+    expect(meaningfulLine('🇺🇿 🇺🇿 🇺🇿\nMirzo Ulug‘bek tumanida yangi maktab ochildi')).toBe('Mirzo Ulug‘bek tumanida yangi maktab ochildi');
+    expect(meaningfulLine('#sessiya #poytaxtdeputatlari\nShahar Kengashi sessiyasi bo‘lib o‘tdi')).toBe('Shahar Kengashi sessiyasi bo‘lib o‘tdi');
+    expect(meaningfulLine('🇺🇿 🇺🇿')).toBeNull();
+  });
+
+  it('does not take Samarqand\'s Ulug\'bek for our district', async () => {
+    const { buildGazetteer, scoreRelevance } = await import('./media-relevance');
+    const r = (title: string, body = '') =>
+      scoreRelevance({ title, body, keywords: S.keywords, weakKeywords: S.weakKeywords, excludes: S.excludes, gazetteer: buildGazetteer([], []) });
+    expect(r("Samarqandda Mirzo Ulug'bek ko'chasida 8 nafar piyodaga yo'l bermagan haydovchi").relevance).toBeLessThan(50);
+    expect(r("Samarqand davlat universiteti kuni: Amir Temur va Mirzo Ulug'bek merosi", 'tuman maktablarida tadbirlar').relevance).toBe(0);
+    // a list of Tashkent districts still counts
+    expect(r("Toshkentning ayrim tumanlarida issiq suv o'chiriladi", "Mirzo Ulug'bek, Yashnobod tumanlarida").relevance).toBeGreaterThanOrEqual(50);
+  });
+});

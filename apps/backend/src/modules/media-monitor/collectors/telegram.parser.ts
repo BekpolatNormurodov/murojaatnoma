@@ -1,4 +1,4 @@
-import { decodeEntities, htmlToText, parseCompactNumber, parseFeedDate, truncate } from '../media-text.util';
+import { decodeEntities, htmlToText, meaningfulLine, parseCompactNumber, parseFeedDate, truncate } from '../media-text.util';
 import { RawMediaItem } from './collector.types';
 
 /**
@@ -34,7 +34,7 @@ export function parseTelegramPreview(html: string, channel: string, now = new Da
     const text = htmlToText(textHtml);
     if (!text) continue;
     if (AD_MARK.test(text)) continue; // paid placements are not news
-    const firstLine = text.split('\n').find((l) => l.trim().length > 0) ?? text;
+    const firstLine = meaningfulLine(text) ?? text.split('\n').find((l) => l.trim().length > 0) ?? text;
     const title = truncate(firstLine.trim(), 160);
     const rest = text.slice(text.indexOf(firstLine) + firstLine.length).trim();
     const image =
