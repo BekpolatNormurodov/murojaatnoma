@@ -12,7 +12,9 @@ import 'package:worker_app/features/attendance/presentation/pages/work_schedule_
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/auth/presentation/pages/login_page.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
+import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/calls/presentation/pages/call_page.dart';
+import 'package:worker_app/features/calls/presentation/pages/meeting_page.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
@@ -236,6 +238,15 @@ class AppRouter {
               child: CallPage(callId: id),
             );
           },
+        ),
+        // `/meeting/:id` — guruh qo'ng'irog'i (taklif → jonli to'r). Global
+        // `MeetingCubit`; navigatsiyani `app.dart`dagi host boshqaradi.
+        GoRoute(
+          path: '/meeting/:id',
+          builder: (context, state) => BlocProvider.value(
+            value: getIt<MeetingCubit>(),
+            child: const MeetingPage(),
+          ),
         ),
         // `/meetings` va `/meetings/:id` — bosh sahifadagi "Tezkor"
         // tugmalaridan PUSH qilinadigan to'liq ekranli sahifalar

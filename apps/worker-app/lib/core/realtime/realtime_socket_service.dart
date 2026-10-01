@@ -55,6 +55,15 @@ class RealtimeSocketService {
   final _callIce = _EventController.broadcast();
   final _callEnded = _EventController.broadcast();
 
+  // ---- Server -> client eventlari uchun broadcast oqimlari (GURUH) ----
+  final _meetingIncoming = _EventController.broadcast();
+  final _meetingJoined = _EventController.broadcast();
+  final _meetingLeft = _EventController.broadcast();
+  final _meetingSdp = _EventController.broadcast();
+  final _meetingIce = _EventController.broadcast();
+  final _meetingMedia = _EventController.broadcast();
+  final _meetingEnded = _EventController.broadcast();
+
   /// `presence:snapshot` — auth yakunlandi ("tayyor") signali. Payload
   /// e'tiborga olinmaydi; faqat "socket endi emit qabul qiladi" degani.
   final _presenceSnapshot = StreamController<void>.broadcast();
@@ -120,6 +129,29 @@ class RealtimeSocketService {
 
   /// `call:ended` — `{ callId, durationSec }`.
   Stream<Map<String, dynamic>> get callEnded => _callEnded.stream;
+
+  // ---- GURUH qo'ng'irog'i (yig'ilish, mesh) oqimlari ----
+
+  /// `meeting:incoming` — `{ meetingId, title, media, host, count }`.
+  Stream<Map<String, dynamic>> get meetingIncoming => _meetingIncoming.stream;
+
+  /// `meeting:participant-joined` — `{ meetingId, participant }`.
+  Stream<Map<String, dynamic>> get meetingJoined => _meetingJoined.stream;
+
+  /// `meeting:participant-left` — `{ meetingId, userId }`.
+  Stream<Map<String, dynamic>> get meetingLeft => _meetingLeft.stream;
+
+  /// `meeting:sdp` — `{ meetingId, fromUserId, description }`.
+  Stream<Map<String, dynamic>> get meetingSdp => _meetingSdp.stream;
+
+  /// `meeting:ice` — `{ meetingId, fromUserId, candidate }`.
+  Stream<Map<String, dynamic>> get meetingIce => _meetingIce.stream;
+
+  /// `meeting:media` — `{ meetingId, userId, audio, video }`.
+  Stream<Map<String, dynamic>> get meetingMedia => _meetingMedia.stream;
+
+  /// `meeting:ended` — `{ meetingId, durationSec }`.
+  Stream<Map<String, dynamic>> get meetingEnded => _meetingEnded.stream;
 
   /// `presence:snapshot` (auth tayyor) signal oqimi — chaqiruvchilar
   /// tayyorlikni kutishi uchun.
@@ -292,6 +324,104 @@ class RealtimeSocketService {
   void endCall(String callId) =>
       _runWhenReady(() => _socket?.emit('call:end', {'callId': callId}));
 
+  // ---- GURUH: client -> server emitlari (auth tayyor bo'lgach) ----
+
+  /// `meeting:join` — ACK `{ ok, selfId, participants: [...] }` (yoki
+  /// `{ ok: false, error }`). Socket yo'q/javob kelmasa `null`.
+  Future<Map<String, dynamic>?> joinMeeting({
+    required String meetingId,
+    required bool audio,
+    required bool video,
+  }) => _emitAck('meeting:join', {
+    'meetingId': meetingId,
+    'audio': audio,
+    'video': video,
+  });
+
+  /// `meeting:active` — ACK `{ meetings: [...] }` (qo'shilish mumkinlari).
+  Future<List<Map<String, dynamic>>> activeMeetings() async {
+    final ack = await _emitAck('meeting:active', const <String, dynamic>{});
+    final list = ack?['meetings'];
+    if (list is! List) return const [];
+    return [
+      for (final m in list)
+        if (m is Map) Map<String, dynamic>.from(m),
+    ];
+  }
+
+  void leaveMeeting(String meetingId) => _runWhenReady(
+    () => _socket?.emit('meeting:leave', {'meetingId': meetingId}),
+  );
+
+  void declineMeeting(String meetingId) => _runWhenReady(
+    () => _socket?.emit('meeting:decline', {'meetingId': meetingId}),
+  );
+
+  void sendMeetingSdp({
+    required String meetingId,
+    required String toUserId,
+    required Map<String, dynamic> description,
+  }) => _runWhenReady(
+    () => _socket?.emit('meeting:sdp', {
+      'meetingId': meetingId,
+      'toUserId': toUserId,
+      'description': description,
+    }),
+  );
+
+  void sendMeetingIce({
+    required String meetingId,
+    required String toUserId,
+    required Map<String, dynamic> candidate,
+  }) => _runWhenReady(
+    () => _socket?.emit('meeting:ice', {
+      'meetingId': meetingId,
+      'toUserId': toUserId,
+      'candidate': candidate,
+    }),
+  );
+
+  void sendMeetingMedia({
+    required String meetingId,
+    required bool audio,
+    required bool video,
+  }) => _runWhenReady(
+    () => _socket?.emit('meeting:media', {
+      'meetingId': meetingId,
+      'audio': audio,
+      'video': video,
+    }),
+  );
+
+  /// Ack'li emit — auth tayyorligini kutadi; 10 s ichida javob kelmasa `null`.
+  Future<Map<String, dynamic>?> _emitAck(
+    String event,
+    Map<String, dynamic> body,
+  ) {
+    final completer = Completer<Map<String, dynamic>?>();
+    _runWhenReady(() {
+      final socket = _socket;
+      if (socket == null) {
+        if (!completer.isCompleted) completer.complete(null);
+        return;
+      }
+      socket.emitWithAck(
+        event,
+        body,
+        ack: (dynamic data) {
+          if (completer.isCompleted) return;
+          completer.complete(
+            data is Map ? Map<String, dynamic>.from(data) : null,
+          );
+        },
+      );
+    });
+    return completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => null,
+    );
+  }
+
   // ---- Ichki ----
 
   /// [action]ni auth tayyor bo'lsa DARHOL, aks holda `presence:snapshot`
@@ -335,6 +465,14 @@ class RealtimeSocketService {
       ..on('call:sdp', (d) => _add(_callSdp, d))
       ..on('call:ice', (d) => _add(_callIce, d))
       ..on('call:ended', (d) => _add(_callEnded, d))
+      // GURUH
+      ..on('meeting:incoming', (d) => _add(_meetingIncoming, d))
+      ..on('meeting:participant-joined', (d) => _add(_meetingJoined, d))
+      ..on('meeting:participant-left', (d) => _add(_meetingLeft, d))
+      ..on('meeting:sdp', (d) => _add(_meetingSdp, d))
+      ..on('meeting:ice', (d) => _add(_meetingIce, d))
+      ..on('meeting:media', (d) => _add(_meetingMedia, d))
+      ..on('meeting:ended', (d) => _add(_meetingEnded, d))
       // TAYYOR / AUTH
       ..on('presence:snapshot', (_) => _onReady())
       ..on(

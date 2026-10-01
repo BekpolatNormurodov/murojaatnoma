@@ -26,9 +26,11 @@ import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/calls/data/datasources/call_remote_data_source.dart';
+import 'package:worker_app/features/calls/data/meeting_media_engine.dart';
 import 'package:worker_app/features/calls/data/repositories/call_repository_impl.dart';
 import 'package:worker_app/features/calls/domain/repositories/call_repository.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
+import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/chat/data/datasources/chat_remote_data_source.dart';
 import 'package:worker_app/features/chat/data/repositories/chat_repository_impl.dart';
 import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
@@ -412,6 +414,17 @@ Future<void> configureDependencies() async {
         socket: getIt<RealtimeSocketService>(),
         repository: getIt<CallRepository>(),
         notifications: getIt<NotificationService>(),
+      ),
+    )
+    // Guruh qo'ng'irog'i (yig'ilish, mesh WebRTC) — xuddi CallCubit kabi
+    // GLOBAL: socket taklifni istalgan ekranda qabul qiladi.
+    ..registerLazySingleton<MeetingMediaEngine>(
+      () => WebRtcMeetingEngine(getIt<CallRepository>()),
+    )
+    ..registerLazySingleton<MeetingCubit>(
+      () => MeetingCubit(
+        socket: getIt<RealtimeSocketService>(),
+        engine: getIt<MeetingMediaEngine>(),
       ),
     )
     // ---- Majlislar/Meetings (Zoom-uslubidagi ichki yig'ilishlar) ----

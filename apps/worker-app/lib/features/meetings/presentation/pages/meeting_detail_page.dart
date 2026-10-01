@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/meetings/domain/entities/meeting.dart';
 import 'package:worker_app/features/meetings/presentation/bloc/meeting_detail_cubit.dart';
 import 'package:worker_app/features/meetings/presentation/pages/meeting_call_page.dart';
@@ -57,6 +58,15 @@ class _DetailContent extends StatelessWidget {
   final bool joining;
 
   Future<void> _onJoinPressed(BuildContext context) async {
+    // Haqiqiy guruh qo'ng'irog'i: web'dagi selektor xuddi shu yig'ilish
+    // id'sidagi xonani ochadi (mesh WebRTC). Simulyatsiya faqat demo rejimda.
+    if (!AppConfig.useMock) {
+      await context.read<MeetingCubit>().join(
+        meetingId: meeting.id,
+        title: meeting.title,
+      );
+      return;
+    }
     final cubit = context.read<MeetingDetailCubit>();
     final error = await cubit.join();
     if (!context.mounted) return;

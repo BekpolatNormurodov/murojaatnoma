@@ -10,19 +10,34 @@ class CallInfo extends Equatable {
     required this.video,
     required this.status,
     required this.durationSec,
+    this.meetingId,
+    this.title,
+    this.hostName,
   });
 
   factory CallInfo.fromJson(Map<String, dynamic> json) => CallInfo(
     video: json['media'] == 'video',
     status: json['status'] as String? ?? 'ended',
     durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
+    meetingId: json['meeting'] == true ? json['meetingId'] as String? : null,
+    title: json['title'] as String?,
+    hostName: json['hostName'] as String?,
   );
 
   final bool video;
 
-  /// ended | missed | rejected | cancelled | busy
+  /// ended | missed | rejected | cancelled | busy — guruh qo'ng'irog'ida
+  /// live | ended.
   final String status;
   final int durationSec;
+
+  /// Umumiy chatdagi guruh qo'ng'irog'i e'loni (jonli bo'lsa "Qo'shilish").
+  final String? meetingId;
+  final String? title;
+  final String? hostName;
+
+  bool get isMeeting => meetingId != null;
+  bool get meetingLive => isMeeting && status == 'live';
 
   /// Javobsiz (o'tkazib yuborilgan / bekor / band / rad) qo'ng'iroqmi.
   bool get unanswered =>
@@ -32,12 +47,22 @@ class CallInfo extends Equatable {
       status == 'rejected';
 
   @override
-  List<Object?> get props => [video, status, durationSec];
+  List<Object?> get props => [
+    video,
+    status,
+    durationSec,
+    meetingId,
+    title,
+    hostName,
+  ];
 
   Map<String, dynamic> toJson() => {
     'media': video ? 'video' : 'audio',
     'status': status,
     'durationSec': durationSec,
+    if (meetingId != null) ...{'meeting': true, 'meetingId': meetingId},
+    if (title != null) 'title': title,
+    if (hostName != null) 'hostName': hostName,
   };
 }
 

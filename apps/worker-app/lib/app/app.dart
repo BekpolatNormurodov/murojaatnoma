@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/app/router/app_router.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
+import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/injection.dart';
 
@@ -25,6 +26,9 @@ class WorkerApp extends StatelessWidget {
         // lazy singleton, shuning uchun `/call/:id` marshruti va FCM
         // bildirishnoma bosilishi ham XUDDI SHUNI ishlatadi.
         BlocProvider(create: (_) => getIt<CallCubit>()),
+        // GLOBAL guruh qo'ng'irog'i — `meeting:incoming` taklifi istalgan
+        // ekranda `/meeting/:id`ni ochadi.
+        BlocProvider(create: (_) => getIt<MeetingCubit>()),
       ],
       child: Builder(
         builder: (context) {
@@ -45,8 +49,10 @@ class WorkerApp extends StatelessWidget {
             // tinglovchi qo'shamiz (navigatsiyaning YAGONA manbai — UI o'zi
             // navigatsiya qilmaydi).
             builder: (context, child) => _CallNavigationHost(
-              // Internet holati (oflayn / sekin / tiklandi) — butun ilova ustida.
-              child: NetworkBanner(child: child ?? const SizedBox.shrink()),
+              child: _MeetingNavigationHost(
+                // Internet holati (oflayn / sekin / tiklandi) — butun ilova ustida.
+                child: NetworkBanner(child: child ?? const SizedBox.shrink()),
+              ),
             ),
           );
         },
@@ -103,6 +109,52 @@ class _CallNavigationHostState extends State<_CallNavigationHost> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<CallCubit, CallState>(
+      listener: (context, state) => _maybeNavigate(state),
+      child: widget.child,
+    );
+  }
+}
+
+/// [MeetingCubit] taklif/ulanish/jonli holatga o'tganda `/meeting/:id`ni BIR
+/// MARTA ochadi (1:1 qo'ng'iroq hostining egizagi). Sahifa tugaganda o'zini
+/// yopadi va holat `idle`ga qaytgach keyingi yig'ilishga tayyor bo'ladi.
+class _MeetingNavigationHost extends StatefulWidget {
+  const _MeetingNavigationHost({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_MeetingNavigationHost> createState() => _MeetingNavigationHostState();
+}
+
+class _MeetingNavigationHostState extends State<_MeetingNavigationHost> {
+  bool _onScreen = false;
+
+  void _maybeNavigate(MeetingState state) {
+    final open =
+        state.phase == MeetingPhase.incoming ||
+        state.phase == MeetingPhase.joining ||
+        state.phase == MeetingPhase.live;
+    if (open && !_onScreen) {
+      _onScreen = true;
+      getIt<AppRouter>().config.push('/meeting/${state.meetingId ?? 'live'}');
+    } else if (state.phase == MeetingPhase.idle) {
+      _onScreen = false;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _maybeNavigate(context.read<MeetingCubit>().state);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocListener<MeetingCubit, MeetingState>(
       listener: (context, state) => _maybeNavigate(state),
       child: widget.child,
     );
