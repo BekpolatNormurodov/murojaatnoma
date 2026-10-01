@@ -9,10 +9,12 @@ import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
+import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
 import 'package:worker_app/features/chat/presentation/widgets/chat_formatters.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_composer.dart';
+import 'package:worker_app/injection.dart';
 
 /// Bitta suhbat sahifasi — sarlavha panelida avatar+nom+mavjudlik/ishtirokchilar,
 /// skrollanadigan xabarlar ro'yxati (sana ajratgichlari va turga xos
@@ -42,10 +44,27 @@ class _ConversationPageState extends State<ConversationPage> {
   int _lastMessageCount = -1;
   bool _showScrollToBottom = false;
 
+  /// Sarlavha uchun suhbat. Ro'yxatdan kelinganda `extra` orqali beriladi;
+  /// to'g'ridan-to'g'ri ochilganda (push bildirishnoma, chuqur havola) yo'q —
+  /// u holda ro'yxatdan id bo'yicha topiladi (ilgari sarlavha "Chat" bo'lib,
+  /// qo'ng'iroq tugmalari ham chiqmasdi).
+  Conversation? _conversation;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _conversation = widget.conversation;
+    if (_conversation == null) unawaited(_resolveConversation());
+  }
+
+  Future<void> _resolveConversation() async {
+    final result = await getIt<ChatRepository>().conversations();
+    final found = result.fold(
+      (_) => null,
+      (list) => list.where((c) => c.id == widget.conversationId).firstOrNull,
+    );
+    if (found != null && mounted) setState(() => _conversation = found);
   }
 
   @override
@@ -104,7 +123,7 @@ class _ConversationPageState extends State<ConversationPage> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final conversation = widget.conversation;
+    final conversation = _conversation;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final canvas = isDark ? AppColors.darkCanvas : AppColors.canvas;
 
