@@ -97,9 +97,20 @@ function parseYmd(v: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-export function RequestsPage() {
+/**
+ * Murojaatlar — and, with `kind="shikoyat"`, the Shikoyatlar page: the SAME
+ * pipeline (one lifecycle, one set of rules), only filtered to complaints.
+ */
+export function RequestsPage({ kind }: { kind?: 'ariza' | 'shikoyat' } = {}) {
   const { t } = useI18n();
-  const requests = useRequests((s) => s.requests);
+  const allRequests = useRequests((s) => s.requests);
+  // Ichki "Tur" filtri faqat umumiy Murojaatlar sahifasida.
+  const [kindFilter, setKindFilter] = useState<'all' | 'ariza' | 'shikoyat'>('all');
+  const effectiveKind = kind ?? (kindFilter === 'all' ? null : kindFilter);
+  const requests = useMemo(
+    () => (effectiveKind ? allRequests.filter((r) => (r.kind ?? 'ariza') === effectiveKind) : allRequests),
+    [allRequests, effectiveKind],
+  );
   const loading = useRequests((s) => s.loading);
   const error = useRequests((s) => s.error);
   const hydrate = useRequests((s) => s.hydrate);
@@ -289,8 +300,12 @@ export function RequestsPage() {
   return (
     <div>
       <PageHeader
-        title={t('nav.requests')}
-        subtitle={t('requests.subtitle')}
+        title={kind === 'shikoyat' ? t('nav.complaints') : t('nav.requests')}
+        subtitle={
+          kind === 'shikoyat'
+            ? 'Fuqarolar shikoyatlari — muddat ikki baravar qisqa, kechiksa rahbariyatga ko‘tariladi'
+            : t('requests.subtitle')
+        }
         action={
           <div className="flex items-center gap-2.5">
             <button
@@ -398,6 +413,30 @@ export function RequestsPage() {
       {/* Tabs + search */}
       <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-1.5">
+          {!kind && (
+            <div className="mr-1.5 flex rounded-xl border border-line bg-surface-2 p-0.5" role="tablist" aria-label="Turi">
+              {(
+                [
+                  ['all', 'Hammasi'],
+                  ['ariza', 'Ariza'],
+                  ['shikoyat', 'Shikoyat'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  role="tab"
+                  aria-selected={kindFilter === k}
+                  onClick={() => setKindFilter(k)}
+                  className={cn(
+                    'rounded-[10px] px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                    kindFilter === k ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {STATUS_TABS.map((st) => (
             <button
               key={st.key}
@@ -557,8 +596,28 @@ export function RequestsPage() {
                   {/* uuid → qisqa ko'rinish; eski R-1000 o'zgarishsiz */}
                   <span>#{r.id.startsWith('R-') ? r.id : r.id.slice(0, 8)}</span>
                   {r.source === 'citizen' && (
-                    <span className="rounded-md bg-primary-50 px-1.5 py-0.5 text-[10.5px] font-semibold text-primary-700">
-                      {r.kind === 'shikoyat' ? 'Shikoyat · ilova' : 'Fuqaro ilovasi'}
+                    <span
+                      className={cn(
+                        'rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold',
+                        r.kind === 'shikoyat'
+                          ? 'bg-danger-soft text-red-700'
+                          : 'bg-primary-50 text-primary-700 dark:bg-primary-500/10',
+                      )}
+                    >
+                      {r.kind === 'shikoyat' ? 'Shikoyat' : 'Ariza'}
+                    </span>
+                  )}
+                  {r.escalated && isOpen(r) && (
+                    <span
+                      className="rounded-md bg-red-600 px-1.5 py-0.5 text-[10.5px] font-semibold text-white"
+                      title="Muddat o‘tdi — rahbariyatga xabar berilgan"
+                    >
+                      Eskalatsiya
+                    </span>
+                  )}
+                  {!!r.reopenCount && (
+                    <span className="rounded-md bg-warning-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-amber-700">
+                      Qayta ochilgan ×{r.reopenCount}
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1">

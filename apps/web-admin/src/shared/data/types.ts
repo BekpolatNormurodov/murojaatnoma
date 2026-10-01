@@ -144,6 +144,10 @@ export interface CitizenRequest {
   ratingComment?: string | null;
   /** lat/lng haqiqiy (fuqaro joylashuvni yuborgan) — aks holda xaritada ko'rsatilmaydi. */
   hasCoords?: boolean;
+  /** SLA muddati o'tdi va rahbariyatga xabar berildi. */
+  escalated?: boolean;
+  /** Fuqaro necha marta qayta ochgan. */
+  reopenCount?: number;
 }
 
 /* ------------------------------------------------------------

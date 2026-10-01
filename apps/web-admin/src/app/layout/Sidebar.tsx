@@ -15,6 +15,7 @@ import {
   SecurityUser,
   Speaker,
   Danger,
+  TaskSquare,
   Calendar,
   Messages2,
   Mobile,
@@ -31,7 +32,6 @@ import { useAuth } from '@/shared/store/auth';
 import { useUI } from '@/shared/store/ui';
 import { useConversations } from '@/features/chat/useChat';
 import { useRequests } from '@/shared/store/requests';
-import { useComplaints } from '@/shared/store/complaints';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions, type Feature } from '@/shared/lib/permissions';
@@ -56,6 +56,7 @@ const SECTIONS: NavSection[] = [
       { to: '/', labelKey: 'nav.dashboard', icon: Element3, feature: 'dashboard' },
       { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion, feature: 'requests' },
       { to: '/complaints', labelKey: 'nav.complaints', icon: Danger, feature: 'complaints' },
+      { to: '/requests/control', labelKey: 'nav.control', icon: TaskSquare, feature: 'requests' },
       { to: '/meetings', labelKey: 'nav.meetings', icon: Calendar, feature: 'meetings' },
       { to: '/chat', labelKey: 'nav.chat', icon: Messages2, feature: 'chat' },
       { to: '/map', labelKey: 'nav.map', icon: Map1, feature: 'map' },
@@ -120,12 +121,14 @@ export function SidebarContent({
   const { data: conversations } = useConversations();
   const chatUnread = (conversations ?? []).reduce((sum, c) => sum + c.unreadCount, 0);
   // Bu do'konlar ilova yuklanganda bir marta backend'dan hydrate bo'ladi
-  // (shared/store/requests.ts, shared/store/complaints.ts) — shu yerda
+  // (shared/store/requests.ts) — shu yerda
   // faqat mavjud holatdan ochiq/yangi sonini hisoblaymiz.
-  const openRequests = useRequests((s) => s.requests).filter(
-    (r) => r.status === 'new' || r.status === 'in_progress',
+  // Murojaat va shikoyat bitta quvur: badge'lar ham shu ro'yxatdan.
+  const allRequests = useRequests((s) => s.requests);
+  const openRequests = allRequests.filter(
+    (r) => r.kind !== 'shikoyat' && (r.status === 'new' || r.status === 'in_progress'),
   ).length;
-  const newComplaints = useComplaints((s) => s.complaints).filter((c) => c.status === 'new').length;
+  const newComplaints = allRequests.filter((r) => r.kind === 'shikoyat' && r.status === 'new').length;
   const [logoutOpen, setLogoutOpen] = useState(false);
   return (
     <>
@@ -167,7 +170,8 @@ export function SidebarContent({
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === '/'}
+                // '/requests' must not light up on '/requests/control'.
+                end={item.to === '/' || item.to === '/requests'}
                 onClick={onNavigate}
                 title={collapsed ? t(item.labelKey) : undefined}
                 className={({ isActive }) =>

@@ -11,7 +11,9 @@ import { LoginPage } from '@/features/auth/LoginPage';
 // fallback AdminLayout ichida — Outlet atrofida (sidebar/topbar joyida qoladi).
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage').then((m) => ({ default: m.DashboardPage })));
 const RequestsPage = lazy(() => import('@/features/requests/RequestsPage').then((m) => ({ default: m.RequestsPage })));
-const ComplaintsPage = lazy(() => import('@/features/complaints/ComplaintsPage').then((m) => ({ default: m.ComplaintsPage })));
+const ControlBoardPage = lazy(() =>
+  import('@/features/requests/ControlBoardPage').then((m) => ({ default: m.ControlBoardPage })),
+);
 const MeetingsPage = lazy(() => import('@/features/meetings/MeetingsPage').then((m) => ({ default: m.MeetingsPage })));
 const ChatPage = lazy(() => import('@/features/chat/ChatPage').then((m) => ({ default: m.ChatPage })));
 const MapPage = lazy(() => import('@/features/map/MapPage').then((m) => ({ default: m.MapPage })));
@@ -52,7 +54,9 @@ export const router = createBrowserRouter([
       // hosil bo'lmasligi uchun bu marshrut ataylab RoleRoute bilan o'ralmagan.
       { index: true, element: <DashboardPage /> },
       { path: 'requests', element: <RoleRoute feature="requests"><RequestsPage /></RoleRoute> },
-      { path: 'complaints', element: <RoleRoute feature="complaints"><ComplaintsPage /></RoleRoute> },
+      // Shikoyatlar = the same murojaat pipeline, complaints only (one lifecycle, one rule set).
+      { path: 'complaints', element: <RoleRoute feature="complaints"><RequestsPage kind="shikoyat" /></RoleRoute> },
+      { path: 'requests/control', element: <RoleRoute feature="requests"><ControlBoardPage /></RoleRoute> },
       { path: 'meetings', element: <RoleRoute feature="meetings"><MeetingsPage /></RoleRoute> },
       { path: 'chat', element: <RoleRoute feature="chat"><ChatPage /></RoleRoute> },
       { path: 'attendance', element: <RoleRoute feature="attendance"><AttendancePage /></RoleRoute> },

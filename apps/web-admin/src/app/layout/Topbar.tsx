@@ -1,23 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   SearchNormal1,
-  Notification,
   Calendar,
   Sun1,
   Moon,
   HambergerMenu,
   TickCircle,
-  MessageQuestion,
-  Profile2User,
-  WalletMoney,
-  Video,
-  InfoCircle,
   Profile,
   Setting2,
   LogoutCurve,
-  type Icon as IconType,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Flag } from '@/shared/ui/Flag';
@@ -26,25 +19,8 @@ import { useTheme } from '@/shared/theme/ThemeProvider';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useAuth } from '@/shared/store/auth';
 import { LANGS, type Lang } from '@/shared/i18n/dict';
-import { useNotifications, useUnreadNotificationsCount } from '@/features/notifications/useNotifications';
-import type { NotificationItem, NotificationType } from '@/shared/data/types';
-import { timeAgo } from '@/shared/lib/format';
+import { NotificationsBell } from '@/features/notifications/NotificationsBell';
 import { cn } from '@/shared/lib/cn';
-
-const NOTIF_META: Record<NotificationType, { icon: IconType; color: string }> = {
-  request: { icon: MessageQuestion, color: '#3b82f6' },
-  worker: { icon: Profile2User, color: '#f59e0b' },
-  finance: { icon: WalletMoney, color: '#10b981' },
-  camera: { icon: Video, color: '#a855f7' },
-  system: { icon: InfoCircle, color: '#64748b' },
-};
-
-// Backend kelajakda yangi bildirishnoma turini qo'shishi mumkin — bunday
-// holatda `NOTIF_META` kaliti topilmay UI qulab tushmasligi uchun zaxira.
-const DEFAULT_NOTIF_META: { icon: IconType; color: string } = {
-  icon: InfoCircle,
-  color: '#64748b',
-};
 
 // Localized date names — Intl's uz-UZ data is unreliable across runtimes
 // (falls back to "M06 12, Fri"), so we format manually.
@@ -89,30 +65,15 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const navigate = useNavigate();
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
-  const [notifOpen, setNotifOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
 
-  // Ro'yxat backend'dan keladi, lekin "o'qildi" belgisi mahalliy holatda
-  // saqlanadi (bildirishnomani o'qilgan deb belgilash uchun alohida backend
-  // endpoint hozircha yo'q — shuning uchun bu UI-level optimistik holat).
-  const { data: notifData, isLoading: notifLoading } = useNotifications();
-  const { data: unreadData } = useUnreadNotificationsCount();
-  const [items, setItems] = useState<NotificationItem[]>([]);
-
-  useEffect(() => {
-    if (notifData) setItems(notifData);
-  }, [notifData]);
-
-  const notifRef = useClickOutside<HTMLDivElement>(() => setNotifOpen(false));
   const langRef = useClickOutside<HTMLDivElement>(() => setLangOpen(false));
   const menuRef = useClickOutside<HTMLDivElement>(() => setMenuOpen(false));
 
   const today = formatToday(lang);
 
-  const unread = items.filter((n) => !n.read).length;
-  const unreadFallback = unreadData?.count ?? 0;
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-xl">
@@ -154,7 +115,6 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <button
             onClick={() => {
               setLangOpen((v) => !v);
-              setNotifOpen(false);
             }}
             className="flex h-10 items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-2.5 text-ink-soft transition-colors hover:text-ink"
           >
@@ -220,101 +180,14 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           </AnimatePresence>
         </button>
 
-        {/* Notifications */}
-        <div className="relative" ref={notifRef}>
-          <button
-            onClick={() => {
-              setNotifOpen((v) => !v);
-              setLangOpen(false);
-            }}
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-surface-2 text-ink-soft transition-colors hover:text-ink"
-          >
-            <Notification size={20} variant="Bulk" />
-            {(notifOpen ? unread : unread || unreadFallback) > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white ring-2 ring-surface">
-                {notifOpen ? unread : unread || unreadFallback}
-              </span>
-            )}
-          </button>
-          <AnimatePresence>
-            {notifOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -8, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                transition={{ duration: 0.16 }}
-                className="absolute right-0 top-12 w-screen max-w-88 overflow-hidden rounded-2xl border border-line bg-surface shadow-pop"
-              >
-                <div className="flex items-center justify-between border-b border-line px-4 py-3">
-                  <h3 className="text-sm font-semibold text-ink">{t('topbar.notifications')}</h3>
-                  <button
-                    onClick={() => setItems((prev) => prev.map((n) => ({ ...n, read: true })))}
-                    className="text-[12px] font-medium text-primary-600 hover:underline"
-                  >
-                    {t('topbar.markAll')}
-                  </button>
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {notifLoading && items.length === 0 && (
-                    <div className="space-y-2 p-3">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="h-14 animate-pulse rounded-xl bg-surface-2" />
-                      ))}
-                    </div>
-                  )}
-                  {!notifLoading && items.length === 0 && (
-                    <p className="px-4 py-8 text-center text-sm text-ink-muted">{t('topbar.empty')}</p>
-                  )}
-                  {items.map((n) => {
-                    const meta = NOTIF_META[n.type] ?? DEFAULT_NOTIF_META;
-                    const Ic = meta.icon;
-                    return (
-                      <button
-                        key={n.id}
-                        onClick={() =>
-                          setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)))
-                        }
-                        className={cn(
-                          'flex w-full items-start gap-3 border-b border-line/60 px-4 py-3 text-left transition-colors hover:bg-surface-2',
-                          !n.read && 'bg-primary-50/40',
-                        )}
-                      >
-                        <span
-                          className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                          style={{ background: `${meta.color}1a`, color: meta.color }}
-                        >
-                          <Ic size={18} variant="Bulk" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate text-[13px] font-semibold text-ink">{n.title}</p>
-                            {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-primary-500" />}
-                          </div>
-                          <p className="mt-0.5 line-clamp-2 text-[12px] text-ink-soft">{n.message}</p>
-                          <p className="mt-1 text-[11px] text-ink-muted">{timeAgo(n.createdAt)}</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <Link
-                  to="/news"
-                  onClick={() => setNotifOpen(false)}
-                  className="block border-t border-line px-4 py-3 text-center text-[13px] font-medium text-primary-600 hover:bg-surface-2"
-                >
-                  {t('topbar.viewAll')}
-                </Link>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        {/* Notifications — real events, expandable, read state saved */}
+        <NotificationsBell onOpenChange={(o) => o && setLangOpen(false)} />
 
         {/* Profile */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => {
               setMenuOpen((v) => !v);
-              setNotifOpen(false);
               setLangOpen(false);
             }}
             className="flex items-center gap-3 rounded-xl border border-line bg-surface-2 py-1.5 pl-1.5 pr-2 transition-colors hover:border-primary-200 sm:pr-3"

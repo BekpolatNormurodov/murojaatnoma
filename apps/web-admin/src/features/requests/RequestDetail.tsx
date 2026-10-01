@@ -267,6 +267,12 @@ export function RequestDetail({
   // Avatar bosilganda ochiladigan umumiy profil oynasi uchun tanlangan odam.
   const [person, setPerson] = useState<PersonRef | null>(null);
 
+  // Rad etish / hal qilish — fuqaro ko'radigan sabab yoki javob so'raladi.
+  const [decision, setDecision] = useState<'resolved' | 'rejected' | null>(null);
+  const [decisionText, setDecisionText] = useState('');
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState(false);
+
   // Boshqa murojaat tanlanganda (yoki drawer yopilganda) — oldingi
   // murojaatga tegishli lokal holatlarni (tanlagich, o'chirish tasdig'i)
   // tozalaymiz (render paytida — effect'dagi qo'shimcha render'siz).
@@ -277,6 +283,7 @@ export function RequestDetail({
     setDeleteOpen(false);
     setDeleteError(null);
     setDeleting(false);
+    setDecision(null);
   }
 
   async function handleAssign(workerId: string) {
@@ -299,10 +306,37 @@ export function RequestDetail({
 
   async function handleStatusChange(status: RequestStatus) {
     if (!r) return;
+    // Fuqaro murojaatini rad etish / hal qilish — fuqaro sabab/javobni ko'radi.
+    if (r.source === 'citizen' && (status === 'resolved' || status === 'rejected')) {
+      setDecision(status);
+      setDecisionText('');
+      setDecisionError(null);
+      return;
+    }
     try {
       await setStatus(r.id, status);
-    } catch {
-      pushRequestToast('error', t('requests.toast.statusError'));
+    } catch (err) {
+      pushRequestToast('error', err instanceof Error && err.message ? err.message : t('requests.toast.statusError'));
+    }
+  }
+
+  async function submitDecision() {
+    if (!r || !decision) return;
+    const text = decisionText.trim();
+    if (decision === 'rejected' && text.length < 5) {
+      setDecisionError('Sababni kamida 5 belgida yozing — fuqaro uni ko‘radi');
+      return;
+    }
+    setDeciding(true);
+    setDecisionError(null);
+    try {
+      await setStatus(r.id, decision, text);
+      setDecision(null);
+      pushRequestToast('success', decision === 'resolved' ? 'Murojaat hal qilindi — fuqaroga xabar yuborildi' : 'Murojaat rad etildi — fuqaroga sabab yuborildi');
+    } catch (err) {
+      setDecisionError(err instanceof Error && err.message ? err.message : t('requests.toast.statusError'));
+    } finally {
+      setDeciding(false);
     }
   }
 
@@ -675,15 +709,19 @@ export function RequestDetail({
               <div className="flex flex-wrap gap-1.5">
                 {(['in_progress', 'resolved', 'rejected'] as RequestStatus[]).map((s) => {
                   const active = r.status === s;
+                  // Ishga olish uchun mas'ul xodim kerak (server ham shuni talab qiladi).
+                  const needsAssignee = s === 'in_progress' && !r.assignedWorkerId && !active;
                   return (
                     <button
                       key={s}
                       onClick={() => handleStatusChange(s)}
+                      disabled={active || needsAssignee}
+                      title={needsAssignee ? 'Avval mas’ul xodim biriktiring' : undefined}
                       className={cn(
-                        'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
+                        'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors disabled:cursor-not-allowed',
                         active
                           ? 'bg-ink text-white'
-                          : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                          : 'border border-line bg-surface text-ink-soft hover:bg-surface-2 disabled:opacity-45 disabled:hover:bg-surface',
                       )}
                     >
                       {s === 'resolved' && <TickCircle size={15} variant="Bulk" />}
@@ -728,6 +766,68 @@ export function RequestDetail({
             onClose={() => setPickerOpen(false)}
             onAssign={handleAssign}
           />
+
+          {/* Rad etish sababi / hal qilish javobi — fuqaroga yuboriladi */}
+          <Modal
+            open={!!decision}
+            onClose={() => !deciding && setDecision(null)}
+            title={decision === 'rejected' ? 'Murojaatni rad etish' : 'Murojaatni hal qilish'}
+            subtitle={
+              decision === 'rejected'
+                ? 'Sabab fuqaroning yozishmasiga va bildirishnomasiga tushadi'
+                : 'Javob fuqaroga yuboriladi, so‘ng u natijani baholaydi'
+            }
+            width={480}
+          >
+            <div className="space-y-3 p-5 pt-0">
+              <label className="block text-[13px] font-medium text-ink" htmlFor="decision-text">
+                {decision === 'rejected' ? 'Rad etish sababi' : 'Fuqaroga javob'}
+                {decision === 'rejected' && <span className="text-danger"> *</span>}
+              </label>
+              <textarea
+                id="decision-text"
+                autoFocus
+                rows={4}
+                value={decisionText}
+                onChange={(e) => setDecisionText(e.target.value)}
+                placeholder={
+                  decision === 'rejected'
+                    ? 'Masalan: masala tuman vakolatiga kirmaydi — viloyat hokimligiga murojaat qiling'
+                    : 'Masalan: chiroqlar almashtirildi, ko‘cha yoritildi'
+                }
+                className="w-full resize-y rounded-xl border border-line bg-surface px-3 py-2.5 text-[13.5px] text-ink outline-none placeholder:text-ink-muted focus:border-primary-400"
+              />
+              {decision === 'resolved' && (
+                <p className="text-[12px] text-ink-muted">
+                  Xodim allaqachon javob yozgan bo‘lsa, bo‘sh qoldirish mumkin.
+                </p>
+              )}
+              {decisionError && (
+                <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-[12.5px] text-red-700">
+                  {decisionError}
+                </p>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  onClick={() => setDecision(null)}
+                  disabled={deciding}
+                  className="h-10 rounded-xl border border-line px-4 text-sm font-medium text-ink-soft hover:bg-surface-2"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  onClick={() => void submitDecision()}
+                  disabled={deciding}
+                  className={cn(
+                    'h-10 rounded-xl px-4 text-sm font-semibold text-white transition-colors disabled:opacity-60',
+                    decision === 'rejected' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-600 hover:bg-primary-700',
+                  )}
+                >
+                  {deciding ? 'Yuborilmoqda…' : decision === 'rejected' ? 'Rad etish' : 'Hal qilindi'}
+                </button>
+              </div>
+            </div>
+          </Modal>
 
           <ConfirmDialog
             open={deleteOpen}

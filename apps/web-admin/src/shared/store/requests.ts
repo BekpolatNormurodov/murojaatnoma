@@ -34,7 +34,8 @@ interface RequestsState {
   /** Biriktirilgan xodimni olib tashlash. */
   unassignWorker: (requestId: string) => Promise<void>;
   /** Murojaat holatini o'zgartirish. Hal qilinganda resolvedAt belgilanadi. */
-  setStatus: (requestId: string, status: RequestStatus) => Promise<void>;
+  /** `note` — fuqaroga javob / rad etish sababi (server talab qiladi). */
+  setStatus: (requestId: string, status: RequestStatus, note?: string) => Promise<void>;
   /** Murojaatni butunlay o'chirish (DELETE /requests/:id). */
   remove: (requestId: string) => Promise<void>;
 }
@@ -150,7 +151,7 @@ export const useRequests = create<RequestsState>((set, get) => ({
     }
   },
 
-  setStatus: async (requestId, status) => {
+  setStatus: async (requestId, status, note) => {
     const prev = get().requests;
     set((s) => ({
       requests: s.requests.map((r) => {
@@ -164,7 +165,14 @@ export const useRequests = create<RequestsState>((set, get) => ({
       }),
     }));
     try {
-      await api.patch<CitizenRequest>(`/requests/${requestId}`, { status });
+      const fresh = await api.patch<CitizenRequest>(`/requests/${requestId}`, {
+        status,
+        ...(note?.trim() ? { note: note.trim() } : {}),
+      });
+      // Server truth (dueAt, escalation, assignee may have changed with the move).
+      if (fresh?.id) {
+        set((s) => ({ requests: s.requests.map((r) => (r.id === fresh.id ? { ...r, ...fresh } : r)) }));
+      }
     } catch (err) {
       console.error("Holatni o'zgartirishda xatolik:", err);
       set({ requests: prev });
