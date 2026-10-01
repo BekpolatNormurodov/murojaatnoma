@@ -18,6 +18,31 @@ import { TrackQueryDto } from './dto/track-query.dto';
 const ZONE_TOLERANCE_BASE_M = 35;
 const ZONE_TOLERANCE_ACCURACY_CAP_M = 75;
 
+/** A pause this long between two fixes is a break in the route (GPS off / app closed). */
+export const TRACK_GAP_MS = 15 * 60_000;
+/** Rows read for one track window at most (a full day at one fix / 30 s is ~2 900). */
+const TRACK_SCAN_CAP = 20_000;
+
+/**
+ * Thins a chronological track to about `limit` points for drawing, always
+ * keeping the first and last fix and both ends of every gap, so the route's
+ * start, live end and its breaks survive. Returns the input when it fits.
+ */
+export function downsampleTrack<T extends { recordedAt: Date }>(points: T[], limit: number): T[] {
+  if (points.length <= limit) return points;
+  const keep = new Set<number>([0, points.length - 1]);
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].recordedAt.getTime() - points[i - 1].recordedAt.getTime() >= TRACK_GAP_MS) {
+      keep.add(i - 1);
+      keep.add(i);
+    }
+  }
+  const room = Math.max(limit - keep.size, 1);
+  const step = Math.ceil(points.length / room);
+  for (let i = 0; i < points.length; i += step) keep.add(i);
+  return [...keep].sort((a, b) => a - b).map((i) => points[i]);
+}
+
 interface OfficeGeofence {
   lat: number;
   lng: number;
@@ -368,26 +393,37 @@ export class LocationsService {
       recordedAt.lte = new Date(query.to);
     }
 
-    const points = await this.prisma.employeeLocation.findMany({
+    const limit = query.limit ?? 500;
+    const windowed = !!(query.from || query.to);
+    const rows = await this.prisma.employeeLocation.findMany({
       where: {
         employeeId,
-        ...(query.from || query.to ? { recordedAt } : {}),
+        ...(windowed ? { recordedAt } : {}),
       },
-      orderBy: { recordedAt: 'asc' },
-      take: query.limit ?? 500,
+      // Newest first, so any cap keeps the most RECENT movement. (Ascending +
+      // take used to return only the first 500 fixes of the day — on a busy
+      // day the afternoon was missing and the "live" end of the route was
+      // hours old.) A window is read whole and thinned below instead.
+      orderBy: { recordedAt: 'desc' },
+      take: windowed ? TRACK_SCAN_CAP : limit,
       select: {
         latitude: true,
         longitude: true,
         accuracy: true,
         speed: true,
+        battery: true,
         insideOffice: true,
         insideDistrict: true,
+        insideAssignedZone: true,
+        distanceToOfficeM: true,
         mahallaName: true,
         recordedAt: true,
       },
     });
+    rows.reverse();
+    const points = downsampleTrack(rows, limit);
 
-    return { employee, count: points.length, points };
+    return { employee, count: points.length, total: rows.length, points };
   }
 
   /**

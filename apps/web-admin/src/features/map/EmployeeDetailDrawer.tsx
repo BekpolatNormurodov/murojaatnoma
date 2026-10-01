@@ -1,30 +1,39 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  BatteryCharging,
   Buildings2,
   Call,
+  CalendarTick,
   CloseCircle,
   Gps,
   LocationTick,
+  Map1,
   Messages,
   Routing2,
   Timer1,
 } from 'iconsax-react';
 import type { LiveLocation, TrackPoint, TrackResult } from '@/shared/api/locations';
+import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
 import { cn } from '@/shared/lib/cn';
 import {
   absTime,
   clockTime,
+  fixInZone,
   fmtDistance,
   haversineM,
   initials,
   isOnline,
+  MAX_DRAW_ACCURACY_M,
   OFFICE_CENTER,
   OFFLINE_COLOR,
   ONLINE_COLOR,
   relTime,
   statusColor,
+  statusKey,
+  STATUS_COLORS,
   type Labels,
+  type TrackSummary,
   type TrackWindow,
 } from './mapShared';
 
@@ -62,6 +71,11 @@ interface Props {
   trackLoading: boolean;
   trackWindow: TrackWindow;
   onTrackWindow: (w: TrackWindow) => void;
+  summary: TrackSummary;
+  /** Today's davomat entry (null when unavailable). */
+  attendance: EmployeeTodayEntry | null;
+  /** Names of the employee's assigned mahallas (empty = whole district). */
+  assignedNames: string[];
   t: Labels;
   onClose: () => void;
   /** Fly the map to a track point when its row is clicked. */
@@ -80,6 +94,9 @@ export function EmployeeDetailDrawer({
   trackLoading,
   trackWindow,
   onTrackWindow,
+  summary,
+  attendance,
+  assignedNames,
   t,
   onClose,
   onFocusPoint,
@@ -108,7 +125,19 @@ export function EmployeeDetailDrawer({
     loc.hasLocation && loc.latitude != null && loc.longitude != null
       ? [loc.latitude, loc.longitude]
       : null;
-  const distanceM = pos ? haversineM(pos, OFFICE_CENTER) : null;
+  // Prefer the server's per-employee office distance from the latest fix.
+  const lastFix = track?.points[track.points.length - 1];
+  const distanceM =
+    lastFix?.distanceToOfficeM != null ? lastFix.distanceToOfficeM : pos ? haversineM(pos, OFFICE_CENTER) : null;
+  const key = statusKey(loc);
+  const statusText: Record<string, string> = {
+    office: t.office,
+    zone: t.zone,
+    offzone: t.offzone,
+    outside: t.outDistrict,
+    stale: t.stale,
+    noloc: t.noLocShort,
+  };
 
   // Newest points first for the scroll list.
   const points = useMemo(
@@ -221,17 +250,48 @@ export function EmployeeDetailDrawer({
           </div>
         </div>
 
-        {/* Status badges */}
-        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
-          <Badge active={loc.insideOffice} color="#10b981" label={t.inOfficeBadge} />
-          <Badge active={loc.insideDistrict} color="#3b82f6" label={t.inDistrictBadge} />
-          {loc.hasLocation && !loc.insideDistrict && !loc.isStale && (
+        {/* Status + assigned zone + today's davomat */}
+        <div className="space-y-2 px-4 pt-3">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
-              style={{ background: '#f59e0b' }}
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+              style={{ background: STATUS_COLORS[key] }}
             >
-              {t.outsideBadge}
+              <span className="h-1.5 w-1.5 rounded-full bg-white" />
+              {statusText[key]}
             </span>
+            <span
+              className="inline-flex min-w-0 items-center gap-1 rounded-full border border-dashed border-indigo-300 px-2.5 py-1 text-[11px] font-medium text-indigo-700 dark:border-indigo-500/50 dark:text-indigo-300"
+              title={assignedNames.join(', ')}
+            >
+              <Map1 size={12} variant="Bulk" className="shrink-0" />
+              <span className="truncate">
+                {t.assignedZone}:{' '}
+                {assignedNames.length === 0
+                  ? t.wholeDistrict
+                  : assignedNames.length <= 2
+                    ? assignedNames.join(', ')
+                    : `${assignedNames.length} ${t.mahallaUnit}`}
+              </span>
+            </span>
+          </div>
+          {attendance && (
+            <div className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2 text-[12px]">
+              <CalendarTick size={15} variant="Bulk" className="shrink-0 text-primary-600" />
+              <span className="text-ink-muted">{t.attendance}:</span>
+              {attendance.checkIn ? (
+                <span className="min-w-0 truncate font-medium text-ink">
+                  {t.cameAt} {clockTime(attendance.checkIn.time)}
+                  {attendance.checkIn.isLate && (
+                    <span className="text-amber-600"> (+{attendance.checkIn.lateMinutes}′)</span>
+                  )}
+                  {' · '}
+                  {attendance.checkOut ? `${t.leftAt} ${clockTime(attendance.checkOut.time)}` : t.stillWorking}
+                </span>
+              ) : (
+                <span className="font-medium text-red-600">{t.notCame}</span>
+              )}
+            </div>
           )}
         </div>
 
@@ -257,6 +317,33 @@ export function EmployeeDetailDrawer({
             label={t.lastSeen}
             value={relTime(loc.lastLocationAt, t)}
           />
+          {summary.firstAt && (
+            <>
+              <Metric
+                icon={<Routing2 size={15} variant="Bulk" />}
+                label={t.traveled}
+                value={fmtDistance(summary.distanceM, t)}
+              />
+              <Metric
+                icon={<LocationTick size={15} variant="Bulk" />}
+                label={t.inZoneShare}
+                value={summary.inZonePct != null ? `${summary.inZonePct}%` : '—'}
+                tone={summary.inZonePct != null && summary.inZonePct < 70 ? 'warn' : undefined}
+              />
+              <Metric
+                icon={<Timer1 size={15} variant="Bulk" />}
+                label={t.gaps}
+                value={summary.gaps ? `${summary.gaps} · ${fmtGap(summary.gapMs)}` : '0'}
+                tone={summary.gaps ? 'warn' : undefined}
+              />
+              <Metric
+                icon={<BatteryCharging size={15} variant="Bulk" />}
+                label={t.battery}
+                value={summary.battery != null ? `${summary.battery}%` : '—'}
+                tone={summary.battery != null && summary.battery <= 15 ? 'warn' : undefined}
+              />
+            </>
+          )}
         </div>
 
         {/* Track window selector */}
@@ -266,7 +353,8 @@ export function EmployeeDetailDrawer({
             {t.track}
             {track && (
               <span className="font-normal normal-case text-ink-muted">
-                · {track.count} {t.points}
+                · {track.total ?? track.count} {t.points}
+                {summary.firstAt && ` · ${clockTime(summary.firstAt)}–${clockTime(summary.lastAt)}`}
               </span>
             )}
           </div>
@@ -302,6 +390,10 @@ export function EmployeeDetailDrawer({
               const gapMs = older
                 ? new Date(p.recordedAt).getTime() - new Date(older.recordedAt).getTime()
                 : 0;
+              const coarse = p.accuracy != null && p.accuracy > MAX_DRAW_ACCURACY_M;
+              const inZone = fixInZone(p);
+              // "Jonli" only when the newest fix really is current (not hours old).
+              const isLive = i === 0 && online;
               return (
                 <Fragment key={`${p.recordedAt}-${i}`}>
                   <button
@@ -314,12 +406,20 @@ export function EmployeeDetailDrawer({
                     <LocationTick
                       size={13}
                       variant="Bulk"
-                      className={p.insideOffice ? 'text-emerald-600' : 'text-ink-muted'}
+                      className={
+                        p.insideOffice ? 'text-emerald-600' : inZone ? 'text-blue-600' : 'text-amber-500'
+                      }
                     />
-                    <span className="min-w-0 flex-1 truncate text-xs text-ink">
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate text-xs',
+                        coarse ? 'text-ink-muted' : inZone ? 'text-ink' : 'text-amber-700',
+                      )}
+                    >
                       {p.mahallaName ?? '—'}
+                      {coarse && ` · ${t.lowAccuracy}`}
                     </span>
-                    {i === 0 && (
+                    {isLive && (
                       <span className="shrink-0 rounded-full bg-primary-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary-700">
                         {t.live}
                       </span>
@@ -344,48 +444,26 @@ export function EmployeeDetailDrawer({
   );
 }
 
-function Badge({
-  active,
-  color,
-  label,
-}: {
-  active: boolean;
-  color: string;
-  label: string;
-}) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
-        active ? 'text-white' : 'border border-line bg-surface-2 text-ink-muted',
-      )}
-      style={active ? { background: color } : undefined}
-    >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: active ? '#fff' : '#cbd5e1' }}
-      />
-      {label}
-    </span>
-  );
-}
-
 function Metric({
   icon,
   label,
   value,
+  tone,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  tone?: 'warn';
 }) {
   return (
     <div className="rounded-xl bg-surface-2 px-3 py-2">
       <div className="flex items-center gap-1 text-[11px] text-ink-muted">
-        <span className="text-primary-600">{icon}</span>
+        <span className={tone === 'warn' ? 'text-amber-500' : 'text-primary-600'}>{icon}</span>
         {label}
       </div>
-      <div className="mt-0.5 truncate text-sm font-semibold text-ink">{value}</div>
+      <div className={cn('mt-0.5 truncate text-sm font-semibold', tone === 'warn' ? 'text-amber-600' : 'text-ink')}>
+        {value}
+      </div>
     </div>
   );
 }

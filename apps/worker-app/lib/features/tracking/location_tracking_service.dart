@@ -25,10 +25,18 @@ class LocationTrackingService {
   static const int _maxBuffer = 500;
   static const Duration _flushInterval = Duration(seconds: 30);
 
+  /// Oqim faqat 15 m yurganda nuqta beradi — joyida o'tirgan xodim umuman
+  /// hisobot yubormas, admin xaritasida 5 daqiqada "oflayn", 30 daqiqada
+  /// "aloqa yo'q" (soxta ogohlantirish) bo'lib qolardi. Shuncha vaqt hech narsa
+  /// yuborilmagan bo'lsa — joriy fiksni o'zimiz olib yuboramiz (heartbeat).
+  static const Duration _heartbeatEvery = Duration(minutes: 5);
+
   StreamSubscription<Position>? _positionSub;
   Timer? _flushTimer;
   bool _running = false;
   Object? _lastError;
+  DateTime? _lastSentAt;
+  bool _heartbeatInFlight = false;
 
   bool get isRunning => _running;
 
@@ -69,7 +77,7 @@ class LocationTrackingService {
       cancelOnError: false,
     );
 
-    _flushTimer = Timer.periodic(_flushInterval, (_) => _flushOutbox());
+    _flushTimer = Timer.periodic(_flushInterval, (_) => _tick());
 
     // Birinchi hisobotni darhol yuboramiz — admin xaritasi harakatni
     // kutmasdan yonadi.
@@ -135,6 +143,23 @@ class LocationTrackingService {
     }
   }
 
+  Future<void> _tick() async {
+    await _flushOutbox();
+    final last = _lastSentAt;
+    if (_running &&
+        !_heartbeatInFlight &&
+        (last == null || DateTime.now().difference(last) >= _heartbeatEvery)) {
+      _heartbeatInFlight = true;
+      try {
+        // Faqat HAQIQIY joriy fiks yuboriladi: GPS o'chiq/olinmasa hech narsa
+        // yubormaymiz — eski nuqtani "yangi" deb ko'rsatish adminni aldaydi.
+        await _reportCurrent();
+      } finally {
+        _heartbeatInFlight = false;
+      }
+    }
+  }
+
   Future<void> _reportCurrent() async {
     try {
       // Darhol yuboriladigan ILK fiks ham ANIQ (best) bo'lsin — vaqt cheklovi
@@ -165,6 +190,7 @@ class LocationTrackingService {
 
   Future<void> _onPosition(Position position) async {
     final report = _toReport(position);
+    _lastSentAt = DateTime.now();
     try {
       await _dio.post<dynamic>('/locations', data: report);
       // Muvaffaqiyatli yuborish = onlayn bo'ldik — bufernikini oqizamiz.

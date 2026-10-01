@@ -123,7 +123,7 @@ export function AttendanceDayDetail({
 
       {entry.live && (
         <Link
-          to="/map"
+          to={`/map?employee=${encodeURIComponent(entry.employeeId)}`}
           className="mt-4 flex items-center gap-3 rounded-xl border border-line p-3 transition-colors hover:bg-surface-2"
         >
           <span

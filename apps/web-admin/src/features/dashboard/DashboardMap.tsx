@@ -38,7 +38,8 @@ const PIN_COLOR: Record<string, string> = { new: '#3b82f6', in_progress: '#f59e0
 
 function staffColor(l: LiveLocation): string {
   if (!isOnline(l) || l.isStale) return '#94a3b8';
-  return l.insideOffice || l.insideDistrict ? '#10b981' : '#ef4444';
+  // "Hududda" = their own assigned mahallas (server-computed), not just anywhere in the tuman.
+  return l.insideOffice || (l.insideAssignedZone ?? l.insideDistrict) ? '#10b981' : '#ef4444';
 }
 
 /**
@@ -214,7 +215,7 @@ export function DashboardMap({
               center={[l.latitude as number, l.longitude as number]}
               radius={6}
               pathOptions={{ color: '#fff', weight: 2, fillColor: staffColor(l), fillOpacity: 1 }}
-              eventHandlers={{ click: () => navigate('/map') }}
+              eventHandlers={{ click: () => navigate(`/map?employee=${encodeURIComponent(l.employeeId)}`) }}
             >
               <Tooltip direction="top" offset={[0, -6]}>
                 <b>{l.fullName}</b>

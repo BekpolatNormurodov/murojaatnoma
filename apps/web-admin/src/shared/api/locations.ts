@@ -14,6 +14,9 @@ export interface LiveLocation {
   mahallaName: string | null;
   insideDistrict: boolean;
   insideOffice: boolean;
+  /** Inside the employee's own assigned mahallas (= in district when none assigned). */
+  insideAssignedZone?: boolean;
+  assignedMahallaCodes?: string[];
   lastLocationAt: string | null;
   ageMinutes: number | null;
   hasLocation: boolean;
@@ -33,8 +36,11 @@ export interface TrackPoint {
   longitude: number;
   accuracy: number | null;
   speed: number | null;
+  battery?: number | null;
   insideOffice: boolean;
   insideDistrict: boolean;
+  insideAssignedZone?: boolean;
+  distanceToOfficeM?: number | null;
   mahallaName: string | null;
   recordedAt: string;
 }
@@ -42,6 +48,8 @@ export interface TrackPoint {
 export interface TrackResult {
   employee: { id: string; fullName: string; position: string };
   count: number;
+  /** Fixes in the window before thinning for drawing (newer backends). */
+  total?: number;
   points: TrackPoint[];
 }
 

@@ -3,8 +3,12 @@ import type { LiveLocation } from '@/shared/api/locations';
 /** UI language, mirrored from the `hkm-lang` localStorage key. */
 export type Lang = 'uz' | 'ru';
 
-/** Status buckets for an employee (mirrors {@link statusColor} priority). */
-export type StatusKey = 'office' | 'district' | 'outside' | 'stale' | 'noloc';
+/**
+ * Status buckets for an employee (mirrors {@link statusColor} priority):
+ * office → in their own zone → in the district but off their zone →
+ * outside the district; stale / never reported override the place.
+ */
+export type StatusKey = 'office' | 'zone' | 'offzone' | 'outside' | 'stale' | 'noloc';
 /** A status filter chip — every bucket plus the "all" pseudo-bucket. */
 export type FilterKey = 'all' | StatusKey;
 
@@ -44,11 +48,15 @@ export const YANDEX_TILE_URL = `https://core-renderer-tiles.maps.yandex.net/tile
 /** Status → marker/legend color. */
 export const STATUS_COLORS: Record<StatusKey, string> = {
   office: '#10b981',
-  district: '#3b82f6',
-  outside: '#f59e0b',
-  stale: '#ef4444',
-  noloc: '#94a3b8',
+  zone: '#3b82f6',
+  offzone: '#f59e0b',
+  outside: '#ef4444',
+  stale: '#64748b',
+  noloc: '#cbd5e1',
 };
+
+/** Buckets that need the admin's attention (shown in the alerts panel). */
+export const PROBLEM_KEYS: StatusKey[] = ['offzone', 'outside', 'stale'];
 
 /**
  * Freshness (online/offline) is a *separate* axis from the geofence status
@@ -56,7 +64,7 @@ export const STATUS_COLORS: Record<StatusKey, string> = {
  * "offline" yet last-seen "in office". Fixes newer than this many minutes
  * count as online. See {@link isOnline}.
  */
-export const ONLINE_THRESHOLD_MIN = 5;
+export const ONLINE_THRESHOLD_MIN = 10;
 
 /** Green (online) / grey (offline) dot color — the freshness indicator. */
 export const ONLINE_COLOR = '#22c55e';
@@ -81,19 +89,27 @@ export function isOnline(loc: LiveLocation): boolean {
 export const FILTER_ORDER: FilterKey[] = [
   'all',
   'office',
-  'district',
+  'zone',
+  'offzone',
   'outside',
   'stale',
   'noloc',
 ];
 
-/** Bucket an employee, matching the exact priority used for the marker color. */
+/**
+ * Bucket an employee, matching the exact priority used for the marker color.
+ * "Zone" is the employee's ASSIGNED mahallas (server-computed with GPS
+ * tolerance; the whole district when none are assigned) — being somewhere in
+ * the district is not enough. Older backends without the flag fall back to
+ * the district check.
+ */
 export function statusKey(loc: LiveLocation): StatusKey {
   if (!loc.hasLocation) return 'noloc';
   if (loc.isStale) return 'stale';
   if (loc.insideOffice) return 'office';
-  if (loc.insideDistrict) return 'district';
-  return 'outside';
+  if (!loc.insideDistrict) return 'outside';
+  if (loc.insideAssignedZone === false) return 'offzone';
+  return 'zone';
 }
 
 export function statusColor(loc: LiveLocation): string {
@@ -130,7 +146,8 @@ export const LABELS: Record<Lang, Labels> = {
     live: 'Jonli',
     total: 'Jami',
     reporting: 'Faol',
-    inOffice: 'Ish hududida',
+    inOffice: 'Hududida',
+    problems: 'Muammo',
     stale: "Aloqa yo'q",
     search: 'Xodim qidirish...',
     noLoc: "Joylashuv yo'q",
@@ -139,9 +156,11 @@ export const LABELS: Record<Lang, Labels> = {
     offline: 'Oflayn',
     lastUpdate: 'Oxirgi yangilanish',
     message: 'Xabar yozish',
-    office: 'Ish hududida',
-    outDistrict: 'Tuman tashqarisida',
-    inDistrict: 'Tuman ichida',
+    office: 'Ofisda',
+    zone: "O'z hududida",
+    offzone: 'Hududidan tashqarida',
+    outDistrict: 'Tumandan tashqarida',
+    noLocShort: 'Joylashuvsiz',
     lastSeen: 'Oxirgi aloqa',
     alerts: 'Ogohlantirishlar',
     mahallas: 'Mahallalar',
@@ -156,9 +175,10 @@ export const LABELS: Record<Lang, Labels> = {
     retry: 'Qayta urinish',
     // filter chips
     fAll: 'Hammasi',
-    fOffice: 'Ish hududida',
-    fDistrict: 'Tumanda',
-    fOutside: 'Tashqarida',
+    fOffice: 'Ofisda',
+    fZone: 'Hududida',
+    fOffzone: 'Hududdan chiqqan',
+    fOutside: 'Tumandan tashqarida',
     fStale: "Aloqa yo'q",
     fNoloc: 'Joylashuvsiz',
     // auto-refresh
@@ -173,10 +193,25 @@ export const LABELS: Record<Lang, Labels> = {
     curMahalla: 'Joriy mahalla',
     distance: 'Ofisgacha',
     accuracy: 'Aniqlik',
-    inOfficeBadge: 'Ish hududida',
-    inDistrictBadge: 'Tuman ichida',
-    outsideBadge: 'Tashqarida',
     track: 'Marshrut',
+    follow: 'Kuzatib borish',
+    following: 'Kuzatilmoqda',
+    assignedZone: 'Biriktirilgan hudud',
+    wholeDistrict: 'Butun tuman',
+    mahallaUnit: 'mahalla',
+    traveled: 'Bosib o‘tdi',
+    span: 'Vaqt oralig‘i',
+    inZoneShare: 'Hududida',
+    gaps: 'Uzilishlar',
+    battery: 'Batareya',
+    attendance: 'Davomat',
+    cameAt: 'Keldi',
+    leftAt: 'Ketdi',
+    notCame: 'Bugun kelmagan',
+    stillWorking: 'ishda',
+    lowAccuracy: 'aniqlik past',
+    alertOff: 'hududdan tashqarida',
+    alertOut: 'tumandan tashqarida',
     today: 'Bugun',
     lastHour: "So'nggi 1 soat",
     last3h: "So'nggi 3 soat",
@@ -192,7 +227,8 @@ export const LABELS: Record<Lang, Labels> = {
     live: 'Онлайн',
     total: 'Всего',
     reporting: 'Активны',
-    inOffice: 'На месте',
+    inOffice: 'В зоне',
+    problems: 'Проблемы',
     stale: 'Нет связи',
     search: 'Поиск сотрудника...',
     noLoc: 'Нет локации',
@@ -201,9 +237,11 @@ export const LABELS: Record<Lang, Labels> = {
     offline: 'Не в сети',
     lastUpdate: 'Последнее обновление',
     message: 'Написать',
-    office: 'В рабочей зоне',
+    office: 'В офисе',
+    zone: 'В своей зоне',
+    offzone: 'Вне своей зоны',
     outDistrict: 'Вне района',
-    inDistrict: 'В районе',
+    noLocShort: 'Без локации',
     lastSeen: 'Последняя связь',
     alerts: 'Оповещения',
     mahallas: 'Махалли',
@@ -218,9 +256,10 @@ export const LABELS: Record<Lang, Labels> = {
     retry: 'Повторить',
     // filter chips
     fAll: 'Все',
-    fOffice: 'В зоне',
-    fDistrict: 'В районе',
-    fOutside: 'Вне зоны',
+    fOffice: 'В офисе',
+    fZone: 'В зоне',
+    fOffzone: 'Вне зоны',
+    fOutside: 'Вне района',
     fStale: 'Нет связи',
     fNoloc: 'Без локации',
     // auto-refresh
@@ -235,10 +274,25 @@ export const LABELS: Record<Lang, Labels> = {
     curMahalla: 'Текущая махалля',
     distance: 'До офиса',
     accuracy: 'Точность',
-    inOfficeBadge: 'В рабочей зоне',
-    inDistrictBadge: 'В районе',
-    outsideBadge: 'Вне зоны',
     track: 'Маршрут',
+    follow: 'Следить',
+    following: 'Слежение',
+    assignedZone: 'Закреплённая зона',
+    wholeDistrict: 'Весь район',
+    mahallaUnit: 'махалл',
+    traveled: 'Пройдено',
+    span: 'Период',
+    inZoneShare: 'В зоне',
+    gaps: 'Разрывы',
+    battery: 'Батарея',
+    attendance: 'Посещаемость',
+    cameAt: 'Пришёл',
+    leftAt: 'Ушёл',
+    notCame: 'Сегодня не пришёл',
+    stillWorking: 'на работе',
+    lowAccuracy: 'низкая точность',
+    alertOff: 'вне своей зоны',
+    alertOut: 'вне района',
     today: 'Сегодня',
     lastHour: 'Последний час',
     last3h: 'Последние 3 часа',
@@ -260,7 +314,8 @@ export function statusLabel(loc: LiveLocation, lang: Lang): string {
   const t = LABELS[lang];
   const byKey: Record<StatusKey, string> = {
     office: t.office,
-    district: t.inDistrict,
+    zone: t.zone,
+    offzone: t.offzone,
     outside: t.outDistrict,
     stale: t.stale,
     noloc: t.noLoc,
@@ -324,4 +379,112 @@ export function trackRange(w: TrackWindow): { from: string; to: string } {
     from = new Date(now.getTime() - 3 * 3_600_000);
   }
   return { from: from.toISOString(), to };
+}
+
+/* ───────────────────────── Track analytics ───────────────────────── */
+
+/** A pause this long between two fixes is a break in the route (GPS off / app closed). */
+export const TRACK_GAP_MS = 15 * 60_000;
+/** Fixes coarser than this are listed but not drawn or counted (cell/Wi-Fi guesses). */
+export const MAX_DRAW_ACCURACY_M = 150;
+/** Implied speed above this between two fixes = a GPS jump, not real movement. */
+const MAX_SPEED_MPS = 40;
+
+type TrackFix = {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  recordedAt: string;
+  insideOffice: boolean;
+  insideDistrict: boolean;
+  insideAssignedZone?: boolean;
+  battery?: number | null;
+};
+
+const accurate = (p: TrackFix) => p.accuracy == null || p.accuracy <= MAX_DRAW_ACCURACY_M;
+const atMs = (p: TrackFix) => new Date(p.recordedAt).getTime();
+/** Inside the employee's zone at this fix (office counts; old backends: district). */
+export const fixInZone = (p: TrackFix) =>
+  p.insideOffice || (p.insideAssignedZone ?? p.insideDistrict);
+
+/**
+ * Splits a chronological track into drawable runs: a new run starts after a
+ * {@link TRACK_GAP_MS} pause, coarse fixes and GPS jumps are left out. The
+ * `gaps` are the straight hops across each pause (drawn dashed, never as movement).
+ */
+export function trackSegments(points: TrackFix[]): {
+  runs: [number, number][][];
+  gaps: [[number, number], [number, number]][];
+} {
+  const runs: [number, number][][] = [];
+  const gaps: [[number, number], [number, number]][] = [];
+  let run: [number, number][] = [];
+  let prev: TrackFix | null = null;
+  for (const p of points) {
+    if (!accurate(p)) continue;
+    const pos: [number, number] = [p.latitude, p.longitude];
+    if (prev) {
+      const dt = atMs(p) - atMs(prev);
+      const prevPos: [number, number] = [prev.latitude, prev.longitude];
+      if (dt >= TRACK_GAP_MS) {
+        if (run.length) runs.push(run);
+        gaps.push([prevPos, pos]);
+        run = [];
+      } else if (dt > 0 && haversineM(prevPos, pos) / (dt / 1000) > MAX_SPEED_MPS) {
+        continue; // jump — keep `prev`, drop this fix
+      }
+    }
+    run.push(pos);
+    prev = p;
+  }
+  if (run.length) runs.push(run);
+  return { runs, gaps };
+}
+
+export interface TrackSummary {
+  distanceM: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  gaps: number;
+  gapMs: number;
+  /** Share of covered (non-gap) time spent inside the zone, 0..100; null without data. */
+  inZonePct: number | null;
+  battery: number | null;
+}
+
+export function summarizeTrack(points: TrackFix[]): TrackSummary {
+  let distanceM = 0;
+  let gaps = 0;
+  let gapMs = 0;
+  let inZoneMs = 0;
+  let coveredMs = 0;
+  let prev: TrackFix | null = null;
+  for (const p of points) {
+    if (prev) {
+      const dt = atMs(p) - atMs(prev);
+      if (dt >= TRACK_GAP_MS) {
+        gaps += 1;
+        gapMs += dt;
+      } else if (dt > 0) {
+        coveredMs += dt;
+        if (fixInZone(prev)) inZoneMs += dt;
+        if (accurate(p) && accurate(prev)) {
+          const d = haversineM([prev.latitude, prev.longitude], [p.latitude, p.longitude]);
+          if (d / (dt / 1000) <= MAX_SPEED_MPS) distanceM += d;
+        }
+      }
+    }
+    prev = p;
+  }
+  const last = points[points.length - 1];
+  const withBattery = [...points].reverse().find((p) => p.battery != null);
+  return {
+    distanceM,
+    firstAt: points[0]?.recordedAt ?? null,
+    lastAt: last?.recordedAt ?? null,
+    gaps,
+    gapMs,
+    inZonePct: coveredMs > 0 ? Math.round((inZoneMs / coveredMs) * 100) : null,
+    battery: withBattery?.battery ?? null,
+  };
 }

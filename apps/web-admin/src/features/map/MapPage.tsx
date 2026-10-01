@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleMarker,
   GeoJSON,
@@ -8,29 +8,29 @@ import {
   TileLayer,
   Tooltip,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 import type { Layer } from 'leaflet';
 import type { Feature } from 'geojson';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   Buildings2,
   CloseCircle,
   Filter,
+  Gps,
   RotateRight,
   SearchNormal1,
+  Warning2,
 } from 'iconsax-react';
 import { fetchZonesGeoJson, type ZoneCollection, type ZoneProps } from '@/shared/api/zones';
-import {
-  fetchLiveLocations,
-  fetchLocationAlerts,
-  fetchLocationStats,
-  fetchTrack,
-  type LiveLocation,
-  type TrackPoint,
-} from '@/shared/api/locations';
+import { fetchLiveLocations, fetchTrack, type LiveLocation, type TrackPoint } from '@/shared/api/locations';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { Skeleton, SkeletonRow } from '@/shared/ui/Skeleton';
+import { useAttendanceToday } from '@/features/attendance/useAttendanceToday';
+import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer';
 import {
   agoShort,
@@ -41,12 +41,15 @@ import {
   LABELS,
   OFFLINE_COLOR,
   ONLINE_COLOR,
+  PROBLEM_KEYS,
   relTime,
   statusColor,
   STATUS_COLORS,
   statusKey,
   statusLabel,
+  summarizeTrack,
   trackRange,
+  trackSegments,
   type FilterKey,
   type Labels,
   type Lang,
@@ -67,59 +70,42 @@ function escapeAttr(s: string): string {
     .replace(/>/g, '&gt;');
 }
 
-function markerIcon(
-  loc: LiveLocation,
-  selected: boolean,
-  ariaLabel: string,
-): L.DivIcon {
+function markerIcon(loc: LiveLocation, selected: boolean, ariaLabel: string): L.DivIcon {
   const color = statusColor(loc);
   const initial = initials(loc.fullName).charAt(0);
   // Marker body = xodim RASMI (bo'lsa), aks holda birinchi harf. Holat rangi
-  // endi rasm atrofidagi HALQA (box-shadow) sifatida saqlanadi — shunda ham
-  // foto, ham holat (kelgan/kechikkan/hududdan tashqari) ko'rinadi.
+  // rasm atrofidagi HALQA sifatida — ham foto, ham holat ko'rinadi.
   const body = loc.avatarUrl
     ? `<img src="${escapeAttr(loc.avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;
         color:#fff;font:600 13px system-ui;background:${color};">${initial}</div>`;
-  const statusRing = `0 0 0 2px ${color}`;
-  const selRing = selected ? ',0 0 0 5px rgba(16,185,129,0.35)' : '';
-  // Freshness dot in the top-right corner — GREEN online / GREY offline — a
-  // separate axis from the status-color body. The aria-label (built by the
-  // caller) already spells out online/offline, so this dot is not the sole cue.
+  const statusRing = `0 0 0 2.5px ${color}`;
+  const selRing = selected ? ',0 0 0 7px rgba(99,102,241,0.35)' : '';
+  // Freshness dot (green online / grey offline) is a separate axis from the
+  // status ring; the aria-label spells both out, so color is never the only cue.
   const dotColor = isOnline(loc) ? ONLINE_COLOR : OFFLINE_COLOR;
-  // role="img" + aria-label carry the "name — status · online/offline" cue so
-  // neither status nor freshness is conveyed by color alone (a11y for
-  // color-blind / screen-reader use).
+  const size = selected ? 38 : 32;
   return L.divIcon({
     className: 'emp-marker',
     html: `<div role="img" aria-label="${escapeAttr(ariaLabel)}"
-      style="position:relative;width:32px;height:32px;">
-      <div style="width:32px;height:32px;border-radius:50%;overflow:hidden;background:${color};
+      style="position:relative;width:${size}px;height:${size}px;">
+      <div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;background:${color};
         border:2px solid #fff;box-shadow:${statusRing}${selRing};">${body}</div>
       <span style="position:absolute;top:-1px;right:-1px;width:10px;height:10px;
         border-radius:50%;background:${dotColor};border:2px solid #fff;z-index:1;"></span>
     </div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 
-/** Flies to a position when the selected employee changes. */
 /**
- * Flies to the selected employee ONCE, when the selection changes — keyed on
- * `flyKey` (the employee id), NOT on the live position. This is deliberate:
- * the map data polls every 15s and each poll yields a fresh position array,
- * so keying on position would re-center (and fight the admin's manual pan)
- * on every poll. The `lastKey` ref makes the fly a one-shot per selection.
+ * Flies to the selected employee ONCE per selection (keyed on the id, not the
+ * live position — otherwise every 15 s poll would re-center and fight the
+ * admin's manual pan).
  */
-function FlyTo({
-  pos,
-  flyKey,
-}: {
-  pos: [number, number] | null;
-  flyKey: string | null;
-}) {
+function FlyTo({ pos, flyKey }: { pos: [number, number] | null; flyKey: string | null }) {
   const map = useMap();
   const lastKey = useRef<string | null>(null);
   useEffect(() => {
@@ -136,9 +122,27 @@ function FlyTo({
 }
 
 /**
- * Frames the district's mahallas once they load (the district polygon also
- * has a far-off exclave, which made the default view mostly empty fields).
+ * "Kuzatib borish": while on, every new live position of the selected employee
+ * pans the map to it. Dragging the map hands control back to the admin.
  */
+function Follow({
+  pos,
+  on,
+  onStop,
+}: {
+  pos: [number, number] | null;
+  on: boolean;
+  onStop: () => void;
+}) {
+  const map = useMap();
+  useMapEvents({ dragstart: () => on && onStop() });
+  useEffect(() => {
+    if (on && pos) map.panTo(pos, { animate: true, duration: 0.6 });
+  }, [on, pos, map]);
+  return null;
+}
+
+/** Frames the district's mahallas once they load (the district polygon has a far exclave). */
 function FitHome({ mahallas }: { mahallas: ZoneCollection | undefined }) {
   const map = useMap();
   const done = useRef(false);
@@ -162,12 +166,145 @@ function FlyToTarget({ target }: { target: FlyTarget | null }) {
   return null;
 }
 
+/** Markers closer than this on screen are fanned out so each stays clickable. */
+const OVERLAP_PX = 28;
+
+/**
+ * Employee markers. Several people at the same spot (the office, one
+ * building) used to sit exactly on top of each other — only one was
+ * clickable. Overlapping markers are fanned out in a small ring around their
+ * shared point, recomputed per zoom level; the real spot keeps a tiny dot.
+ */
+function EmployeeMarkers({
+  locs,
+  selectedId,
+  dimmed,
+  onSelect,
+  lang,
+  t,
+}: {
+  locs: LiveLocation[];
+  selectedId: string | null;
+  dimmed: Set<string>;
+  onSelect: (id: string) => void;
+  lang: Lang;
+  t: Labels;
+}) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+
+  const placed = useMemo(() => {
+    const pts = locs.map((l) => ({
+      loc: l,
+      true: [l.latitude as number, l.longitude as number] as [number, number],
+      px: map.project([l.latitude as number, l.longitude as number], zoom),
+    }));
+    const groups: { members: typeof pts; c: L.Point }[] = [];
+    for (const p of pts) {
+      const g = groups.find((gr) => gr.c.distanceTo(p.px) < OVERLAP_PX);
+      if (g) {
+        g.members.push(p);
+        const n = g.members.length;
+        g.c = L.point(g.c.x + (p.px.x - g.c.x) / n, g.c.y + (p.px.y - g.c.y) / n);
+      } else {
+        groups.push({ members: [p], c: p.px });
+      }
+    }
+    return groups.flatMap((g) => {
+      if (g.members.length === 1) {
+        return [{ ...g.members[0], shown: g.members[0].true, fanned: false }];
+      }
+      const r = 20 + g.members.length * 3;
+      return g.members.map((m, i) => {
+        const a = (2 * Math.PI * i) / g.members.length - Math.PI / 2;
+        const ll = map.unproject(L.point(g.c.x + r * Math.cos(a), g.c.y + r * Math.sin(a)), zoom);
+        return { ...m, shown: [ll.lat, ll.lng] as [number, number], fanned: true };
+      });
+    });
+  }, [locs, zoom, map]);
+
+  return (
+    <>
+      {placed.map(({ loc, shown, fanned, true: real }) => {
+        const label = `${loc.fullName} — ${statusLabel(loc, lang)} · ${isOnline(loc) ? t.online : t.offline}`;
+        const selected = loc.employeeId === selectedId;
+        return (
+          <Fragment key={loc.employeeId}>
+            {fanned && (
+              <>
+                <Polyline positions={[real, shown]} pathOptions={{ color: '#64748b', weight: 1, opacity: 0.6 }} />
+                <CircleMarker
+                  center={real}
+                  radius={2.5}
+                  pathOptions={{ color: '#475569', weight: 1, fillColor: '#475569', fillOpacity: 1 }}
+                />
+              </>
+            )}
+            <Marker
+              position={shown}
+              icon={markerIcon(loc, selected, label)}
+              opacity={dimmed.has(loc.employeeId) && !selected ? 0.5 : 1}
+              zIndexOffset={selected ? 1000 : 0}
+              title={label}
+              alt={label}
+              keyboard
+              eventHandlers={{ click: () => onSelect(loc.employeeId) }}
+            >
+              <Tooltip direction="top" offset={[0, -16]}>
+                {label}
+              </Tooltip>
+            </Marker>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
+/** Problem order in the list/alerts: farthest from where they should be first. */
+const SEVERITY: Record<StatusKey, number> = {
+  outside: 0,
+  offzone: 1,
+  stale: 2,
+  zone: 3,
+  office: 3,
+  noloc: 4,
+};
+
+function isToday(iso: string | null): boolean {
+  if (!iso) return false;
+  return new Date(iso).toDateString() === new Date().toDateString();
+}
+
 export function MapPage() {
-  const lang: Lang =
-    (localStorage.getItem('hkm-lang') as Lang) === 'ru' ? 'ru' : 'uz';
+  const lang: Lang = (localStorage.getItem('hkm-lang') as Lang) === 'ru' ? 'ru' : 'uz';
   const t = LABELS[lang];
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?employee=<id>` — davomat/dashboard'dan to'g'ridan-to'g'ri shu xodimga.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedIdState] = useState<string | null>(() => searchParams.get('employee'));
+  const [follow, setFollow] = useState(false);
+  const urlEmployee = searchParams.get('employee');
+  const [seenUrl, setSeenUrl] = useState(urlEmployee);
+  if (urlEmployee !== seenUrl) {
+    setSeenUrl(urlEmployee);
+    if (urlEmployee) setSelectedIdState(urlEmployee);
+  }
+  const setSelectedId = (id: string | null) => {
+    setSelectedIdState(id);
+    setFollow(false);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('employee', id);
+        else next.delete('employee');
+        return next;
+      },
+      { replace: true },
+    );
+  };
+
   const [query, setQuery] = useState('');
   const [showMahallas, setShowMahallas] = useState(true);
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
@@ -177,8 +314,7 @@ export function MapPage() {
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
 
   // NOTE: the "updated Xs ago" pill owns its own 1s ticker (see <UpdatedAgo/>)
-  // so the map subtree is NOT re-rendered every second — that used to make the
-  // map jump back and feel unpannable while an employee was selected.
+  // so the map subtree is NOT re-rendered every second.
 
   const districtQ = useQuery({
     queryKey: ['zones', 'district'],
@@ -197,114 +333,133 @@ export function MapPage() {
   });
   const locations = useMemo(() => locationsQ.data ?? [], [locationsQ.data]);
 
-  const { data: stats } = useQuery({
-    queryKey: ['locations', 'stats'],
-    queryFn: fetchLocationStats,
-    refetchInterval: 15_000,
-  });
-  const { data: alerts = [] } = useQuery({
-    queryKey: ['locations', 'alerts'],
-    queryFn: fetchLocationAlerts,
-    refetchInterval: 30_000,
-  });
+  // Bugungi davomat — kim ishda, kim ketgan: ishdan ketgan xodimning joyi
+  // "muammo" emas. Dashboard/davomat bilan bir xil kesh.
+  const attendanceQ = useAttendanceToday();
+  const attendanceById = useMemo(() => {
+    const m = new Map<string, EmployeeTodayEntry>();
+    for (const r of attendanceQ.data?.roster ?? []) m.set(r.employeeId, r);
+    return m;
+  }, [attendanceQ.data]);
+  const hasAttendance = attendanceById.size > 0;
+  /** On duty right now: checked in and not out (everyone, if davomat is unavailable). */
+  const onDuty = (id: string) => {
+    if (!hasAttendance) return true;
+    const a = attendanceById.get(id);
+    return !!a?.checkIn && !a.checkOut;
+  };
+
   const trackQ = useQuery({
     queryKey: ['track', selectedId, trackWindow],
     queryFn: () => {
       const { from, to } = trackRange(trackWindow);
-      return fetchTrack(selectedId as string, { from, to, limit: 500 });
+      return fetchTrack(selectedId as string, { from, to, limit: 1500 });
     },
     enabled: !!selectedId,
+    // The window always ends "now" — keep the route growing while it's open.
+    refetchInterval: 30_000,
   });
   const track = trackQ.data;
+
+  const mahallaNames = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of mahallaQ.data?.features ?? []) {
+      const p = f.properties as ZoneProps;
+      m.set(p.code, lang === 'ru' ? (p.name_ru ?? p.name_uz_lt) : p.name_uz_lt);
+    }
+    return m;
+  }, [mahallaQ.data, lang]);
 
   const selected = locations.find((l) => l.employeeId === selectedId) ?? null;
   const selLat = selected?.latitude ?? null;
   const selLng = selected?.longitude ?? null;
-  // Stable reference across renders — only changes when the coordinates change,
-  // so it never spuriously re-triggers effects on unrelated re-renders.
   const selectedPos = useMemo<[number, number] | null>(
     () => (selLat != null && selLng != null ? [selLat, selLng] : null),
     [selLat, selLng],
   );
 
-  // Employees passing the search + mahalla filters (but NOT the status chip),
-  // so each chip can advertise how many rows it would show.
-  const base = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return locations.filter((l) => {
-      if (q) {
-        const hay = `${l.fullName} ${l.position ?? ''} ${l.mahallaName ?? ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (mahallaFilter && l.mahallaCode !== mahallaFilter.code) return false;
-      return true;
-    });
-  }, [locations, query, mahallaFilter]);
+  // Problem = off their zone / out of the district / went silent today —
+  // only while on duty (after check-out or before check-in it's nobody's concern).
+  const isProblem = (l: LiveLocation) => {
+    const k = statusKey(l);
+    if (!PROBLEM_KEYS.includes(k) || !onDuty(l.employeeId)) return false;
+    return k !== 'stale' || isToday(l.lastLocationAt);
+  };
+
+  // Search + mahalla filters (but NOT the status chip), so each chip can show its count.
+  const base = useMemo(
+    () =>
+      locations.filter(
+        (l) =>
+          matchesSearch(query, l.fullName, l.position, l.mahallaName) &&
+          (!mahallaFilter || l.mahallaCode === mahallaFilter.code),
+      ),
+    [locations, query, mahallaFilter],
+  );
 
   const counts = useMemo(() => {
-    const c: Record<FilterKey, number> = {
-      all: base.length,
-      office: 0,
-      district: 0,
-      outside: 0,
-      stale: 0,
-      noloc: 0,
-    };
+    const c = Object.fromEntries(FILTER_ORDER.map((k) => [k, 0])) as Record<FilterKey, number>;
+    c.all = base.length;
     for (const l of base) c[statusKey(l)]++;
     return c;
   }, [base]);
 
-  const filtered = useMemo(
+  const filtered = useMemo(() => {
+    const rows = statusFilter === 'all' ? base : base.filter((l) => statusKey(l) === statusFilter);
+    // Problems first (most severe), then everyone else alphabetically.
+    return [...rows].sort((a, b) => {
+      const pa = isProblem(a) ? SEVERITY[statusKey(a)] : 9;
+      const pb = isProblem(b) ? SEVERITY[statusKey(b)] : 9;
+      return pa - pb || a.fullName.localeCompare(b.fullName);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base, statusFilter, attendanceById]);
+
+  const headline = useMemo(() => {
+    let online = 0;
+    let inZone = 0;
+    let problems = 0;
+    for (const l of locations) {
+      const k = statusKey(l);
+      if (isOnline(l)) online++;
+      if (k === 'office' || k === 'zone') inZone++;
+      if (isProblem(l)) problems++;
+    }
+    return { total: locations.length, online, inZone, problems };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locations, attendanceById]);
+
+  const alerts = useMemo(
     () =>
-      statusFilter === 'all'
-        ? base
-        : base.filter((l) => statusKey(l) === statusFilter),
-    [base, statusFilter],
+      locations
+        .filter(isProblem)
+        .sort((a, b) => SEVERITY[statusKey(a)] - SEVERITY[statusKey(b)]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locations, attendanceById],
   );
 
-  // Markers = filtered rows that actually have coordinates. Memoized so the
-  // 15s poll doesn't rebuild the marker layer unless the visible set changes.
   const markerLocs = useMemo(
-    () =>
-      filtered.filter(
-        (l) => l.hasLocation && l.latitude != null && l.longitude != null,
-      ),
+    () => filtered.filter((l) => l.hasLocation && l.latitude != null && l.longitude != null),
     [filtered],
   );
-  const markers = useMemo(
+  // Faded: no signal, or already off duty (left / not in today).
+  const dimmed = useMemo(
     () =>
-      markerLocs.map((loc) => {
-        // "Name — Status · Online/Offline": a text cue that mirrors both the
-        // marker's body color and its freshness corner dot.
-        const label = `${loc.fullName} — ${statusLabel(loc, lang)} · ${
-          isOnline(loc) ? t.online : t.offline
-        }`;
-        return (
-          <Marker
-            key={loc.employeeId}
-            position={[loc.latitude as number, loc.longitude as number]}
-            icon={markerIcon(loc, loc.employeeId === selectedId, label)}
-            title={label}
-            alt={label}
-            keyboard
-            eventHandlers={{ click: () => setSelectedId(loc.employeeId) }}
-          >
-            <Tooltip direction="top" offset={[0, -14]}>
-              {label}
-            </Tooltip>
-          </Marker>
-        );
-      }),
-    [markerLocs, selectedId, lang, t],
+      new Set(
+        markerLocs
+          .filter((l) => l.isStale || (hasAttendance && !onDuty(l.employeeId)))
+          .map((l) => l.employeeId),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [markerLocs, attendanceById],
   );
 
-  // Live per-mahalla headcount → polygon tint. Keyed so the GeoJSON restyles
-  // only when the distribution (or active mahalla filter) actually changes,
-  // never merely because the 15s poll returned a fresh array.
+  // Per-mahalla headcount of FRESH positions only (a position from yesterday
+  // says nothing about who is there now) → polygon tint.
   const occupancy = useMemo(() => {
     const c = new Map<string, number>();
     for (const l of locations) {
-      if (l.mahallaCode && l.hasLocation) {
+      if (l.mahallaCode && l.hasLocation && !l.isStale) {
         c.set(l.mahallaCode, (c.get(l.mahallaCode) ?? 0) + 1);
       }
     }
@@ -315,13 +470,24 @@ export function MapPage() {
       [...occupancy.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .map((e) => `${e[0]}:${e[1]}`)
-        .join(',') +
-      `|f:${mahallaFilter?.code ?? ''}|${lang}`,
+        .join(',') + `|f:${mahallaFilter?.code ?? ''}|${lang}`,
     [occupancy, mahallaFilter, lang],
   );
 
-  const trackLine: [number, number][] =
-    track?.points.map((p) => [p.latitude, p.longitude]) ?? [];
+  // The selected employee's assigned mahallas, outlined on the map.
+  const assignedCodes = useMemo(() => selected?.assignedMahallaCodes ?? [], [selected?.assignedMahallaCodes]);
+  const assignedGeo = useMemo<ZoneCollection | null>(() => {
+    if (!mahallaQ.data || assignedCodes.length === 0) return null;
+    return {
+      ...mahallaQ.data,
+      features: mahallaQ.data.features.filter((f) =>
+        assignedCodes.includes((f.properties as ZoneProps).code),
+      ),
+    };
+  }, [mahallaQ.data, assignedCodes]);
+
+  const segments = useMemo(() => trackSegments(track?.points ?? []), [track]);
+  const summary = useMemo(() => summarizeTrack(track?.points ?? []), [track]);
   const trackStart = track?.points[0];
 
   function focusPoint(p: TrackPoint) {
@@ -331,17 +497,16 @@ export function MapPage() {
   const chipLabels: Record<FilterKey, string> = {
     all: t.fAll,
     office: t.fOffice,
-    district: t.fDistrict,
+    zone: t.fZone,
+    offzone: t.fOffzone,
     outside: t.fOutside,
     stale: t.fStale,
     noloc: t.fNoloc,
   };
 
   return (
-    // `isolate` = own stacking context. Leaflet panes/controls use z-index
-    // 400–1000 and this page's overlays 1150–1300; without it they competed with
-    // the app shell (Topbar z-30, mobile nav z-50, modals z-50) and the map
-    // painted on top of everything.
+    // `isolate` = own stacking context, so Leaflet's z-indexes (400–1000) and
+    // this page's overlays never paint over the app shell.
     <div className="relative isolate flex h-[calc(100dvh-5.5rem)] min-h-[520px] gap-4">
       {/* ── Sidebar (static ≥lg, slide-over overlay below lg) ── */}
       <aside
@@ -355,7 +520,7 @@ export function MapPage() {
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-ink">{t.title}</h2>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-500/10">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-primary-500" />
@@ -371,13 +536,13 @@ export function MapPage() {
               </button>
             </div>
           </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {stats ? (
+          <div className="mt-3 grid grid-cols-4 gap-1.5">
+            {locationsQ.data ? (
               <>
-                <Stat label={t.total} value={stats.totalActive} tone="ink" />
-                <Stat label={t.reporting} value={stats.reportingNow} tone="blue" />
-                <Stat label={t.inOffice} value={stats.insideOffice} tone="green" />
-                <Stat label={t.stale} value={stats.stale} tone="red" />
+                <Stat label={t.total} value={headline.total} tone="ink" />
+                <Stat label={t.reporting} value={headline.online} tone="blue" />
+                <Stat label={t.inOffice} value={headline.inZone} tone="green" />
+                <Stat label={t.problems} value={headline.problems} tone={headline.problems ? 'red' : 'ink'} />
               </>
             ) : (
               Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[52px]" />)
@@ -396,7 +561,8 @@ export function MapPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t.search}
-              className="h-11 w-full rounded-lg border border-line bg-surface-2 pl-9 pr-3 text-sm outline-none focus:border-primary-500"
+              aria-label={t.search}
+              className="h-11 w-full rounded-lg border border-line bg-surface-2 pl-9 pr-3 text-sm text-ink outline-none focus:border-primary-500"
             />
           </div>
         </div>
@@ -406,23 +572,19 @@ export function MapPage() {
           {FILTER_ORDER.map((key) => {
             const active = statusFilter === key;
             const color = key === 'all' ? '#0f172a' : STATUS_COLORS[key as StatusKey];
+            if (key !== 'all' && counts[key] === 0 && !active) return null;
             return (
               <button
                 key={key}
                 onClick={() => setStatusFilter(key)}
                 className={cn(
                   'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors',
-                  active
-                    ? 'text-white'
-                    : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+                  active ? 'text-white' : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
                 )}
                 style={active ? { background: color } : undefined}
               >
                 {key !== 'all' && (
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: active ? '#fff' : color }}
-                  />
+                  <span className="h-2 w-2 rounded-full" style={{ background: active ? '#fff' : color }} />
                 )}
                 {chipLabels[key]}
                 <span className={cn('font-bold', active ? 'text-white' : 'text-ink-muted')}>
@@ -436,7 +598,7 @@ export function MapPage() {
         {/* Active mahalla filter chip */}
         {mahallaFilter && (
           <div className="px-3 pt-3">
-            <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary-50 py-1 pl-2.5 pr-1.5 text-[11px] font-semibold text-primary-700">
+            <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary-50 py-1 pl-2.5 pr-1.5 text-[11px] font-semibold text-primary-700 dark:bg-primary-500/10">
               <Buildings2 size={13} variant="Bulk" />
               <span className="truncate">
                 {t.mahallaChip}: {mahallaFilter.name}
@@ -454,12 +616,10 @@ export function MapPage() {
 
         {/* Employee list */}
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {locationsQ.isLoading &&
-            Array.from({ length: 7 }).map((_, i) => <SkeletonRow key={i} />)}
-          {!locationsQ.isLoading && filtered.length === 0 &&
+          {locationsQ.isLoading && Array.from({ length: 7 }).map((_, i) => <SkeletonRow key={i} />)}
+          {!locationsQ.isLoading &&
+            filtered.length === 0 &&
             (locationsQ.isError && locations.length === 0 ? (
-              // Xatoni "hech kim joylashuv yubormagan"dan ajratamiz: bo'sh
-              // ro'yxat aslida yuklash muvaffaqiyatsizligi bo'lishi mumkin.
               <div className="flex flex-col items-center gap-2 px-3 py-6 text-center">
                 <p className="text-sm font-medium text-danger">{t.loadError}</p>
                 <button
@@ -474,57 +634,82 @@ export function MapPage() {
                 {locations.length === 0 ? t.empty : t.noneMatch}
               </p>
             ))}
-          {filtered.map((loc) => (
-            <button
-              key={loc.employeeId}
-              onClick={() => setSelectedId(loc.employeeId)}
-              className={cn(
-                'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
-                selectedId === loc.employeeId ? 'bg-primary-50' : 'hover:bg-surface-2',
-              )}
-            >
-              <span
-                role="img"
-                aria-label={isOnline(loc) ? t.online : t.offline}
-                className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-white"
-                style={{
-                  background: isOnline(loc) ? ONLINE_COLOR : OFFLINE_COLOR,
+          {filtered.map((loc) => {
+            const att = attendanceById.get(loc.employeeId);
+            const problem = isProblem(loc);
+            return (
+              <button
+                key={loc.employeeId}
+                onClick={() => {
+                  setSelectedId(loc.employeeId);
+                  setSidebarOpen(false);
                 }}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-ink">
-                  {loc.fullName}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                  selectedId === loc.employeeId ? 'bg-primary-50 dark:bg-primary-500/10' : 'hover:bg-surface-2',
+                )}
+              >
+                <span
+                  role="img"
+                  aria-label={statusLabel(loc, lang)}
+                  className="h-2.5 w-2.5 shrink-0 rounded-full ring-2 ring-surface"
+                  style={{ background: statusColor(loc) }}
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1 truncate text-sm font-medium text-ink">
+                    <span className="truncate">{loc.fullName}</span>
+                    {problem && <Warning2 size={13} variant="Bold" className="shrink-0 text-amber-500" />}
+                  </span>
+                  <span className={cn('block truncate text-xs', problem ? 'text-amber-600' : 'text-ink-muted')}>
+                    {problem ? statusLabel(loc, lang) : (loc.mahallaName ?? loc.position)}
+                    {hasAttendance && att?.checkOut && ` · ${t.leftAt.toLowerCase()}`}
+                    {hasAttendance && att && !att.checkIn && ` · ${t.notCame.toLowerCase()}`}
+                  </span>
                 </span>
-                <span className="block truncate text-xs text-ink-muted">
-                  {loc.mahallaName ?? loc.position}
+                <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] text-ink-muted">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: isOnline(loc) ? ONLINE_COLOR : OFFLINE_COLOR }}
+                    aria-label={isOnline(loc) ? t.online : t.offline}
+                  />
+                  {loc.hasLocation ? relTime(loc.lastLocationAt, t) : t.never}
                 </span>
-              </span>
-              <span className="shrink-0 text-right text-[11px] text-ink-muted">
-                {loc.hasLocation ? relTime(loc.lastLocationAt, t) : t.never}
-              </span>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Alerts */}
+        {/* Alerts — only people on duty, worst first */}
         {alerts.length > 0 && (
           <div className="border-t border-line p-3">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-danger">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-danger">
+              <Warning2 size={14} variant="Bold" />
               {t.alerts} · {alerts.length}
             </div>
-            <div className="max-h-32 space-y-1 overflow-y-auto">
-              {alerts.slice(0, 20).map((a) => (
-                <button
-                  key={a.employeeId}
-                  onClick={() => setSelectedId(a.employeeId)}
-                  className="flex w-full items-center justify-between rounded-lg bg-danger-soft/60 px-2.5 py-1.5 text-left text-xs hover:bg-danger-soft"
-                >
-                  <span className="truncate font-medium text-danger">{a.fullName}</span>
-                  <span className="shrink-0 text-danger/80">
-                    {a.reason === 'never' ? t.never : relTime(a.lastLocationAt, t)}
-                  </span>
-                </button>
-              ))}
+            <div className="max-h-36 space-y-1 overflow-y-auto">
+              {alerts.slice(0, 20).map((a) => {
+                const k = statusKey(a);
+                return (
+                  <button
+                    key={a.employeeId}
+                    onClick={() => {
+                      setSelectedId(a.employeeId);
+                      setSidebarOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg bg-danger-soft px-2.5 py-1.5 text-left text-xs hover:brightness-95"
+                  >
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLORS[k] }} />
+                    <span className="min-w-0 flex-1 truncate font-medium text-ink">{a.fullName}</span>
+                    <span className="shrink-0 text-red-700 dark:text-red-400">
+                      {k === 'stale'
+                        ? `${t.stale} · ${relTime(a.lastLocationAt, t)}`
+                        : k === 'outside'
+                          ? t.alertOut
+                          : (a.mahallaName ?? t.alertOff)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -546,27 +731,17 @@ export function MapPage() {
           zoom={12}
           maxZoom={19}
           scrollWheelZoom
-          // Yandex raster tiles are in EPSG:3395 (ellipsoidal Mercator). With
-          // Leaflet's default EPSG:3857 every overlay (mahalla polygons,
-          // markers) would be drawn ~20 km off at Tashkent's latitude.
+          // Yandex raster tiles are EPSG:3395; with the default 3857 every
+          // overlay would be drawn ~20 km off at Tashkent's latitude.
           crs={L.CRS.EPSG3395}
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer
-            attribution="&copy; Yandex"
-            url={YANDEX_TILE_URL}
-            maxZoom={19}
-          />
+          <TileLayer attribution="&copy; Yandex" url={YANDEX_TILE_URL} maxZoom={19} />
 
           {districtQ.data && (
             <GeoJSON
               data={districtQ.data}
-              style={{
-                color: '#059669',
-                weight: 2.5,
-                fillColor: '#10b981',
-                fillOpacity: 0.05,
-              }}
+              style={{ color: '#059669', weight: 2.5, fillColor: '#10b981', fillOpacity: 0.05 }}
             />
           )}
 
@@ -577,70 +752,78 @@ export function MapPage() {
               style={(feature) => {
                 const code = (feature?.properties as ZoneProps | undefined)?.code;
                 const isActive = !!code && code === mahallaFilter?.code;
-                const count = code ? occupancy.get(code) ?? 0 : 0;
+                const count = code ? (occupancy.get(code) ?? 0) : 0;
                 if (isActive) {
-                  return {
-                    color: '#4f46e5',
-                    weight: 2.5,
-                    fillColor: '#6366f1',
-                    fillOpacity: 0.25,
-                  };
+                  return { color: '#4f46e5', weight: 2.5, fillColor: '#6366f1', fillOpacity: 0.25 };
                 }
                 if (count > 0) {
                   return {
                     color: '#059669',
                     weight: 1.5,
                     fillColor: '#10b981',
-                    fillOpacity: Math.min(0.18 + count * 0.12, 0.6),
+                    fillOpacity: Math.min(0.14 + count * 0.1, 0.5),
                   };
                 }
-                return {
-                  color: '#94a3b8',
-                  weight: 1,
-                  fillColor: '#94a3b8',
-                  fillOpacity: 0.02,
-                };
+                return { color: '#94a3b8', weight: 1, fillColor: '#94a3b8', fillOpacity: 0.02 };
               }}
               onEachFeature={(feature: Feature, layer: Layer) => {
                 const p = feature.properties as ZoneProps | undefined;
                 if (!p) return;
                 const count = occupancy.get(p.code) ?? 0;
-                const name = lang === 'ru' ? p.name_ru ?? p.name_uz_lt : p.name_uz_lt;
-                layer.bindTooltip(count > 0 ? `${name} — ${count} xodim` : name, {
-                  sticky: true,
-                });
+                const name = lang === 'ru' ? (p.name_ru ?? p.name_uz_lt) : p.name_uz_lt;
+                layer.bindTooltip(count > 0 ? `${name} — ${count} xodim` : name, { sticky: true });
                 layer.on('click', () => {
-                  setMahallaFilter((prev) =>
-                    prev?.code === p.code ? null : { code: p.code, name },
-                  );
+                  setMahallaFilter((prev) => (prev?.code === p.code ? null : { code: p.code, name }));
                 });
               }}
             />
           )}
 
-          {trackLine.length > 1 && (
-            <Polyline
-              positions={trackLine}
-              pathOptions={{ color: '#6366f1', weight: 3, dashArray: '6 6' }}
+          {/* Selected employee's assigned zone */}
+          {assignedGeo && (
+            <GeoJSON
+              key={`assigned-${selectedId}-${assignedCodes.join(',')}`}
+              data={assignedGeo}
+              interactive={false}
+              style={{ color: '#6366f1', weight: 2.5, dashArray: '6 5', fillColor: '#6366f1', fillOpacity: 0.08 }}
             />
+          )}
+
+          {/* Route: solid runs, dashed hops across signal breaks */}
+          {segments.gaps.map((g, i) => (
+            <Polyline
+              key={`gap-${i}`}
+              positions={g}
+              pathOptions={{ color: '#f59e0b', weight: 2, dashArray: '3 7', opacity: 0.9 }}
+            />
+          ))}
+          {segments.runs.map((run, i) =>
+            run.length > 1 ? (
+              <Polyline key={`run-${i}`} positions={run} pathOptions={{ color: '#6366f1', weight: 3.5, opacity: 0.85 }} />
+            ) : null,
           )}
           {trackStart && (
             <CircleMarker
               center={[trackStart.latitude, trackStart.longitude]}
               radius={5}
-              pathOptions={{
-                color: '#fff',
-                weight: 2,
-                fillColor: '#6366f1',
-                fillOpacity: 1,
-              }}
-            />
+              pathOptions={{ color: '#fff', weight: 2, fillColor: '#6366f1', fillOpacity: 1 }}
+            >
+              <Tooltip direction="top">Boshlanish</Tooltip>
+            </CircleMarker>
           )}
 
-          {markers}
+          <EmployeeMarkers
+            locs={markerLocs}
+            selectedId={selectedId}
+            dimmed={dimmed}
+            onSelect={setSelectedId}
+            lang={lang}
+            t={t}
+          />
 
           <FitHome mahallas={mahallaQ.data} />
           <FlyTo pos={selectedPos} flyKey={selectedId} />
+          <Follow pos={selectedPos} on={follow} onStop={() => setFollow(false)} />
           <FlyToTarget target={flyTarget} />
         </MapContainer>
 
@@ -652,31 +835,46 @@ export function MapPage() {
           >
             <Filter size={15} variant="Bulk" />
             {t.list}
+            {headline.problems > 0 && (
+              <span className="rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                {headline.problems}
+              </span>
+            )}
           </button>
-          <UpdatedAgo
-            isFetching={locationsQ.isFetching}
-            updatedAt={locationsQ.dataUpdatedAt}
-            t={t}
-          />
+          <UpdatedAgo isFetching={locationsQ.isFetching} updatedAt={locationsQ.dataUpdatedAt} t={t} />
         </div>
 
-        {/* Mahalla toggle */}
-        <button
-          onClick={() => setShowMahallas((s) => !s)}
-          className={cn(
-            'absolute right-3 top-3 z-[1000] inline-flex h-11 items-center rounded-lg border px-3 text-xs font-medium shadow-sm transition-colors',
-            showMahallas
-              ? 'border-primary-500 bg-primary-600 text-white'
-              : 'border-line bg-surface text-ink-soft',
+        {/* Top-right: follow (when someone is selected) + mahalla toggle */}
+        <div className="absolute right-3 top-3 z-[1000] flex items-center gap-2">
+          {selectedPos && (
+            <button
+              onClick={() => setFollow((f) => !f)}
+              aria-pressed={follow}
+              className={cn(
+                'inline-flex h-11 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium shadow-sm transition-colors',
+                follow ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-line bg-surface text-ink-soft',
+              )}
+            >
+              <Gps size={15} variant={follow ? 'Bold' : 'Linear'} />
+              <span className="hidden sm:inline">{follow ? t.following : t.follow}</span>
+            </button>
           )}
-        >
-          {t.mahallas}
-        </button>
+          <button
+            onClick={() => setShowMahallas((s) => !s)}
+            className={cn(
+              'inline-flex h-11 items-center rounded-lg border px-3 text-xs font-medium shadow-sm transition-colors',
+              showMahallas ? 'border-primary-500 bg-primary-600 text-white' : 'border-line bg-surface text-ink-soft',
+            )}
+          >
+            {t.mahallas}
+          </button>
+        </div>
 
         {/* Legend */}
-        <div className="absolute bottom-3 left-3 z-[1000] flex flex-wrap gap-x-3 gap-y-1 rounded-lg border border-line bg-surface/90 px-3 py-2 text-[11px] text-ink-soft backdrop-blur">
+        <div className="absolute bottom-3 left-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-wrap gap-x-3 gap-y-1 rounded-lg border border-line bg-surface/90 px-3 py-2 text-[11px] text-ink-soft backdrop-blur">
           <Legend color={STATUS_COLORS.office} label={t.office} />
-          <Legend color={STATUS_COLORS.district} label={t.inDistrict} />
+          <Legend color={STATUS_COLORS.zone} label={t.zone} />
+          <Legend color={STATUS_COLORS.offzone} label={t.offzone} />
           <Legend color={STATUS_COLORS.outside} label={t.outDistrict} />
           <Legend color={STATUS_COLORS.stale} label={t.stale} />
         </div>
@@ -686,9 +884,12 @@ export function MapPage() {
           <EmployeeDetailDrawer
             loc={selected}
             track={track}
-            trackLoading={trackQ.isFetching}
+            trackLoading={trackQ.isLoading}
             trackWindow={trackWindow}
             onTrackWindow={setTrackWindow}
+            summary={summary}
+            attendance={attendanceById.get(selected.employeeId) ?? null}
+            assignedNames={assignedCodes.map((c) => mahallaNames.get(c) ?? c)}
             t={t}
             onClose={() => setSelectedId(null)}
             onFocusPoint={focusPoint}
@@ -715,9 +916,9 @@ function Stat({
     red: 'text-red-600',
   }[tone];
   return (
-    <div className="rounded-xl bg-surface-2 px-3 py-2">
-      <div className={`text-lg font-bold ${toneClass}`}>{value}</div>
-      <div className="text-[11px] text-ink-muted">{label}</div>
+    <div className="rounded-xl bg-surface-2 px-2 py-2 text-center">
+      <div className={`text-lg font-bold tabular-nums ${toneClass}`}>{value}</div>
+      <div className="truncate text-[10.5px] text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -733,18 +934,9 @@ function Legend({ color, label }: { color: string; label: string }) {
 
 /**
  * The "updated Xs ago" pill. Owns a private 1-second ticker so the relative
- * time counts up smoothly WITHOUT re-rendering the map — this isolation is
- * what keeps the live map freely pannable while data polls in the background.
+ * time counts up WITHOUT re-rendering the map.
  */
-function UpdatedAgo({
-  isFetching,
-  updatedAt,
-  t,
-}: {
-  isFetching: boolean;
-  updatedAt: number;
-  t: Labels;
-}) {
+function UpdatedAgo({ isFetching, updatedAt, t }: { isFetching: boolean; updatedAt: number; t: Labels }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
