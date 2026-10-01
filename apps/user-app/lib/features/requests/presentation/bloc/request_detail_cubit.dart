@@ -3,9 +3,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:user_app/core/monitoring/app_logger.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/entities/request_message.dart';
+import 'package:user_app/features/requests/domain/repositories/citizen_requests_repository.dart';
 import 'package:user_app/features/requests/domain/usecases/get_citizen_request.dart';
 import 'package:user_app/features/requests/domain/usecases/get_request_messages.dart';
 import 'package:user_app/features/requests/domain/usecases/send_request_message.dart';
+import 'package:user_app/injection.dart';
 
 part 'request_detail_state.dart';
 
@@ -25,13 +27,16 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     required GetCitizenRequest getCitizenRequest,
     required GetRequestMessages getRequestMessages,
     required SendRequestMessage sendRequestMessage,
+    CitizenRequestsRepository? repository,
     AppLogger? logger,
-  }) : _getCitizenRequest = getCitizenRequest,
+  }) : _repository = repository ?? getIt<CitizenRequestsRepository>(),
+       _getCitizenRequest = getCitizenRequest,
        _getRequestMessages = getRequestMessages,
        _sendRequestMessage = sendRequestMessage,
        _logger = logger ?? const AppLogger(),
        super(const RequestDetailLoading());
 
+  final CitizenRequestsRepository _repository;
   final GetCitizenRequest _getCitizenRequest;
   final GetRequestMessages _getRequestMessages;
   final SendRequestMessage _sendRequestMessage;
@@ -95,6 +100,33 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
       );
       return const [];
     }
+  }
+
+  /// Hal qilingan murojaatni baholaydi (1..5). Xato bo'lsa — xabar matni.
+  Future<String?> rate(int rating, {String? comment}) async {
+    final id = _lastId;
+    final current = state;
+    if (id == null || current is! RequestDetailLoaded) return null;
+    final result = await _repository.rate(id, rating, comment: comment);
+    return result.fold((f) => f.message, (updated) {
+      emit(current.copyWith(request: updated));
+      return null;
+    });
+  }
+
+  /// "Muammo hal bo'lmadi" — qayta ochadi; sabab thread'ga yoziladi.
+  Future<String?> reopen(String reason) async {
+    final id = _lastId;
+    final current = state;
+    if (id == null || current is! RequestDetailLoaded) return null;
+    final result = await _repository.reopen(id, reason);
+    final updated = result.fold((_) => null, (r) => r);
+    if (updated == null) {
+      return result.fold((f) => f.message, (_) => null);
+    }
+    final messages = await _fetchMessages(id);
+    emit(current.copyWith(request: updated, messages: messages));
+    return null;
   }
 
   /// So'nggi ishlatilgan ID bilan qayta yuklaydi ("Qayta urinish").

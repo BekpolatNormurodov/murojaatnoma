@@ -163,10 +163,10 @@ class AuthInterceptor extends Interceptor {
   ///     best-effort — oflaynda ham chiqish TO'XTAB QOLMAYDI);
   ///  2. tokenlarni o'chiradi;
   ///  3. oflayn javob keshini tozalaydi (keyingi foydalanuvchi ko'rmasin).
-  static Future<void> endSession(Dio dio) async {
+  static Future<void> endSession(Dio? dio) async {
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString(refreshTokenKey);
-    if (refreshToken != null && refreshToken.isNotEmpty) {
+    if (dio != null && refreshToken != null && refreshToken.isNotEmpty) {
       try {
         await dio
             .post<dynamic>(

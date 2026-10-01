@@ -113,6 +113,7 @@ Future<void> configureDependencies() async {
       () => AuthRepositoryImpl(
         remote: getIt<AuthRemoteDataSource>(),
         prefs: getIt<SharedPreferences>(),
+        client: getIt<DioClient>(),
       ),
     )
     ..registerLazySingleton<SendOtp>(() => SendOtp(getIt<AuthRepository>()))

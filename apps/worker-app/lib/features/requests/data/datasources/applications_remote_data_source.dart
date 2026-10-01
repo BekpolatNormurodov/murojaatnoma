@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
@@ -190,6 +191,9 @@ class ApplicationsRemoteDataSourceApiImpl
           // `null` qaytaradi) — bunday holda filtr faqat mijoz tomonda
           // (pastda) qo'llaniladi, chunki serverga yuborsa bo'lmaydi.
           if (apiStatus != null) 'status': apiStatus,
+          // "Menga biriktirilgan" — serverda filtrlanadi (butun ro'yxatni
+          // yuklab, telefonda filtrlash o'rniga — sekin internetda muhim).
+          if (assignedOnly) 'assignedTo': 'me',
         },
       );
       final envelope = response.data ?? const <String, dynamic>{};
@@ -271,33 +275,26 @@ class ApplicationsRemoteDataSourceApiImpl
   @override
   Future<Application> respond(String id, ApplicationResponse response) async {
     try {
-      // Backendda javob yozish `POST /applications/:id/reply`
-      // (`ReplyApplicationDto: {text, attachmentUrl?}`) orqali amalga
-      // oshadi va yaratilgan XABARni qaytaradi (yangilangan `Application`
-      // emas) — shuning uchun javobdan so'ng pastda `getById` bilan
-      // to'liq murojaat qayta o'qiladi.
-      //
-      // MUHIM CHEKLOV: mobil ilovada biriktirmalar (`AttachmentRef.path`)
-      // — bu qurilmadagi MAHALLIY fayl yo'li (masalan `image_picker`dan),
-      // backend esa faqat ALLAQACHON joylashtirilgan URL qabul qiladi
-      // (`@IsUrl()`) va hozircha bu loyihada mahalliy faylni yuklab URL
-      // olish (CDN upload) oqimi YO'Q. Shu sabab, faqat `http(s)://` bilan
-      // boshlanadigan (ya'ni haqiqatda URL bo'lgan) birinchi biriktirma
-      // yuboriladi — qolgan/mahalliy biriktirmalar jim tashlab
-      // ketiladi (quyidagi hisobotga qarang).
-      final urlAttachments = response.attachments.where(
-        (a) => a.path.startsWith('http'),
-      );
-      final firstUrlAttachment = urlAttachments.isEmpty
-          ? null
-          : urlAttachments.first;
+      // ISBOT FAYLLARI: telefonda olingan rasm/video/ovoz endi haqiqatan
+      // yuklanadi (ilgari faqat birinchi http-URL yuborilib, qurilmadagi
+      // fayllar JIM TASHLAB YUBORILARDI — xodim isbot yubordim deb o'ylardi).
+      final urls = <String>[];
+      for (final a in response.attachments) {
+        if (a.path.startsWith('http://') || a.path.startsWith('https://')) {
+          urls.add(a.path);
+          continue;
+        }
+        final url = await _uploadProof(id, a);
+        if (url != null) urls.add(url);
+      }
 
       await _client.dio.post<Map<String, dynamic>>(
         '/applications/$id/reply',
         data: {
           'text': response.text,
-          if (firstUrlAttachment != null)
-            'attachmentUrl': firstUrlAttachment.path,
+          if (urls.isNotEmpty) 'attachmentUrl': urls.first,
+          // Yakuniy javob — murojaat "Hal qilindi" bo'ladi (fuqaro baholaydi).
+          'resolve': true,
         },
       );
 
@@ -305,6 +302,57 @@ class ApplicationsRemoteDataSourceApiImpl
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');
     }
+  }
+
+  /// Bitta lokal faylni yuklaydi: rasm/video/ovoz — murojaat ilovasi
+  /// sifatida (`/applications/:id/attachments/upload`, fuqaro ham ko'radi);
+  /// boshqa hujjatlar — umumiy `/uploads` (URL javob xabariga qo'shiladi).
+  Future<String?> _uploadProof(String applicationId, AttachmentRef a) async {
+    final file = File(a.path);
+    if (!file.existsSync()) return null;
+    final name = a.name.isNotEmpty ? a.name : a.path.split('/').last;
+    final isMedia =
+        a.type == AttachmentType.image ||
+        a.type == AttachmentType.video ||
+        a.type == AttachmentType.voice;
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        a.path,
+        filename: name,
+        contentType: _mediaTypeFor(name, a.type),
+      ),
+    });
+    final resp = await _client.dio.post<Map<String, dynamic>>(
+      isMedia ? '/applications/$applicationId/attachments/upload' : '/uploads',
+      data: form,
+    );
+    return resp.data?['url'] as String?;
+  }
+
+  static DioMediaType _mediaTypeFor(String name, AttachmentType type) {
+    final ext = name.split('.').last.toLowerCase();
+    const map = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'webp': 'image/webp',
+      'heic': 'image/heic',
+      'mp4': 'video/mp4',
+      'mov': 'video/quicktime',
+      'm4a': 'audio/mp4',
+      'aac': 'audio/aac',
+      'mp3': 'audio/mpeg',
+      'pdf': 'application/pdf',
+    };
+    final mime =
+        map[ext] ??
+        switch (type) {
+          AttachmentType.image => 'image/jpeg',
+          AttachmentType.video => 'video/mp4',
+          AttachmentType.voice => 'audio/mp4',
+          AttachmentType.file => 'application/octet-stream',
+        };
+    return DioMediaType.parse(mime);
   }
 
   @override
@@ -336,15 +384,29 @@ Map<String, dynamic> _adaptApplicationJson(
   Map<String, dynamic>? response,
 }) {
   final assignedEmployeeId = json['assignedEmployeeId'] as String?;
+  // Fuqaro ilovasi mavzuni "[SHIKOYAT|Kategoriya] Sarlavha" ko'rinishida
+  // kodlaydi — sarlavha va kategoriyani ajratamiz.
+  final subject = json['subject'] as String? ?? '';
+  final m = RegExp(
+    r'^\[(ARIZA|SHIKOYAT)\|([^\]]*)\]\s*(.*)$',
+    dotAll: true,
+  ).firstMatch(subject);
+  final title = (m?.group(3) ?? subject).trim();
+  final category = (m?.group(2) ?? '').trim();
   return {
     'id': json['id'],
-    'title': json['subject'],
+    'title': title.isEmpty ? subject : title,
     'description': json['description'],
-    'category': 'Umumiy',
+    'category': category.isEmpty ? 'Umumiy' : category,
     'status': _statusFromApi(json['status'] as String?),
-    'priority': ApplicationPriority.orta.name,
+    'priority': switch (json['priority']) {
+      'high' => ApplicationPriority.yuqori.name,
+      'low' => ApplicationPriority.past.name,
+      _ => ApplicationPriority.orta.name,
+    },
     'created_at': json['createdAt'],
-    'deadline': null,
+    // Server SLA muddati (muhimlikka qarab).
+    'deadline': json['dueAt'],
     'assigned_to_me':
         currentEmployeeId != null && assignedEmployeeId == currentEmployeeId,
     'points': 0,

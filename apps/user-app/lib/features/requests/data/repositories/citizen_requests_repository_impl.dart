@@ -74,4 +74,33 @@ class CitizenRequestsRepositoryImpl implements CitizenRequestsRepository {
       return const Left(ServerFailure('Serverda xatolik yuz berdi'));
     }
   }
+
+  @override
+  Future<Either<Failure, CitizenRequest>> rate(
+    String id,
+    int rating, {
+    String? comment,
+  }) async {
+    try {
+      return Right(await remote.rate(id, rating, comment: comment));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
+
+  @override
+  Future<Either<Failure, CitizenRequest>> reopen(
+    String id,
+    String reason,
+  ) async {
+    try {
+      return Right(await remote.reopen(id, reason));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      return const Left(ServerFailure('Serverda xatolik yuz berdi'));
+    }
+  }
 }

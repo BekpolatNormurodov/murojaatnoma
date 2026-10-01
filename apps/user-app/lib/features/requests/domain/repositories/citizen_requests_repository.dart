@@ -34,4 +34,14 @@ abstract class CitizenRequestsRepository {
 
   /// Murojaat mavzusiga fuqaro nomidan yangi xabar yozadi.
   Future<Either<Failure, RequestMessage>> sendMessage(String id, String text);
+
+  /// Hal qilingan murojaatni baholash (1..5).
+  Future<Either<Failure, CitizenRequest>> rate(
+    String id,
+    int rating, {
+    String? comment,
+  });
+
+  /// "Muammo hal bo'lmadi" — qayta ochish.
+  Future<Either<Failure, CitizenRequest>> reopen(String id, String reason);
 }

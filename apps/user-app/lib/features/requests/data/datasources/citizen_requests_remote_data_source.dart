@@ -25,6 +25,12 @@ abstract class CitizenRequestsRemoteDataSource {
 
   /// Murojaat mavzusiga fuqaro nomidan yangi xabar yozadi.
   Future<RequestMessage> sendMessage(String requestId, String text);
+
+  /// Hal qilingan murojaatni baholash (1..5, ixtiyoriy izoh).
+  Future<CitizenRequest> rate(String id, int rating, {String? comment});
+
+  /// "Muammo hal bo'lmadi" — murojaatni qayta ochish (sabab bilan).
+  Future<CitizenRequest> reopen(String id, String reason);
 }
 
 /// Mock implementatsiya (backend tayyor bo'lguncha) — [AppConfig.useMock]
@@ -129,6 +135,52 @@ class CitizenRequestsRemoteDataSourceMockImpl
     mockCitizenRequestMessages.putIfAbsent(requestId, () => []).add(message);
     return message;
   }
+
+  @override
+  Future<CitizenRequest> rate(String id, int rating, {String? comment}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final i = mockCitizenRequests.indexWhere((r) => r.id == id);
+    if (i == -1) throw ServerException('Murojaat topilmadi: $id');
+    final r = mockCitizenRequests[i];
+    final updated = CitizenRequest(
+      id: r.id,
+      kind: r.kind,
+      category: r.category,
+      title: r.title,
+      body: r.body,
+      status: r.status,
+      createdAt: r.createdAt,
+      response: r.response,
+      attachments: r.attachments,
+      region: r.region,
+      district: r.district,
+      rating: rating,
+    );
+    mockCitizenRequests[i] = updated;
+    return updated;
+  }
+
+  @override
+  Future<CitizenRequest> reopen(String id, String reason) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    final i = mockCitizenRequests.indexWhere((r) => r.id == id);
+    if (i == -1) throw ServerException('Murojaat topilmadi: $id');
+    final r = mockCitizenRequests[i];
+    final updated = CitizenRequest(
+      id: r.id,
+      kind: r.kind,
+      category: r.category,
+      title: r.title,
+      body: r.body,
+      status: RequestStatus.korilmoqda,
+      createdAt: r.createdAt,
+      attachments: r.attachments,
+      region: r.region,
+      district: r.district,
+    );
+    mockCitizenRequests[i] = updated;
+    return updated;
+  }
 }
 
 /// `RequestKind`/`RequestStatus` — backendning `Application` modelida
@@ -222,6 +274,7 @@ CitizenRequest _requestFromApplicationJson(Map<String, dynamic> json) {
     // xabarlar (thread) orqali keladi (qarang: `getMessages`).
     region: json['region'] as String?,
     district: json['district'] as String?,
+    rating: (json['rating'] as num?)?.toInt(),
   );
 }
 
@@ -408,6 +461,36 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
           .whereType<Map<String, dynamic>>()
           .map(RequestMessage.fromJson)
           .toList();
+    } on DioException catch (e) {
+      throw ServerException(_extractErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<CitizenRequest> rate(String id, int rating, {String? comment}) async {
+    try {
+      final response = await _client.dio.post<Map<String, dynamic>>(
+        '/applications/$id/rate',
+        data: {
+          'rating': rating,
+          if (comment != null && comment.trim().isNotEmpty)
+            'comment': comment.trim(),
+        },
+      );
+      return _requestFromApplicationJson(response.data ?? const {});
+    } on DioException catch (e) {
+      throw ServerException(_extractErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<CitizenRequest> reopen(String id, String reason) async {
+    try {
+      final response = await _client.dio.post<Map<String, dynamic>>(
+        '/applications/$id/reopen',
+        data: {'reason': reason.trim()},
+      );
+      return _requestFromApplicationJson(response.data ?? const {});
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }

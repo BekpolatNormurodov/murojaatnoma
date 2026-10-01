@@ -164,8 +164,181 @@ class _DetailContent extends StatelessWidget {
               ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.12, end: 0),
               const SizedBox(height: 12),
             ],
+          // Hal qilingan murojaat: baholash yoki "hal bo'lmadi" (qayta ochish).
+          if (request.status == RequestStatus.javobBerildi) ...[
+            const SizedBox(height: 8),
+            _FeedbackCard(request: request),
+          ],
           const SizedBox(height: 8),
           _MessageComposer(sending: sendingMessage),
+        ],
+      ),
+    );
+  }
+}
+
+/// Murojaat hal qilingach — fuqaro 1..5 baho beradi (ixtiyoriy izoh) yoki
+/// "Muammo hal bo'lmadi" deb qayta ochadi (xodimga qaytadi).
+class _FeedbackCard extends StatefulWidget {
+  const _FeedbackCard({required this.request});
+
+  final CitizenRequest request;
+
+  @override
+  State<_FeedbackCard> createState() => _FeedbackCardState();
+}
+
+class _FeedbackCardState extends State<_FeedbackCard> {
+  int _stars = 0;
+  final _comment = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_stars == 0 || _busy) return;
+    setState(() => _busy = true);
+    final error = await context.read<RequestDetailCubit>().rate(
+      _stars,
+      comment: _comment.text,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error != null) {
+      AppAlert.error(context, error);
+    } else {
+      AppAlert.success(context, 'Rahmat! Bahoyingiz qabul qilindi');
+    }
+  }
+
+  Future<void> _reopen() async {
+    final controller = TextEditingController();
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          0,
+          20,
+          20 + MediaQuery.viewInsetsOf(ctx).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text("Muammo hal bo'lmadimi?", style: AppTextStyles.h3),
+            const SizedBox(height: 6),
+            Text(
+              'Nima hal bo\'lmaganini yozing — murojaat xodimga qaytariladi.',
+              style: AppTextStyles.caption,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'Masalan: chiroq hali ham yonmayapti',
+              ),
+            ),
+            const SizedBox(height: 12),
+            AppButton(
+              label: 'Qayta ochish',
+              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (reason == null || reason.length < 3 || !mounted) return;
+    setState(() => _busy = true);
+    final error = await context.read<RequestDetailCubit>().reopen(reason);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (error != null) {
+      AppAlert.error(context, error);
+    } else {
+      AppAlert.success(context, 'Murojaat qayta ochildi');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rated = widget.request.rating;
+    if (rated != null) {
+      return AppCard(
+        child: Row(
+          children: [
+            for (var i = 1; i <= 5; i++)
+              Icon(
+                i <= rated ? Icons.star_rounded : Icons.star_outline_rounded,
+                color: AppColors.warning,
+                size: 22,
+              ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text('Bahoyingiz uchun rahmat'),
+            ),
+          ],
+        ),
+      );
+    }
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Javobdan qoniqdingizmi?', style: AppTextStyles.bodyStrong),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var i = 1; i <= 5; i++)
+                IconButton(
+                  tooltip: '$i baho',
+                  onPressed: _busy ? null : () => setState(() => _stars = i),
+                  icon: Icon(
+                    i <= _stars
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    color: AppColors.warning,
+                    size: 34,
+                  ),
+                ),
+            ],
+          ),
+          if (_stars > 0) ...[
+            const SizedBox(height: 4),
+            TextField(
+              controller: _comment,
+              maxLines: 2,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                hintText: 'Izoh (ixtiyoriy)',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 10),
+            AppButton(
+              label: 'Baholash',
+              loading: _busy,
+              onPressed: _submit,
+            ),
+          ],
+          const SizedBox(height: 4),
+          Center(
+            child: TextButton(
+              onPressed: _busy ? null : _reopen,
+              child: const Text("Muammo hal bo'lmadi"),
+            ),
+          ),
         ],
       ),
     );

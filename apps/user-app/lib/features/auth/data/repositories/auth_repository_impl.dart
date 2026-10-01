@@ -3,17 +3,23 @@ import 'dart:convert';
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:user_app/injection.dart';
 import 'package:user_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:user_app/features/auth/data/models/auth_session_model.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
 import 'package:user_app/features/auth/domain/repositories/auth_repository.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
-  AuthRepositoryImpl({required this.remote, required this.prefs});
+  AuthRepositoryImpl({
+    required this.remote,
+    required this.prefs,
+    DioClient? client,
+  }) : _client = client;
 
   final AuthRemoteDataSource remote;
   final SharedPreferences prefs;
+
+  /// Logout'da serverda refresh tokenni bekor qilish uchun (testlarda yo'q).
+  final DioClient? _client;
 
   /// Sessiya JSON'i shu kalit ostida saqlanadi (userId/ism/telefon/hudud).
   static const _sessionKey = 'user_session';
@@ -81,7 +87,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> logout() async {
     // Serverda refresh tokenni bekor qiladi (best-effort, ≤5 s), tokenlar va
     // oflayn keshni tozalaydi.
-    await AuthInterceptor.endSession(getIt<DioClient>().dio);
+    await AuthInterceptor.endSession(_client?.dio);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_sessionKey);
   }
