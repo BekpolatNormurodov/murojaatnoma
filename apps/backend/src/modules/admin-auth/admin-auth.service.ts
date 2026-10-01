@@ -58,6 +58,15 @@ export class AdminAuthService {
     return this.issueTokenPair(admin);
   }
 
+  /** Logout: revoke the presented admin refresh token (no-op if unknown). */
+  async logout(refreshToken: string): Promise<{ ok: true }> {
+    await this.prisma.adminRefreshToken.updateMany({
+      where: { tokenHash: this.hashToken(refreshToken), revoked: false },
+      data: { revoked: true },
+    });
+    return { ok: true };
+  }
+
   async refresh(refreshToken: string): Promise<AdminTokenPair> {
     const { refreshSecret } = this.configService.get('jwt', { infer: true });
 

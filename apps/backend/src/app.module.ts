@@ -11,6 +11,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ScopeGuard } from './common/guards/scope.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { IdempotencyInterceptor } from './common/interceptors/idempotency.interceptor';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { AdminAuthModule } from './modules/admin-auth/admin-auth.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
@@ -100,6 +101,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     { provide: APP_GUARD, useClass: ScopeGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    // Replays retried writes (mobile apps send Idempotency-Key) — no duplicates on flaky networks.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule {}

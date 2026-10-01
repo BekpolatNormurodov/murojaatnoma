@@ -207,6 +207,19 @@ export class AuthService {
     });
   }
 
+  /**
+   * Logout: revoke the presented refresh token so it can't mint new access
+   * tokens (was valid for its full 30-day TTL after "logout"). Idempotent and
+   * silent — an unknown/expired token is simply a no-op.
+   */
+  async logout(refreshToken: string): Promise<{ ok: true }> {
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash: this.hashToken(refreshToken), revoked: false },
+      data: { revoked: true },
+    });
+    return { ok: true };
+  }
+
   private async issueTokenPair(payload: JwtPayload): Promise<TokenPairDto> {
     const { accessSecret, refreshSecret, accessTtl, refreshTtl } = this.configService.get(
       'jwt',

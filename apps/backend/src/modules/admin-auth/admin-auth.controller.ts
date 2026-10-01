@@ -33,6 +33,14 @@ export class AdminAuthController {
     return this.adminAuthService.refresh(dto.refreshToken);
   }
 
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revoke the admin refresh token (web-admin logout)' })
+  logout(@Body() dto: AdminRefreshDto) {
+    return this.adminAuthService.logout(dto.refreshToken);
+  }
+
   @RequireScope('admin')
   @ApiBearerAuth()
   @Get('me')

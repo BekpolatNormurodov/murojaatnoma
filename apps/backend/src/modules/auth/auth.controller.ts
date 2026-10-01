@@ -49,6 +49,14 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revoke a refresh token (worker-app / user-app logout)' })
+  logout(@Body() dto: RefreshTokenDto): Promise<{ ok: true }> {
+    return this.authService.logout(dto.refreshToken);
+  }
+
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the current authenticated employee profile' })
