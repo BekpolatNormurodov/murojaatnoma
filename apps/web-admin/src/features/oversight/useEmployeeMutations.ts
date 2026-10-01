@@ -10,6 +10,9 @@ export interface EmployeeInput {
   password?: string;
   avatarUrl?: string;
   salary?: number;
+  /** Which month `salary` is for (the month the page is viewing). */
+  salaryYear?: number;
+  salaryMonth?: number;
   assignedMahallaCodes?: string[];
 }
 

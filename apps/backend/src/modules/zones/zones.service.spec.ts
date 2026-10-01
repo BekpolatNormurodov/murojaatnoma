@@ -182,6 +182,13 @@ describe('ZonesService', () => {
       expect(await service.isWithinToleranceOfMahallas(41.2998, 69.34, ['MA'], 10)).toBe(false);
     });
 
+    it('catches an edge that lies between the old 8 sampling directions', async () => {
+      // ~22 m south of MA's south edge, but offset so no 45° ray is needed:
+      // the exact edge distance is what decides, not sampling geometry.
+      expect(await service.isWithinToleranceOfMahallas(41.2998, 69.3401, ['MA'], 23)).toBe(true);
+      expect(await service.isWithinToleranceOfMahallas(41.2998, 69.3401, ['MA'], 21)).toBe(false);
+    });
+
     it('returns false for empty codes or non-positive tolerance', async () => {
       expect(await service.isWithinToleranceOfMahallas(41.31, 69.34, [], 50)).toBe(false);
       expect(await service.isWithinToleranceOfMahallas(41.31, 69.34, ['MA'], 0)).toBe(false);

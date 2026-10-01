@@ -96,3 +96,38 @@ export function withinBBox(
 ): boolean {
   return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
 }
+
+/**
+ * Shortest distance (metres) from (lng, lat) to ANY edge of the geometry's
+ * rings. Uses a local equirectangular projection centred on the point — exact
+ * enough at mahalla scale (< a few km), and unlike sampling a few offset
+ * points it never misses a nearby edge, corner or a narrow polygon part.
+ */
+export function distanceToGeometryEdgeM(
+  lng: number,
+  lat: number,
+  geometry: GeoJsonAreaGeometry,
+): number {
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((lat * Math.PI) / 180);
+  const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  let best = Infinity;
+  for (const polygon of polygons) {
+    for (const ring of polygon) {
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        // Segment endpoints in metres relative to the point (point = origin).
+        const ax = (ring[j][0] - lng) * mPerDegLng;
+        const ay = (ring[j][1] - lat) * mPerDegLat;
+        const bx = (ring[i][0] - lng) * mPerDegLng;
+        const by = (ring[i][1] - lat) * mPerDegLat;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2));
+        const d = Math.hypot(ax + t * dx, ay + t * dy);
+        if (d < best) best = d;
+      }
+    }
+  }
+  return best;
+}

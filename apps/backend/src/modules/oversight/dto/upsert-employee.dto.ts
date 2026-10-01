@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
 
 /**
  * Admin create/edit of an employee (person) straight from the web-admin Nazorat
@@ -46,6 +46,22 @@ export class UpsertEmployeeDto {
   @IsInt()
   @Min(0)
   salary?: number;
+
+  @ApiPropertyOptional({ example: 2026, description: 'Oylik qaysi yil uchun (default: joriy)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2020)
+  @Max(2100)
+  salaryYear?: number;
+
+  @ApiPropertyOptional({ example: 10, description: 'Oylik qaysi oy uchun, 1..12 (default: joriy)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  salaryMonth?: number;
 
   @ApiPropertyOptional({ type: [String], example: ['1090080', '1090082'] })
   @IsOptional()

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ZoneKind } from '@prisma/client';
 import {
+  distanceToGeometryEdgeM,
   GeoJsonAreaGeometry,
   pointInGeometry,
   withinBBox,
@@ -195,10 +196,8 @@ export class ZonesService implements OnModuleInit {
    * ~500 m across, so a 10-30 m GPS error otherwise flips a staffer standing
    * just inside their own mahalla to "hududdan tashqarida".
    *
-   * Implemented by sampling the point PLUS a ring of 8 offset points at
-   * `toleranceM` and running the (tested) ray-caster on each — no new
-   * distance-to-edge geometry. If the boundary is within `toleranceM`, at
-   * least one ring point in its direction lands inside the polygon.
+   * Exact: strict point-in-polygon first, then the true shortest distance to
+   * the polygon edges (see `distanceToGeometryEdgeM`).
    */
   async isWithinToleranceOfMahallas(
     lat: number,
@@ -211,39 +210,17 @@ export class ZonesService implements OnModuleInit {
       return false;
     }
     const codeSet = new Set(codes);
-    const zones = this.cache.filter(
-      (z) => z.kind === ZoneKind.MAHALLA && codeSet.has(z.code),
-    );
-    if (zones.length === 0) {
-      return false;
-    }
-
-    // meters → degrees (lng shrinks by cos(lat) toward the poles).
-    const latRad = (lat * Math.PI) / 180;
+    // metres → degrees, only for the cheap bbox pre-filter.
     const dLat = toleranceM / 111_320;
-    const dLng = toleranceM / (111_320 * Math.max(Math.cos(latRad), 1e-6));
-    const samples: Array<[number, number]> = [[lat, lng]];
-    for (let k = 0; k < 8; k += 1) {
-      const ang = (k * Math.PI) / 4;
-      samples.push([lat + dLat * Math.cos(ang), lng + dLng * Math.sin(ang)]);
-    }
+    const dLng = toleranceM / (111_320 * Math.max(Math.cos((lat * Math.PI) / 180), 1e-6));
 
-    for (const z of zones) {
-      for (const [plat, plng] of samples) {
-        if (
-          withinBBox(
-            plat,
-            plng,
-            z.minLat - dLat,
-            z.minLng - dLng,
-            z.maxLat + dLat,
-            z.maxLng + dLng,
-          ) &&
-          pointInGeometry(plng, plat, z.geometry)
-        ) {
-          return true;
-        }
+    for (const z of this.cache) {
+      if (z.kind !== ZoneKind.MAHALLA || !codeSet.has(z.code)) continue;
+      if (!withinBBox(lat, lng, z.minLat - dLat, z.minLng - dLng, z.maxLat + dLat, z.maxLng + dLng)) {
+        continue;
       }
+      if (pointInGeometry(lng, lat, z.geometry)) return true;
+      if (distanceToGeometryEdgeM(lng, lat, z.geometry) <= toleranceM) return true;
     }
     return false;
   }

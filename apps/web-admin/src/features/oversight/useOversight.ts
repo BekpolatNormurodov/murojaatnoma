@@ -27,6 +27,8 @@ export interface OversightRow {
   };
   assignedMahallaCodes: string[];
   salaryNet: number | null;
+  /** Base salary (before bonus/penalty) for the month — what the edit form edits. */
+  salaryBase: number | null;
   /** Bu oy jami premya (bonus), so'm. */
   premyaThisMonth: number;
 }

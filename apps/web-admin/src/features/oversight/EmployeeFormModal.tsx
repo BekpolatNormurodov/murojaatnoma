@@ -19,11 +19,16 @@ function group(d: string) {
 export function EmployeeFormModal({
   row,
   open,
+  year,
+  month,
   onClose,
   onDone,
 }: {
   row: OversightRow | null;
   open: boolean;
+  /** The month Nazorat is showing — the salary field reads/writes THIS month. */
+  year: number;
+  month: number;
   onClose: () => void;
   onDone: (msg: string) => void;
 }) {
@@ -51,7 +56,10 @@ export function EmployeeFormModal({
     setPhone('');
     setUsername('');
     setPassword('');
-    setSalary(row?.salaryNet != null ? String(row.salaryNet) : '');
+    // BASE salary (amount), not net: net = amount + bonus − penalty, so
+    // pre-filling net and saving it back as amount inflated the salary by the
+    // bonus on every save.
+    setSalary(row?.salaryBase != null ? String(row.salaryBase) : '');
     setAvatarUrl(row?.avatarUrl ?? null);
     setError(null);
     setTried(false);
@@ -91,7 +99,11 @@ export function EmployeeFormModal({
       ...(username.trim() ? { username: username.trim() } : {}),
       ...(password.trim() ? { password: password.trim() } : {}),
       ...(avatarUrl ? { avatarUrl } : {}),
-      ...(salary.trim() ? { salary: Number(salary) } : {}),
+      // Only send salary when it was actually changed (an unchanged edit must
+      // not touch EmployeeSalary at all).
+      ...(salary.trim() && Number(salary) !== (row?.salaryBase ?? null)
+        ? { salary: Number(salary), salaryYear: year, salaryMonth: month }
+        : {}),
     };
     try {
       if (editing && row) {
@@ -157,7 +169,7 @@ export function EmployeeFormModal({
           <Field label="Telefon (ixtiyoriy)">
             <Inp value={phone} onChange={setPhone} placeholder="+998901234567" />
           </Field>
-          <Field label="Oylik (so'm, ixtiyoriy)">
+          <Field label={`Oylik — ${month}/${year} (so'm)`}>
             <div className="relative">
               <input
                 inputMode="numeric"

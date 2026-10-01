@@ -320,7 +320,11 @@ export function MapPage() {
   };
 
   return (
-    <div className="relative flex h-[calc(100dvh-5.5rem)] min-h-[520px] gap-4">
+    // `isolate` = own stacking context. Leaflet panes/controls use z-index
+    // 400–1000 and this page's overlays 1150–1300; without it they competed with
+    // the app shell (Topbar z-30, mobile nav z-50, modals z-50) and the map
+    // painted on top of everything.
+    <div className="relative isolate flex h-[calc(100dvh-5.5rem)] min-h-[520px] gap-4">
       {/* ── Sidebar (static ≥lg, slide-over overlay below lg) ── */}
       <aside
         className={cn(
@@ -510,7 +514,7 @@ export function MapPage() {
       )}
 
       {/* ── Map ── */}
-      <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-line">
+      <div className="relative isolate min-w-0 flex-1 overflow-hidden rounded-2xl border border-line">
         <MapContainer
           center={DISTRICT_CENTER}
           zoom={12}

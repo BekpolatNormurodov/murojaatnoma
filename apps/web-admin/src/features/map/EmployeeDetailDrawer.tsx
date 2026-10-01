@@ -28,6 +28,15 @@ import {
   type TrackWindow,
 } from './mapShared';
 
+/**
+ * Auto-generated phones for employees added without one (`+99800…`, and the
+ * older `+99890000NNNN` scheme). They are not real numbers — never offer a
+ * call button for them.
+ */
+function isPlaceholderPhone(phone: string): boolean {
+  return /^\+99800\d{7}$/.test(phone) || /^\+99890000\d{4}$/.test(phone);
+}
+
 // Track gaps ≥ this long are flagged as a "lokatsiya uzilgan" break in the route
 // list (GPS off / no signal / app closed) — monitoring cue between two points.
 const GAP_MIN_MS = 15 * 60 * 1000;
@@ -198,7 +207,7 @@ export function EmployeeDetailDrawer({
               <Messages size={18} variant="Bold" />
               {t.message}
             </button>
-            {loc.phone && (
+            {loc.phone && !isPlaceholderPhone(loc.phone) && (
               <a
                 href={`tel:${loc.phone}`}
                 aria-label={`Qo'ng'iroq — ${loc.fullName} (${loc.phone})`}

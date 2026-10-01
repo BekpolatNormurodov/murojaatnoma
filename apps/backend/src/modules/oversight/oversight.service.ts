@@ -39,6 +39,8 @@ export interface OversightRow {
   assignedMahallaCodes: string[];
   /** Net salary for the requested month (null when unset). */
   salaryNet: number | null;
+  /** BASE salary (`EmployeeSalary.amount`, before bonus/penalty) for the month — what the edit form edits. */
+  salaryBase: number | null;
   /** Total premya (bonus) awarded this month (so'm). */
   premyaThisMonth: number;
 }
@@ -170,6 +172,7 @@ export class OversightService {
         },
         assignedMahallaCodes: loc?.assignedMahallaCodes ?? [],
         salaryNet: base.salary?.net ?? null,
+        salaryBase: base.salary?.amount ?? null,
         premyaThisMonth: premya.get(base.employeeId) ?? 0,
       };
     });
@@ -213,7 +216,7 @@ export class OversightService {
         },
       });
       if (dto.salary != null) {
-        await this.setSalary(emp.id, dto.salary);
+        await this.setSalary(emp.id, dto.salary, dto.salaryYear, dto.salaryMonth);
       }
       return { id: emp.id, fullName: emp.fullName, username: emp.username };
     } catch (e) {
@@ -251,28 +254,41 @@ export class OversightService {
       throw e;
     }
     if (dto.salary != null) {
-      await this.setSalary(id, dto.salary);
+      await this.setSalary(id, dto.salary, dto.salaryYear, dto.salaryMonth);
     }
     return { id, fullName: dto.fullName };
   }
 
-  private async setSalary(employeeId: string, amount: number): Promise<void> {
+  /**
+   * Upsert the BASE salary (`amount`) for the given month — the month the admin
+   * is viewing in Nazorat (defaults to the current one). bonus/penalty are left
+   * untouched, so saving an edit never folds them into the base.
+   */
+  private async setSalary(employeeId: string, amount: number, year?: number, month?: number): Promise<void> {
     const now = new Date();
+    const y = year ?? now.getFullYear();
+    const m = month ?? now.getMonth() + 1;
     await this.prisma.employeeSalary.upsert({
-      where: { employeeId_year_month: { employeeId, year: now.getFullYear(), month: now.getMonth() + 1 } },
+      where: { employeeId_year_month: { employeeId, year: y, month: m } },
       update: { amount },
-      create: { employeeId, year: now.getFullYear(), month: now.getMonth() + 1, amount },
+      create: { employeeId, year: y, month: m, amount },
     });
   }
 
+  /**
+   * `Employee.phone` is required + unique, but an admin may add someone without
+   * a phone. Use the non-dialable `+99800…` range (no Uzbek operator code 00),
+   * so a placeholder can never ring a real stranger from the map's call button.
+   * Random suffix + existence check — one query per try, no sequential scan.
+   */
   private async nextPlaceholderPhone(): Promise<string> {
-    for (let i = 1; i < 100000; i++) {
-      const phone = `+99890${String(i).padStart(7, '0')}`;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const phone = `+99800${String(Math.floor(Math.random() * 10_000_000)).padStart(7, '0')}`;
       const exists = await this.prisma.employee.findUnique({ where: { phone }, select: { id: true } });
       if (!exists) {
         return phone;
       }
     }
-    return `+99890${Date.now() % 10000000}`;
+    throw new ConflictException("Vaqtinchalik telefon raqamini yaratib bo'lmadi — telefonni kiriting");
   }
 }

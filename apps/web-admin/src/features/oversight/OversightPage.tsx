@@ -329,6 +329,8 @@ export function OversightPage() {
       <EmployeeFormModal
         open={empModal.open}
         row={empModal.row}
+        year={year}
+        month={month}
         onClose={() => setEmpModal({ open: false, row: null })}
         onDone={(msg) => setToast(msg)}
       />
