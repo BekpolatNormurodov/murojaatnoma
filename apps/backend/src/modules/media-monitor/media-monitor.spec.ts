@@ -178,6 +178,10 @@ describe('media settings', () => {
     expect(m.keywords).toEqual(['a']);
     expect(m.minRelevance).toBe(100);
     expect(m.rssFeeds.length).toBe(S.rssFeeds.length);
+    // AI is opt-in: off unless explicitly switched on.
+    expect(m.aiEnabled).toBe(false);
+    expect(mergeSettings({ aiEnabled: true }).aiEnabled).toBe(true);
+    expect(mergeSettings({ aiEnabled: 'true' as unknown as boolean }).aiEnabled).toBe(false);
   });
 });
 

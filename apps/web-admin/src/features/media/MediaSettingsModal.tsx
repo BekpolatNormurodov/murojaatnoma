@@ -57,7 +57,7 @@ function SettingsBody({ onClose, canEdit, initialTab }: { onClose: () => void; c
         ))}
       </div>
 
-      {!canEdit && tab !== 'keys' && (
+      {!canEdit && (
         <p className="mb-4 flex items-start gap-2 rounded-xl bg-info-soft p-3 text-[13px] text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">
           <InfoCircle size={18} className="shrink-0" /> Faqat bosh administrator o'zgartira oladi — siz ko'rish rejimidasiz.
         </p>
@@ -165,7 +165,12 @@ function SettingsForm({
           </Section>
         </div>
       ) : (
-        <IntegrationsTab integrations={data.integrations} />
+        <IntegrationsTab
+          integrations={data.integrations}
+          aiEnabled={draft.aiEnabled}
+          onAiChange={(v) => set('aiEnabled', v)}
+          canEdit={canEdit}
+        />
       )}
 
       {error && (
@@ -174,7 +179,7 @@ function SettingsForm({
         </p>
       )}
 
-      {canEdit && tab !== 'keys' && (
+      {canEdit && (
         <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 flex flex-wrap items-center gap-2 border-t border-line bg-surface px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
           <Button variant="ghost" size="sm" onClick={() => setDraft(structuredClone(data.defaults))}>
             Standart holat
@@ -443,10 +448,44 @@ const KEY_GUIDES = [
   },
 ] as const;
 
-function IntegrationsTab({ integrations }: { integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean } }) {
+function IntegrationsTab({
+  integrations,
+  aiEnabled,
+  onAiChange,
+  canEdit,
+}: {
+  integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean };
+  aiEnabled: boolean;
+  onAiChange: (v: boolean) => void;
+  canEdit: boolean;
+}) {
   const connected: Record<string, boolean> = { ai: integrations.ai, youtube: integrations.youtube, instagram: integrations.instagram };
+  const aiActive = aiEnabled && integrations.ai;
   return (
     <div className="space-y-4">
+      {/* AI on/off — off by default; the monitor runs on automatic (rule-based) analysis meanwhile. */}
+      <section
+        className={cn(
+          'flex items-start gap-3 rounded-2xl border p-4',
+          aiActive ? 'border-violet-300 bg-violet-50/60 dark:border-violet-500/40 dark:bg-violet-500/10' : 'border-line',
+        )}
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+          <MagicStar size={20} variant="Bulk" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">AI tahlil</p>
+          <p className="mt-0.5 text-[13px] leading-relaxed text-ink-soft">
+            {aiActive
+              ? 'Yoqilgan — har bir xabarni Claude baholaydi va xulosani AI yozadi.'
+              : integrations.ai
+                ? "O'chiq — avtomatik (qoidaga asoslangan) tahlil ishlayapti. Yoqish uchun tugmani bosing va saqlang."
+                : "O'chiq — avtomatik (qoidaga asoslangan) tahlil ishlayapti. Yoqish uchun avval serverga ANTHROPIC_API_KEY qo'shiladi (pastda)."}
+          </p>
+        </div>
+        <Switch checked={aiEnabled} disabled={!canEdit || (!integrations.ai && !aiEnabled)} onChange={onAiChange} />
+      </section>
+
       <div className="grid gap-2 sm:grid-cols-2">
         <FreeSource label="Yangilik saytlari (RSS)" Icon={PLATFORM_META.web.Icon} color={PLATFORM_META.web.color} />
         <FreeSource label="Telegram kanallar" Icon={PLATFORM_META.telegram.Icon} color={PLATFORM_META.telegram.color} />

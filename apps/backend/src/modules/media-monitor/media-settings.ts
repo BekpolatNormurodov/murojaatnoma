@@ -33,6 +33,8 @@ export interface MediaSettings {
   googleNewsQuery: string;
   /** Items below this relevance are kept but hidden from the default view. */
   minRelevance: number;
+  /** "AI tahlil" switch — Claude scoring/xulosa (needs ANTHROPIC_API_KEY). Off ⇒ rule engine. */
+  aiEnabled: boolean;
 }
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
@@ -81,6 +83,7 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   googleNewsQuery:
     '"Mirzo Ulug\'bek tumani" OR "Мирзо-Улугбекский район" OR "Мирзо-Улугбекском районе" OR "Mirzo Ulug\'bek hokimligi"',
   minRelevance: 50,
+  aiEnabled: false,
 };
 
 const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
@@ -101,6 +104,7 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     instagramAccounts: uniq((s.instagramAccounts ?? d.instagramAccounts).map(cleanHandle)),
     googleNewsQuery: (s.googleNewsQuery ?? d.googleNewsQuery).trim(),
     minRelevance: clamp(s.minRelevance ?? d.minRelevance, 0, 100),
+    aiEnabled: s.aiEnabled === true,
   };
 }
 

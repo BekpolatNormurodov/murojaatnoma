@@ -122,7 +122,7 @@ export function MediaDigestCard({
                 ? 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30'
                 : 'bg-surface-2 text-ink-soft ring-line',
             )}
-            title={isAi ? digest?.model : "AI kaliti ulanmagan — qoidaga asoslangan tahlil"}
+            title={isAi ? digest?.model : "AI tahlil o'chiq — avtomatik (qoidaga asoslangan) tahlil"}
           >
             <MagicStar size={12} variant="Bold" />
             {aiModelLabel(digest?.model)}

@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -122,6 +122,7 @@ export class MediaFeedDto {
   @Matches(/^https?:\/\/[^\s]{4,300}$/i, { message: "RSS manzili http(s):// bilan boshlanishi kerak" })
   url!: string;
 
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.enabled)
   @IsBoolean()
   enabled!: boolean;
 }
@@ -189,4 +190,11 @@ export class UpdateMediaSettingsDto {
   @Min(0)
   @Max(100)
   minRelevance?: number;
+
+  @ApiPropertyOptional({ description: "AI tahlil (Claude) — ANTHROPIC_API_KEY bo'lsa ishlaydi" })
+  @IsOptional()
+  // Raw value: enableImplicitConversion would turn "false"/"yes" into true.
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.aiEnabled)
+  @IsBoolean()
+  aiEnabled?: boolean;
 }

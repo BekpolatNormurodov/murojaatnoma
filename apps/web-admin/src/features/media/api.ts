@@ -84,7 +84,8 @@ export interface MediaStatusInfo {
     aiError?: string;
   } | null;
   nextRunAt: string | null;
-  ai: { enabled: boolean; model: string | null; lastError: string | null };
+  /** enabled = key configured AND switch on. */
+  ai: { enabled: boolean; keyConfigured: boolean; switchOn: boolean; model: string | null; lastError: string | null };
   integrations: { youtube: boolean; instagram: boolean };
   sources: MediaSourceHealth[];
 }
@@ -147,6 +148,8 @@ export interface MediaSettings {
   instagramAccounts: string[];
   googleNewsQuery: string;
   minRelevance: number;
+  /** "AI tahlil" switch (needs ANTHROPIC_API_KEY on the server). */
+  aiEnabled: boolean;
 }
 
 export interface MediaSettingsView {

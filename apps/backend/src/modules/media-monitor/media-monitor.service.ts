@@ -99,6 +99,8 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private lastYtSearchAt = 0;
   private lastCleanupAt = 0;
   private aiError: string | null = null;
+  /** Last-read "AI tahlil" switch (for the sync status() view). */
+  private aiSwitch = false;
   private bootTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -111,9 +113,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     return this.config.get('media', { infer: true });
   }
 
-  private get claude(): ClaudeConfig | null {
+  /**
+   * Claude runs only when BOTH the key is configured and the "AI tahlil"
+   * switch is on (off by default) — so a key can be added ahead of time and
+   * the hokimiyat turns AI on from Sozlamalar when ready.
+   */
+  private claudeFor(s: MediaSettings): ClaudeConfig | null {
     const c = this.cfg;
-    return c.anthropicApiKey ? { apiKey: c.anthropicApiKey, model: c.aiModel } : null;
+    return c.anthropicApiKey && s.aiEnabled ? { apiKey: c.anthropicApiKey, model: c.aiModel } : null;
   }
 
   onApplicationBootstrap(): void {
@@ -139,7 +146,9 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
   async getSettings(): Promise<MediaSettings> {
     const row = await this.prisma.mediaSetting.findUnique({ where: { key: SETTINGS_KEY } });
-    return mergeSettings((row?.value as Partial<MediaSettings> | undefined) ?? null);
+    const s = mergeSettings((row?.value as Partial<MediaSettings> | undefined) ?? null);
+    this.aiSwitch = s.aiEnabled;
+    return s;
   }
 
   async settingsView() {
@@ -229,7 +238,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
     const results = await this.collectAll(settings, firstRun, now);
     const created = await this.ingest(results, settings, now);
-    const analyzed = await this.analyze(created);
+    const analyzed = await this.analyze(created, settings);
     const relevantNew = analyzed.filter((i) => i.relevance >= settings.minRelevance);
     const negativeNew = relevantNew.filter((i) => i.sentiment === 'negative').length;
 
@@ -348,9 +357,12 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     return rows.map((r) => ({ ...r, _text: texts.get(`${r.source}|${r.externalId}`) ?? r.excerpt ?? '' }));
   }
 
-  private async analyze(rows: (MediaItem & { _text: string })[]): Promise<{ id: string; relevance: number; sentiment: MediaSentiment }[]> {
+  private async analyze(
+    rows: (MediaItem & { _text: string })[],
+    s: MediaSettings,
+  ): Promise<{ id: string; relevance: number; sentiment: MediaSentiment }[]> {
     if (!rows.length) return [];
-    const claude = this.claude;
+    const claude = this.claudeFor(s);
     const results = new Map<string, ItemAnalysis>();
     const inputs = rows.map((r) => ({ id: r.id, sourceName: r.sourceName, title: r.title, text: r._text, relevance: r.relevance }));
     if (claude) {
@@ -402,7 +414,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       items = await this.digestItems(s, now, hours);
     }
     let result: DigestResult;
-    const claude = this.claude;
+    const claude = this.claudeFor(s);
     if (claude && items.length > 0) {
       try {
         result = await digestWithClaude(claude, items, hours);
@@ -507,7 +519,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       running: !!this.current,
       lastRun: this.lastRun,
       nextRunAt: c.enabled ? nextQuarterHour(new Date()).toISOString() : null,
-      ai: { enabled: !!c.anthropicApiKey, model: c.anthropicApiKey ? c.aiModel : null, lastError: this.lastRun?.aiError ?? null },
+      ai: {
+        // Actually in use: key present AND switch on.
+        enabled: !!c.anthropicApiKey && this.aiSwitch,
+        keyConfigured: !!c.anthropicApiKey,
+        switchOn: this.aiSwitch,
+        model: c.anthropicApiKey && this.aiSwitch ? c.aiModel : null,
+        lastError: this.lastRun?.aiError ?? null,
+      },
       integrations: { youtube: !!c.youtubeApiKey, instagram: !!c.instagramAccessToken },
       sources: [...this.health.values()].sort(
         (a, b) => platformOrder(a.platform) - platformOrder(b.platform) || a.name.localeCompare(b.name),
