@@ -411,9 +411,12 @@ const KEY_GUIDES = [
     title: 'AI xulosa — Claude',
     icon: <MagicStar size={18} variant="Bulk" />,
     color: '#7c3aed',
-    env: ['ANTHROPIC_API_KEY=sk-ant-...', '# ixtiyoriy: MEDIA_AI_MODEL=claude-sonnet-5-5'],
+    env: ['ANTHROPIC_API_KEY=sk-ant-...', '# standart: claude-opus-5-5 (eng sifatli)', '# arzonroq: MEDIA_AI_MODEL=claude-sonnet-5-5 yoki claude-haiku-4-5'],
     gives: "Har bir xabarni o'qib: tumanga tegishlimi, kayfiyati, mavzusi va 1 gaplik mazmuni. Hokim uchun xulosa, xavflar va tavsiyalar.",
-    steps: ['console.anthropic.com → API Keys → Create Key', 'Billing bo‘limida balans bo‘lishi kerak'],
+    steps: [
+      'console.anthropic.com → API Keys → Create Key (Claude Pro/Max obunasi bu yerda ishlamaydi — API alohida)',
+      'Billing bo‘limida balans to‘ldiring va oylik limit qo‘ying',
+    ],
   },
   {
     id: 'youtube',

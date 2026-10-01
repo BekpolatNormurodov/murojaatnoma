@@ -170,7 +170,7 @@ export default (): AppConfig => ({
   media: {
     enabled: (process.env.MEDIA_MONITOR_ENABLED ?? 'true').toLowerCase() === 'true',
     anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
-    aiModel: process.env.MEDIA_AI_MODEL || 'claude-sonnet-5-5',
+    aiModel: process.env.MEDIA_AI_MODEL || 'claude-opus-5-5',
     youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
     instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN ?? '',
     instagramBusinessId: process.env.INSTAGRAM_BUSINESS_ID ?? '',
