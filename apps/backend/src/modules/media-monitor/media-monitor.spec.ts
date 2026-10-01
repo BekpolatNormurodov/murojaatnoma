@@ -490,3 +490,21 @@ describe('rules v2.1', () => {
     expect(r("Toshkentning ayrim tumanlarida issiq suv o'chiriladi", "Mirzo Ulug'bek, Yashnobod tumanlarida").relevance).toBeGreaterThanOrEqual(50);
   });
 });
+
+describe('rules v2.2 — Uzbek Cyrillic and utilities', () => {
+  it('reads Uzbek Cyrillic incidents and supply cuts as negative', () => {
+    const { ruleSentiment, ruleTopic } = require('./media-analyzer');
+    expect(ruleSentiment('Мирзо Улуғбек туманидаги кўп қаватли уйда ёнғин содир бўлди', '')).toBe('negative');
+    expect(ruleSentiment('Tungi Toshkentda mudhish to‘qnashuv: Mirzo Ulug‘bek tumanida BYD va Cobalt', '')).toBe('negative');
+    expect(ruleSentiment('26 avgust kuni Mirzo Ulug‘bek tumanida gaz vaqtincha o‘chiriladi', '')).toBe('negative');
+    expect(ruleSentiment('Пожар в Мирзо-Улугбекском районе', '')).toBe('negative');
+    expect(ruleTopic('Мирзо Улуғбек туманида газ вақтинча ўчирилади', '')).toBe('Kommunal xizmatlar');
+    expect(ruleTopic('Мирзо Улуғбек туманидаги мактабда янги ўқув йили', '')).toBe("Ta'lim");
+    // A round-up is not one story: neutral, no topic.
+    expect(ruleSentiment('🗓 3 август нима билан эсда қолди? Асосий воқеаларни битта шарҳда жамладик', 'ёнғин ЙТҲ ўчирилади')).toBe('neutral');
+    expect(ruleTopic('📣 darakchi.uz дайжести. 7 август янгиликлари', 'иссиқ сув ўчирилади')).toBe('Boshqa');
+    expect(ruleTopic('Тошкентда Spark автомобили пиёдалар ўтиш жойида мактаб ўқувчисини уриб юборди', '')).toBe("Yo'l va transport");
+    // Russian is not transliterated: "давно пора" is not a bribe.
+    expect(ruleSentiment('Давно пора: в Мирзо-Улугбекском районе выдали талоны', '')).not.toBe('negative');
+  });
+});
