@@ -148,7 +148,7 @@ class _DetailContent extends StatelessWidget {
             Flexible(child: AppChip(label: application.category)),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         AppCard(child: _StatusTimeline(status: application.status)),
         const SizedBox(height: 20),
         _SectionTitle(l10n.requestDescriptionTitle),
@@ -160,7 +160,7 @@ class _DetailContent extends StatelessWidget {
         _SectionTitle(l10n.requestCitizenInfoTitle),
         const SizedBox(height: 8),
         AppCard(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             children: [
               AppListTile(
@@ -295,7 +295,6 @@ class _StatusTimeline extends StatelessWidget {
                     maxLines: 1,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.caption.copyWith(
-                      fontSize: 11.5,
                       color: i <= currentIndex ? ink : inkMuted,
                       fontWeight: i == currentIndex
                           ? FontWeight.w700

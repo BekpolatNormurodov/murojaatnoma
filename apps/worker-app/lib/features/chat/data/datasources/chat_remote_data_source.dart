@@ -1,8 +1,19 @@
+import 'dart:convert';
+
 import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/mock/mock_chat.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
+
+/// The admin↔employee "chat" module conversation ids (backend `chat` module),
+/// distinct from the `/applications` (murojaat) task-threads. The group thread
+/// and the caller's own admin DM are served by the employee-scoped
+/// `/chat/my/conversations*` endpoints.
+const String _kGroupId = 'group-all';
+const String _kDmPrefix = 'dm-emp-';
+bool _isChatModuleId(String id) => id == _kGroupId || id.startsWith(_kDmPrefix);
 
 /// Xabarlar (chat) moduli uchun masofaviy ma'lumot manbai.
 abstract class ChatRemoteDataSource {
@@ -144,9 +155,32 @@ Conversation _withUpdate(
 ///    "suhbatlar ro'yxati" sifatida moslashtiriladi (pastdagi
 ///    `_conversationFromApplication`ga qarang).
 class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
-  ChatRemoteDataSourceApiImpl(this._client);
+  ChatRemoteDataSourceApiImpl(this._client, this._prefs);
 
   final DioClient _client;
+
+  /// Used only to decode the current employee id (JWT `sub`) so `isMine` is
+  /// correct for admin-chat history (the group thread has many senders).
+  final SharedPreferences _prefs;
+
+  /// Current employee id from the stored JWT `sub`, or null if unavailable.
+  String? _currentEmployeeId() {
+    try {
+      final token = _prefs.getString(AuthInterceptor.tokenKey);
+      if (token == null || token.isEmpty) return null;
+      final parts = token.split('.');
+      if (parts.length != 3) return null;
+      var payload = parts[1].replaceAll('-', '+').replaceAll('_', '/');
+      while (payload.length % 4 != 0) {
+        payload += '=';
+      }
+      final map = jsonDecode(utf8.decode(base64.decode(payload)))
+          as Map<String, dynamic>;
+      return map['sub'] as String?;
+    } on Object {
+      return null;
+    }
+  }
 
   /// Bitta so'rovda so'raladigan maksimal sahifa hajmi (backendda
   /// `PaginationQueryDto.limit` maksimumi — 100).
@@ -187,8 +221,29 @@ class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
 
       var result = applications.map(_conversationFromApplication).toList();
 
-      // Har bir murojaat "shaxsiy" (fuqaro bilan 1:1) suhbat sifatida
-      // moslashtirilgani uchun boshqa turlar bo'yicha filtr — bo'sh natija.
+      // Ma'muriyat (admin) suhbatlarini ham qo'shamiz: xodimning o'z DM'i
+      // (`dm-emp-<self>`) + Umumiy chat (`group-all`) — employee-scoped
+      // `GET /chat/my/conversations` orqali. Bu murojaat (Application)
+      // tizimidan ALOHIDA backend "chat" modulidan keladi. Xatolik bo'lsa
+      // (masalan eski backend) — jim o'tkazib yuboramiz, murojaatlar ro'yxati
+      // baribir ko'rinadi.
+      try {
+        final adminConvos = await _client.dio.get<List<dynamic>>(
+          '/chat/my/conversations',
+        );
+        final adminList = (adminConvos.data ?? const [])
+            .cast<Map<String, dynamic>>()
+            .map(_conversationFromChat)
+            .toList();
+        // Ma'muriyat suhbatlari ro'yxat boshida ko'rinsin.
+        result = [...adminList, ...result];
+      } on DioException {
+        // eski backend / tarmoq — admin suhbatlarsiz davom etamiz.
+      }
+
+      // Oxirgi xabar vaqti bo'yicha kamayish tartibida saralaymiz (yangi tepada).
+      result.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
+
       if (type != null) {
         result = result.where((c) => c.type == type).toList();
       }
@@ -214,6 +269,25 @@ class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
   @override
   Future<List<Message>> messages(String conversationId) async {
     try {
+      // Ma'muriyat (admin) suhbati — backend "chat" modulidan; boshqasi
+      // (murojaat) — /applications tizimidan.
+      if (_isChatModuleId(conversationId)) {
+        final response = await _client.dio.get<List<dynamic>>(
+          '/chat/my/conversations/$conversationId/messages',
+        );
+        final data = response.data ?? const [];
+        final myId = _currentEmployeeId();
+        return data
+            .map(
+              (e) => _messageFromChat(
+                e as Map<String, dynamic>,
+                conversationId: conversationId,
+                myId: myId,
+              ),
+            )
+            .toList();
+      }
+
       final response = await _client.dio.get<List<dynamic>>(
         '/applications/$conversationId/messages',
       );
@@ -257,6 +331,28 @@ class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
           (attachmentUrl.startsWith('http://') ||
               attachmentUrl.startsWith('https://'));
 
+      // Ma'muriyat (admin) suhbati — backend "chat" moduliga (`/chat/my/...`)
+      // yuboriladi; senderId serverda majburan xodimning o'ziga o'rnatiladi.
+      // (Real (socket) rejimda yuborish `chat:send` orqali ketadi; bu REST yo'l
+      // asosan oflayn/mock zaxira uchun.)
+      if (_isChatModuleId(conversationId)) {
+        final result = await _client.dio.post<Map<String, dynamic>>(
+          '/chat/my/conversations/$conversationId/messages',
+          data: {
+            'kind': _kindToContract(type),
+            'text': (text != null && text.isNotEmpty)
+                ? text
+                : _fallbackText(type: type, stickerId: stickerId),
+            if (isRemoteUrl) 'url': attachmentUrl,
+          },
+        );
+        return _messageFromChat(
+          result.data ?? const {},
+          conversationId: conversationId,
+          myId: _currentEmployeeId(),
+        );
+      }
+
       final result = await _client.dio.post<Map<String, dynamic>>(
         '/applications/$conversationId/messages',
         data: {
@@ -299,6 +395,128 @@ Conversation _conversationFromApplication(Map<String, dynamic> json) {
         DateTime.now().toIso8601String(),
     unreadCount: 0,
   );
+}
+
+/// Backend "chat" moduli suhbatini (`GET /chat/my/conversations` elementi —
+/// `ChatConversationResponse`) suhbatlar ro'yxatidagi [Conversation]ga
+/// aylantiradi. `group-all` — Umumiy chat (guruh), qolgani — Ma'muriyat bilan
+/// shaxsiy DM. Sarlavha xodim nuqtai nazaridan qo'yiladi (backend title xodim
+/// ismini saqlaydi — bu yerda "Ma'muriyat"ga almashtiriladi).
+Conversation _conversationFromChat(Map<String, dynamic> json) {
+  final id = json['id'] as String;
+  final isGroup = id == _kGroupId;
+  final last = json['lastMessage'] as Map<String, dynamic>?;
+  return Conversation(
+    id: id,
+    type: isGroup ? ConversationType.umumiy : ConversationType.shaxsiy,
+    title: isGroup ? 'Umumiy chat' : "Ma'muriyat",
+    avatarUrl: json['photo'] as String?,
+    participants: isGroup ? 0 : 2,
+    lastMessagePreview: last == null ? null : _chatPreview(last),
+    lastMessageAt:
+        (last?['createdAt'] as String?) ?? DateTime.now().toIso8601String(),
+    unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
+  );
+}
+
+/// "chat" modul xabari (`ChatMessage`) uchun ro'yxatdagi qisqa oxirgi-xabar
+/// matni (turiga qarab).
+String _chatPreview(Map<String, dynamic> last) {
+  final kind = last['kind'] as String?;
+  final text = last['text'] as String?;
+  return switch (kind) {
+    'image' => 'Rasm',
+    'file' => 'Fayl',
+    'voice' => 'Ovozli xabar',
+    'video' => 'Video xabar',
+    _ => text ?? '',
+  };
+}
+
+/// Backend "chat" modul xabarini (`ChatMessage` — `{id, conversationId,
+/// senderId, kind, text?, fileName?, fileSize?, url?, durationSec?, status,
+/// createdAt}`) domendagi [Message]ga aylantiradi.
+///
+/// `isMine`: admin xabari `senderId == 'me'` — hech qachon "mening" emas;
+/// xodimning o'zi — `senderId == myId`. DM'da `myId` bo'lmasa suhbat ID'sidagi
+/// `dm-emp-<id>` qismidan olinadi.
+Message _messageFromChat(
+  Map<String, dynamic> json, {
+  required String conversationId,
+  required String? myId,
+}) {
+  final senderId = json['senderId'] as String? ?? '';
+  final type = _chatKindToType(json['kind'] as String?);
+  final url = json['url'] as String?;
+  final fileName = json['fileName'] as String?;
+  final fileSize = (json['fileSize'] as num?)?.toInt();
+  final durationSec = (json['durationSec'] as num?)?.toInt();
+
+  final effectiveMyId =
+      myId ??
+      (conversationId.startsWith(_kDmPrefix)
+          ? conversationId.substring(_kDmPrefix.length)
+          : null);
+  final isMine = effectiveMyId != null
+      ? senderId == effectiveMyId
+      : senderId != 'me';
+
+  return Message(
+    id: json['id'] as String? ?? 'RT-${DateTime.now().microsecondsSinceEpoch}',
+    conversationId: json['conversationId'] as String? ?? conversationId,
+    senderId: senderId,
+    senderName: isMine
+        ? 'Siz'
+        : (senderId == 'me' ? "Ma'muriyat" : 'Xodim'),
+    isMine: isMine,
+    type: type,
+    text: json['text'] as String?,
+    attachment: url == null
+        ? null
+        : ChatAttachment(
+            kind: type,
+            path: url,
+            name: fileName,
+            durationMs: durationSec == null ? null : durationSec * 1000,
+            sizeBytes: fileSize,
+          ),
+    createdAt:
+        json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
+    status: _chatStatusToStatus(json['status'] as String?),
+  );
+}
+
+/// "chat" modul `kind` -> ilova [MessageType] (`video` = doiraviy video).
+MessageType _chatKindToType(String? kind) {
+  return switch (kind) {
+    'image' => MessageType.image,
+    'file' => MessageType.file,
+    'voice' => MessageType.voice,
+    'video' => MessageType.roundVideo,
+    _ => MessageType.text,
+  };
+}
+
+/// Ilova [MessageType] -> "chat" modul kontrakt `kind` (`roundVideo` -> `video`,
+/// `sticker` -> `text`).
+String _kindToContract(MessageType type) {
+  return switch (type) {
+    MessageType.image => 'image',
+    MessageType.file => 'file',
+    MessageType.voice => 'voice',
+    MessageType.roundVideo => 'video',
+    MessageType.text || MessageType.sticker => 'text',
+  };
+}
+
+/// Backend "chat" modul `status` -> ilova [MessageStatus].
+MessageStatus _chatStatusToStatus(String? status) {
+  return switch (status) {
+    'read' => MessageStatus.oqildi,
+    'delivered' => MessageStatus.yetkazildi,
+    'sending' => MessageStatus.yuborilmoqda,
+    _ => MessageStatus.yuborildi,
+  };
 }
 
 /// Backend `ApplicationMessage`ni (`id, applicationId, senderRole,

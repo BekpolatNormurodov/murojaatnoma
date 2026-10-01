@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:worker_app/core/utils/attachment_launcher.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_bubble.dart';
 
@@ -21,6 +24,7 @@ class FileBubble extends StatelessWidget {
     final attachment = message.attachment;
     final name = attachment?.name ?? '';
     final size = attachment?.sizeBytes;
+    final path = attachment?.path;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMine = message.isMine;
     final content = bubbleContentColor(isMine: isMine, isDark: isDark);
@@ -36,56 +40,69 @@ class FileBubble extends StatelessWidget {
 
     return BubbleShell(
       isMine: isMine,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: podColor,
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
+      // Butun pufakchani bosish faylni qurilma brauzeri / standart ilovada
+      // ochadi (≥44pt tap target — ikon 40px + vertikal padding). `opaque`
+      // shuning uchun bo'sh joylar ham bosiladi.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: (path == null || path.isEmpty)
+            ? null
+            : () => unawaited(openAttachmentUrl(context, path)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: podColor,
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                  ),
+                  child: Icon(
+                    IconsaxPlusLinear.document_text,
+                    size: 20,
+                    color: accent,
+                  ),
                 ),
-                child: Icon(
-                  IconsaxPlusLinear.document_text,
-                  size: 20,
-                  color: accent,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      name,
-                      style: AppTextStyles.bodyStrong.copyWith(color: content),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (size != null) ...[
-                      const SizedBox(height: 2),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       Text(
-                        _formatSize(size),
-                        style: AppTextStyles.caption.copyWith(color: sizeColor),
+                        name,
+                        style: AppTextStyles.bodyStrong.copyWith(
+                          color: content,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                      if (size != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatSize(size),
+                          style: AppTextStyles.caption.copyWith(
+                            color: sizeColor,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: MessageMeta(message: message),
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: MessageMeta(message: message),
+            ),
+          ],
+        ),
       ),
     );
   }

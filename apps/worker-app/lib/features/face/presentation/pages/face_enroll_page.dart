@@ -357,18 +357,26 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Chap/o'ng slotlar teng (48px) + simmetrik padding — `Expanded`
+    // sarlavha aynan ekran markazida turadi (qarang: `face_checkin_page`
+    // dagi bir xil tuzatish).
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
       child: Row(
         children: [
-          if (context.canPop())
-            AppBackButton(
-              onPressed: context.pop,
-              background: Colors.black.withValues(alpha: 0.28),
-              foreground: AppColors.surface,
-            )
-          else
-            const SizedBox(width: 48),
+          SizedBox(
+            width: 48,
+            child: context.canPop()
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: AppBackButton(
+                      onPressed: context.pop,
+                      background: Colors.black.withValues(alpha: 0.28),
+                      foreground: AppColors.surface,
+                    ),
+                  )
+                : null,
+          ),
           Expanded(
             child: Text(
               context.l10n.faceEnrollTitle,

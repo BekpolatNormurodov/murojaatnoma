@@ -28,7 +28,7 @@
          incoming_call FCM push to surface as a full-screen ring. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
     <application
-        android:label="Hokimiyat Ishchi"
+        android:label="Hokimiyat Xodim"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

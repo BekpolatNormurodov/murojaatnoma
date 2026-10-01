@@ -76,7 +76,10 @@ class LocationTrackingService {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return AndroidSettings(
-          accuracy: LocationAccuracy.high,
+          // Aniqlik OCHIQ berilmaydi → `best` (standart) ishlaydi: sun'iy
+          // yo'ldosh (GPS) fiksini majburlaydi. Ilgari `high` edi — u ba'zan
+          // tarmoq/Wi-Fi asosidagi DAG'AL (~100-500 m) fiksni qaytarib, nuqta
+          // qo'shni mahallaga "tushib" ketardi (mahalla ~500 m).
           distanceFilter: _distanceFilterMeters,
           foregroundNotificationConfig: const ForegroundNotificationConfig(
             notificationTitle: 'Joylashuv kuzatuvi',
@@ -92,7 +95,7 @@ class LocationTrackingService {
         // pauseLocationUpdatesAutomatically=false (iOS oqimni to'xtatmaydi),
         // activityType=other. Ular takroriy bo'lgani uchun ochiq yozilmadi.
         return AppleSettings(
-          accuracy: LocationAccuracy.high,
+          // Aniqlik OCHIQ berilmaydi → `best` (standart). Ilgari `high` edi.
           distanceFilter: _distanceFilterMeters,
           showBackgroundLocationIndicator: true,
         );
@@ -100,8 +103,9 @@ class LocationTrackingService {
       case TargetPlatform.linux:
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
+        // `best` — LocationSettings uchun standart aniqlik, shu bois ochiq
+        // yozilmadi.
         return const LocationSettings(
-          accuracy: LocationAccuracy.high,
           distanceFilter: _distanceFilterMeters,
         );
     }
@@ -109,7 +113,16 @@ class LocationTrackingService {
 
   Future<void> _reportCurrent() async {
     try {
-      final current = await Geolocator.getCurrentPosition();
+      // Darhol yuboriladigan ILK fiks ham ANIQ (best) bo'lsin — vaqt cheklovi
+      // (15 s) sun'iy yo'ldoshga ulanishga imkon beradi; aks holda dag'al
+      // (last-known/tarmoq) fiks kelib, birinchi nuqta noto'g'ri bo'lardi.
+      final current = await Geolocator.getCurrentPosition(
+        // Aniqlik (best) — LocationSettings standarti; vaqt cheklovi (15 s)
+        // sun'iy yo'ldosh fiksiga ulguradi.
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
       await _onPosition(current);
     } on Object catch (error) {
       _lastError = error;

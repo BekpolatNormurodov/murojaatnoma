@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Hokimiyat Ishchi</string>
+	<string>Hokimiyat Xodim</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Vazifa joylashuvini tasdiqlash uchun lokatsiyangiz kerak.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

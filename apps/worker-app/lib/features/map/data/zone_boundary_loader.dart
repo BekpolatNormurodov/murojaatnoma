@@ -36,12 +36,32 @@ class ZoneBoundaryLoader {
   static final Color _mahallaBorderColor =
       AppColors.inkMuted.withValues(alpha: 0.55);
 
-  Future<ZoneBoundaries> load() async {
+  // Biriktirilgan mahallalar ("Ish hududi") — brend yashil to'ldirish +
+  // aniq chegara. Bu xodimning HAQIQIY ish hududi (ilgarigi 2 km ofis
+  // doirasi o'rniga) — shu bois grid/tuman ustidan ajralib turadi.
+  static const Color _workZoneColor = AppColors.primary;
+  static const double _workZoneBorderWidth = 2.2;
+  static const double _workZoneFillAlpha = 0.16;
+
+  /// [assignedCodes] — xodim biriktirilgan mahalla kodlari
+  /// (`properties.id`). Bo'sh bo'lsa (biriktirilmagan / offline) faqat tuman
+  /// chegarasi ish hududi bo'lib qoladi (fallback).
+  Future<ZoneBoundaries> load({Set<String> assignedCodes = const {}}) async {
     final mahallaFeatures = await _load('mahalla');
     final districtFeatures = await _load('district');
 
-    // Chizish tartibi: avval mahallalar (ingichka), so'ng tuman (qalin) —
-    // shunda tuman chegarasi ustidan chiziladi va ajralib turadi.
+    // Biriktirilgan mahalla feature'lari (kodi bo'yicha) — "Ish hududi"
+    // sifatida yashil chiziladi va lokal "ichidami" hisobiga ishlatiladi.
+    final assignedFeatures = assignedCodes.isEmpty
+        ? const <_ZoneFeature>[]
+        : <_ZoneFeature>[
+            for (final f in mahallaFeatures)
+              if (assignedCodes.contains(f.code)) f,
+          ];
+
+    // Chizish tartibi: avval mahallalar to'ri (ingichka), so'ng biriktirilgan
+    // mahallalar (yashil to'ldirish), oxirida tuman (qalin chegara) — shunda
+    // ish hududi yashilligi to'r ustidan ko'rinadi, tuman esa hammasi ustidan.
     final polygons = <Polygon>[
       for (final f in mahallaFeatures)
         ..._polygonsOf(
@@ -49,6 +69,13 @@ class ZoneBoundaryLoader {
           borderColor: _mahallaBorderColor,
           borderWidth: _mahallaBorderWidth,
           fillAlpha: 0,
+        ),
+      for (final f in assignedFeatures)
+        ..._polygonsOf(
+          f,
+          borderColor: _workZoneColor,
+          borderWidth: _workZoneBorderWidth,
+          fillAlpha: _workZoneFillAlpha,
         ),
       for (final f in districtFeatures)
         ..._polygonsOf(
@@ -61,10 +88,69 @@ class ZoneBoundaryLoader {
 
     final mahallas = <MahallaArea>[
       for (final f in mahallaFeatures)
-        MahallaArea(name: f.name, parts: f.parts),
+        MahallaArea(name: f.name, code: f.code, parts: f.parts),
     ];
 
-    return ZoneBoundaries(polygons: polygons, mahallas: mahallas);
+    // Xaritani ochilishda BUTUN tuman ko'rinishi uchun chegara qutisi
+    // (bounding box). Tuman feature'idan (Mirzo Ulug'bek to'liq) hisoblanadi;
+    // tuman bo'lmasa (offline) mahallalar bo'yicha zaxira. Bo'sh bo'lsa null —
+    // u holda kamera boshlang'ich markazda qoladi.
+    final boundsSource =
+        districtFeatures.isNotEmpty ? districtFeatures : mahallaFeatures;
+    final bounds = _boundsOf(boundsSource);
+
+    // Ish hududi hisobi uchun hududlar: biriktirilgan mahallalar bo'lsa —
+    // o'shalar; aks holda (biriktirilmagan) — tuman (fallback). Lokal
+    // ray-casting orqali "xodim ish hududi ichidami" tekshiriladi.
+    final workZone = assignedFeatures.isNotEmpty
+        ? <MahallaArea>[
+            for (final f in assignedFeatures)
+              MahallaArea(name: f.name, code: f.code, parts: f.parts),
+          ]
+        : <MahallaArea>[
+            for (final f in districtFeatures)
+              MahallaArea(name: f.name, code: f.code, parts: f.parts),
+          ];
+
+    return ZoneBoundaries(
+      polygons: polygons,
+      mahallas: mahallas,
+      workZone: workZone,
+      bounds: bounds,
+    );
+  }
+
+  /// [features] barcha poligon nuqtalarini qamrab oladigan chegara qutisi
+  /// (kamera "fitCamera" uchun). Nuqta bo'lmasa `null`.
+  LatLngBounds? _boundsOf(List<_ZoneFeature> features) {
+    final points = <LatLng>[
+      for (final f in features)
+        for (final part in f.parts) ...part.outer,
+    ];
+    if (points.isEmpty) return null;
+    return LatLngBounds.fromPoints(points);
+  }
+
+  /// `/locations/me` — joriy xodimning biriktirilgan mahalla kodlari va
+  /// (server hisoblagan) ish hududi ichida/tashqarisida holati. Xato/offline
+  /// bo'lsa bo'sh natija (biriktirilmagan kabi — tuman fallback ishlaydi).
+  Future<MyZone> loadMyZone() async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>('/locations/me');
+      final data = res.data ?? const <String, dynamic>{};
+      final codes = <String>[
+        for (final c
+            in (data['assignedMahallaCodes'] as List<dynamic>? ?? const []))
+          if (c != null) c.toString(),
+      ];
+      final inside = data['insideAssignedZone'];
+      return MyZone(
+        assignedMahallaCodes: codes,
+        insideAssignedZone: inside is bool ? inside : null,
+      );
+    } on Object {
+      return MyZone.empty;
+    }
   }
 
   Future<List<_ZoneFeature>> _load(String kind) async {
@@ -93,9 +179,11 @@ class ZoneBoundaryLoader {
         }
         if (parts.isEmpty) continue;
 
+        final props = map['properties'] as Map<String, dynamic>?;
         out.add(
           _ZoneFeature(
-            name: _nameOf(map['properties'] as Map<String, dynamic>?),
+            name: _nameOf(props),
+            code: _codeOf(props),
             parts: parts,
           ),
         );
@@ -134,6 +222,17 @@ class ZoneBoundaryLoader {
     }
   }
 
+  /// Mahalla kodi — `properties.id` (masalan "1090080"). Biriktirilgan
+  /// mahallalarni (`assignedMahallaCodes`) tanlash uchun ishlatiladi. Tuman
+  /// feature'ida bo'lmasligi mumkin — u holda bo'sh (kod bo'yicha
+  /// solishtirilmaydi ham).
+  String _codeOf(Map<String, dynamic>? props) {
+    if (props == null) return '';
+    final value = props['id'];
+    if (value == null) return '';
+    return value.toString().trim();
+  }
+
   /// Mahalla nomi — Uzbek (lotin) birinchi, so'ng kirill/rus, oxirida kod.
   String _nameOf(Map<String, dynamic>? props) {
     if (props == null) return '';
@@ -158,16 +257,54 @@ class ZoneBoundaryLoader {
 
 /// Bitta yuklashda qaytadigan natija — chizma poligonlari + mahalla hududlari.
 class ZoneBoundaries {
-  const ZoneBoundaries({required this.polygons, required this.mahallas});
+  const ZoneBoundaries({
+    required this.polygons,
+    required this.mahallas,
+    this.workZone = const [],
+    this.bounds,
+  });
 
   /// Xaritada chiziladigan tuman + mahalla poligonlari (tartibda).
   final List<Polygon> polygons;
 
-  /// Lokal "qaysi mahalla" hisobi uchun mahalla hududlari (nom + halqalar).
+  /// Lokal "qaysi mahalla" hisobi uchun BARCHA mahalla hududlari (nom +
+  /// halqalar) — joriy mahalla chipi uchun.
   final List<MahallaArea> mahallas;
+
+  /// "Ish hududi" hududlari — biriktirilgan mahallalar (bo'lsa), aks holda
+  /// tuman (fallback). Lokal "xodim ish hududi ichidami" hisobiga ishlatiladi
+  /// (banner/marker shu bo'yicha yashil/qizil bo'ladi).
+  final List<MahallaArea> workZone;
+
+  /// Butun tuman (Mirzo Ulug'bek) chegara qutisi — xarita ochilishida kamera
+  /// shu qutiga moslanadi ("fitCamera"), shunda TO'LIQ tuman ko'rinadi.
+  /// `null` bo'lsa (offline/URL yo'q) kamera boshlang'ich markazda qoladi.
+  final LatLngBounds? bounds;
 
   static const ZoneBoundaries empty =
       ZoneBoundaries(polygons: [], mahallas: []);
+}
+
+/// `/locations/me` javobining ish-hududiga oid qismi — xodim biriktirilgan
+/// mahalla kodlari + (server hisoblagan) ish hududi ichida/tashqarisida
+/// holati. Bo'sh kodlar = butun tuman (biriktirilmagan).
+class MyZone {
+  const MyZone({
+    required this.assignedMahallaCodes,
+    required this.insideAssignedZone,
+  });
+
+  /// Biriktirilgan mahalla kodlari (`properties.id` bilan mos). Bo'sh bo'lsa —
+  /// biriktirilmagan (butun tuman ish hududi).
+  final List<String> assignedMahallaCodes;
+
+  /// Server tomonidan hisoblangan "ish hududi ichidami" (oxirgi yuborilgan
+  /// joylashuv bo'yicha). `null` — hali ma'lum emas. Lokal jonli GPS hisobi
+  /// (`ZoneBoundaries.workZone`) mavjud bo'lguncha boshlang'ich/zaxira qiymat.
+  final bool? insideAssignedZone;
+
+  static const MyZone empty =
+      MyZone(assignedMahallaCodes: [], insideAssignedZone: null);
 }
 
 /// Bitta mahalla hududi — ko'rsatiladigan [name] + bir yoki bir nechta poligon
@@ -175,9 +312,17 @@ class ZoneBoundaries {
 /// ([contains]) tekshiruvi lokal ray-casting orqali bajariladi — hech qanday
 /// tarmoq murojaati yo'q.
 class MahallaArea {
-  const MahallaArea({required this.name, required this.parts});
+  const MahallaArea({
+    required this.name,
+    required this.parts,
+    this.code = '',
+  });
 
   final String name;
+
+  /// Mahalla kodi (`properties.id`) — biriktirilgan mahallalarni tanlash
+  /// uchun. Tuman hududida bo'sh.
+  final String code;
   final List<MahallaPolygon> parts;
 
   /// [point] shu mahallaning HAR QANDAY poligoni ichida bo'lsa `true`.
@@ -244,8 +389,13 @@ bool _rayCastInside(LatLng point, List<LatLng> ring) {
 /// mahalla uchun ham bir xil; faqat mahallalar tashqariga [MahallaArea]
 /// sifatida chiqariladi.
 class _ZoneFeature {
-  const _ZoneFeature({required this.name, required this.parts});
+  const _ZoneFeature({
+    required this.name,
+    required this.code,
+    required this.parts,
+  });
 
   final String name;
+  final String code;
   final List<MahallaPolygon> parts;
 }

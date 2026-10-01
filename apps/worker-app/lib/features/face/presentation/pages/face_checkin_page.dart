@@ -546,18 +546,27 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    // Chap va o'ng "slot"lar teng (48px) va padding simmetrik — shu bilan
+    // `Expanded` sarlavha aynan EKRAN markazida turadi. Ilgari orqaga
+    // tugmasi ~40px, o'ng SizedBox 48px va o'ng padding 20px edi — bu
+    // markazlashgan sarlavhani ~12px chapga surib yuborardi.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
       child: Row(
         children: [
-          if (context.canPop())
-            AppBackButton(
-              onPressed: context.pop,
-              background: Colors.black.withValues(alpha: 0.28),
-              foreground: AppColors.surface,
-            )
-          else
-            const SizedBox(width: 48),
+          SizedBox(
+            width: 48,
+            child: context.canPop()
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: AppBackButton(
+                      onPressed: context.pop,
+                      background: Colors.black.withValues(alpha: 0.28),
+                      foreground: AppColors.surface,
+                    ),
+                  )
+                : null,
+          ),
           Expanded(
             child: Text(
               kind == AttendanceScanKind.checkOut

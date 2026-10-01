@@ -56,7 +56,7 @@ class MessageBubble extends StatelessWidget {
     final isMine = message.isMine;
 
     return Padding(
-      padding: EdgeInsets.only(top: firstInGroup ? 10 : 2),
+      padding: EdgeInsets.only(top: firstInGroup ? 8 : 2),
       child: Row(
         mainAxisAlignment: isMine
             ? MainAxisAlignment.end
@@ -231,7 +231,7 @@ class MessageMeta extends StatelessWidget {
       children: [
         Text(
           chatTimeLabel(message.createdAt),
-          style: AppTextStyles.caption.copyWith(color: color, fontSize: 11),
+          style: AppTextStyles.caption.copyWith(color: color),
         ),
         if (isMine) ...[
           const SizedBox(width: 4),

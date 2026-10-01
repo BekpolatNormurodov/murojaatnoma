@@ -165,7 +165,7 @@ class _HomePageState extends State<HomePage> {
             ),
             children: [
               _GreetingHeader(session: session),
-              const SizedBox(height: 22),
+              const SizedBox(height: 24),
               TodayStatusCard(today: today),
               const SizedBox(height: 16),
               if (today?.checkIn == null)
@@ -274,7 +274,7 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
             photoPath: snapshot.data,
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,42 +383,47 @@ class _QuickActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final softColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           l10n.homeQuickActionsTitle,
-          style: AppTextStyles.label.copyWith(color: mutedColor),
+          style: AppTextStyles.label.copyWith(color: softColor),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _QuickActionCard(
-                icon: AppIcons.video,
-                label: l10n.meetingsPageTitle,
-                onTap: () => context.push('/meetings'),
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                child: _QuickActionCard(
+                  icon: AppIcons.video,
+                  label: l10n.meetingsPageTitle,
+                  reserveBadgeSlot: true,
+                  onTap: () => context.push('/meetings'),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickActionCard(
-                icon: AppIcons.lampOn,
-                label: l10n.suggestionsPageTitle,
-                onTap: () => context.push('/suggestions'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickActionCard(
+                  icon: AppIcons.lampOn,
+                  label: l10n.suggestionsPageTitle,
+                  reserveBadgeSlot: true,
+                  onTap: () => context.push('/suggestions'),
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _QuickActionCard(
-                icon: AppIcons.coin,
-                label: l10n.pointsPageTitle,
-                onTap: () => context.push('/points'),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickActionCard(
+                  icon: AppIcons.coin,
+                  label: l10n.pointsPageTitle,
+                  reserveBadgeSlot: true,
+                  onTap: () => context.push('/points'),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     ).animate(delay: 160.ms).fadeIn(duration: 300.ms);
@@ -457,7 +462,7 @@ class _QuickActionCard extends StatelessWidget {
 
     return AppCard(
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -483,7 +488,7 @@ class _QuickActionCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           if (reserveBadgeSlot) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             // Badge'siz kartalar ham bir xil balandlikda bo'lishi uchun
             // belgi uchun joy DOIM band qilinadi — badge bo'lmasa
             // ko'rinmas, lekin o'lchamni saqlaydi (to'r ritmi tekis).
@@ -495,7 +500,7 @@ class _QuickActionCard extends StatelessWidget {
               child: AppBadge(label: badgeText ?? ''),
             ),
           ] else if (badgeText case final text?) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             AppBadge(label: text),
           ],
         ],
@@ -572,13 +577,13 @@ class _StatCard extends StatelessWidget {
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
     return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       child: Column(
         children: [
           Icon(icon, color: color, size: 20),
           const SizedBox(height: 8),
           Text(value, style: AppTextStyles.h3),
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             label,
             style: AppTextStyles.caption.copyWith(color: mutedColor),
@@ -607,7 +612,7 @@ class _TodayOverviewStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final softColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
 
     final chips = <Widget>[
       _OverviewChip(
@@ -641,24 +646,45 @@ class _TodayOverviewStrip extends StatelessWidget {
         ),
     ];
 
+    // To'liq kenglikdagi joylashuv — HECH QANDAY karta yarim kesilmaydi
+    // (eski gorizontal ListView'da 3-karta "Bugu..." bo'lib qirqilardi).
+    // <=3 chip => teng kenglikdagi Expanded qator (`_QuickStats` kabi);
+    // geofence chip qo'shilib 4 bo'lganda => 2 ustunli Wrap.
+    final Widget grid = chips.length <= 3
+        ? IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < chips.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 12),
+                  Expanded(child: chips[i]),
+                ],
+              ],
+            ),
+          )
+        : LayoutBuilder(
+            builder: (context, constraints) {
+              final columnWidth = (constraints.maxWidth - 12) / 2;
+              return Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final chip in chips)
+                    SizedBox(width: columnWidth, child: chip),
+                ],
+              );
+            },
+          );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           l10n.homeTodayOverviewTitle,
-          style: AppTextStyles.label.copyWith(color: mutedColor),
+          style: AppTextStyles.label.copyWith(color: softColor),
         ),
-        const SizedBox(height: 10),
-        SizedBox(
-          height: 104,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: chips.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 10),
-            itemBuilder: (context, index) => chips[index],
-          ),
-        ),
+        const SizedBox(height: 8),
+        grid,
       ],
     ).animate(delay: 230.ms).fadeIn(duration: 300.ms);
   }
@@ -685,40 +711,38 @@ class _OverviewChip extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
-    return SizedBox(
-      // ~2.3 karta ko'rinadigan kenglik — gorizontal skroll borligini
-      // bildiradi va yorliqlar (2 qatorgacha) so'z o'rtasidan kesilmaydi.
-      width: 140,
-      child: AppCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Icon(icon, size: 18, color: tint),
-            if (value case final numericValue?)
-              Text(
-                numericValue,
-                style: AppTextStyles.h3,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              )
-            else
-              Text(
-                label,
-                style: AppTextStyles.bodyStrong.copyWith(color: tint),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            if (value != null)
-              Text(
-                label,
-                style: AppTextStyles.caption.copyWith(color: mutedColor),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: tint),
+          const SizedBox(height: 8),
+          if (value case final numericValue?)
+            Text(
+              numericValue,
+              style: AppTextStyles.h3,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          else
+            Text(
+              label,
+              style: AppTextStyles.bodyStrong.copyWith(color: tint),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          if (value != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: AppTextStyles.caption.copyWith(color: mutedColor),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -743,16 +767,16 @@ class _DashboardSections extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final softColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           l10n.homeSectionsTitle,
-          style: AppTextStyles.label.copyWith(color: mutedColor),
+          style: AppTextStyles.label.copyWith(color: softColor),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         IntrinsicHeight(
           child: Row(
             children: [
@@ -846,7 +870,7 @@ class _RecentActivitySection extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final softColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final line = isDark ? AppColors.darkLine : AppColors.line;
     const items = MockDashboardData.recentActivity;
 
@@ -855,9 +879,9 @@ class _RecentActivitySection extends StatelessWidget {
       children: [
         Text(
           l10n.homeRecentActivityTitle,
-          style: AppTextStyles.label.copyWith(color: mutedColor),
+          style: AppTextStyles.label.copyWith(color: softColor),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         AppCard(
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
@@ -907,7 +931,7 @@ class _ActivityRow extends StatelessWidget {
     };
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       child: Row(
         children: [
           Container(
@@ -977,7 +1001,7 @@ class _HomeSkeleton extends StatelessWidget {
               Row(
                 children: [
                   _box(color: lineColor, height: 56, width: 56, radius: 28),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -990,7 +1014,7 @@ class _HomeSkeleton extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 24),
               _box(color: lineColor, height: 84, radius: 20),
               const SizedBox(height: 16),
               _box(color: lineColor, height: 54, radius: 16),

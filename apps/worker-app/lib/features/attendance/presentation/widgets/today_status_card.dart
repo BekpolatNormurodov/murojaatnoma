@@ -40,7 +40,7 @@ class TodayStatusCard extends StatelessWidget {
             ),
             child: Icon(visual.icon, color: visual.color, size: 26),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

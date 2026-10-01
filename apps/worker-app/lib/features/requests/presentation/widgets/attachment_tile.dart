@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:worker_app/core/recording/video_playback_page.dart';
 import 'package:worker_app/core/recording/voice_playback_controller.dart';
+import 'package:worker_app/core/utils/attachment_launcher.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 
 /// Bitta biriktirilgan faylni ([AttachmentRef]) ko'rsatuvchi qator —
@@ -63,10 +64,17 @@ class AttachmentTile extends StatelessWidget {
 
     final isVoice = attachment.type == AttachmentType.voice;
     final isVideo = attachment.type == AttachmentType.video;
+    final isFile = attachment.type == AttachmentType.file;
+    // Yuborilgan (o'chirilmaydigan) generic hujjat bosilsa uni qurilma
+    // brauzeri / standart ilovada ochadi. Ovoz (chapdagi play tugmasi) va
+    // rasm (lightbox) o'z holicha qoladi; hali yuborilmagan lokal fayllar
+    // (onRemove berilgan javob formasi) ochilmaydi.
     final effectiveOnTap =
         onTap ??
         (isVideo
             ? () => showVideoPlaybackPage(context, path: attachment.path)
+            : (isFile && onRemove == null)
+            ? () => unawaited(openAttachmentUrl(context, attachment.path))
             : null);
 
     return AppListTile(

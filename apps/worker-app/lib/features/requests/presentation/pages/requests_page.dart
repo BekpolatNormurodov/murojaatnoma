@@ -143,7 +143,7 @@ class _RequestsPageState extends State<RequestsPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   _RoundIconButton(
                     icon: IconsaxPlusLinear.filter,
                     active: cubit.hasActiveFilters,

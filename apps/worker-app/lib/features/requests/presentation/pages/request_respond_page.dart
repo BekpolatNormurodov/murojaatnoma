@@ -100,7 +100,7 @@ class _RequestRespondPageState extends State<RequestRespondPage> {
               attachments: _attachments,
               onChanged: (value) => setState(() => _attachments = value),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 24),
             AppButton(
               label: l10n.requestSendResponse,
               icon: AppIcons.send,

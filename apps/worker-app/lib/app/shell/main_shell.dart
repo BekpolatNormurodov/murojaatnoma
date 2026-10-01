@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:worker_app/features/tracking/location_tracking_service.dart';
+import 'package:worker_app/injection.dart';
 
 /// 5-tabli asosiy qobiq (shell) — `StatefulShellRoute.indexedStack` uchun.
 ///
@@ -9,12 +13,40 @@ import 'package:go_router/go_router.dart';
 /// (`IndexedStack` orqali) — tablar orasida almashganda ekran hech qachon
 /// noldan qurilmaydi (scroll pozitsiyasi, `AttendanceCubit`ning yuklangan
 /// ma'lumoti va h.k. saqlanadi).
-class MainShell extends StatelessWidget {
+///
+/// Qobiq o'rnatilishi bilan (ya'ni xodim tizimga kirgach) joylashuv kuzatuvi
+/// boshlanadi — qaysi tab ochiqligidan qat'i nazar. Ilgari kuzatuv FAQAT
+/// "Xarita" tabi ochilganda boshlanardi, shu bois Xaritaga hech kirmagan
+/// xodimning lokatsiyasi serverga umuman yuborilmasdi (admin xaritasida
+/// "Lokatsiya yo'q" bo'lib qolardi).
+class MainShell extends StatefulWidget {
   const MainShell({required this.shell, super.key});
 
   /// GoRouter tomonidan ta'minlangan navigatsiya qobig'i — joriy faol tab
   /// indeksi va tab almashtirish (`goBranch`) shu orqali.
   final StatefulNavigationShell shell;
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  @override
+  void initState() {
+    super.initState();
+    // Tizimga kirish bilanoq joylashuv kuzatuvini boshlaymiz. Idempotent —
+    // allaqachon ishlayotgan bo'lsa hech nima qilmaydi. Ruxsat berilmagan
+    // bo'lsa "Xarita" tabidagi ruxsat ekrani uni qayta so'raydi.
+    unawaited(getIt<LocationTrackingService>().start());
+  }
+
+  @override
+  void dispose() {
+    // Tizimdan chiqilganda (qobiq yo'q qilinganda) kuzatuvni to'xtatamiz —
+    // chiqib ketgan qurilma lokatsiya yubormasligi kerak.
+    unawaited(getIt<LocationTrackingService>().stop());
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,16 +80,16 @@ class MainShell extends StatelessWidget {
     ];
 
     return Scaffold(
-      body: shell,
+      body: widget.shell,
       bottomNavigationBar: _BottomNav(
         items: items,
-        currentIndex: shell.currentIndex,
-        onTap: (index) => shell.goBranch(
+        currentIndex: widget.shell.currentIndex,
+        onTap: (index) => widget.shell.goBranch(
           index,
           // Allaqachon faol tabga qayta bosilganda uning ILK manziliga
           // qaytaradi (masalan chuqur navigatsiyadan tab ildiziga) — bu
           // standart go_router shell-navigatsiya konvensiyasi.
-          initialLocation: index == shell.currentIndex,
+          initialLocation: index == widget.shell.currentIndex,
         ),
       ),
     );

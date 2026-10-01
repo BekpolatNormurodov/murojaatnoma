@@ -68,6 +68,9 @@ class _MapPageState extends State<MapPage> {
   bool _centeredOnFirstFix = false;
 
   /// Tuman + mahalla chegaralari (backend `/zones` dan) — bir marta yuklanadi.
+  /// Endi biriktirilgan mahalla kodlari bilan yuklanadi (qarang:
+  /// [_loadBoundaries]) — biriktirilgan mahallalar "Ish hududi" bo'lib yashil
+  /// chiziladi.
   ZoneBoundaries _boundaries = ZoneBoundaries.empty;
 
   /// Foydalanuvchi HOZIR ichida bo'lgan mahalla (lokal ray-casting natijasi) —
@@ -76,8 +79,17 @@ class _MapPageState extends State<MapPage> {
   /// [_maybeUpdateMahalla]) — har build'da EMAS.
   MahallaArea? _currentMahalla;
 
-  /// [_currentMahalla] oxirgi marta hisoblangan nuqta — juda kichik
-  /// siljishlarda (GPS titrashi) qayta hisoblamaslik uchun.
+  /// Xodim HOZIR ish hududi (biriktirilgan mahallalar, aks holda tuman)
+  /// ichidami — lokal jonli GPS ray-casting natijasi (`_boundaries.workZone`
+  /// bo'yicha). `null` — hali hisoblanmagan; bunday holatda `/locations/me`
+  /// dan kelgan server qiymati (`insideAssignedZone`) zaxira sifatida
+  /// ishlatiladi (banner/marker shu bo'yicha yashil/qizil bo'ladi). Ilgarigi
+  /// ofis DOIRASI (`insideGeofence`) o'rniga — endi ish hududi = mahalla
+  /// poligonlari.
+  bool? _insideZone;
+
+  /// [_currentMahalla]/[_insideZone] oxirgi marta hisoblangan nuqta — juda
+  /// kichik siljishlarda (GPS titrashi) qayta hisoblamaslik uchun.
   LatLng? _lastMahallaFix;
 
   @override
@@ -91,11 +103,27 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _loadBoundaries() async {
-    final boundaries = await ZoneBoundaryLoader(getIt<DioClient>().dio).load();
+    final loader = ZoneBoundaryLoader(getIt<DioClient>().dio);
+    // Avval biriktirilgan mahallalarni bilib olamiz (`/locations/me`), so'ng
+    // geojson'ni SHU kodlar bilan yuklaymiz — biriktirilgan mahallalar "Ish
+    // hududi" bo'lib yashil chiziladi (biriktirilmagan bo'lsa tuman fallback).
+    final myZone = await loader.loadMyZone();
+    final boundaries =
+        await loader.load(assignedCodes: myZone.assignedMahallaCodes.toSet());
     if (!mounted) return;
-    setState(() => _boundaries = boundaries);
+    setState(() {
+      _boundaries = boundaries;
+      // Jonli GPS hisobi kelguncha bannerni server qiymati bilan boshlaymiz.
+      _insideZone ??= myZone.insideAssignedZone;
+    });
+    // Xarita ochilishida BUTUN Mirzo Ulug'bek tumani ko'rinsin — kamerani
+    // tuman chegara qutisiga moslaymiz (biriktirilgan yashil mahallalar shu
+    // tuman ichida ko'rinadi). Shundan keyin jonli GPS kamerani "tortib"
+    // tumanni yashirmaydi (builder'dagi `_boundaries.bounds == null` sharti);
+    // xodim o'z joyiga qaytish uchun recenter FAB'dan foydalanadi.
+    _fitToDistrict();
     // Chegaralar pozitsiyadan KEYIN kelishi mumkin — allaqachon ma'lum
-    // joylashuv bo'lsa, mahallani darhol hisoblaymiz (bo'sh chip ko'rinmasin).
+    // joylashuv bo'lsa, mahalla + ish hududi holatini darhol hisoblaymiz.
     final snapshot = _mapSnapshot(context.read<MapCubit>().state);
     if (snapshot != null) {
       _lastMahallaFix = null; // majburiy qayta hisob
@@ -103,6 +131,24 @@ class _MapPageState extends State<MapPage> {
         LatLng(snapshot.position.latitude, snapshot.position.longitude),
       );
     }
+  }
+
+  /// Kamerani BUTUN tuman (Mirzo Ulug'bek) chegara qutisiga moslaydi —
+  /// xaritada to'liq tuman + biriktirilgan yashil ish hududi ko'rinadi.
+  /// Birinchi kadrdan keyin bajariladi (`MapController` faqat map render
+  /// bo'lgach tayyor). Tuman chegarasi bo'lmasa (offline) hech narsa qilmaydi.
+  /// Muvaffaqiyatli bo'lsa `_centeredOnFirstFix = true` — jonli GPS kamerani
+  /// o'ziga tortmasin.
+  void _fitToDistrict() {
+    final bounds = _boundaries.bounds;
+    if (bounds == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(28)),
+      );
+      _centeredOnFirstFix = true;
+    });
   }
 
   /// Faqat pozitsiya oldingi hisobdan sezilarli (>~15 m) uzoqlashganda joriy
@@ -121,8 +167,17 @@ class _MapPageState extends State<MapPage> {
     }
     _lastMahallaFix = point;
     final match = mahallaAt(point, _boundaries.mahallas);
-    if (!identical(match, _currentMahalla)) {
-      setState(() => _currentMahalla = match);
+    // Ish hududi ichidami — biriktirilgan mahallalar (aks holda tuman) bo'yicha
+    // lokal ray-casting. Ilgarigi ofis DOIRASIGA (insideGeofence) bog'liq emas.
+    // workZone bo'sh bo'lsa (offline geojson) server qiymatini saqlab qolamiz.
+    final inside = _boundaries.workZone.isEmpty
+        ? _insideZone
+        : mahallaAt(point, _boundaries.workZone) != null;
+    if (!identical(match, _currentMahalla) || inside != _insideZone) {
+      setState(() {
+        _currentMahalla = match;
+        _insideZone = inside;
+      });
     }
   }
 
@@ -171,7 +226,13 @@ class _MapPageState extends State<MapPage> {
             LatLng(snapshot.position.latitude, snapshot.position.longitude),
           );
         }
-        if (state is MapTracking && !_centeredOnFirstFix) {
+        // Tuman chegarasi mavjud bo'lsa — xarita BUTUN tumanga freym qilingan
+        // (qarang: [_fitToDistrict]); jonli GPS kamerani o'ziga tortmasin,
+        // aks holda to'liq tuman ko'rinmay qoladi. Faqat tuman chegarasi
+        // yo'q (offline) bo'lganda birinchi fix'da o'z joyiga markazlashadi.
+        if (state is MapTracking &&
+            !_centeredOnFirstFix &&
+            _boundaries.bounds == null) {
           _centeredOnFirstFix = true;
           final position = state.position;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -203,6 +264,7 @@ class _MapPageState extends State<MapPage> {
             mapController: _mapController,
             boundaries: _boundaries.polygons,
             currentMahalla: _currentMahalla,
+            insideZone: _insideZone,
             onRecenter: () => _onRecenterPressed(cubit),
           ),
         };
@@ -262,6 +324,7 @@ class _TrackingScaffold extends StatelessWidget {
     required this.mapController,
     required this.boundaries,
     required this.currentMahalla,
+    required this.insideZone,
     required this.onRecenter,
   });
 
@@ -272,6 +335,10 @@ class _TrackingScaffold extends StatelessWidget {
   /// Foydalanuvchi hozir ichida bo'lgan mahalla — yengil urg'u (faint fill) va
   /// yuqoridagi chip uchun. `null` bo'lsa tuman tashqarisida.
   final MahallaArea? currentMahalla;
+
+  /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — marker
+  /// rangi va pastdagi banner shu bo'yicha. `null` — hali aniqlanmagan.
+  final bool? insideZone;
 
   final VoidCallback onRecenter;
 
@@ -302,21 +369,12 @@ class _TrackingScaffold extends StatelessWidget {
                 // shunda ustidagi ingichka to'r ko'rinib turadi.
                 if (currentMahalla != null)
                   PolygonLayer(polygons: _highlightPolygons(currentMahalla!)),
-                // Tuman + mahalla chegaralari (backend /zones) — hudud
-                // vizualizatsiyasi. Bo'sh bo'lsa (offline/URL yo'q) chizilmaydi.
+                // Ish hududi (biriktirilgan mahallalar yashil to'ldirilgan) +
+                // mahalla to'ri + tuman chegarasi (backend /zones). Ilgarigi
+                // 2 km ofis DOIRASI olib tashlandi — ish hududi endi xodimning
+                // biriktirilgan mahalla poligonlari (biriktirilmagan bo'lsa
+                // tuman). Bo'sh bo'lsa (offline/URL yo'q) chizilmaydi.
                 if (boundaries.isNotEmpty) PolygonLayer(polygons: boundaries),
-                CircleLayer(
-                  circles: [
-                    CircleMarker(
-                      point: _workplaceCenter,
-                      radius: kGeofenceRadius,
-                      useRadiusInMeter: true,
-                      color: AppColors.primary.withValues(alpha: 0.14),
-                      borderStrokeWidth: 2,
-                      borderColor: AppColors.primary,
-                    ),
-                  ],
-                ),
                 // "Breadcrumb" izi — xodim yaqinda yurgan yo'l. Marker OSTIDA,
                 // ingichka brend rangli chiziq (kamida 2 nuqta kerak).
                 if (snapshot != null && snapshot.trail.length >= 2)
@@ -342,7 +400,10 @@ class _TrackingScaffold extends StatelessWidget {
                         width: 44,
                         height: 44,
                         child: _PositionMarker(
-                          insideGeofence: snapshot.insideGeofence,
+                          // Marker rangi ish hududi (mahalla poligonlari)
+                          // bo'yicha; lokal hisob hali kelmagan bo'lsa
+                          // (null) doira-asosli qiymatga qaytadi.
+                          insideGeofence: insideZone ?? snapshot.insideGeofence,
                         ),
                       ),
                     ],
@@ -389,7 +450,10 @@ class _TrackingScaffold extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 460),
                   child: _WorkZoneInfoCard(
-                    insideGeofence: snapshot?.insideGeofence,
+                    // "Ish hududida / hududdan tashqarida" banneri endi
+                    // biriktirilgan mahalla poligonlari (insideZone) bo'yicha —
+                    // ilgarigi ofis doirasi (insideGeofence) o'rniga.
+                    insideZone: insideZone,
                   ),
                 ),
               ),
@@ -642,13 +706,13 @@ class _MahallaChip extends StatelessWidget {
 /// - ish vaqti + tashqarida → ogohlantirish;
 /// - ish vaqti EMAS → neytral (joylashuv e'tiborga olinmaydi).
 ///
-/// [insideGeofence] `null` bo'lishi mumkin (kuzatuv hali boshlanmagan/
+/// [insideZone] `null` bo'lishi mumkin (kuzatuv hali boshlanmagan/
 /// pozitsiya kutilmoqda) — bu holatda, ish vaqti bo'lsa ham, aniq
 /// tasdiqlash/ogohlantirish emas, joylashuv "aniqlanmoqda" (neytral)
 /// ko'rsatiladi.
 ({Color color, IconData icon, String message}) _presenceInfo(
   AppLocalizations l10n, {
-  required bool? insideGeofence,
+  required bool? insideZone,
 }) {
   if (!_isWithinWorkHours(DateTime.now())) {
     return (
@@ -657,14 +721,14 @@ class _MahallaChip extends StatelessWidget {
       message: l10n.mapOffWorkHoursMessage,
     );
   }
-  if (insideGeofence == null) {
+  if (insideZone == null) {
     return (
       color: AppColors.inkMuted,
       icon: AppIcons.location,
       message: l10n.mapLocating,
     );
   }
-  if (insideGeofence) {
+  if (insideZone) {
     return (
       color: AppColors.success,
       icon: AppIcons.tick,
@@ -684,9 +748,11 @@ class _MahallaChip extends StatelessWidget {
 /// Standart holatda YIG'ILGAN (faqat bitta qator) — "wall of text" emas,
 /// foydalanuvchi qoidani o'qishni xohlasa o'zi kengaytiradi.
 class _WorkZoneInfoCard extends StatefulWidget {
-  const _WorkZoneInfoCard({required this.insideGeofence});
+  const _WorkZoneInfoCard({required this.insideZone});
 
-  final bool? insideGeofence;
+  /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — banner
+  /// rangi/matni shu bo'yicha. `null` — hali aniqlanmagan ("aniqlanmoqda").
+  final bool? insideZone;
 
   @override
   State<_WorkZoneInfoCard> createState() => _WorkZoneInfoCardState();
@@ -701,7 +767,7 @@ class _WorkZoneInfoCardState extends State<_WorkZoneInfoCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
-    final info = _presenceInfo(l10n, insideGeofence: widget.insideGeofence);
+    final info = _presenceInfo(l10n, insideZone: widget.insideZone);
 
     return AppCard(
       shadow: true,

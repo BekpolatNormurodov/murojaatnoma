@@ -309,7 +309,7 @@ class _MessageComposerState extends State<MessageComposer> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [

@@ -73,7 +73,7 @@ class ApplicationCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               StatusChip(status: application.status),
             ],
           ),
@@ -92,7 +92,7 @@ class ApplicationCard extends StatelessWidget {
                 variant: priorityVariant(application.priority),
               ),
               if (application.points > 0) ...[
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 const Icon(AppIcons.coin, size: 14, color: AppColors.warning),
                 const SizedBox(width: 4),
                 Text(
