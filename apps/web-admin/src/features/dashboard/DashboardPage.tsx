@@ -51,6 +51,8 @@ import {
   type TrendPoint,
 } from './api/overview';
 import { DashboardMap } from './DashboardMap';
+import { MediaDashboardWidget } from '@/features/media/MediaDashboardWidget';
+import { usePermissions } from '@/shared/lib/permissions';
 
 const PRIORITY_COLOR: Record<Priority, string> = {
   high: '#ef4444',
@@ -96,6 +98,7 @@ export function DashboardPage() {
   const overviewQ = useOverview();
   const data = overviewQ.data;
   const [focusCode, setFocusCode] = useState<string | null>(null);
+  const canSeeMedia = usePermissions().can('media');
 
   return (
     <div>
@@ -139,6 +142,13 @@ export function DashboardPage() {
       ) : (
         <>
           <KpiRow data={data} />
+
+          {/* OAV monitoringi — tuman haqida OAV nima demoqda (xulosa + diqqat talab qiladiganlar) */}
+          {canSeeMedia && (
+            <div className="mt-5">
+              <MediaDashboardWidget />
+            </div>
+          )}
 
           <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
             <TrendCard data={data} className="xl:col-span-2" />

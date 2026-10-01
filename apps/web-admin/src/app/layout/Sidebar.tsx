@@ -23,6 +23,7 @@ import {
   MedalStar,
   Moneys,
   Crown1,
+  Radar,
   type Icon as IconType,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -78,6 +79,8 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.monitoring',
     items: [
+      // OAV monitoringi — kun.uz/Telegram/YouTube/Instagram, AI xulosa (dict'da kalit yo'q → literal)
+      { to: '/media', labelKey: 'OAV monitoringi', icon: Radar, feature: 'media' },
       { to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' },
     ],
   },

@@ -19,6 +19,7 @@ export type Feature =
   | "attendance"
   | "map"
   | "news"
+  | "media"
   | "meetings"
   | "documents"
   | "appUsers"
@@ -43,6 +44,7 @@ const OPERATIONAL_FEATURES: readonly Feature[] = [
   "attendance",
   "map",
   "news",
+  "media",
   "meetings",
   "documents",
   "appUsers",
