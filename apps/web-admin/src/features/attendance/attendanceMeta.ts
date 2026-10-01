@@ -3,13 +3,20 @@ import type { EmployeeTodayEntry, TodayAttendanceStatus } from './api/types';
 /** Har bir davomat holati uchun o'zbekcha yorliq va Badge rangi. */
 export const ATTENDANCE_STATUS_META: Record<
   TodayAttendanceStatus,
-  { label: string; tone: 'success' | 'warning' | 'danger' | 'info' }
+  { label: string; tone: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'primary' }
 > = {
   present: { label: 'Keldi', tone: 'success' },
   late: { label: 'Kechikdi', tone: 'warning' },
   absent: { label: 'Kelmadi', tone: 'danger' },
   left: { label: 'Ketdi', tone: 'info' },
+  leave: { label: "Ta'tilda", tone: 'primary' },
+  dayoff: { label: 'Dam olish', tone: 'neutral' },
 };
+
+/** "Ta'til: Mehnat ta'tili" / "Ruxsat 09:00–11:00: Shifokorga". */
+export function leaveText(l: { type: 'days' | 'hours'; reason: string; from?: string; to?: string }): string {
+  return l.type === 'days' ? `Ta'til: ${l.reason}` : `Ruxsat ${l.from ?? ''}–${l.to ?? ''}: ${l.reason}`;
+}
 
 /** "08:52" — local wall-clock time. */
 export function clockOf(iso: string | null | undefined): string {
@@ -55,7 +62,9 @@ export function humanizeScanReason(reason: string | null): string {
       }
       const geo = p.match(/([\d.]+)m from office, outside ([\d.]+)m geofence/i);
       if (geo) {
-        return `Ofisdan ${distanceText(Number(geo[1]))} uzoqda (ruxsat ${geo[2]} m)`;
+        return /mahalla/i.test(p)
+          ? `Ofisdan ${distanceText(Number(geo[1]))} uzoqda va biriktirilgan mahallasida emas`
+          : `Ofisdan ${distanceText(Number(geo[1]))} uzoqda (ruxsat ${geo[2]} m)`;
       }
       return p;
     })

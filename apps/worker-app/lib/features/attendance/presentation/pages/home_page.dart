@@ -11,13 +11,12 @@ import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/attendance/presentation/widgets/today_status_card.dart';
-import 'package:worker_app/features/dashboard/dashboard_cards.dart';
-import 'package:worker_app/features/dashboard/my_dashboard.dart';
-import 'package:worker_app/features/dashboard/my_dashboard_cubit.dart';
-import 'package:worker_app/injection.dart';
 import 'package:worker_app/features/attendance/presentation/widgets/weekly_mini_chart.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/dashboard/dashboard_cards.dart';
+import 'package:worker_app/features/dashboard/my_dashboard.dart';
+import 'package:worker_app/features/dashboard/my_dashboard_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/injection.dart';
@@ -87,53 +86,46 @@ class _HomePageState extends State<HomePage> {
   /// tekshiruvi (`AttendanceCubit.checkGeofence()` — hech qachon throw
   /// qilmaydi), so'ng natijaga qarab ichkarida `/face/checkin`ga yoki
   /// tashqarida/aniqlanmasa mos `AppAlert`.
-  Future<void> _onCheckInPressed() async {
+  Future<void> _onCheckInPressed() => _precheckThen('/face/checkin');
+
+  /// Server qoidasi bilan oldindan tekshiradi (xodimning o'z ofisi/radiusi
+  /// yoki biriktirilgan mahallasi): ruxsat bo'lsa yoki server javob bermasa
+  /// (oflayn — yakuniy qarorni server yuborishda qiladi) skanerga o'tadi,
+  /// aks holda ANIQ sababni ko'rsatadi ("Ofisdan 1.2 km uzoqdasiz ...").
+  Future<void> _precheckThen(String route) async {
     if (_checkingGeofence) return;
     setState(() => _checkingGeofence = true);
-    bool? inside;
+    final PrecheckOutcome outcome;
     try {
-      inside = await context.read<AttendanceCubit>().checkGeofence();
+      outcome = await context.read<AttendanceCubit>().precheckHere();
     } finally {
       if (mounted) setState(() => _checkingGeofence = false);
     }
     if (!mounted) return;
 
     final l10n = context.l10n;
-    if (inside ?? false) {
-      context.go('/face/checkin');
-    } else if (inside == false) {
-      AppAlert.error(context, l10n.outsideGeofence);
-    } else {
-      // Joylashuv xizmati o'chirilgan/ruxsat berilmagan/boshqa xato —
-      // qarang: `AttendanceCubit._defaultLocate`. Foydalanuvchi hech
-      // qachon uncaught xato yoki jim qolgan tugmani ko'rmaydi.
-      AppAlert.error(context, l10n.locationCheckFailed);
+    switch (outcome.kind) {
+      case PrecheckKind.allowed:
+      case PrecheckKind.unverified:
+        context.go(route);
+      case PrecheckKind.blocked:
+        AppAlert.error(
+          context,
+          outcome.message.isEmpty ? l10n.outsideGeofence : outcome.message,
+        );
+      case PrecheckKind.locationError:
+        // Joylashuv xizmati o'chiq / ruxsat yo'q — sababni o'zini aytamiz.
+        AppAlert.error(
+          context,
+          outcome.message.isEmpty ? l10n.locationCheckFailed : outcome.message,
+        );
     }
   }
 
   /// "Ishdan chiqish" (ketdi) CTA — check-in bilan bir xil geofence
   /// tekshiruvi, so'ng `/face/checkout` (FaceCubit check-out rejimi, face
   /// lane). Faqat bugun kelgan, lekin hali ketmagan xodimga ko'rsatiladi.
-  Future<void> _onCheckOutPressed() async {
-    if (_checkingGeofence) return;
-    setState(() => _checkingGeofence = true);
-    bool? inside;
-    try {
-      inside = await context.read<AttendanceCubit>().checkGeofence();
-    } finally {
-      if (mounted) setState(() => _checkingGeofence = false);
-    }
-    if (!mounted) return;
-
-    final l10n = context.l10n;
-    if (inside ?? false) {
-      context.go('/face/checkout');
-    } else if (inside == false) {
-      AppAlert.error(context, l10n.outsideGeofence);
-    } else {
-      AppAlert.error(context, l10n.locationCheckFailed);
-    }
-  }
+  Future<void> _onCheckOutPressed() => _precheckThen('/face/checkout');
 
   @override
   Widget build(BuildContext context) {

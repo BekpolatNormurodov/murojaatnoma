@@ -120,6 +120,11 @@ class _StatusVisual {
         color: AppColors.accent,
         icon: AppIcons.calendar,
       ),
+      AttendanceStatus.dayOff => _StatusVisual(
+        label: l10n.localeName == 'ru' ? 'Выходной' : 'Dam olish kuni',
+        color: mutedColor,
+        icon: AppIcons.calendar,
+      ),
     };
   }
 

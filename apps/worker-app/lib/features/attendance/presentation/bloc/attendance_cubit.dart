@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/domain/entities/my_attendance.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
@@ -30,15 +31,47 @@ class AttendanceCubit extends Cubit<AttendanceState> {
   AttendanceCubit({
     required AttendanceRepository repository,
     required GeofenceService geofence,
+    AttendancePrecheck? precheck,
     Future<Position> Function() locate = _defaultLocate,
   }) : _repository = repository,
        _geofence = geofence,
+       _precheck = precheck,
        _locate = locate,
        super(const AttendanceLoading());
 
   final AttendanceRepository _repository;
   final GeofenceService _geofence;
+  final AttendancePrecheck? _precheck;
   final Future<Position> Function() _locate;
+
+  /// "Keldim/Ketdim" bosilganda: joylashuvni olib, SERVERdan so'raydi —
+  /// xodimning o'z ofisi/radiusi yoki biriktirilgan mahallasi bo'yicha.
+  /// Hech qachon throw qilmaydi.
+  Future<PrecheckOutcome> precheckHere() async {
+    final Position position;
+    try {
+      position = await _locate();
+    } on Object catch (e) {
+      final text = '$e'.replaceFirst('Bad state: ', '');
+      return PrecheckOutcome.locationError(text);
+    }
+    final precheck = _precheck;
+    if (precheck == null) {
+      final inside = _geofence.isInside(position.latitude, position.longitude);
+      return inside
+          ? const PrecheckOutcome.allowed()
+          : const PrecheckOutcome.blocked('Ish joyingizdan uzoqdasiz');
+    }
+    final result = await precheck.check(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+    );
+    if (result == null) return const PrecheckOutcome.unverified();
+    return result.allowed
+        ? PrecheckOutcome.allowed(result.message)
+        : PrecheckOutcome.blocked(result.message);
+  }
 
   /// Davomat holatini yuklaydi (yoki qayta yuklaydi — masalan pull-to-
   /// refresh). Har doim [AttendanceLoading] bilan boshlanadi, shunda
@@ -71,7 +104,13 @@ class AttendanceCubit extends Cubit<AttendanceState> {
   AttendanceState _loadedStateFor(MyAttendance attendance) {
     if (attendance.week.isEmpty) return const AttendanceEmpty();
 
-    final today = attendance.today.checkIn == null ? null : attendance.today;
+    // Ta'til / dam olish kuni — check-in bo'lmasa ham holat ko'rsatiladi.
+    final status = attendance.today.status;
+    final informative =
+        status == AttendanceStatus.leave || status == AttendanceStatus.dayOff;
+    final today = attendance.today.checkIn == null && !informative
+        ? null
+        : attendance.today;
     return AttendanceLoaded(today: today, week: attendance.week);
   }
 
@@ -113,3 +152,28 @@ class AttendanceCubit extends Cubit<AttendanceState> {
     return Geolocator.getCurrentPosition();
   }
 }
+
+/// [AttendanceCubit.precheckHere] natijasi.
+class PrecheckOutcome extends Equatable {
+  const PrecheckOutcome.allowed([this.message = ''])
+    : kind = PrecheckKind.allowed;
+  const PrecheckOutcome.blocked(this.message) : kind = PrecheckKind.blocked;
+
+  /// Server bilan bog'lanib bo'lmadi — skaner ochiladi, qarorni server qiladi.
+  const PrecheckOutcome.unverified()
+    : kind = PrecheckKind.unverified,
+      message = '';
+  const PrecheckOutcome.locationError(this.message)
+    : kind = PrecheckKind.locationError;
+
+  final PrecheckKind kind;
+  final String message;
+
+  bool get canScan =>
+      kind == PrecheckKind.allowed || kind == PrecheckKind.unverified;
+
+  @override
+  List<Object?> get props => [kind, message];
+}
+
+enum PrecheckKind { allowed, blocked, unverified, locationError }

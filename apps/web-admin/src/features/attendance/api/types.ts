@@ -3,7 +3,16 @@
    GET /api/attendance/today va /api/attendance/report/monthly
    ============================================================ */
 
-export type TodayAttendanceStatus = 'present' | 'late' | 'absent' | 'left';
+/** leave = tasdiqlangan ta'til · dayoff = ish kuni emas (hech kim "kelmadi" emas). */
+export type TodayAttendanceStatus = 'present' | 'late' | 'absent' | 'left' | 'leave' | 'dayoff';
+
+/** Approved leave touching the day: whole day, or an excused hours window. */
+export interface TodayLeave {
+  type: 'days' | 'hours';
+  reason: string;
+  from?: string;
+  to?: string;
+}
 
 // Fields marked optional arrived with the richer davomat board — older
 // backends simply omit them and the UI hides those details.
@@ -58,6 +67,9 @@ export interface EmployeeTodayEntry {
   earlyLeaveMinutes?: number;
   failedScans?: TodayFailedScan[];
   live?: TodayLiveLocation | null;
+  leave?: TodayLeave | null;
+  /** Lateness / early leave covered by an approved hours-leave. */
+  excused?: boolean;
 }
 
 export interface TodayAttendanceSummary {
@@ -75,6 +87,7 @@ export interface TodayAttendanceSummary {
   onTime?: number;
   earlyLeave?: number;
   withFailedScans?: number;
+  onLeave?: number;
 }
 
 export interface TodayAttendance {
@@ -83,6 +96,8 @@ export interface TodayAttendance {
   summary: TodayAttendanceSummary;
   workStartTime?: string;
   workEndTime?: string;
+  /** false on a non-working day (server WORK_DAYS). */
+  isWorkday?: boolean;
 }
 
 /* ------------------------------------------------------------

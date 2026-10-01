@@ -9,6 +9,7 @@ import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
+import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
@@ -271,7 +272,15 @@ Future<void> configureDependencies() async {
       () => AttendanceCubit(
         repository: getIt<AttendanceRepository>(),
         geofence: getIt<GeofenceService>(),
+        precheck: getIt<AttendancePrecheck>(),
       ),
+    )
+    // "Shu yerdan belgilay olamanmi?" — server qoidasi (xodimning ofisi +
+    // biriktirilgan mahallalari); demo rejimda mahalliy radius.
+    ..registerLazySingleton<AttendancePrecheck>(
+      () => AppConfig.useMock
+          ? LocalAttendancePrecheck(getIt<GeofenceService>())
+          : ApiAttendancePrecheck(getIt<DioClient>()),
     )
     // `FaceCubit` — sahifa ochilganda joriy sessiyaning `workerId`si bilan
     // yaratiladi: `getIt<FaceCubit>(param1: workerId)`. Bitta factory
@@ -287,6 +296,7 @@ Future<void> configureDependencies() async {
         checkIn: getIt<CheckIn>(),
         checkOut: getIt<CheckOut>(),
         geofence: getIt<GeofenceService>(),
+        precheck: getIt<AttendancePrecheck>(),
         workerId: workerId,
         facePhotoStore: getIt<FacePhotoStore>(),
         // Ataylab sekinroq (~3s) skaner: yuz ramkada barqaror ushlanib

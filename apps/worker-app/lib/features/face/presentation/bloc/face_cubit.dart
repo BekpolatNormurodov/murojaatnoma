@@ -15,6 +15,7 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
 import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
@@ -111,6 +112,7 @@ class FaceCubit extends Cubit<FaceState> {
     required CheckOut checkOut,
     required GeofenceService geofence,
     required String workerId,
+    AttendancePrecheck? precheck,
     FacePhotoStore? facePhotoStore,
     Duration stableDuration = const Duration(milliseconds: 900),
     Duration livenessTimeout = const Duration(seconds: 20),
@@ -123,6 +125,7 @@ class FaceCubit extends Cubit<FaceState> {
        _checkIn = checkIn,
        _checkOut = checkOut,
        _geofence = geofence,
+       _precheck = precheck,
        _workerId = workerId,
        _facePhotoStore = facePhotoStore,
        _stableDuration = stableDuration,
@@ -143,6 +146,9 @@ class FaceCubit extends Cubit<FaceState> {
   /// chaqirmaydi, shuning uchun mavjud xatti-harakat o'zgarishsiz qoladi.
   final CheckOut _checkOut;
   final GeofenceService _geofence;
+
+  /// Server qoidasi (xodimning ofisi + mahallalari). `null` — mahalliy radius.
+  final AttendancePrecheck? _precheck;
   final String _workerId;
 
   /// Enrollment paytida skanerlangan yuz kadrini profil avatari uchun
@@ -974,9 +980,10 @@ class FaceCubit extends Cubit<FaceState> {
         // bo'lsa (masalan server shabloni bilan mos kelmadi) muvaffaqiyat
         // EMAS: sababni ko'rsatamiz.
         if (!result.isValid) {
+          // Server sababi inglizcha texnik matn — xodimga tushunarli qilib.
           emit(
             result.reason != null && result.reason!.isNotEmpty
-                ? FaceError(result.reason!)
+                ? FaceError(humanizeScanReason(result.reason))
                 : const FaceMatchFailed(),
           );
           return;
@@ -1005,6 +1012,18 @@ class FaceCubit extends Cubit<FaceState> {
   Future<GeofenceStatus> checkGeofence() async {
     try {
       final position = await _locate();
+      final precheck = _precheck;
+      if (precheck != null) {
+        final result = await precheck.check(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          accuracy: position.accuracy,
+        );
+        if (result == null) return const GeofenceStatus.unknown();
+        return result.allowed
+            ? GeofenceStatus.inside(result.distanceM)
+            : GeofenceStatus.outside(result.distanceM);
+      }
       final distance = _geofence.distanceMeters(
         kWorkplaceLat,
         kWorkplaceLng,

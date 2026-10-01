@@ -10,6 +10,7 @@ import {
   distanceText,
   hoursText,
   humanizeScanReason,
+  leaveText,
   minutesText,
 } from './attendanceMeta';
 
@@ -42,6 +43,13 @@ export function AttendanceDayDetail({
           {meta.label}
         </Badge>
       </div>
+
+      {entry.leave && (
+        <p className="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-[12.5px] text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
+          {leaveText(entry.leave)}
+          {entry.excused && ' — kechikish/erta ketish hisoblanmaydi'}
+        </p>
+      )}
 
       <ol className="relative mt-4 space-y-4 border-l border-line pl-5">
         <TimelineItem

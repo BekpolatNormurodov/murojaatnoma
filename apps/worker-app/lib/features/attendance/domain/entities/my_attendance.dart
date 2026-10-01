@@ -115,6 +115,11 @@ AttendanceStatus _statusFromApi(String? raw) {
       return AttendanceStatus.late;
     case 'absent':
       return AttendanceStatus.absent;
+    // Tasdiqlangan ta'til / dam olish kuni — "kelmadi" EMAS.
+    case 'leave':
+      return AttendanceStatus.leave;
+    case 'dayoff':
+      return AttendanceStatus.dayOff;
     case 'left':
       return AttendanceStatus.present;
     case 'present':

@@ -41,18 +41,21 @@ export function AttendanceBoard() {
   const s = useMemo(() => {
     const checkedIn = roster.filter((r) => r.checkIn);
     const late = checkedIn.filter((r) => r.checkIn!.isLate);
+    const onLeave = roster.filter((r) => r.status === 'leave').length;
     return {
       total: roster.length,
+      onLeave,
       checkedIn: checkedIn.length,
       onTime: checkedIn.length - late.length,
       late: late.length,
-      absent: roster.length - checkedIn.length,
+      // Ta'tildagi / dam olish kunidagi xodim "kelmagan" emas.
+      absent: roster.filter((r) => r.status === 'absent').length,
       working: checkedIn.filter((r) => !r.checkOut).length,
       left: checkedIn.filter((r) => r.checkOut).length,
       early: roster.filter((r) => (r.earlyLeaveMinutes ?? 0) > 0).length,
       lists: {
         late: [...late].sort((a, b) => b.checkIn!.lateMinutes - a.checkIn!.lateMinutes),
-        absent: roster.filter((r) => !r.checkIn),
+        absent: roster.filter((r) => r.status === 'absent'),
         issues: roster.filter(
           (r) =>
             (r.failedScans?.length ?? 0) > 0 ||
@@ -83,7 +86,9 @@ export function AttendanceBoard() {
               </span>
             </h3>
             <p className="text-xs text-ink-muted">
-              {schedule ? `Ish vaqti ${schedule} · ` : ''}kelish/ketish yuz va joy bilan tasdiqlanadi
+              {data?.isWorkday === false
+                ? 'Bugun dam olish kuni — kelmaganlar hisoblanmaydi'
+                : `${schedule ? `Ish vaqti ${schedule} · ` : ''}kelish/ketish yuz va joy bilan tasdiqlanadi`}
             </p>
           </div>
         </div>
@@ -143,6 +148,7 @@ export function AttendanceBoard() {
                   <Legend color="bg-primary-500" label={`O'z vaqtida ${s.onTime}`} />
                   <Legend color="bg-amber-500" label={`Kechikib ${s.late}`} />
                   <Legend color="bg-surface-2 ring-1 ring-line" label={`Kelmagan ${s.absent}`} />
+                  {s.onLeave > 0 && <Legend color="bg-sky-500" label={`Ta'tilda ${s.onLeave}`} />}
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-2">
                   <Mini label="Ishda" value={s.working} />

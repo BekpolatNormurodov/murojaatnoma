@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
-enum AttendanceStatus { present, late, absent, leave }
+/// `leave` — tasdiqlangan ta'til; `dayOff` — ish kuni emas (WORK_DAYS).
+enum AttendanceStatus { present, late, absent, leave, dayOff }
 
 class AttendanceDay extends Equatable {
   const AttendanceDay({

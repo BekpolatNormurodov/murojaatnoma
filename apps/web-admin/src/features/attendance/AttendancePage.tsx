@@ -44,6 +44,7 @@ import {
   ATTENDANCE_STATUS_META,
   clockOf,
   hoursText,
+  leaveText,
   minutesText,
 } from './attendanceMeta';
 import type { EmployeeTodayEntry } from './api/types';
@@ -78,7 +79,7 @@ function ChartTooltip({
   );
 }
 
-type FilterKey = 'all' | 'working' | 'late' | 'absent' | 'left' | 'issues';
+type FilterKey = 'all' | 'working' | 'late' | 'absent' | 'left' | 'leave' | 'issues';
 
 const early = (r: EmployeeTodayEntry) => r.earlyLeaveMinutes ?? 0;
 const failedCount = (r: EmployeeTodayEntry) => r.failedScans?.length ?? 0;
@@ -90,8 +91,10 @@ const FILTERS: { key: FilterKey; label: string; test: (r: EmployeeTodayEntry) =>
   { key: 'all', label: 'Barchasi', test: () => true },
   { key: 'working', label: 'Ishda', test: (r) => !!r.checkIn && !r.checkOut },
   { key: 'late', label: 'Kechikdi', test: (r) => !!r.checkIn?.isLate },
-  { key: 'absent', label: 'Kelmadi', test: (r) => !r.checkIn },
+  // Ta'tildagi / dam olish kunidagi xodim "kelmadi" emas.
+  { key: 'absent', label: 'Kelmadi', test: (r) => r.status === 'absent' },
   { key: 'left', label: 'Ketdi', test: (r) => !!r.checkOut },
+  { key: 'leave', label: "Ta'tilda", test: (r) => r.status === 'leave' },
   { key: 'issues', label: 'Muammoli', test: hasIssue },
 ];
 
@@ -177,7 +180,8 @@ export function AttendancePage() {
       lateTotal: summary?.lateTotal ?? lateRows.length,
       lateMinutes: lateRows.reduce((s, r) => s + (r.checkIn?.lateMinutes ?? 0), 0),
       onTime: summary?.onTime ?? checkedIn - lateRows.length,
-      absent: summary?.absent ?? roster.filter((r) => !r.checkIn).length,
+      absent: summary?.absent ?? roster.filter((r) => r.status === 'absent').length,
+      onLeave: summary?.onLeave ?? roster.filter((r) => r.status === 'leave').length,
       left: summary?.left ?? roster.filter((r) => r.checkOut).length,
       earlyLeave: summary?.earlyLeave ?? roster.filter((r) => early(r) > 0).length,
       withFailed: summary?.withFailedScans ?? roster.filter((r) => failedCount(r) > 0).length,
@@ -227,8 +231,12 @@ export function AttendancePage() {
     { name: 'Ishda (kechikib)', value: summary?.late ?? 0, fill: '#f59e0b' },
     { name: 'Ketdi', value: summary?.left ?? 0, fill: '#6366f1' },
     { name: 'Kelmadi', value: summary?.absent ?? 0, fill: '#ef4444' },
+    ...(stats.onLeave ? [{ name: "Ta'tilda", value: stats.onLeave, fill: '#0ea5e9' }] : []),
   ];
-  const attendancePct = stats.total ? Math.round((stats.checkedIn / stats.total) * 100) : 0;
+  // Kutilganlar = jami − ta'tildagilar (ta'tildagi xodim davomatni tushirmaydi).
+  const expected = Math.max(stats.total - stats.onLeave, 0);
+  const attendancePct = expected ? Math.min(100, Math.round((stats.checkedIn / expected) * 100)) : 0;
+  const dayOff = data?.isWorkday === false;
 
   const monthLine = useMemo(() => {
     if (!monthly.data) return null;
@@ -272,6 +280,14 @@ export function AttendancePage() {
         </Card>
       ) : isSingleDay ? (
         <>
+          {dayOff && (
+            <div className="mb-4 flex items-center gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-[13px] text-ink-soft">
+              <Clock size={18} variant="Bulk" className="shrink-0 text-ink-muted" />
+              {isToday ? 'Bugun' : 'Bu kun'} dam olish kuni — kelmaganlar "Kelmadi" deb hisoblanmaydi. Kelganlar
+              odatdagidek ko‘rinadi.
+            </div>
+          )}
+
           {/* KPI */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
             {isLoading ? (
@@ -305,8 +321,16 @@ export function AttendancePage() {
                 <StatCard
                   icon={CloseCircle}
                   label="Kelmadi"
-                  value={String(stats.absent)}
-                  hint={stats.total ? `Davomat ${attendancePct}%` : undefined}
+                  value={dayOff ? '—' : String(stats.absent)}
+                  hint={
+                    dayOff
+                      ? 'Dam olish kuni'
+                      : stats.onLeave
+                        ? `Ta'tilda: ${stats.onLeave} · davomat ${attendancePct}%`
+                        : stats.total
+                          ? `Davomat ${attendancePct}%`
+                          : undefined
+                  }
                   tint="#ef4444"
                   index={3}
                 />
@@ -560,6 +584,16 @@ export function AttendancePage() {
                             {r.checkIn?.isLate && (
                               <span className="mt-0.5 block text-[11px] font-medium text-amber-600">
                                 {minutesText(r.checkIn.lateMinutes)} kechikdi
+                              </span>
+                            )}
+                            {r.excused && (
+                              <span className="mt-0.5 block text-[11px] font-medium text-sky-600" title={r.leave ? leaveText(r.leave) : undefined}>
+                                ruxsat bilan
+                              </span>
+                            )}
+                            {!r.checkIn && r.leave && (
+                              <span className="mt-0.5 block max-w-44 truncate text-[11px] text-ink-muted" title={leaveText(r.leave)}>
+                                {leaveText(r.leave)}
                               </span>
                             )}
                           </td>
