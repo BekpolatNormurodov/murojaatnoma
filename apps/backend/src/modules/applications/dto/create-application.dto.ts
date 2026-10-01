@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Priority } from '@prisma/client';
+import { ApplicationKind, Priority } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { E164_PHONE_REGEX } from '../../../common/constants/validation.constants';
@@ -62,4 +62,24 @@ export class CreateApplicationDto {
   @Min(-180)
   @Max(180)
   lng?: number;
+
+  @ApiPropertyOptional({
+    enum: ApplicationKind,
+    description: 'ARIZA | SHIKOYAT — omitted: taken from the "[KIND|Category]" subject prefix',
+  })
+  @IsOptional()
+  @IsEnum(ApplicationKind)
+  kind?: ApplicationKind;
+
+  @ApiPropertyOptional({ example: 'Kommunal' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @ApiPropertyOptional({ description: 'Selfie taken when filing (uploaded first, URL here)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  applicantPhotoUrl?: string;
 }

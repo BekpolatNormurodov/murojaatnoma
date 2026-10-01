@@ -9,6 +9,7 @@ import { AppConfig } from '../../common/config/configuration';
 import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
 import { UploadsController } from './uploads.controller';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 /** Max size accepted for a single application attachment upload (photo/video/voice). */
 const MAX_ATTACHMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -18,6 +19,7 @@ const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
 
 @Module({
   imports: [
+    NotificationsModule,
     // Backs POST /applications/:id/attachments/upload (see
     // applications.controller.ts). Configured via MulterModule.registerAsync
     // (rather than inline FileInterceptor options) so the destination

@@ -15,6 +15,8 @@ export const RT_EVENTS = {
   messageEdited: 'chat.message.edited',
   read: 'chat.read',
   conversation: 'chat.conversation',
+  /** A new admin-panel notification (bell) — pushed live to every admin socket. */
+  adminNotification: 'admin.notification',
 } as const;
 
 export interface ChatMessageCreatedEvent {

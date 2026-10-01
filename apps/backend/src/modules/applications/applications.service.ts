@@ -2,11 +2,16 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import {
+  AdminNotificationType,
   Application,
   ApplicationEventType,
+  ApplicationKind,
   ApplicationMessage,
   ApplicationStatus,
   Attachment,
@@ -15,6 +20,7 @@ import {
   NotificationType,
   Priority,
 } from '@prisma/client';
+import { NotificationCenter } from '../notifications/notification-center.service';
 import { PushService } from '../push/push.service';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
@@ -30,7 +36,12 @@ import { ApplicationEventWithNames } from './interfaces/application-event-with-n
 
 /** Allowed forward transitions for the application lifecycle: new -> in_progress -> resolved/rejected. */
 const ALLOWED_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
-  [ApplicationStatus.NEW]: [ApplicationStatus.IN_PROGRESS, ApplicationStatus.REJECTED],
+  // The hokimiyat may answer a fresh one itself (NEW -> RESOLVED, with an answer).
+  [ApplicationStatus.NEW]: [
+    ApplicationStatus.IN_PROGRESS,
+    ApplicationStatus.RESOLVED,
+    ApplicationStatus.REJECTED,
+  ],
   [ApplicationStatus.IN_PROGRESS]: [
     ApplicationStatus.RESOLVED,
     ApplicationStatus.REJECTED,
@@ -40,12 +51,36 @@ const ALLOWED_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
   [ApplicationStatus.REJECTED]: [],
 };
 
-/** SLA: how long the hokimiyat has to resolve a murojaat, by priority. */
-export const SLA_HOURS: Record<Priority, number> = {
-  [Priority.high]: 48,
-  [Priority.medium]: 5 * 24,
-  [Priority.low]: 10 * 24,
+/**
+ * SLA: how long the hokimiyat has to resolve, by kind and priority. A
+ * complaint (shikoyat) is about something that went wrong — it gets half
+ * the time an ordinary request (ariza) gets.
+ */
+export const SLA_HOURS_BY_KIND: Record<ApplicationKind, Record<Priority, number>> = {
+  [ApplicationKind.ARIZA]: {
+    [Priority.high]: 48,
+    [Priority.medium]: 5 * 24,
+    [Priority.low]: 10 * 24,
+  },
+  [ApplicationKind.SHIKOYAT]: {
+    [Priority.high]: 24,
+    [Priority.medium]: 3 * 24,
+    [Priority.low]: 5 * 24,
+  },
 };
+/** Ariza SLA (kept for callers that don't know the kind yet). */
+export const SLA_HOURS: Record<Priority, number> = SLA_HOURS_BY_KIND[ApplicationKind.ARIZA];
+
+export function slaHours(kind: ApplicationKind, priority: Priority): number {
+  return SLA_HOURS_BY_KIND[kind][priority];
+}
+
+/** A citizen may reopen a resolved murojaat within this many days… */
+export const REOPEN_WINDOW_DAYS = 7;
+/** …and at most this many times (then it's a new murojaat / admin escalation). */
+export const MAX_REOPENS = 2;
+
+const MIN_REASON_LENGTH = 5;
 
 /** Application + the assignee's display info (list/detail screens). */
 export type ApplicationWithAssignee = Application & {
@@ -79,39 +114,84 @@ const ASSIGNEE_SELECT = {
 } as const;
 
 @Injectable()
-export class ApplicationsService {
+export class ApplicationsService implements OnModuleInit {
+  private readonly logger = new Logger(ApplicationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushService,
+    private readonly notify: NotificationCenter,
   ) {}
+
+  /**
+   * One-time backfill: rows filed before `kind`/`category` existed carry them
+   * only in the "[SHIKOYAT|Kommunal] …" subject prefix.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const rows = await this.prisma.application.findMany({
+        where: { category: null, subject: { startsWith: '[' } },
+        select: { id: true, subject: true },
+        take: 5000,
+      });
+      for (const r of rows) {
+        await this.prisma.application.update({
+          where: { id: r.id },
+          data: { kind: kindOf(r.subject), category: categoryOf(r.subject) || null },
+        });
+      }
+    } catch (e) {
+      this.logger.warn(`kind backfill skipped: ${e instanceof Error ? e.message : e}`);
+    }
+  }
 
   async create(dto: CreateApplicationDto): Promise<Application> {
     const priority = dto.priority ?? Priority.medium;
-    const dueAt = new Date(Date.now() + SLA_HOURS[priority] * 3_600_000);
-    return this.prisma.$transaction(async (tx) => {
-      const application = await tx.application.create({
-        data: { ...dto, priority, dueAt },
+    const kind = dto.kind ?? kindOf(dto.subject);
+    const category = dto.category?.trim() || categoryOf(dto.subject) || null;
+    const hours = slaHours(kind, priority);
+    const dueAt = new Date(Date.now() + hours * 3_600_000);
+    const application = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.application.create({
+        data: { ...dto, kind, category, priority, dueAt },
       });
 
       await tx.applicationEvent.create({
         data: {
-          applicationId: application.id,
+          applicationId: row.id,
           type: ApplicationEventType.CREATED,
-          toStatus: application.status,
+          toStatus: row.status,
         },
       });
 
-      return application;
+      return row;
     });
+
+    const what = kind === ApplicationKind.SHIKOYAT ? 'shikoyat' : 'murojaat';
+    const title = titleOf(application.subject);
+    void this.notify.admin({
+      type: AdminNotificationType.request,
+      title: kind === ApplicationKind.SHIKOYAT ? 'Yangi shikoyat' : 'Yangi murojaat',
+      message: `${application.applicantFullName}: ${title}`,
+      href: `/requests?id=${application.id}`,
+    });
+    void this.notify.citizen(
+      application.applicantPhone,
+      `${capitalize(what)}ingiz qabul qilindi`,
+      `"${title}" — ${hoursText(hours)} ichida ko'rib chiqiladi. Raqami: ${shortId(application.id)}`,
+      application.id,
+    );
+    return application;
   }
 
   async findAll(
     query: ListApplicationsQueryDto,
     user?: AuthenticatedUser,
   ): Promise<Paginated<ApplicationWithAssignee>> {
-    const { page, limit, status, assignedTo } = query;
+    const { page, limit, status, assignedTo, kind } = query;
     const where = {
       ...(status ? { status } : {}),
+      ...(kind ? { kind } : {}),
       // `assignedTo=me` — the worker-app "Menga biriktirilgan" tab, filtered
       // server-side instead of downloading the whole inbox.
       ...(assignedTo === 'me' && user && user.role !== 'CITIZEN'
@@ -161,15 +241,40 @@ export class ApplicationsService {
     const application = await this.findOne(id);
     const allowedNextStatuses = ALLOWED_TRANSITIONS[application.status];
     const isStatusChange = dto.status !== application.status;
+    const note = dto.note?.trim() ?? '';
 
     if (isStatusChange && !allowedNextStatuses.includes(dto.status)) {
       throw new BadRequestException(
         `Cannot transition application from ${application.status} to ${dto.status}`,
       );
     }
+    if (isStatusChange) {
+      // Rules every client gets the same way (web, worker-app):
+      if (
+        dto.status === ApplicationStatus.IN_PROGRESS &&
+        !(dto.assignedEmployeeId ?? application.assignedEmployeeId)
+      ) {
+        throw new BadRequestException('Avval murojaatni xodimga biriktiring');
+      }
+      if (dto.status === ApplicationStatus.REJECTED && note.length < MIN_REASON_LENGTH) {
+        throw new BadRequestException('Rad etish sababini yozing — fuqaro uni ko‘radi');
+      }
+      if (dto.status === ApplicationStatus.RESOLVED && note.length < MIN_REASON_LENGTH) {
+        const staffReplied = await this.prisma.applicationMessage.count({
+          where: { applicationId: id, senderRole: MessageSenderRole.EMPLOYEE },
+        });
+        if (staffReplied === 0) {
+          throw new BadRequestException('Fuqaroga javob yozing — natija nima bo‘ldi');
+        }
+      }
+    }
+    const adminReopen =
+      isStatusChange &&
+      application.status === ApplicationStatus.RESOLVED &&
+      dto.status === ApplicationStatus.IN_PROGRESS;
 
-    return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.application.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.application.update({
         where: { id },
         data: {
           status: dto.status,
@@ -180,6 +285,9 @@ export class ApplicationsService {
           ...(isStatusChange && dto.status === ApplicationStatus.IN_PROGRESS
             ? { resolvedAt: null }
             : {}),
+          ...(adminReopen
+            ? { dueAt: reopenDueAt(application), escalatedAt: null, rating: null }
+            : {}),
         },
       });
 
@@ -187,16 +295,59 @@ export class ApplicationsService {
         await tx.applicationEvent.create({
           data: {
             applicationId: id,
-            type: ApplicationEventType.STATUS_CHANGED,
+            type: adminReopen ? ApplicationEventType.REOPENED : ApplicationEventType.STATUS_CHANGED,
             fromStatus: application.status,
             toStatus: dto.status,
             actorEmployeeId,
+            note: note || null,
           },
         });
+        // The reason / answer goes on the thread — the citizen reads it there.
+        if (note) {
+          await tx.applicationMessage.create({
+            data: {
+              applicationId: id,
+              senderRole: MessageSenderRole.EMPLOYEE,
+              senderName: 'Hokimiyat',
+              text:
+                dto.status === ApplicationStatus.REJECTED
+                  ? `Murojaat rad etildi. Sabab: ${note}`
+                  : note,
+            },
+          });
+        }
       }
 
-      return updated;
+      return row;
     });
+
+    if (isStatusChange) void this.tellCitizenAboutStatus(updated, note);
+    return updated;
+  }
+
+  /** What the citizen sees in their inbox when the status moves. */
+  private async tellCitizenAboutStatus(a: Application, note: string): Promise<void> {
+    const title = titleOf(a.subject);
+    switch (a.status) {
+      case ApplicationStatus.IN_PROGRESS:
+        return this.notify.citizen(a.applicantPhone, 'Murojaatingiz ko‘rib chiqilmoqda', `"${title}"`, a.id);
+      case ApplicationStatus.RESOLVED:
+        return this.notify.citizen(
+          a.applicantPhone,
+          'Murojaatingiz hal qilindi',
+          `"${title}" — natijani baholang. Hal bo‘lmagan bo‘lsa, ${REOPEN_WINDOW_DAYS} kun ichida qayta ochishingiz mumkin.`,
+          a.id,
+        );
+      case ApplicationStatus.REJECTED:
+        return this.notify.citizen(
+          a.applicantPhone,
+          'Murojaatingiz rad etildi',
+          note ? `"${title}" — sabab: ${note.slice(0, 200)}` : `"${title}"`,
+          a.id,
+        );
+      default:
+        return undefined;
+    }
   }
 
   /**
@@ -222,10 +373,18 @@ export class ApplicationsService {
       },
     });
     if (isCitizen && application.assignedEmployeeId) {
-      void this.notify(
+      void this.notify.employee(
         application.assignedEmployeeId,
         'Fuqarodan yangi xabar',
         `"${titleOf(application.subject)}": ${dto.text.slice(0, 120)}`,
+        { type: 'application', applicationId: application.id },
+      );
+    }
+    if (!isCitizen) {
+      void this.notify.citizen(
+        application.applicantPhone,
+        'Hokimiyatdan yangi xabar',
+        dto.text.slice(0, 160),
         application.id,
       );
     }
@@ -362,7 +521,7 @@ export class ApplicationsService {
       }
 
       return updated;
-    }).then((updated) => {
+    }).then(async (updated) => {
       // Push AFTER commit — the phone rings even when the app is closed.
       if (dto.assignedEmployeeId) {
         void this.push
@@ -373,6 +532,15 @@ export class ApplicationsService {
             { type: 'application', applicationId },
           )
           .catch(() => undefined);
+        const emp = await this.prisma.employee
+          .findUnique({ where: { id: dto.assignedEmployeeId }, select: { fullName: true } })
+          .catch(() => null);
+        void this.notify.citizen(
+          application.applicantPhone,
+          'Mas’ul xodim biriktirildi',
+          `"${titleOf(application.subject)}" — ${emp?.fullName ?? 'xodim'} ko‘rib chiqmoqda`,
+          applicationId,
+        );
       }
       return updated;
     });
@@ -461,8 +629,9 @@ export class ApplicationsService {
       dto.resolve === true &&
       (application.status === ApplicationStatus.NEW ||
         application.status === ApplicationStatus.IN_PROGRESS);
+    let resolvedRow: Application | null = null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const message = await this.prisma.$transaction(async (tx) => {
       const message = await tx.applicationMessage.create({
         data: {
           applicationId,
@@ -500,10 +669,11 @@ export class ApplicationsService {
       }
 
       if (shouldResolve) {
-        await tx.application.update({
+        const resolved = await tx.application.update({
           where: { id: applicationId },
           data: { status: ApplicationStatus.RESOLVED, resolvedAt: new Date() },
         });
+        resolvedRow = resolved;
         await tx.applicationEvent.create({
           data: {
             applicationId,
@@ -518,6 +688,18 @@ export class ApplicationsService {
 
       return message;
     });
+
+    if (resolvedRow) {
+      void this.tellCitizenAboutStatus(resolvedRow, dto.text);
+    } else {
+      void this.notify.citizen(
+        application.applicantPhone,
+        'Xodim javob yozdi',
+        dto.text.slice(0, 160),
+        applicationId,
+      );
+    }
+    return message;
   }
 
   /**
@@ -552,12 +734,20 @@ export class ApplicationsService {
       return row;
     });
     if (application.assignedEmployeeId) {
-      void this.notify(
+      void this.notify.employee(
         application.assignedEmployeeId,
         `Fuqaro baholadi: ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}`,
         `"${titleOf(application.subject)}"${comment ? ` — ${comment.slice(0, 100)}` : ''}`,
-        applicationId,
+        { type: 'application', applicationId },
       );
+    }
+    if (rating <= 2) {
+      void this.notify.admin({
+        type: AdminNotificationType.request,
+        title: `Past baho: ${rating}/5`,
+        message: `"${titleOf(application.subject)}"${comment ? ` — ${comment.slice(0, 120)}` : ''}`,
+        href: `/requests?id=${applicationId}`,
+      });
     }
     return updated;
   }
@@ -578,10 +768,36 @@ export class ApplicationsService {
     if (application.status !== ApplicationStatus.RESOLVED) {
       throw new BadRequestException("Faqat hal qilingan murojaat qayta ochiladi");
     }
+    const resolvedAgoDays = application.resolvedAt
+      ? (Date.now() - application.resolvedAt.getTime()) / 86_400_000
+      : 0;
+    if (resolvedAgoDays > REOPEN_WINDOW_DAYS) {
+      throw new BadRequestException(
+        `Hal qilinganiga ${REOPEN_WINDOW_DAYS} kundan oshdi — yangi murojaat yuboring`,
+      );
+    }
+    if (application.reopenCount >= MAX_REOPENS) {
+      void this.notify.admin({
+        type: AdminNotificationType.request,
+        title: 'Fuqaro natijadan norozi',
+        message: `"${titleOf(application.subject)}" ${MAX_REOPENS} marta qayta ochilgan — rahbar nazorati kerak`,
+        href: `/requests?id=${applicationId}`,
+      });
+      throw new BadRequestException(
+        `Murojaat ${MAX_REOPENS} marta qayta ochilgan — hokimiyat rahbariyatiga xabar berildi`,
+      );
+    }
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await tx.application.update({
         where: { id: applicationId },
-        data: { status: ApplicationStatus.IN_PROGRESS, resolvedAt: null, rating: null },
+        data: {
+          status: ApplicationStatus.IN_PROGRESS,
+          resolvedAt: null,
+          rating: null,
+          reopenCount: { increment: 1 },
+          dueAt: reopenDueAt(application),
+          escalatedAt: null,
+        },
       });
       await tx.applicationMessage.create({
         data: {
@@ -603,13 +819,19 @@ export class ApplicationsService {
       return row;
     });
     if (application.assignedEmployeeId) {
-      void this.notify(
+      void this.notify.employee(
         application.assignedEmployeeId,
         'Murojaat qayta ochildi',
         `"${titleOf(application.subject)}": ${reason.trim().slice(0, 120)}`,
-        applicationId,
+        { type: 'application', applicationId },
       );
     }
+    void this.notify.admin({
+      type: AdminNotificationType.request,
+      title: 'Murojaat qayta ochildi',
+      message: `"${titleOf(application.subject)}" — ${reason.trim().slice(0, 120)}`,
+      href: `/requests?id=${applicationId}`,
+    });
     return updated;
   }
 
@@ -705,25 +927,62 @@ export class ApplicationsService {
     };
   }
 
-  /** In-app notification + push, never throwing. */
-  private async notify(
-    employeeId: string,
-    title: string,
-    body: string,
-    applicationId: string,
-  ): Promise<void> {
-    try {
-      await this.prisma.notification.create({
-        data: { employeeId, title, body, type: NotificationType.APPLICATION },
+  /**
+   * SLA watcher: an open murojaat past its deadline is escalated ONCE —
+   * admins get a bell notification, the assignee a reminder push.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES, { name: 'murojaat-sla-escalation' })
+  async escalateOverdue(): Promise<number> {
+    const overdue = await this.prisma.application.findMany({
+      where: {
+        status: { in: [ApplicationStatus.NEW, ApplicationStatus.IN_PROGRESS] },
+        dueAt: { lt: new Date() },
+        escalatedAt: null,
+      },
+      include: ASSIGNEE_SELECT,
+      take: 50,
+    });
+    for (const a of overdue) {
+      await this.prisma.application.update({ where: { id: a.id }, data: { escalatedAt: new Date() } });
+      const title = titleOf(a.subject);
+      void this.notify.admin({
+        type: AdminNotificationType.request,
+        title: a.kind === ApplicationKind.SHIKOYAT ? 'Shikoyat muddati o‘tdi' : 'Murojaat muddati o‘tdi',
+        message: `"${title}" — ${a.assignedEmployee?.fullName ?? 'hali biriktirilmagan'}`,
+        href: `/requests?id=${a.id}`,
       });
-      await this.push.sendToEmployee(employeeId, title, body, {
-        type: 'application',
-        applicationId,
-      });
-    } catch {
-      // best-effort
+      if (a.assignedEmployeeId) {
+        void this.notify.employee(a.assignedEmployeeId, 'Murojaat muddati o‘tdi', `"${title}" — tezroq hal qiling`, {
+          type: 'application',
+          applicationId: a.id,
+        });
+      }
     }
+    return overdue.length;
   }
+}
+
+/** A reopened murojaat gets half its SLA again (at least a day). */
+function reopenDueAt(a: Pick<Application, 'kind' | 'priority'>): Date {
+  const hours = Math.max(24, slaHours(a.kind, a.priority) / 2);
+  return new Date(Date.now() + hours * 3_600_000);
+}
+
+function hoursText(h: number): string {
+  return h % 24 === 0 ? `${h / 24} kun` : `${h} soat`;
+}
+
+function shortId(id: string): string {
+  return `№${id.slice(0, 8).toUpperCase()}`;
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Kind from the "[SHIKOYAT|…]" subject prefix (default ARIZA). */
+export function kindOf(subject: string): ApplicationKind {
+  return /^\[SHIKOYAT\|/.test(subject) ? ApplicationKind.SHIKOYAT : ApplicationKind.ARIZA;
 }
 
 /** "[ARIZA|Kommunal] Ko'cha chirog'i" -> "Ko'cha chirog'i" (user-app encodes kind+category). */

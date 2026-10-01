@@ -29,6 +29,10 @@ export type CitizenRequestResponse = Omit<CitizenRequest, 'createdAt' | 'resolve
   source?: 'citizen' | 'legacy';
   /** ARIZA | SHIKOYAT (citizen app). */
   kind?: 'ariza' | 'shikoyat';
+  /** SLA missed and admins were alerted. */
+  escalated?: boolean;
+  /** Times the citizen reopened it. */
+  reopenCount?: number;
   /** SLA deadline (ISO) — citizen murojaats only. */
   dueAt?: string | null;
   /** Assigned employee's display info (real Employee). */
@@ -100,7 +104,8 @@ export class RequestsService {
       address: a.address ?? a.district ?? '',
       citizenName: a.applicantFullName,
       citizenPhone: a.applicantPhone,
-      citizenPhoto: '',
+      // Selfie the citizen took when filing ("who wrote this"), if any.
+      citizenPhoto: a.applicantPhotoUrl ?? '',
       createdAt: a.createdAt.toISOString(),
       resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
       assignedWorkerId: a.assignedEmployeeId,
@@ -114,11 +119,13 @@ export class RequestsService {
       feedback: a.rating,
       cost: 0,
       source: 'citizen',
-      kind: /^\[SHIKOYAT\|/.test(a.subject) ? 'shikoyat' : 'ariza',
+      kind: a.kind === 'SHIKOYAT' ? 'shikoyat' : 'ariza',
       dueAt: a.dueAt ? a.dueAt.toISOString() : null,
       assignedEmployee: a.assignedEmployee ?? null,
       ratingComment: a.ratingComment,
       hasCoords: a.lat != null && a.lng != null,
+      escalated: a.escalatedAt != null,
+      reopenCount: a.reopenCount,
     };
   }
 
@@ -318,11 +325,7 @@ export class RequestsService {
         select: { status: true },
       }))!.status;
       if (target !== current) {
-        // The admin may close a fresh one directly: NEW -> IN_PROGRESS -> RESOLVED.
-        if (current === ApplicationStatus.NEW && target === ApplicationStatus.RESOLVED) {
-          await this.applications.updateStatus(app.id, { status: ApplicationStatus.IN_PROGRESS }, actorId);
-        }
-        await this.applications.updateStatus(app.id, { status: target }, actorId);
+        await this.applications.updateStatus(app.id, { status: target, note: dto.note }, actorId);
       }
     }
 

@@ -31,6 +31,13 @@ enum ApplicationStatus {
   REJECTED
 }
 
+/// What the citizen filed: an ordinary request (ariza) or a complaint
+/// (shikoyat — stricter deadlines, escalated faster).
+enum ApplicationKind {
+  ARIZA
+  SHIKOYAT
+}
+
 enum MessageSenderRole {
   CITIZEN
   EMPLOYEE
@@ -230,6 +237,14 @@ model Application {
   resolvedAt           DateTime?
   rating               Int?
   ratingComment        String?
+  kind                 ApplicationKind   @default(ARIZA)
+  category             String?
+  /// Set once when the SLA was missed and the admins were alerted.
+  escalatedAt          DateTime?
+  /// How many times the citizen reopened it (capped).
+  reopenCount          Int               @default(0)
+  /// Selfie taken in the citizen app when filing — "who wrote this".
+  applicantPhotoUrl    String?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
@@ -241,7 +256,23 @@ model Application {
 
   @@index([status])
   @@index([applicantPhone])
+  @@index([kind])
   @@map("applications")
+}
+
+/// In-app notifications for citizens (keyed by the phone their token carries):
+/// "qabul qilindi", "xodim biriktirildi", "javob berildi", "hal qilindi", …
+model CitizenNotification {
+  id            String   @id @default(uuid())
+  phone         String
+  title         String
+  body          String
+  applicationId String?
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([phone, isRead])
+  @@map("citizen_notifications")
 }
 
 model ApplicationMessage {
@@ -1337,6 +1368,10 @@ model MediaItem {
   keywords    String[]
   /// 0..100 — how surely this is about the district (not the astronomer / a street name).
   relevance   Int             @default(50)
+  /// 0..100 — about Toshkent shahri (any of its 12 districts, ours included). See media-area.ts.
+  cityRelevance   Int         @default(0)
+  /// 0..100 — about Toshkent viloyati (Chirchiq, Angren, Zangiota ...).
+  regionRelevance Int         @default(0)
   sentiment   MediaSentiment  @default(neutral)
   topic       String?
   aiSummary   String?         @db.Text

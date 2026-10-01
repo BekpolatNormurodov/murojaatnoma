@@ -323,6 +323,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     this.toConversation(e.conversationId).emit('chat:read', e);
   }
 
+  /** New bell notification → every admin socket (they all join `user:me`). */
+  @OnEvent(RT_EVENTS.adminNotification)
+  broadcastAdminNotification(n: unknown): void {
+    this.server.to(`user:${ADMIN_ID}`).emit('admin:notification', n);
+  }
+
   @OnEvent(RT_EVENTS.conversation)
   broadcastConversation(e: ChatConversationEvent): void {
     const rooms = [`conv:${e.conversationId}`, `user:${ADMIN_ID}`];

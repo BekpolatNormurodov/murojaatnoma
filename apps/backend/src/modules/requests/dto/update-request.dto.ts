@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { RequestStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** Body for `PATCH /requests/:id` — status transition and/or (re)assignment. */
 export class UpdateRequestDto {
@@ -13,4 +13,12 @@ export class UpdateRequestDto {
   @IsOptional()
   @IsString()
   assignedWorkerId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Answer / reason shown to the citizen (required to reject; to resolve unless staff already replied)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
 }
