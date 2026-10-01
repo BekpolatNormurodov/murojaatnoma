@@ -2,6 +2,8 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { AnalyticsService } from './analytics.service';
+import { OverviewService } from './overview.service';
+import { OverviewResponse } from './overview.types';
 import {
   CategorySlice,
   DistrictLoad,
@@ -14,15 +16,22 @@ import {
 /**
  * Dashboard + analytics ("hisobot") endpoints for the web-admin panel.
  *
- * NOTE: all routes here are `@Public()` for now. The web-admin dashboard
- * doesn't have its auth wired up yet, so gating these behind an admin guard
- * (see `admin-auth` module) is a later step.
+ * Admin-only (`@RequireScope('admin')`).
  */
 @ApiTags('analytics')
 @RequireScope('admin')
 @Controller('analytics')
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly overviewService: OverviewService,
+  ) {}
+
+  @Get('overview')
+  @ApiOperation({ summary: 'Whole dashboard in one request — live murojaat/SLA/workforce/mahalla data' })
+  overview(): Promise<OverviewResponse> {
+    return this.overviewService.overview();
+  }
 
   @Get('summary')
   @ApiOperation({ summary: 'Top-level dashboard summary counters' })
@@ -31,15 +40,17 @@ export class AnalyticsController {
   }
 
   @Get('kpi-trend')
-  @ApiOperation({ summary: '12-month requests total/resolved trend line' })
-  kpiTrend(): KpiPoint[] {
-    return this.analyticsService.kpiTrend();
+  @ApiOperation({ summary: '12-month requests total/resolved trend line (live)' })
+  async kpiTrend(): Promise<KpiPoint[]> {
+    const { trend } = await this.overviewService.overview();
+    return trend.monthly.map((p) => ({ label: p.label, total: p.created, resolved: p.resolved }));
   }
 
   @Get('category-distribution')
   @ApiOperation({ summary: 'Request counts grouped by category' })
-  categoryDistribution(): Promise<CategorySlice[]> {
-    return this.analyticsService.categoryDistribution();
+  async categoryDistribution(): Promise<CategorySlice[]> {
+    const { categories } = await this.overviewService.overview();
+    return categories.map((c) => ({ category: c.category, value: c.total }));
   }
 
   @Get('region-stats')

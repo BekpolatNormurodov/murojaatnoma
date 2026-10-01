@@ -1,54 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import { CameraStatus, District, RequestCategory, RequestStatus, WorkerStatus } from '@prisma/client';
+import { CameraStatus, District, RequestStatus, WorkerStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
-  CategorySlice,
   DistrictDto,
   DistrictLoad,
   HourlyActivityPoint,
-  KpiPoint,
   RegionStat,
   SummaryResponse,
 } from './analytics.types';
 
-/** Fixed category order used by the web-admin `CATEGORY_DISTRIBUTION` mock. */
-const CATEGORY_ORDER: RequestCategory[] = [
-  RequestCategory.kommunal,
-  RequestCategory.yol,
-  RequestCategory.suv,
-  RequestCategory.elektr,
-  RequestCategory.tozalik,
-  RequestCategory.obodonlashtirish,
-];
-
 /**
- * Static 12-point trend line — mirrors web-admin's `KPI_TREND` mock export
- * verbatim. The DB only holds a live snapshot of requests (the seed backdates
- * them at most ~45 days), so there is no real year-long monthly history to
- * derive this from; it is kept as a literal drop-in match of the mock shape
- * rather than a fabricated aggregation.
- */
-const KPI_TREND: KpiPoint[] = [
-  { label: 'Yan', total: 320, resolved: 280 },
-  { label: 'Fev', total: 410, resolved: 360 },
-  { label: 'Mar', total: 380, resolved: 350 },
-  { label: 'Apr', total: 520, resolved: 470 },
-  { label: 'May', total: 610, resolved: 560 },
-  { label: 'Iyn', total: 580, resolved: 540 },
-  { label: 'Iyl', total: 690, resolved: 620 },
-  { label: 'Avg', total: 720, resolved: 680 },
-  { label: 'Sen', total: 650, resolved: 610 },
-  { label: 'Okt', total: 780, resolved: 720 },
-  { label: 'Noy', total: 840, resolved: 790 },
-  { label: 'Dek', total: 910, resolved: 860 },
-];
-
-/**
- * Dashboard + analytics ("hisobot") aggregations for the web-admin panel.
- * Every method computes its numbers from the live DB where the mock's
- * formula is naturally DB-derived (counts/sums/group-bys); `kpiTrend()` is
- * the one exception, since the mock's 12-month series has no real backing
- * time-series in this schema.
+ * Legacy dashboard + analytics ("hisobot") aggregations for the web-admin
+ * panel, all straight from the DB (no padding constants). The dashboard itself
+ * now reads `OverviewService` (`GET /analytics/overview`); the trend line and
+ * category split are served from there too so every screen agrees.
  */
 @Injectable()
 export class AnalyticsService {
@@ -93,12 +58,10 @@ export class AnalyticsService {
     const debt = utilityAgg._sum?.debt ?? 0;
 
     return {
-      // Mirrors the mock's `<rawCount> + <constant>` formulas so the numbers
-      // stay in the same realistic range the web-admin UI was designed for.
-      totalRequests: totalRequestsRaw + 1240,
-      resolved: resolvedRaw + 980,
-      inProgress: inProgressRaw + 180,
-      activeWorkers: activeWorkersRaw + 42,
+      totalRequests: totalRequestsRaw,
+      resolved: resolvedRaw,
+      inProgress: inProgressRaw,
+      activeWorkers: activeWorkersRaw,
 
       checkedInToday,
       confirmedToday,
@@ -115,26 +78,6 @@ export class AnalyticsService {
       collectionRate: charged > 0 ? Math.round((collected / charged) * 1000) / 10 : 0,
       turnover: turnoverAgg._sum?.turnover ?? 0,
     };
-  }
-
-  /** `GET /analytics/kpi-trend` */
-  kpiTrend(): KpiPoint[] {
-    return KPI_TREND;
-  }
-
-  /** `GET /analytics/category-distribution` */
-  async categoryDistribution(): Promise<CategorySlice[]> {
-    const groups = await this.prisma.citizenRequest.groupBy({
-      by: ['category'],
-      _count: true,
-    });
-    const counts = new Map<RequestCategory, number>(groups.map((g) => [g.category, g._count]));
-
-    // Mirrors the mock's `REQUESTS.filter(...).length + 8` per category.
-    return CATEGORY_ORDER.map((category) => ({
-      category,
-      value: (counts.get(category) ?? 0) + 8,
-    }));
   }
 
   /** `GET /analytics/region-stats` */

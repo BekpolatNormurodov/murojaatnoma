@@ -10,6 +10,12 @@ import {
   ValidationExceptionPayload,
 } from './common/i18n/validation-exception.types';
 
+// Work hours, lateness (`workStartTime` "09:00"), "today" and per-day buckets
+// are all computed with local-time Date APIs. The Docker image runs in UTC, so
+// without this "09:00" meant 14:00 in Tashkent and nobody was ever late.
+// Node re-reads TZ on assignment; an explicit TZ env var still wins.
+process.env.TZ ||= 'Asia/Tashkent';
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService<AppConfig, true>);

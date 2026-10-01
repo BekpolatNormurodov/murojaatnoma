@@ -34,6 +34,8 @@ export type CitizenRequestResponse = Omit<CitizenRequest, 'createdAt' | 'resolve
   /** Assigned employee's display info (real Employee). */
   assignedEmployee?: { id: string; fullName: string; avatarUrl: string | null } | null;
   ratingComment?: string | null;
+  /** False when the citizen sent no location (lat/lng are a district placeholder). */
+  hasCoords?: boolean;
 };
 
 const STATUS_TO_REQUEST: Record<ApplicationStatus, RequestStatus> = {
@@ -50,7 +52,7 @@ const STATUS_TO_APPLICATION: Record<RequestStatus, ApplicationStatus> = {
 };
 
 /** Free-text citizen category -> the admin's 6 fixed categories (keyword match). */
-function mapCategory(text: string): RequestCategory {
+export function mapCategory(text: string): RequestCategory {
   const t = text.toLowerCase();
   if (/yo['ʻ‘’]?l|asfalt|chuqur|svetofor|trotuar/.test(t)) return RequestCategory.yol;
   if (/suv|kanaliz|quvur/.test(t)) return RequestCategory.suv;
@@ -116,6 +118,7 @@ export class RequestsService {
       dueAt: a.dueAt ? a.dueAt.toISOString() : null,
       assignedEmployee: a.assignedEmployee ?? null,
       ratingComment: a.ratingComment,
+      hasCoords: a.lat != null && a.lng != null,
     };
   }
 

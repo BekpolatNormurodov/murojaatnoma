@@ -41,7 +41,7 @@ const ALLOWED_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> = {
 };
 
 /** SLA: how long the hokimiyat has to resolve a murojaat, by priority. */
-const SLA_HOURS: Record<Priority, number> = {
+export const SLA_HOURS: Record<Priority, number> = {
   [Priority.high]: 48,
   [Priority.medium]: 5 * 24,
   [Priority.low]: 10 * 24,
