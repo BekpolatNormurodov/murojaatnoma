@@ -13,9 +13,13 @@ const APOSTROPHES = /['‘’ʻʼʹʿ`´′]/g;
  * Russian neighbours (ғ→г, қ→к, ў→у, ҳ→х, ё→е) and turns dashes/slashes and
  * runs of whitespace into a single space.
  */
+/** Apostrophe typed with stray spaces: "Ulug ‘ bek", "Ulug ‘bek" (not a quote like "deb ‘Yangi"). */
+const SPACED_APOSTROPHE = /(\p{L})\s+(['\u2018\u2019\u02BB\u02BC\u02B9\u02BF\u0060\u00B4\u2032])(?:\s+(?=\p{L})|(?=\p{Ll}))/gu;
+
 export function normalizeText(input: string): string {
   return input
     .normalize('NFC')
+    .replace(SPACED_APOSTROPHE, '$1$2')
     .toLowerCase()
     .replace(APOSTROPHES, '')
     .replace(/ғ/g, 'г')

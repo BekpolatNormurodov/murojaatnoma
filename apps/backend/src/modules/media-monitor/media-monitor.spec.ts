@@ -21,6 +21,11 @@ describe('media text utils', () => {
     expect(normalizeText('Mirzo Ulug`bek')).toBe('mirzo ulugbek');
     expect(normalizeText('Мирзо Улуғбек')).toBe('мирзо улугбек');
     expect(normalizeText('Мирзо-Улугбекский  район')).toBe('мирзо улугбекский район');
+    // stray spaces around the apostrophe (Gazeta, Qalampir)
+    expect(normalizeText('Mirzo Ulug ‘ bek tumanidagi')).toBe('mirzo ulugbek tumanidagi');
+    expect(normalizeText('Mirzo Ulug ‘bek')).toBe('mirzo ulugbek');
+    // a quote is not glued to the next word
+    expect(normalizeText('deb ‘Yangi loyiha’')).toBe('deb yangi loyiha');
   });
 
   it('matches the district in every spelling, strong vs weak', () => {
@@ -395,9 +400,11 @@ describe('rules v2', () => {
     expect(rel("Mirzo Ulug‘bek tumanida yo'l ta'mirlandi").relevance).toBeGreaterThanOrEqual(90);
     // a mahalla of the district, without naming the district
     expect(rel('Zakovat mahallasida yangi bog‘cha ochildi').reason).toBe('place');
-    expect(rel('Zakovat mahallasida yangi bog‘cha ochildi').relevance).toBeGreaterThanOrEqual(55);
-    expect(rel('ТТЗ массивида ёнғин').relevance).toBeGreaterThanOrEqual(55);
-    expect(rel('Qorasuvda yangi park ochildi').relevance).toBeGreaterThanOrEqual(55);
+    expect(rel('Zakovat mahallasida yangi bog‘cha ochildi').relevance).toBeGreaterThanOrEqual(45);
+    expect(rel('Toshkentdagi Zakovat mahallasida yangi bog‘cha ochildi').relevance).toBeGreaterThanOrEqual(50);
+    expect(rel('Mirzo Ulug ‘ bek tumanidagi mebel sexida yong‘in chiqdi').reason).toBe('strong');
+    expect(rel('ТТЗ массивида ёнғин').relevance).toBeGreaterThanOrEqual(45);
+    expect(rel('Toshkent, Qorasuvda yangi park ochildi').relevance).toBeGreaterThanOrEqual(50);
     expect(rel('Qorasuvchi yigit').relevance).toBe(0);
     // the same name in another region is not ours
     expect(rel('Samarqand viloyati Zakovat mahallasida tadbir').relevance).toBe(0);

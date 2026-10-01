@@ -120,10 +120,13 @@ export function scoreRelevance(input: RelevanceInput): RelevanceResult {
   ];
   const elsewhere = has(all, ELSEWHERE);
   if (placeHits.length && (!elsewhere || m.weak.length)) {
-    let score = 55;
-    if (all.includes('toshkent') || all.includes('ташкент') || all.includes('тошкент')) score += 5;
+    // Mahalla names repeat across Tashkent's 12 districts: a bare mahalla is
+    // "likely ours" (50 with Toshkent, else hidden 45); with the name, sure.
+    let score = 45;
+    if (has(all, CITY_CONTEXT)) score += 5;
     if (placeHits.some((p) => t.includes(p))) score += 5;
-    if (m.weak.length) score += 10;
+    if (placeHits.length > 1) score += 5;
+    if (m.weak.length) score += 15;
     return { relevance: Math.min(100, score), keywords: [...m.weak, ...placeHits.slice(0, 3)], reason: 'place' };
   }
 
