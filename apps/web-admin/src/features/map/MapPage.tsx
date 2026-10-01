@@ -531,7 +531,7 @@ export function MapPage() {
           scrollWheelZoom
           // Yandex raster tiles are in EPSG:3395 (ellipsoidal Mercator). With
           // Leaflet's default EPSG:3857 every overlay (mahalla polygons,
-          // markers) would sit ~250 m off at Tashkent's latitude.
+          // markers) would be drawn ~20 km off at Tashkent's latitude.
           crs={L.CRS.EPSG3395}
           style={{ height: '100%', width: '100%' }}
         >

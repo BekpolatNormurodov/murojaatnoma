@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:app_ui/app_ui.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -46,9 +48,17 @@ class ZoneBoundaryLoader {
   /// [assignedCodes] — xodim biriktirilgan mahalla kodlari
   /// (`properties.id`). Bo'sh bo'lsa (biriktirilmagan / offline) faqat tuman
   /// chegarasi ish hududi bo'lib qoladi (fallback).
+  // GeoJSON is static for the whole session — fetched once per loader, so a
+  // zone re-assignment only re-filters/re-colours, never re-downloads.
+  List<_ZoneFeature>? _mahallaCache;
+  List<_ZoneFeature>? _districtCache;
+
   Future<ZoneBoundaries> load({Set<String> assignedCodes = const {}}) async {
-    final mahallaFeatures = await _load('mahalla');
-    final districtFeatures = await _load('district');
+    final mahallaFeatures = _mahallaCache ??= await _load('mahalla');
+    final districtFeatures = _districtCache ??= await _load('district');
+    // Don't cache an empty (failed/offline) fetch — retry next time.
+    if (mahallaFeatures.isEmpty) _mahallaCache = null;
+    if (districtFeatures.isEmpty) _districtCache = null;
 
     // Biriktirilgan mahalla feature'lari (kodi bo'yicha) — "Ish hududi"
     // sifatida yashil chiziladi va lokal "ichidami" hisobiga ishlatiladi.
@@ -116,6 +126,7 @@ class ZoneBoundaryLoader {
       polygons: polygons,
       mahallas: mahallas,
       workZone: workZone,
+      workZoneIsAssigned: assignedFeatures.isNotEmpty,
       bounds: bounds,
     );
   }
@@ -261,8 +272,14 @@ class ZoneBoundaries {
     required this.polygons,
     required this.mahallas,
     this.workZone = const [],
+    this.workZoneIsAssigned = false,
     this.bounds,
   });
+
+  /// [workZone] — biriktirilgan mahallalarmi (true) yoki tuman fallback'i
+  /// (false). GPS chegarasi tolerantligi faqat biriktirilgan mahallalarga
+  /// qo'llanadi (server bilan bir xil qoida).
+  final bool workZoneIsAssigned;
 
   /// Xaritada chiziladigan tuman + mahalla poligonlari (tartibda).
   final List<Polygon> polygons;
@@ -326,6 +343,19 @@ class MahallaArea {
   final List<MahallaPolygon> parts;
 
   /// [point] shu mahallaning HAR QANDAY poligoni ichida bo'lsa `true`.
+  /// [point] dan shu hududning ENG YAQIN chegara qirrasigacha masofa (m).
+  /// Mahalla miqyosida (bir necha km) ekvirektangulyar proyeksiya yetarli.
+  double distanceToEdgeMeters(LatLng point) {
+    var best = double.infinity;
+    for (final part in parts) {
+      for (final ring in [part.outer, ...part.holes]) {
+        final d = _distanceToRingMeters(point, ring);
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  }
+
   bool contains(LatLng point) {
     for (final part in parts) {
       if (part.contains(point)) return true;
@@ -398,4 +428,45 @@ class _ZoneFeature {
   final String name;
   final String code;
   final List<MahallaPolygon> parts;
+}
+
+/// Nuqtadan halqa qirralarigacha eng qisqa masofa (m) — server
+/// (`distanceToGeometryEdgeM`) bilan bir xil formula.
+double _distanceToRingMeters(LatLng p, List<LatLng> ring) {
+  const mPerDegLat = 111320.0;
+  final mPerDegLng = 111320.0 * math.cos(p.latitude * math.pi / 180);
+  var best = double.infinity;
+  for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    final ax = (ring[j].longitude - p.longitude) * mPerDegLng;
+    final ay = (ring[j].latitude - p.latitude) * mPerDegLat;
+    final bx = (ring[i].longitude - p.longitude) * mPerDegLng;
+    final by = (ring[i].latitude - p.latitude) * mPerDegLat;
+    final dx = bx - ax;
+    final dy = by - ay;
+    final len2 = dx * dx + dy * dy;
+    final t = len2 == 0 ? 0.0 : (-(ax * dx + ay * dy) / len2).clamp(0.0, 1.0);
+    final cx = ax + t * dx;
+    final cy = ay + t * dy;
+    final d = math.sqrt(cx * cx + cy * cy);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/// Server bilan BIR XIL ish hududi qoidasi: qat'iy "ichida" YOKI (faqat
+/// biriktirilgan mahallalar uchun) chegaradan `35 m + min(aniqlik, 75 m)`
+/// ichida — GPS titrashi chegarada turgan xodimni "tashqarida" qilmasin
+/// (qarang: backend `locations.service.ts`, ZONE_TOLERANCE_*).
+bool insideWorkZone(
+  LatLng point,
+  ZoneBoundaries boundaries, {
+  double accuracyMeters = 0,
+}) {
+  if (mahallaAt(point, boundaries.workZone) != null) return true;
+  if (!boundaries.workZoneIsAssigned) return false;
+  final tolerance = 35 + math.min(math.max(accuracyMeters, 0), 75);
+  for (final area in boundaries.workZone) {
+    if (area.distanceToEdgeMeters(point) <= tolerance) return true;
+  }
+  return false;
 }

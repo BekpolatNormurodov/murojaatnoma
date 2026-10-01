@@ -10,15 +10,17 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/features/map/data/yandex_map.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 import 'package:worker_app/features/map/presentation/bloc/map_cubit.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
-/// OpenStreetMap tayl serveri — OSM foydalanish siyosati identifikatorli
-/// `User-Agent` talab qiladi (qarang: `TileLayer.userAgentPackageName`).
-const _osmTileUrlTemplate = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const _osmUserAgentPackageName = 'uz.gov.hokimiyat.worker_app';
+/// Tayl so'rovlaridagi identifikator (`User-Agent`).
+const _tileUserAgentPackageName = 'uz.gov.hokimiyat.worker_app';
+
+/// Biriktirilgan hududlar (admin o'zgartirsa) shu oraliqda yangilanadi.
+const _zoneRefreshInterval = Duration(minutes: 2);
 
 /// Ish joyi markazi — geofence doirasi va xaritaning boshlang'ich markazi
 /// shu nuqtaga asoslanadi.
@@ -56,8 +58,25 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   final _mapController = MapController();
+  final _loader = ZoneBoundaryLoader(getIt<DioClient>().dio);
+  Timer? _zoneRefreshTimer;
+
+  /// Biriktirilgan mahalla kodlari (oxirgi `/locations/me`) — o'zgarsa
+  /// chegaralar qayta chiziladi.
+  Set<String> _assignedCodes = const {};
+
+  /// `FlutterMap` HOZIR chizilganmi (`onMapReady` keldi) — `MapController`
+  /// faqat shunda ishlaydi. Ruxsat/xato ekranida xarita yo'q.
+  bool _mapReady = false;
+
+  /// Kamera tumanga bir marta moslandi — keyingi yangilanishlarda xodim
+  /// surgan kamerani "tortib" olmaymiz.
+  bool _districtFitted = false;
+
+  /// Oxirgi GPS fiksining aniqligi (m) — chegara tolerantligi uchun.
+  double _lastAccuracy = 0;
 
   /// Joriy kuzatuv sessiyasida kamera birinchi qabul qilingan pozitsiyaga
   /// ALLAQACHON markazlashtirilganmi. Faqat BIR MARTA avtomatik
@@ -100,28 +119,37 @@ class _MapPageState extends State<MapPage> {
     // boshlanadi va Map tabidan chiqilsa ham butun ilova davomida ishlaydi.
     unawaited(getIt<LocationTrackingService>().start());
     unawaited(_loadBoundaries());
+    WidgetsBinding.instance.addObserver(this);
+    // Admin hududni o'zgartirsa — ilovani qayta ochmasdan ham ko'rinsin.
+    _zoneRefreshTimer = Timer.periodic(
+      _zoneRefreshInterval,
+      (_) => unawaited(_loadBoundaries()),
+    );
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_loadBoundaries());
+  }
+
+  /// `/locations/me` (biriktirilgan mahallalar) + chegaralar. Birinchi
+  /// chaqiruvda geojson yuklanadi; keyingilarida (taymer/resume) faqat kodlar
+  /// o'zgargan bo'lsa qayta chiziladi (geojson loader ichida keshlangan).
   Future<void> _loadBoundaries() async {
-    final loader = ZoneBoundaryLoader(getIt<DioClient>().dio);
-    // Avval biriktirilgan mahallalarni bilib olamiz (`/locations/me`), so'ng
-    // geojson'ni SHU kodlar bilan yuklaymiz — biriktirilgan mahallalar "Ish
-    // hududi" bo'lib yashil chiziladi (biriktirilmagan bo'lsa tuman fallback).
-    final myZone = await loader.loadMyZone();
-    final boundaries =
-        await loader.load(assignedCodes: myZone.assignedMahallaCodes.toSet());
+    final myZone = await _loader.loadMyZone();
+    final codes = myZone.assignedMahallaCodes.toSet();
+    final firstLoad = _boundaries.polygons.isEmpty;
+    if (!firstLoad && _setEquals(codes, _assignedCodes)) return;
+    final boundaries = await _loader.load(assignedCodes: codes);
     if (!mounted) return;
+    _assignedCodes = codes;
     setState(() {
       _boundaries = boundaries;
       // Jonli GPS hisobi kelguncha bannerni server qiymati bilan boshlaymiz.
       _insideZone ??= myZone.insideAssignedZone;
     });
-    // Xarita ochilishida BUTUN Mirzo Ulug'bek tumani ko'rinsin — kamerani
-    // tuman chegara qutisiga moslaymiz (biriktirilgan yashil mahallalar shu
-    // tuman ichida ko'rinadi). Shundan keyin jonli GPS kamerani "tortib"
-    // tumanni yashirmaydi (builder'dagi `_boundaries.bounds == null` sharti);
-    // xodim o'z joyiga qaytish uchun recenter FAB'dan foydalanadi.
-    _fitToDistrict();
+    // Xarita ochilishida BUTUN Mirzo Ulug'bek tumani ko'rinsin (bir marta).
+    _fitToDistrictIfReady();
     // Chegaralar pozitsiyadan KEYIN kelishi mumkin — allaqachon ma'lum
     // joylashuv bo'lsa, mahalla + ish hududi holatini darhol hisoblaymiz.
     final snapshot = _mapSnapshot(context.read<MapCubit>().state);
@@ -139,17 +167,32 @@ class _MapPageState extends State<MapPage> {
   /// bo'lgach tayyor). Tuman chegarasi bo'lmasa (offline) hech narsa qilmaydi.
   /// Muvaffaqiyatli bo'lsa `_centeredOnFirstFix = true` — jonli GPS kamerani
   /// o'ziga tortmasin.
-  void _fitToDistrict() {
+  ///
+  /// Faqat `FlutterMap` chizilgan bo'lsa ([_mapReady]); aks holda (ruxsat/xato
+  /// ekrani ochiq) xarita paydo bo'lganda [_onMapReady] uni chaqiradi.
+  /// Ilgari postFrame'da to'g'ridan-to'g'ri `fitCamera` chaqirilardi — xarita
+  /// yo'q paytda u exception otib, kamera boshlang'ich nuqtada qolib ketardi.
+  void _fitToDistrictIfReady() {
     final bounds = _boundaries.bounds;
-    if (bounds == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+    if (bounds == null || _districtFitted || !_mapReady) return;
+    try {
       _mapController.fitCamera(
         CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(28)),
       );
+      _districtFitted = true;
       _centeredOnFirstFix = true;
-    });
+    } on Object {
+      // Kamera hali tayyor emas — keyingi onMapReady'da qayta urinamiz.
+    }
   }
+
+  void _onMapReady() {
+    _mapReady = true;
+    _fitToDistrictIfReady();
+  }
+
+  static bool _setEquals(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
 
   /// Faqat pozitsiya oldingi hisobdan sezilarli (>~15 m) uzoqlashganda joriy
   /// mahallani qayta aniqlaydi — ray-casting har GPS o'lchovida emas, faqat
@@ -157,7 +200,8 @@ class _MapPageState extends State<MapPage> {
   /// va urg'u qayta chiziladi.
   static const double _mahallaRecomputeMeters = 15;
 
-  void _maybeUpdateMahalla(LatLng point) {
+  void _maybeUpdateMahalla(LatLng point, {double? accuracy}) {
+    if (accuracy != null) _lastAccuracy = accuracy;
     if (_boundaries.mahallas.isEmpty) return;
     final last = _lastMahallaFix;
     if (last != null &&
@@ -170,9 +214,11 @@ class _MapPageState extends State<MapPage> {
     // Ish hududi ichidami — biriktirilgan mahallalar (aks holda tuman) bo'yicha
     // lokal ray-casting. Ilgarigi ofis DOIRASIGA (insideGeofence) bog'liq emas.
     // workZone bo'sh bo'lsa (offline geojson) server qiymatini saqlab qolamiz.
+    // Server bilan bir xil qoida (chegara tolerantligi) — aks holda
+    // chegarada turgan xodim ilovada "tashqarida", admin'da "ichida" bo'lardi.
     final inside = _boundaries.workZone.isEmpty
         ? _insideZone
-        : mahallaAt(point, _boundaries.workZone) != null;
+        : insideWorkZone(point, _boundaries, accuracyMeters: _lastAccuracy);
     if (!identical(match, _currentMahalla) || inside != _insideZone) {
       setState(() {
         _currentMahalla = match;
@@ -183,6 +229,8 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _zoneRefreshTimer?.cancel();
     _mapController.dispose();
     super.dispose();
   }
@@ -224,12 +272,19 @@ class _MapPageState extends State<MapPage> {
         if (snapshot != null) {
           _maybeUpdateMahalla(
             LatLng(snapshot.position.latitude, snapshot.position.longitude),
+            accuracy: snapshot.position.accuracy,
           );
         }
+        // Ruxsat/xato ekranida FlutterMap yo'q — keyingi chizilishda
+        // onMapReady qayta keladi.
+        if (state is MapPermissionDenied || state is MapError) {
+          _mapReady = false;
+        }
         // Tuman chegarasi mavjud bo'lsa — xarita BUTUN tumanga freym qilingan
-        // (qarang: [_fitToDistrict]); jonli GPS kamerani o'ziga tortmasin,
-        // aks holda to'liq tuman ko'rinmay qoladi. Faqat tuman chegarasi
-        // yo'q (offline) bo'lganda birinchi fix'da o'z joyiga markazlashadi.
+        // (qarang: [_fitToDistrictIfReady]); jonli GPS kamerani o'ziga
+        // tortmasin, aks holda to'liq tuman ko'rinmay qoladi. Faqat tuman
+        // chegarasi yo'q (offline) bo'lganda birinchi fix'da o'z joyiga
+        // markazlashadi.
         if (state is MapTracking &&
             !_centeredOnFirstFix &&
             _boundaries.bounds == null) {
@@ -266,6 +321,7 @@ class _MapPageState extends State<MapPage> {
             currentMahalla: _currentMahalla,
             insideZone: _insideZone,
             onRecenter: () => _onRecenterPressed(cubit),
+            onMapReady: _onMapReady,
           ),
         };
       },
@@ -326,7 +382,11 @@ class _TrackingScaffold extends StatelessWidget {
     required this.currentMahalla,
     required this.insideZone,
     required this.onRecenter,
+    required this.onMapReady,
   });
+
+  /// `FlutterMap` birinchi marta chizilib, `MapController` tayyor bo'lganda.
+  final VoidCallback onMapReady;
 
   final MapState state;
   final MapController mapController;
@@ -354,16 +414,24 @@ class _TrackingScaffold extends StatelessWidget {
             child: FlutterMap(
               mapController: mapController,
               options: MapOptions(
+                // Yandex plitkalari EPSG:3395 da — poligon/markerlar mos
+                // tushishi uchun xarita CRS ham shu bo'lishi shart.
+                crs: const Epsg3395(),
                 initialCenter: _workplaceCenter,
                 initialZoom: _defaultZoom,
+                maxZoom: 19,
+                onMapReady: onMapReady,
                 backgroundColor: isDark
                     ? AppColors.darkSurfaceAlt
                     : AppColors.surfaceAlt,
               ),
               children: [
+                // Yandex Xaritalar (o'zbekcha yozuvlar) — hokimiyat xodimlari
+                // tanish ko'rinish, mahalla darajasida batafsil.
                 TileLayer(
-                  urlTemplate: _osmTileUrlTemplate,
-                  userAgentPackageName: _osmUserAgentPackageName,
+                  urlTemplate: kYandexTileUrlTemplate,
+                  userAgentPackageName: _tileUserAgentPackageName,
+                  maxZoom: 19,
                 ),
                 // Joriy mahalla urg'usi — chegaralar OSTIDA yengil to'ldirish,
                 // shunda ustidagi ingichka to'r ko'rinib turadi.

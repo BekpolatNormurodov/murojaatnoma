@@ -37,9 +37,26 @@ class LocationTrackingService {
 
   /// Ruxsatni tekshiradi/so'raydi va joylashuv oqimini boshlaydi. Joylashuv
   /// xizmati yoki ruxsat mavjud bo'lmasa `false` qaytaradi.
-  Future<bool> start() async {
+  Future<bool> start() {
+    if (_running) return Future.value(true);
+    // MainShell va MapPage ikkalasi ham start() chaqiradi; ruxsat tekshiruvi
+    // davomida ikkinchi chaqiruv `_running`ni hali false ko'rib, IKKINCHI
+    // oqim + taymer ochardi (birinchisi oqib ketardi, stop() faqat oxirgisini
+    // yopardi). Davom etayotgan ishga tushirishni bo'lishamiz.
+    return _starting ??= _start().whenComplete(() => _starting = null);
+  }
+
+  Future<bool>? _starting;
+
+  Future<bool> _start() async {
+    try {
+      if (!await _ensurePermission()) return false;
+    } on Object catch (error) {
+      // Masalan boshqa ruxsat dialogi ochiq (PermissionRequestInProgress).
+      _lastError = error;
+      return false;
+    }
     if (_running) return true;
-    if (!await _ensurePermission()) return false;
 
     _running = true;
     _positionSub = Geolocator.getPositionStream(
