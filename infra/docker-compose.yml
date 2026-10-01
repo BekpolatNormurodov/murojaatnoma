@@ -105,6 +105,16 @@ services:
       TURN_USERNAME: ${TURN_USERNAME:-}
       TURN_CREDENTIAL: ${TURN_CREDENTIAL:-}
       CALL_RING_TIMEOUT_SEC: ${CALL_RING_TIMEOUT_SEC:-35}
+      # OAV monitoringi (modules/media-monitor) — every key optional; without
+      # them sites/Telegram/Google News/YouTube-channel RSS still run with
+      # rule-based analysis. Keys live ONLY in the gitignored server .env.
+      MEDIA_MONITOR_ENABLED: ${MEDIA_MONITOR_ENABLED:-true}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MEDIA_AI_MODEL: ${MEDIA_AI_MODEL:-}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      INSTAGRAM_ACCESS_TOKEN: ${INSTAGRAM_ACCESS_TOKEN:-}
+      INSTAGRAM_BUSINESS_ID: ${INSTAGRAM_BUSINESS_ID:-}
+      INSTAGRAM_GRAPH_VERSION: ${INSTAGRAM_GRAPH_VERSION:-}
     # Persist uploaded task-proof media (photos/videos) across container rebuilds.
     volumes:
       - uploads:/app/uploads
