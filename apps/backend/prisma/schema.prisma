@@ -71,6 +71,9 @@ enum ApplicationEventType {
   STATUS_CHANGED
   ASSIGNED
   MESSAGE
+  // Citizen feedback after resolution (rating 1..5) and reopen-if-unhappy.
+  RATED
+  REOPENED
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +215,17 @@ model Application {
   status               ApplicationStatus @default(NEW)
   assignedEmployeeId   String?
   assignedDepartmentId String?
+  // Lifecycle / SLA (all optional — additive). priority drives dueAt on
+  // create; resolvedAt is stamped when the assignee resolves it; rating is
+  // the citizen's 1..5 feedback after resolution.
+  priority             Priority          @default(medium)
+  address              String?
+  lat                  Float?
+  lng                  Float?
+  dueAt                DateTime?
+  resolvedAt           DateTime?
+  rating               Int?
+  ratingComment        String?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 

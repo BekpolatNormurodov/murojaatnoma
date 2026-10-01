@@ -10,6 +10,8 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
@@ -62,8 +64,9 @@ export class RequestsController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<CitizenRequestResponse> {
-    return this.requestsService.update(id, dto);
+    return this.requestsService.update(id, dto, user.employeeId);
   }
 
   @Delete(':id')

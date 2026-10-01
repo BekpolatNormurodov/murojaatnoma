@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl, MinLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUrl, MinLength } from 'class-validator';
 
 /** Body for a staff (employee/admin) reply on an application's chat thread. */
 export class ReplyApplicationDto {
@@ -12,4 +12,11 @@ export class ReplyApplicationDto {
   @IsOptional()
   @IsUrl()
   attachmentUrl?: string;
+
+  @ApiPropertyOptional({
+    description: "true — yakuniy javob (isbot bilan): murojaat 'Hal qilindi' bo'ladi",
+  })
+  @IsOptional()
+  @IsBoolean()
+  resolve?: boolean;
 }

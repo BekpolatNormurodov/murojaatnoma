@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EmployeeRole, Notification } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -19,14 +21,28 @@ export class NotificationsController {
   }
 
   @Get('employee/:employeeId')
-  @ApiOperation({ summary: 'List notifications for a given employee' })
-  findAllForEmployee(@Param('employeeId') employeeId: string): Promise<Notification[]> {
+  @ApiOperation({ summary: 'List notifications for an employee (employees: own only)' })
+  findAllForEmployee(
+    @Param('employeeId') employeeId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Notification[]> {
+    // An employee may only read their OWN notifications (was readable for any
+    // id by any logged-in user). Admin tokens may read anyone's.
+    if (user.scope !== 'admin' && user.employeeId !== employeeId) {
+      throw new ForbiddenException("Boshqa xodimning bildirishnomalari yopiq");
+    }
     return this.notificationsService.findAllForEmployee(employeeId);
   }
 
   @Patch(':id/read')
-  @ApiOperation({ summary: 'Mark a notification as read' })
-  markAsRead(@Param('id') id: string): Promise<Notification> {
-    return this.notificationsService.markAsRead(id);
+  @ApiOperation({ summary: 'Mark a notification as read (own only)' })
+  markAsRead(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Notification> {
+    return this.notificationsService.markAsRead(
+      id,
+      user.scope === 'admin' ? undefined : user.employeeId,
+    );
   }
 }

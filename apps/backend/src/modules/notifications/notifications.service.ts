@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Notification, NotificationType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PushService } from '../push/push.service';
@@ -33,7 +33,13 @@ export class NotificationsService {
     });
   }
 
-  markAsRead(id: string): Promise<Notification> {
+  async markAsRead(id: string, ownerEmployeeId?: string): Promise<Notification> {
+    if (ownerEmployeeId) {
+      const n = await this.prisma.notification.findUnique({ where: { id }, select: { employeeId: true } });
+      if (!n || n.employeeId !== ownerEmployeeId) {
+        throw new NotFoundException('Bildirishnoma topilmadi');
+      }
+    }
     return this.prisma.notification.update({
       where: { id },
       data: { isRead: true },

@@ -1,5 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CitizenRequest, Prisma, RequestCategory, RequestStatus } from '@prisma/client';
+import {
+  Application,
+  ApplicationEventType,
+  ApplicationStatus,
+  AttachmentType,
+  CitizenRequest,
+  Prisma,
+  RequestCategory,
+  RequestStatus,
+} from '@prisma/client';
+import { ApplicationsService, categoryOf, titleOf } from '../applications/applications.service';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateRequestDto } from './dto/create-request.dto';
@@ -15,6 +25,49 @@ import { UpdateRequestDto } from './dto/update-request.dto';
 export type CitizenRequestResponse = Omit<CitizenRequest, 'createdAt' | 'resolvedAt'> & {
   createdAt: string;
   resolvedAt: string | null;
+  /** 'citizen' = real murojaat from the citizen app (Application); 'legacy' = old CitizenRequest row. */
+  source?: 'citizen' | 'legacy';
+  /** ARIZA | SHIKOYAT (citizen app). */
+  kind?: 'ariza' | 'shikoyat';
+  /** SLA deadline (ISO) — citizen murojaats only. */
+  dueAt?: string | null;
+  /** Assigned employee's display info (real Employee). */
+  assignedEmployee?: { id: string; fullName: string; avatarUrl: string | null } | null;
+  ratingComment?: string | null;
+};
+
+const STATUS_TO_REQUEST: Record<ApplicationStatus, RequestStatus> = {
+  [ApplicationStatus.NEW]: RequestStatus.new,
+  [ApplicationStatus.IN_PROGRESS]: RequestStatus.in_progress,
+  [ApplicationStatus.RESOLVED]: RequestStatus.resolved,
+  [ApplicationStatus.REJECTED]: RequestStatus.rejected,
+};
+const STATUS_TO_APPLICATION: Record<RequestStatus, ApplicationStatus> = {
+  [RequestStatus.new]: ApplicationStatus.NEW,
+  [RequestStatus.in_progress]: ApplicationStatus.IN_PROGRESS,
+  [RequestStatus.resolved]: ApplicationStatus.RESOLVED,
+  [RequestStatus.rejected]: ApplicationStatus.REJECTED,
+};
+
+/** Free-text citizen category -> the admin's 6 fixed categories (keyword match). */
+function mapCategory(text: string): RequestCategory {
+  const t = text.toLowerCase();
+  if (/yo['ʻ‘’]?l|asfalt|chuqur|svetofor|trotuar/.test(t)) return RequestCategory.yol;
+  if (/suv|kanaliz|quvur/.test(t)) return RequestCategory.suv;
+  if (/elektr|chiroq|yorit|svet|tok\b/.test(t)) return RequestCategory.elektr;
+  if (/chiqindi|axlat|tozal|sanitar/.test(t)) return RequestCategory.tozalik;
+  if (/obodon|park|daraxt|bog['ʻ‘’]?|o['ʻ‘’]?yin|maydon/.test(t)) return RequestCategory.obodonlashtirish;
+  return RequestCategory.kommunal;
+}
+
+/** Real murojaats are uuid ids; legacy CitizenRequest rows are 'R-…'. */
+function isLegacyId(id: string): boolean {
+  return id.startsWith('R-');
+}
+
+type ApplicationRow = Application & {
+  assignedEmployee?: { id: string; fullName: string; avatarUrl: string | null } | null;
+  attachments?: { url: string; type: AttachmentType }[];
 };
 
 export interface RequestStatsResponse {
@@ -26,7 +79,55 @@ export interface RequestStatsResponse {
 
 @Injectable()
 export class RequestsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly applications: ApplicationsService,
+  ) {}
+
+  /** Application -> the admin's CitizenRequest shape (so the existing UI works unchanged). */
+  private fromApplication(a: ApplicationRow): CitizenRequestResponse {
+    const subjectCategory = categoryOf(a.subject);
+    return {
+      id: a.id,
+      title: titleOf(a.subject),
+      description: a.description,
+      category: mapCategory(`${subjectCategory} ${a.subject} ${a.description}`),
+      status: STATUS_TO_REQUEST[a.status],
+      region: a.region ?? 'Toshkent shahri',
+      districtId: 'mirzo',
+      address: a.address ?? a.district ?? '',
+      citizenName: a.applicantFullName,
+      citizenPhone: a.applicantPhone,
+      citizenPhoto: '',
+      createdAt: a.createdAt.toISOString(),
+      resolvedAt: a.resolvedAt ? a.resolvedAt.toISOString() : null,
+      assignedWorkerId: a.assignedEmployeeId,
+      priority: a.priority,
+      lat: a.lat ?? 41.33,
+      lng: a.lng ?? 69.348,
+      photos: (a.attachments ?? []).filter((x) => x.type === AttachmentType.PHOTO).map((x) => x.url),
+      responseHours: a.resolvedAt
+        ? Math.max(0, Math.round((a.resolvedAt.getTime() - a.createdAt.getTime()) / 3_600_000))
+        : null,
+      feedback: a.rating,
+      cost: 0,
+      source: 'citizen',
+      kind: /^\[SHIKOYAT\|/.test(a.subject) ? 'shikoyat' : 'ariza',
+      dueAt: a.dueAt ? a.dueAt.toISOString() : null,
+      assignedEmployee: a.assignedEmployee ?? null,
+      ratingComment: a.ratingComment,
+    };
+  }
+
+  private async findApplication(id: string): Promise<ApplicationRow | null> {
+    return this.prisma.application.findUnique({
+      where: { id },
+      include: {
+        assignedEmployee: { select: { id: true, fullName: true, avatarUrl: true } },
+        attachments: { select: { url: true, type: true } },
+      },
+    });
+  }
 
   private toResponse(request: CitizenRequest): CitizenRequestResponse {
     return {
@@ -45,20 +146,53 @@ export class RequestsService {
       ...(priority ? { priority } : {}),
     };
 
-    const [rows, total] = await Promise.all([
+    // Real citizen murojaats (Application) first-class, merged with the legacy
+    // CitizenRequest rows, newest first. Ilgari bu ro'yxat FAQAT eski jadvalni
+    // ko'rsatardi — fuqaro ilovasidan kelgan murojaat admin'ga ko'rinmasdi va
+    // admin biriktirgan xodim ishchi ilovasida murojaatni ko'rmasdi.
+    const appWhere: Prisma.ApplicationWhereInput = {
+      ...(status ? { status: STATUS_TO_APPLICATION[status] } : {}),
+      ...(priority ? { priority } : {}),
+    };
+    const window = page * limit;
+    const [rows, legacyTotal, apps] = await Promise.all([
       this.prisma.citizenRequest.findMany({
         where,
-        skip: (page - 1) * limit,
-        take: limit,
+        take: window,
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.citizenRequest.count({ where }),
+      district && district !== 'mirzo'
+        ? Promise.resolve([] as ApplicationRow[])
+        : this.prisma.application.findMany({
+            where: appWhere,
+            orderBy: { createdAt: 'desc' },
+            take: 1000,
+            include: {
+              assignedEmployee: { select: { id: true, fullName: true, avatarUrl: true } },
+              attachments: { select: { url: true, type: true } },
+            },
+          }),
     ]);
+    const mappedApps = apps
+      .map((a) => this.fromApplication(a))
+      .filter((r) => !category || r.category === category);
+    const merged = [...mappedApps, ...rows.map((row) => ({ ...this.toResponse(row), source: 'legacy' as const }))]
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-    return { data: rows.map((row) => this.toResponse(row)), total, page, limit };
+    return {
+      data: merged.slice((page - 1) * limit, page * limit),
+      total: legacyTotal + mappedApps.length,
+      page,
+      limit,
+    };
   }
 
   async findOne(id: string): Promise<CitizenRequestResponse> {
+    if (!isLegacyId(id)) {
+      const app = await this.findApplication(id);
+      if (app) return this.fromApplication(app);
+    }
     const request = await this.prisma.citizenRequest.findUnique({ where: { id } });
     if (!request) {
       throw new NotFoundException(`Request ${id} not found`);
@@ -112,7 +246,15 @@ export class RequestsService {
    * `resolved` (keeping any prior value if it was already resolved), and
    * cleared whenever the status moves to anything else.
    */
-  async update(id: string, dto: UpdateRequestDto): Promise<CitizenRequestResponse> {
+  async update(
+    id: string,
+    dto: UpdateRequestDto,
+    actorId?: string,
+  ): Promise<CitizenRequestResponse> {
+    if (!isLegacyId(id)) {
+      const app = await this.findApplication(id);
+      if (app) return this.updateApplication(app, dto, actorId ?? 'admin');
+    }
     const existing = await this.prisma.citizenRequest.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Request ${id} not found`);
@@ -137,8 +279,63 @@ export class RequestsService {
     return this.toResponse(updated);
   }
 
+  /**
+   * Admin action on a REAL murojaat — goes through ApplicationsService so the
+   * audit trail, SLA fields, in-app notification and PUSH to the employee all
+   * happen exactly as in the employee/citizen flows.
+   */
+  private async updateApplication(
+    app: ApplicationRow,
+    dto: UpdateRequestDto,
+    actorId: string,
+  ): Promise<CitizenRequestResponse> {
+    if (dto.assignedWorkerId) {
+      if (dto.assignedWorkerId !== app.assignedEmployeeId) {
+        await this.applications.assign(app.id, { assignedEmployeeId: dto.assignedWorkerId }, actorId);
+      }
+    } else if (dto.assignedWorkerId === null && app.assignedEmployeeId) {
+      await this.prisma.$transaction([
+        this.prisma.application.update({ where: { id: app.id }, data: { assignedEmployeeId: null } }),
+        this.prisma.applicationEvent.create({
+          data: {
+            applicationId: app.id,
+            type: ApplicationEventType.ASSIGNED,
+            fromEmployeeId: app.assignedEmployeeId,
+            actorEmployeeId: actorId,
+            note: 'Biriktirish bekor qilindi',
+          },
+        }),
+      ]);
+    }
+
+    if (dto.status) {
+      const target = STATUS_TO_APPLICATION[dto.status];
+      const current = (await this.prisma.application.findUnique({
+        where: { id: app.id },
+        select: { status: true },
+      }))!.status;
+      if (target !== current) {
+        // The admin may close a fresh one directly: NEW -> IN_PROGRESS -> RESOLVED.
+        if (current === ApplicationStatus.NEW && target === ApplicationStatus.RESOLVED) {
+          await this.applications.updateStatus(app.id, { status: ApplicationStatus.IN_PROGRESS }, actorId);
+        }
+        await this.applications.updateStatus(app.id, { status: target }, actorId);
+      }
+    }
+
+    const fresh = await this.findApplication(app.id);
+    return this.fromApplication(fresh!);
+  }
+
   /** `DELETE /requests/:id` — hard delete (no soft-delete field on this model). */
   async remove(id: string): Promise<void> {
+    if (!isLegacyId(id)) {
+      const app = await this.prisma.application.findUnique({ where: { id }, select: { id: true } });
+      if (app) {
+        await this.prisma.application.delete({ where: { id } });
+        return;
+      }
+    }
     const existing = await this.prisma.citizenRequest.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException(`Request ${id} not found`);
@@ -177,10 +374,20 @@ export class RequestsService {
       byCategory[group.category] = group._count;
     }
 
-    const byDistrict = districtGroups
-      .map((group) => ({ districtId: group.districtId, count: group._count }))
+    // Real citizen murojaats count too.
+    const apps = await this.prisma.application.findMany({
+      select: { status: true, subject: true, description: true },
+    });
+    for (const a of apps) {
+      byStatus[STATUS_TO_REQUEST[a.status]] += 1;
+      byCategory[mapCategory(`${categoryOf(a.subject)} ${a.subject} ${a.description}`)] += 1;
+    }
+    const districtCounts = new Map(districtGroups.map((g) => [g.districtId, g._count]));
+    if (apps.length) districtCounts.set('mirzo', (districtCounts.get('mirzo') ?? 0) + apps.length);
+    const byDistrict = [...districtCounts.entries()]
+      .map(([districtId, count]) => ({ districtId, count }))
       .sort((a, b) => b.count - a.count);
 
-    return { total, byStatus, byCategory, byDistrict };
+    return { total: total + apps.length, byStatus, byCategory, byDistrict };
   }
 }

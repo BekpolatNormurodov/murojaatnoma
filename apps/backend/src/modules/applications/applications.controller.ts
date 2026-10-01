@@ -21,7 +21,8 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
-import { ApplicationsService } from './applications.service';
+import { ApplicationStats, ApplicationsService } from './applications.service';
+import { RateApplicationDto, ReopenApplicationDto } from './dto/feedback-application.dto';
 import { AssignApplicationDto } from './dto/assign-application.dto';
 import { CreateApplicationDto } from './dto/create-application.dto';
 import { CreateAttachmentDto } from './dto/create-attachment.dto';
@@ -73,6 +74,13 @@ export class ApplicationsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<Paginated<Application>> {
     return this.applicationsService.findAll(query, user);
+  }
+
+  @ApiBearerAuth()
+  @Get('stats')
+  @ApiOperation({ summary: 'Murojaat pipeline stats: status, SLA overdue, resolution time, ratings, per-employee' })
+  stats(): Promise<ApplicationStats> {
+    return this.applicationsService.stats();
   }
 
   @ApiBearerAuth()
@@ -136,41 +144,82 @@ export class ApplicationsController {
     return this.applicationsService.reply(id, dto, user);
   }
 
-  @Public()
+  // Thread + attachments: authenticated. A CITIZEN only on their own murojaat
+  // (phone in token), staff on any. Were @Public — anyone could read every
+  // citizen's thread and post "as the employee".
+
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Post(':id/messages')
-  @ApiOperation({ summary: 'Post a chat message on an application' })
+  @ApiOperation({ summary: 'Post a message on the murojaat thread (role from token)' })
   addMessage(
     @Param('id') id: string,
     @Body() dto: CreateMessageDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApplicationMessage> {
-    return this.applicationsService.addMessage(id, dto);
+    return this.applicationsService.addMessage(id, dto, user);
   }
 
-  @Public()
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Get(':id/messages')
-  @ApiOperation({ summary: 'List chat messages for an application' })
-  findMessages(@Param('id') id: string): Promise<ApplicationMessage[]> {
-    return this.applicationsService.findMessages(id);
+  @ApiOperation({ summary: 'List messages of a murojaat (CITIZEN: own only)' })
+  findMessages(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApplicationMessage[]> {
+    return this.applicationsService.findMessages(id, user);
   }
 
-  @Public()
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Post(':id/attachments')
-  @ApiOperation({ summary: 'Attach a photo/video to an application' })
+  @ApiOperation({ summary: 'Attach a pre-hosted photo/video URL to a murojaat' })
   addAttachment(
     @Param('id') id: string,
     @Body() dto: CreateAttachmentDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Attachment> {
-    return this.applicationsService.addAttachment(id, dto);
+    return this.applicationsService.addAttachment(id, dto, user);
   }
 
-  @Public()
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Get(':id/attachments')
-  @ApiOperation({ summary: 'List attachments for an application' })
-  findAttachments(@Param('id') id: string): Promise<Attachment[]> {
-    return this.applicationsService.findAttachments(id);
+  @ApiOperation({ summary: 'List attachments of a murojaat (CITIZEN: own only)' })
+  findAttachments(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Attachment[]> {
+    return this.applicationsService.findAttachments(id, user);
   }
 
-  @Public()
+  @ApiBearerAuth()
+  @AllowCitizen()
+  @Post(':id/rate')
+  @ApiOperation({ summary: 'Citizen rates their RESOLVED murojaat 1..5' })
+  rate(
+    @Param('id') id: string,
+    @Body() dto: RateApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Application> {
+    return this.applicationsService.rate(id, user, dto.rating, dto.comment);
+  }
+
+  @ApiBearerAuth()
+  @AllowCitizen()
+  @Post(':id/reopen')
+  @ApiOperation({ summary: "Citizen reopens a RESOLVED murojaat (muammo hal bo'lmadi)" })
+  reopen(
+    @Param('id') id: string,
+    @Body() dto: ReopenApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Application> {
+    return this.applicationsService.reopen(id, user, dto.reason);
+  }
+
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Post(':id/attachments/upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
@@ -189,6 +238,7 @@ export class ApplicationsController {
   async uploadAttachment(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Attachment> {
     if (!file) {
       throw new BadRequestException('file is required');
@@ -204,6 +254,6 @@ export class ApplicationsController {
       fileName: file.originalname,
       mimeType: file.mimetype,
       sizeBytes: file.size,
-    });
+    }, user);
   }
 }
