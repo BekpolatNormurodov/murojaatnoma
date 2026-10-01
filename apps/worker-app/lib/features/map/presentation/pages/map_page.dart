@@ -10,6 +10,7 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/features/map/data/offline_tiles.dart';
 import 'package:worker_app/features/map/data/yandex_map.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 import 'package:worker_app/features/map/presentation/bloc/map_cubit.dart';
@@ -18,6 +19,9 @@ import 'package:worker_app/injection.dart';
 
 /// Tayl so'rovlaridagi identifikator (`User-Agent`).
 const _tileUserAgentPackageName = 'uz.gov.hokimiyat.worker_app';
+
+/// Diskka keshlanadigan Yandex plitkalari (bitta, ilova bo'yi).
+final _offlineTiles = OfflineTileProvider(userAgent: _tileUserAgentPackageName);
 
 /// Biriktirilgan hududlar (admin o'zgartirsa) shu oraliqda yangilanadi.
 const _zoneRefreshInterval = Duration(minutes: 2);
@@ -186,6 +190,70 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
   }
 
+  /// Tuman xaritasini (z12–15, ~10 MB) oldindan yuklab qo'yadi — keyin
+  /// internet yo'q joyda ham xarita to'liq ko'rinadi.
+  Future<void> _saveOffline() async {
+    final bounds = _boundaries.bounds;
+    if (bounds == null) return;
+    final progress = ValueNotifier<(int, int)>((0, 0));
+    var finished = false;
+    unawaited(
+      showModalBottomSheet<void>(
+        context: context,
+        isDismissible: false,
+        enableDrag: false,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          child: ValueListenableBuilder<(int, int)>(
+            valueListenable: progress,
+            builder: (_, p, _) {
+              final (done, total) = p;
+              final ratio = total == 0 ? null : done / total;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    "Mirzo Ulug'bek xaritasi saqlanmoqda",
+                    style: AppTextStyles.h3,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "Internet yo'q joyda ham xarita ochiladi. Wi-Fi'da "
+                    'qilish tavsiya etiladi.',
+                    style: AppTextStyles.caption,
+                  ),
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(value: ratio),
+                  const SizedBox(height: 8),
+                  Text(
+                    total == 0 ? 'Tayyorlanmoqda…' : '$done / $total',
+                    style: AppTextStyles.caption,
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ).whenComplete(() => finished = true),
+    );
+    final fetched = await OfflineTileProvider.prefetch(
+      bounds: bounds,
+      urlTemplate: kYandexTileUrlTemplate,
+      userAgent: _tileUserAgentPackageName,
+      onProgress: (done, total) => progress.value = (done, total),
+    );
+    if (!mounted) return;
+    if (!finished) Navigator.of(context).pop();
+    progress.dispose();
+    AppAlert.success(
+      context,
+      fetched == 0
+          ? 'Xarita allaqachon saqlangan'
+          : "Xarita oflayn saqlandi ($fetched ta yangi bo'lak)",
+    );
+  }
+
   void _onMapReady() {
     _mapReady = true;
     _fitToDistrictIfReady();
@@ -322,6 +390,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             insideZone: _insideZone,
             onRecenter: () => _onRecenterPressed(cubit),
             onMapReady: _onMapReady,
+            onSaveOffline: _boundaries.bounds == null ? null : _saveOffline,
           ),
         };
       },
@@ -383,10 +452,14 @@ class _TrackingScaffold extends StatelessWidget {
     required this.insideZone,
     required this.onRecenter,
     required this.onMapReady,
+    this.onSaveOffline,
   });
 
   /// `FlutterMap` birinchi marta chizilib, `MapController` tayyor bo'lganda.
   final VoidCallback onMapReady;
+
+  /// "Xaritani oflayn saqlash" (tuman chegarasi ma'lum bo'lsa).
+  final VoidCallback? onSaveOffline;
 
   final MapState state;
   final MapController mapController;
@@ -432,6 +505,9 @@ class _TrackingScaffold extends StatelessWidget {
                   urlTemplate: kYandexTileUrlTemplate,
                   userAgentPackageName: _tileUserAgentPackageName,
                   maxZoom: 19,
+                  // Ko'rilgan plitkalar diskka saqlanadi — internet yo'q
+                  // bo'lsa ham xarita (tuman, ko'chalar) ochiladi.
+                  tileProvider: _offlineTiles,
                 ),
                 // Joriy mahalla urg'usi — chegaralar OSTIDA yengil to'ldirish,
                 // shunda ustidagi ingichka to'r ko'rinib turadi.
@@ -501,6 +577,28 @@ class _TrackingScaffold extends StatelessWidget {
               ),
             ),
           ),
+          // Tuman xaritasini oflayn saqlash (sekin/yo'q internet uchun).
+          if (onSaveOffline != null)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Material(
+                    color: isDark ? AppColors.darkSurface : AppColors.surface,
+                    shape: const CircleBorder(),
+                    elevation: 2,
+                    child: IconButton(
+                      tooltip: 'Xaritani oflayn saqlash',
+                      icon: const Icon(Icons.download_for_offline_outlined),
+                      color: AppColors.primary,
+                      onPressed: onSaveOffline,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             left: 16,
             // FAB (bottom-right, standart Scaffold joylashuvi) bilan
