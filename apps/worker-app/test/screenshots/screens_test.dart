@@ -55,6 +55,11 @@ const _routes = <(String, String)>[
   ('/schedule', 'schedule'),
   ('/leave-request', 'leave_request'),
   ('/premya-request', 'premya_request'),
+  ('/requests/ARZ-1001', 'request_detail'),
+  ('/requests/ARZ-1002/respond', 'request_respond'),
+  ('/chat/CHT-1', 'chat_conversation'),
+  ('/chat/CHT-3', 'chat_group'),
+  ('/meetings/MTG-1', 'meeting_detail'),
 ];
 
 /// Device profiles: name, logical size, text scale.

@@ -266,55 +266,73 @@ class _StatusTimeline extends StatelessWidget {
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
+    Color segment(int i) =>
+        i <= currentIndex ? StatusChip.colorOf(steps[i]) : line;
+
+    // Classic stepper: each step owns an equal column; the connector runs
+    // from the previous dot to this one, so lines join dot-to-dot. Every
+    // label uses the SAME size and wraps at a word boundary ("Javob /
+    // berildi") instead of being shrunk by a FittedBox.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var i = 0; i < steps.length; i++) ...[
+        for (var i = 0; i < steps.length; i++)
           Expanded(
             child: Column(
               children: [
-                Container(
-                  width: 14,
+                SizedBox(
                   height: 14,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: i <= currentIndex
-                        ? StatusChip.colorOf(steps[i])
-                        : line,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: i == 0
+                            ? const SizedBox.shrink()
+                            : Container(height: 2, color: segment(i)),
+                      ),
+                      Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: segment(i),
+                          border: i == currentIndex
+                              ? Border.all(
+                                  color: segment(i).withValues(alpha: 0.25),
+                                  width: 3,
+                                  strokeAlign: BorderSide.strokeAlignOutside,
+                                )
+                              : null,
+                        ),
+                      ),
+                      Expanded(
+                        child: i == steps.length - 1
+                            ? const SizedBox.shrink()
+                            : Container(height: 2, color: segment(i + 1)),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 8),
-                // Har bir bosqich teng kenglikda (`Expanded`); yorliq
-                // `FittedBox(scaleDown)` bilan doim bitta satrga sig'adi —
-                // uzun yorliq ("Javob berildi") kichrayadi, LEKIN hech
-                // qachon so'z o'rtasidan bo'linmaydi.
-                FittedBox(
-                  fit: BoxFit.scaleDown,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
                   child: Text(
                     StatusChip.labelOf(context, steps[i]),
-                    maxLines: 1,
+                    maxLines: 2,
                     textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTextStyles.caption.copyWith(
+                      fontSize: 11.5,
+                      height: 1.2,
                       color: i <= currentIndex ? ink : inkMuted,
                       fontWeight: i == currentIndex
                           ? FontWeight.w700
-                          : FontWeight.w400,
+                          : FontWeight.w500,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          if (i != steps.length - 1)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Container(
-                width: 16,
-                height: 2,
-                color: i < currentIndex ? StatusChip.colorOf(steps[i]) : line,
-              ),
-            ),
-        ],
       ],
     );
   }

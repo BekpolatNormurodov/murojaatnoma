@@ -105,29 +105,37 @@ class _AppButtonState extends State<AppButton> {
                         valueColor: AlwaysStoppedAnimation(fg),
                       ),
                     )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Flexible + 2 lines: a long label on a narrow phone
-                        // (or with large system text) wraps inside the button
-                        // instead of overflowing it (was 31–61 px on Home).
-                        Flexible(
-                          child: Text(
-                            widget.label,
-                            style: AppTextStyles.button.copyWith(
-                              color: fg,
-                              height: 1.15,
+                  // Narrow button (two side by side on a 360 px phone): drop
+                  // the decorative icon so the label stays on one line.
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final showIcon =
+                            widget.icon != null && constraints.maxWidth >= 170;
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Flexible + 2 lines: a long label on a narrow
+                            // phone (or with large system text) wraps inside
+                            // the button instead of overflowing it.
+                            Flexible(
+                              child: Text(
+                                widget.label,
+                                style: AppTextStyles.button.copyWith(
+                                  color: fg,
+                                  height: 1.15,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (widget.icon != null) ...[
-                          const SizedBox(width: 8),
-                          Icon(widget.icon, size: 20, color: fg),
-                        ],
-                      ],
+                            if (showIcon) ...[
+                              const SizedBox(width: 8),
+                              Icon(widget.icon, size: 20, color: fg),
+                            ],
+                          ],
+                        );
+                      },
                     ),
             ),
           ),
