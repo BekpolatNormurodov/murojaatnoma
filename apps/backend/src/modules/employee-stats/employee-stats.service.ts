@@ -54,7 +54,9 @@ export class EmployeeStatsService {
     const from = new Date(fromIso);
     const to = new Date(toIso);
     const records = await this.prisma.attendanceRecord.findMany({
-      where: { employeeId, recordedAt: { gte: from, lte: to } },
+      // Rejected scans (face/geofence mismatch) are attempts, not attendance —
+      // same rule as the davomat board (attendance.service buildDayEntry).
+      where: { employeeId, isValid: true, recordedAt: { gte: from, lte: to } },
       select: { type: true, recordedAt: true, isLate: true, lateMinutes: true },
       orderBy: { recordedAt: 'asc' },
     });

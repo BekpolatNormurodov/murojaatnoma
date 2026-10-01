@@ -62,36 +62,81 @@ export interface TodayCheckIn {
   isLate: boolean;
   lateMinutes: number;
   insideGeofence: boolean;
+  /** Face match score of the accepted scan (0..1). */
+  faceScore: number;
+  /** Metres from the office point when the scan was made. */
+  distanceM: number;
 }
 
 export interface TodayCheckOut {
   time: Date;
+  insideGeofence: boolean;
+  faceScore: number;
+  distanceM: number;
+}
+
+/** A scan the server rejected (face below threshold and/or outside the geofence). */
+export interface TodayFailedScan {
+  type: AttendanceType;
+  time: Date;
+  reason: string | null;
+  faceScore: number;
+  distanceM: number;
+}
+
+/** The employee's latest live-location report (today's board only). */
+export interface TodayLiveLocation {
+  at: Date;
+  mahallaName: string | null;
+  insideZone: boolean;
+  stale: boolean;
 }
 
 export interface EmployeeTodayEntry {
   employeeId: string;
   fullName: string;
   position: string;
+  phone: string;
   avatarUrl: string | null;
   department: string | null;
+  workStartTime: string;
+  workEndTime: string;
   checkIn: TodayCheckIn | null;
   checkOut: TodayCheckOut | null;
   status: TodayAttendanceStatus;
   hoursWorked: number | null;
+  /** Minutes the employee checked out before their workEndTime (0 = not early). */
+  earlyLeaveMinutes: number;
+  failedScans: TodayFailedScan[];
+  live: TodayLiveLocation | null;
 }
 
 export interface TodayAttendanceSummary {
   total: number;
+  /** Checked in and still working, on time. */
   present: number;
+  /** Checked in late and still working (late employees who already left count as `left`). */
   late: number;
   absent: number;
   left: number;
+  /** Everyone with a valid check-in today (present + late + left). */
+  checkedIn: number;
+  /** Checked in and not yet checked out. */
+  workingNow: number;
+  /** Every late arrival today, including those who already left. */
+  lateTotal: number;
+  onTime: number;
+  earlyLeave: number;
+  /** Employees with at least one rejected scan today. */
+  withFailedScans: number;
 }
 
 export interface TodayAttendance {
   date: Date;
   roster: EmployeeTodayEntry[];
   summary: TodayAttendanceSummary;
+  workStartTime: string;
+  workEndTime: string;
 }
 
 /** A single day's pairing result, shared by `today()` and `me()`. */
@@ -240,6 +285,11 @@ export class AttendanceService {
       }
     }
 
+    // Live location only makes sense for the board of the current day.
+    const isToday = formatLocalDate(from) === formatLocalDate(new Date());
+    const { staleMinutes } = this.configService.get('location', { infer: true });
+    const staleBefore = Date.now() - staleMinutes * 60_000;
+
     const roster: EmployeeTodayEntry[] = employees.map((employee) => {
       const empRecords = recordsByEmployee.get(employee.id) ?? [];
       const { status, checkIn, checkOut, hoursWorked } = this.buildDayEntry(
@@ -249,28 +299,77 @@ export class AttendanceService {
         officeLongitude,
       );
 
+      const earlyLeaveMinutes = checkOut
+        ? Math.max(
+            0,
+            minutesAfter(checkOut.time, parseTimeOnDate(checkOut.time, employee.workEndTime)),
+          )
+        : 0;
+
+      const failedScans: TodayFailedScan[] = empRecords
+        .filter((record) => !record.isValid)
+        .map((record) => ({
+          type: record.type,
+          time: record.recordedAt,
+          reason: record.reason,
+          faceScore: record.faceScore,
+          distanceM: Math.round(
+            distanceInMeters(record.latitude, record.longitude, officeLatitude, officeLongitude),
+          ),
+        }));
+
+      const live: TodayLiveLocation | null =
+        isToday && employee.lastLocationAt
+          ? {
+              at: employee.lastLocationAt,
+              mahallaName: employee.lastMahallaName ?? null,
+              insideZone: employee.lastInsideAssignedZone,
+              stale: employee.lastLocationAt.getTime() < staleBefore,
+            }
+          : null;
+
       return {
         employeeId: employee.id,
         fullName: employee.fullName,
         position: employee.position,
+        phone: employee.phone,
         avatarUrl: employee.avatarUrl ?? null,
         department: employee.department?.name ?? null,
+        workStartTime: employee.workStartTime,
+        workEndTime: employee.workEndTime,
         checkIn,
         checkOut,
         status,
         hoursWorked,
+        earlyLeaveMinutes,
+        failedScans,
+        live,
       };
     });
 
+    const count = (pred: (entry: EmployeeTodayEntry) => boolean) => roster.filter(pred).length;
     const summary: TodayAttendanceSummary = {
       total: roster.length,
-      present: roster.filter((entry) => entry.status === 'present').length,
-      late: roster.filter((entry) => entry.status === 'late').length,
-      absent: roster.filter((entry) => entry.status === 'absent').length,
-      left: roster.filter((entry) => entry.status === 'left').length,
+      present: count((entry) => entry.status === 'present'),
+      late: count((entry) => entry.status === 'late'),
+      absent: count((entry) => entry.status === 'absent'),
+      left: count((entry) => entry.status === 'left'),
+      checkedIn: count((entry) => entry.checkIn !== null),
+      workingNow: count((entry) => entry.checkIn !== null && entry.checkOut === null),
+      lateTotal: count((entry) => entry.checkIn?.isLate === true),
+      onTime: count((entry) => entry.checkIn !== null && !entry.checkIn.isLate),
+      earlyLeave: count((entry) => entry.earlyLeaveMinutes > 0),
+      withFailedScans: count((entry) => entry.failedScans.length > 0),
     };
 
-    return { date: from, roster, summary };
+    const work = this.configService.get('work', { infer: true });
+    return {
+      date: from,
+      roster,
+      summary,
+      workStartTime: work.startTime,
+      workEndTime: work.endTime,
+    };
   }
 
   /**
@@ -378,23 +477,31 @@ export class AttendanceService {
       .reverse()
       .find((record) => record.type === AttendanceType.CHECK_OUT && record.isValid);
 
+    const distanceOf = (record: AttendanceRecord) =>
+      Math.round(
+        distanceInMeters(record.latitude, record.longitude, officeLatitude, officeLongitude),
+      );
+
+    const checkInDistance = checkInRecord ? distanceOf(checkInRecord) : 0;
     const checkIn: TodayCheckIn | null = checkInRecord
       ? {
           time: checkInRecord.recordedAt,
           isLate: checkInRecord.isLate,
           lateMinutes: checkInRecord.lateMinutes,
-          insideGeofence:
-            distanceInMeters(
-              checkInRecord.latitude,
-              checkInRecord.longitude,
-              officeLatitude,
-              officeLongitude,
-            ) <= geofenceRadiusM,
+          insideGeofence: checkInDistance <= geofenceRadiusM,
+          faceScore: checkInRecord.faceScore,
+          distanceM: checkInDistance,
         }
       : null;
 
+    const checkOutDistance = checkOutRecord ? distanceOf(checkOutRecord) : 0;
     const checkOut: TodayCheckOut | null = checkOutRecord
-      ? { time: checkOutRecord.recordedAt }
+      ? {
+          time: checkOutRecord.recordedAt,
+          insideGeofence: checkOutDistance <= geofenceRadiusM,
+          faceScore: checkOutRecord.faceScore,
+          distanceM: checkOutDistance,
+        }
       : null;
 
     let status: TodayAttendanceStatus;
