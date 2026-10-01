@@ -597,8 +597,14 @@ class CallCubit extends Cubit<CallState> {
       }
       unawaited(stream.dispose());
     }
-    localRenderer.srcObject = null;
-    remoteRenderer.srcObject = null;
+    // Setting srcObject on a renderer that was never initialize()d THROWS
+    // ("Call initialize before setting the stream") — e.g. a call that failed
+    // before media opened, or close() on an idle cubit. That aborted the rest
+    // of the teardown (peer connection left open).
+    if (_renderersReady) {
+      localRenderer.srcObject = null;
+      remoteRenderer.srcObject = null;
+    }
 
     final pc = _pc;
     _pc = null;

@@ -37,8 +37,37 @@ class AppSegmented<T> extends StatelessWidget {
   final T value;
   final ValueChanged<T> onChanged;
 
-  /// Shu songacha teng-kenglik rejimi; undan ko'pi suriluvchi rejimga o'tadi.
-  static const _fillThreshold = 4;
+  /// Segment ichki gorizontal padding (har ikki tomon).
+  static const double _segmentPadding = 14;
+
+  /// Konteyner padding'i (4) + chegara (1) — har ikki tomonda.
+  static const double _chrome = 10;
+
+  /// Yorliqlar teng kenglikda SIG'adimi? Har bir segmentning tabiiy enini
+  /// (matn + ikon + padding) o'lchab, eng kengini segmentlar soniga
+  /// ko'paytiramiz (teng kenglik = eng keng segment eni). Sig'masa —
+  /// suriluvchi rejim. Ilgari "<= 4 ta bo'lsa to'ldir" qoidasi edi: uzun
+  /// yorliqlar (masalan "Rejalashtirilgan") 360 px ekranda 3–60 px toshib,
+  /// RenderFlex overflow berardi.
+  bool _fitsEqually(BuildContext context, double maxWidth) {
+    final scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (final segment in segments) {
+      final painter = TextPainter(
+        text: TextSpan(text: segment.label, style: AppTextStyles.label),
+        maxLines: 1,
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+      )..layout();
+      final w =
+          painter.width +
+          (segment.icon != null ? 22 : 0) +
+          _segmentPadding * 2;
+      painter.dispose();
+      if (w > widest) widest = w;
+    }
+    return widest * segments.length <= maxWidth - _chrome;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,36 +75,41 @@ class AppSegmented<T> extends StatelessWidget {
     final surfaceAlt = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
     final line = isDark ? AppColors.darkLine : AppColors.line;
 
-    final fill = segments.length <= _fillThreshold;
-
-    final children = [
-      for (final segment in segments)
-        _Segment<T>(
-          segment: segment,
-          active: segment.value == value,
-          onChanged: onChanged,
-        ),
-    ];
-
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: surfaceAlt,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: line),
-      ),
-      child: fill
-          ? Row(
-              children: [
-                for (final child in children) Expanded(child: child),
-              ],
-            )
-          : SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: Row(children: children),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fill =
+            !constraints.hasBoundedWidth ||
+            _fitsEqually(context, constraints.maxWidth);
+        final children = [
+          for (final segment in segments)
+            _Segment<T>(
+              segment: segment,
+              active: segment.value == value,
+              onChanged: onChanged,
             ),
+        ];
+
+        return Container(
+          height: 48,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: surfaceAlt,
+            borderRadius: BorderRadius.circular(AppRadii.md),
+            border: Border.all(color: line),
+          ),
+          child: fill && constraints.hasBoundedWidth
+              ? Row(
+                  children: [
+                    for (final child in children) Expanded(child: child),
+                  ],
+                )
+              : SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: Row(children: children),
+                ),
+        );
+      },
     );
   }
 }
@@ -113,7 +147,9 @@ class _Segment<T> extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSegmented._segmentPadding,
+        ),
         decoration: BoxDecoration(
           color: active ? surface : Colors.transparent,
           borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -134,11 +170,15 @@ class _Segment<T> extends StatelessWidget {
               Icon(segment.icon, size: 16, color: color),
               const SizedBox(width: 6),
             ],
-            Text(
-              segment.label,
-              style: AppTextStyles.label.copyWith(color: color),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            // Flexible: in equal-width mode a (rare) still-too-long label
+            // ellipsizes instead of overflowing the pill.
+            Flexible(
+              child: Text(
+                segment.label,
+                style: AppTextStyles.label.copyWith(color: color),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),

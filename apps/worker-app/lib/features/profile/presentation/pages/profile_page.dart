@@ -380,7 +380,8 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                     color: roleColor,
                     fontWeight: FontWeight.w600,
                   ),
-                  maxLines: 1,
+                  // Lavozimlar uzun ("Kommunal xizmat mutaxassisi") — 2 qator.
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 FutureBuilder<_EnrollInfo>(

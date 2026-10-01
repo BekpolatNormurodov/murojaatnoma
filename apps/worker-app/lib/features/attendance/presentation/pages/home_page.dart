@@ -393,14 +393,17 @@ class _QuickActions extends StatelessWidget {
           style: AppTextStyles.label.copyWith(color: softColor),
         ),
         const SizedBox(height: 8),
+        // None of these three carries a badge, so no badge slot is reserved
+        // (it left an empty band under every label); stretch keeps heights
+        // equal if a label wraps.
         IntrinsicHeight(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
                 child: _QuickActionCard(
                   icon: AppIcons.video,
                   label: l10n.meetingsPageTitle,
-                  reserveBadgeSlot: true,
                   onTap: () => context.push('/meetings'),
                 ),
               ),
@@ -409,7 +412,6 @@ class _QuickActions extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.lampOn,
                   label: l10n.suggestionsPageTitle,
-                  reserveBadgeSlot: true,
                   onTap: () => context.push('/suggestions'),
                 ),
               ),
@@ -418,7 +420,6 @@ class _QuickActions extends StatelessWidget {
                 child: _QuickActionCard(
                   icon: AppIcons.coin,
                   label: l10n.pointsPageTitle,
-                  reserveBadgeSlot: true,
                   onTap: () => context.push('/points'),
                 ),
               ),

@@ -25,7 +25,7 @@ class AppListTile extends StatefulWidget {
     this.enabled = true,
     this.filled = false,
     this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    this.titleMaxLines = 1,
+    this.titleMaxLines = 2,
   });
 
   final String title;
@@ -112,62 +112,71 @@ class _AppListTileState extends State<AppListTile> {
       ),
       child: Opacity(
         opacity: widget.enabled ? 1 : 0.5,
-        child: Row(
-          // Ikki qatorli (subtitle bor) tile'larda kontent YUQORIDAN
-          // tekislanadi — leading ikon/avatar sarlavhaning birinchi qatori
-          // bilan bir chiziqda turadi va matn ustun (column) kabi ko'rinadi.
-          // Bitta qatorli oddiy tile'lar esa markazda qoladi (shunda kichik
-          // ikon matn bilan vertikal muvozanatda bo'ladi).
-          crossAxisAlignment: widget.subtitle != null
-              ? CrossAxisAlignment.start
-              : CrossAxisAlignment.center,
-          children: [
-            if (leadingWidget != null) ...[
-              leadingWidget,
-              const SizedBox(width: 14),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          widget.title,
-                          style: AppTextStyles.bodyStrong,
-                          maxLines: widget.titleMaxLines,
-                          overflow: TextOverflow.ellipsis,
+        // LayoutBuilder: trailing is capped at ~42% of the row and sized to
+        // its content; the title takes everything else. (Was Expanded(title)
+        // + Flexible(trailing) — both flex 1, so the row split 50/50: titles
+        // ellipsized at half width and the chevron/value floated mid-row.)
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            // Ikki qatorli (subtitle bor) tile'larda kontent YUQORIDAN
+            // tekislanadi — leading ikon/avatar sarlavhaning birinchi qatori
+            // bilan bir chiziqda turadi va matn ustun (column) kabi ko'rinadi.
+            // Bitta qatorli oddiy tile'lar esa markazda qoladi (shunda kichik
+            // ikon matn bilan vertikal muvozanatda bo'ladi).
+            crossAxisAlignment: widget.subtitle != null
+                ? CrossAxisAlignment.start
+                : CrossAxisAlignment.center,
+            children: [
+              if (leadingWidget != null) ...[
+                leadingWidget,
+                const SizedBox(width: 14),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            widget.title,
+                            style: AppTextStyles.bodyStrong,
+                            maxLines: widget.titleMaxLines,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      if (widget.badge != null) ...[
-                        const SizedBox(width: 8),
-                        widget.badge!,
+                        if (widget.badge != null) ...[
+                          const SizedBox(width: 8),
+                          widget.badge!,
+                        ],
                       ],
-                    ],
-                  ),
-                  if (widget.subtitle != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      widget.subtitle!,
-                      style: AppTextStyles.caption.copyWith(color: inkSoft),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
+                    if (widget.subtitle != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        widget.subtitle!,
+                        style: AppTextStyles.caption.copyWith(color: inkSoft),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (trailingWidget != null) ...[
-              const SizedBox(width: 10),
-              // `Flexible` MAJBURIY: `trailingWidget` `Expanded(title/
-              // subtitle)`dan keyingi kengligi cheklanmagan birodar
-              // (sibling) bo'lsa, keng trailing (masalan uzun matn/tugma)
-              // sarlavhani siqib qo'yishi mumkin edi.
-              Flexible(child: trailingWidget),
+              if (trailingWidget != null) ...[
+                const SizedBox(width: 10),
+                // Kenglik chegaralangan (≤42%) — uzun trailing sarlavhani
+                // siqib qo'ymaydi, qisqasi esa o'z enida o'ng chetda turadi.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * 0.42,
+                  ),
+                  child: trailingWidget,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

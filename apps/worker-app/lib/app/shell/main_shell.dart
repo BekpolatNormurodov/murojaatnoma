@@ -170,66 +170,73 @@ class _TabButton extends StatelessWidget {
     final color = isActive ? AppColors.primary : mutedColor;
 
     return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        // `FittedBox` + `mainAxisSize: MainAxisSize.min` MAJBURIY: katta
-        // tizim shrift o'lchamida (`textScaler`) `maxLines`/`overflow`
-        // bo'lsa ham bitta qator matnning balandligi o'sib, sobit
-        // balandlikdagi (`SizedBox(height: 64)`) pastki navigatsiya
-        // panelini "toshib ketishi" (RenderFlex overflow) mumkin edi —
-        // `FittedBox` butun ikon+yorliq blokini shrift o'lchamidan qat'i
-        // nazar 64px ichiga sig'dirib, kerak bo'lsagina kichraytiradi.
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? AppColors.primary.withValues(alpha: 0.12)
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
-                ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  transitionBuilder: (child, animation) =>
-                      ScaleTransition(scale: animation, child: child),
-                  child: Icon(
-                    isActive ? item.activeIcon : item.icon,
-                    key: ValueKey(isActive),
-                    color: color,
-                    size: 24,
+      // 2px gutter: at 360 px five 72 px cells left "Bosh sahifa" /
+      // "Murojaatlar" touching their neighbours and the screen edge.
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          // `FittedBox` + `mainAxisSize: MainAxisSize.min` MAJBURIY: katta
+          // tizim shrift o'lchamida (`textScaler`) `maxLines`/`overflow`
+          // bo'lsa ham bitta qator matnning balandligi o'sib, sobit
+          // balandlikdagi (`SizedBox(height: 64)`) pastki navigatsiya
+          // panelini "toshib ketishi" (RenderFlex overflow) mumkin edi —
+          // `FittedBox` butun ikon+yorliq blokini shrift o'lchamidan qat'i
+          // nazar 64px ichiga sig'dirib, kerak bo'lsagina kichraytiradi.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? AppColors.primary.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                  ),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    transitionBuilder: (child, animation) =>
+                        ScaleTransition(scale: animation, child: child),
+                    child: Icon(
+                      isActive ? item.activeIcon : item.icon,
+                      key: ValueKey(isActive),
+                      color: color,
+                      size: 24,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                style: AppTextStyles.caption.copyWith(
-                  color: color,
-                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                const SizedBox(height: 4),
+                AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  style: AppTextStyles.caption.copyWith(
+                    color: color,
+                    fontSize: 11,
+                    letterSpacing: -0.1,
+                    fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                  // `maxLines`/`overflow` MAJBURIY: tarjima qilingan yorliq
+                  // (masalan ruscha "Обращения") tor tab-ustunida ikki
+                  // qatorga o'ralib ketmasligi uchun.
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                // `maxLines`/`overflow` MAJBURIY: tarjima qilingan yorliq
-                // (masalan ruscha "Обращения") tor tab-ustunida ikki
-                // qatorga o'ralib ketmasligi uchun.
-                child: Text(
-                  item.label,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

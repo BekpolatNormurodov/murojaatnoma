@@ -75,7 +75,7 @@ class _AppButtonState extends State<AppButton> {
           child: Container(
             width: widget.expand ? double.infinity : null,
             height: 54,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: bg,
               borderRadius: BorderRadius.circular(AppRadii.md),
@@ -108,9 +108,20 @@ class _AppButtonState extends State<AppButton> {
                   : Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          widget.label,
-                          style: AppTextStyles.button.copyWith(color: fg),
+                        // Flexible + 2 lines: a long label on a narrow phone
+                        // (or with large system text) wraps inside the button
+                        // instead of overflowing it (was 31–61 px on Home).
+                        Flexible(
+                          child: Text(
+                            widget.label,
+                            style: AppTextStyles.button.copyWith(
+                              color: fg,
+                              height: 1.15,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         if (widget.icon != null) ...[
                           const SizedBox(width: 8),

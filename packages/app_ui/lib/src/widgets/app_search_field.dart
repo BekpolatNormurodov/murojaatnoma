@@ -86,8 +86,9 @@ class _AppSearchFieldState extends State<AppSearchField> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surfaceAlt = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
+    final line = isDark ? AppColors.darkLine : AppColors.line;
     return TextField(
       controller: _controller,
       enabled: widget.enabled,
@@ -98,8 +99,15 @@ class _AppSearchFieldState extends State<AppSearchField> {
       style: AppTextStyles.bodyStrong,
       decoration: InputDecoration(
         hintText: widget.hint,
+        // Placeholder must read as a placeholder — regular weight, muted.
+        // (Without it the hint inherited bodyStrong and looked like typed
+        // text.)
+        hintStyle: AppTextStyles.body.copyWith(color: inkMuted),
+        hintMaxLines: 1,
         filled: true,
-        fillColor: surfaceAlt,
+        // White field + hairline border: visible on the grey page background
+        // (surfaceAlt-on-surfaceAlt made the field nearly invisible).
+        fillColor: surface,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(vertical: 14),
         prefixIcon: Icon(
@@ -132,7 +140,7 @@ class _AppSearchFieldState extends State<AppSearchField> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
-          borderSide: BorderSide.none,
+          borderSide: BorderSide(color: line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppRadii.md),
