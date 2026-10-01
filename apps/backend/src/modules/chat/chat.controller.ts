@@ -22,6 +22,7 @@ import { EditChatMessageDto } from './dto/edit-chat-message.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
+import { ChatPersonCard } from './interfaces/chat-person-card.interface';
 
 // Admin-scoped. web-admin (admin JWT) is the only /chat REST consumer today;
 // the Socket.IO gateway independently enforces JWT+scope for the employee
@@ -69,6 +70,13 @@ export class ChatController {
     @Body() dto: CreateChatMessageDto,
   ): Promise<ChatMessage> {
     return this.chatService.sendMyMessage(user.employeeId, id, dto);
+  }
+
+  @Get('my/people/:id')
+  @RequireScope('employee')
+  @ApiOperation({ summary: "Xodim uchun: chatdagi odamning profil kartasi (ism, lavozim, bo'lim, rasm)" })
+  personCard(@Param('id') id: string): Promise<ChatPersonCard> {
+    return this.chatService.personCard(id);
   }
 
   @Patch('my/conversations/:id/read')

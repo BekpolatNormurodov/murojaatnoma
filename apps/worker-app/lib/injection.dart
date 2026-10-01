@@ -33,6 +33,7 @@ import 'package:worker_app/features/calls/data/repositories/call_repository_impl
 import 'package:worker_app/features/calls/domain/repositories/call_repository.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
+import 'package:worker_app/features/chat/data/chat_people.dart';
 import 'package:worker_app/features/chat/data/datasources/chat_remote_data_source.dart';
 import 'package:worker_app/features/chat/data/repositories/chat_repository_impl.dart';
 import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
@@ -273,6 +274,8 @@ Future<void> configureDependencies() async {
     ..registerLazySingleton<ScanPhotoUploader>(
       () => ApiScanPhotoUploader(getIt<DioClient>()),
     )
+    // Chatdagi odamning ochiq profil kartasi (ism, lavozim, bo'lim, rasm).
+    ..registerLazySingleton<ChatPeople>(() => ApiChatPeople(getIt<DioClient>()))
     ..registerLazySingleton<GetMyAttendance>(
       () => GetMyAttendance(getIt<AttendanceRepository>()),
     )

@@ -95,3 +95,34 @@ describe('ChatService.findAllConversations (admin list)', () => {
     await expect(service.markRead('dm-emp-b')).resolves.toEqual({ ok: true });
   });
 });
+
+describe('ChatService.personCard (worker-app profile sheet)', () => {
+  const svc = (row: unknown) =>
+    new ChatService(
+      { employee: { findFirst: jest.fn().mockResolvedValue(row) } } as never,
+      { emit: jest.fn() } as never,
+    );
+
+  it('shows a colleague by name, role and photo — never the phone', async () => {
+    const card = await svc({
+      id: 'e1',
+      fullName: 'Gulnora Yusupova',
+      position: 'Inspektor',
+      avatarUrl: '/uploads/g.jpg',
+      department: { name: 'Obodonlashtirish' },
+    }).personCard('e1');
+    expect(card).toEqual({
+      id: 'e1',
+      fullName: 'Gulnora Yusupova',
+      position: 'Inspektor',
+      department: 'Obodonlashtirish',
+      avatarUrl: '/uploads/g.jpg',
+      isEmployee: true,
+    });
+    expect(card).not.toHaveProperty('phone');
+  });
+
+  it('anything else is the admin side', async () => {
+    expect(await svc(null).personCard('admin')).toMatchObject({ fullName: 'Ma’muriyat', isEmployee: false });
+  });
+});

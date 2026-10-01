@@ -51,6 +51,7 @@ import {
   useDeleteConversation,
 } from './useChat';
 import { pickAvatarColor } from './chatAvatar';
+import { ChatPersonDrawer } from './ChatPersonDrawer';
 import { useRealtimeChat } from './useRealtimeChat';
 import type { LiveLocation } from '@/shared/api/locations';
 import {
@@ -437,6 +438,8 @@ export function ChatPage() {
   const [filter, setFilter] = useState<'all' | 'direct'>('all');
   const [mobileThread, setMobileThread] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  // Chatdagi odamning profili (sarlavha yoki guruhdagi avatar bosilganda).
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   // Real WebRTC 1:1 qo'ng'iroq (global CallProvider) — audio/video tugmalari
   // shu yerda ishga tushiriladi; kiruvchi/faol qo'ng'iroq UI'si esa butun ilova
@@ -981,6 +984,14 @@ export function ChatPage() {
               >
                 <ArrowLeft2 size={20} />
               </button>
+              <button
+                type="button"
+                onClick={() => activeConv.kind === 'direct' && activeConv.staffId && setProfileId(activeConv.staffId)}
+                disabled={!(activeConv.kind === 'direct' && activeConv.staffId)}
+                aria-label={activeConv.kind === 'direct' ? `${activeConv.title} profilini ochish` : undefined}
+                title={activeConv.kind === 'direct' ? 'Profilni ochish' : undefined}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-0.5 text-left transition-colors enabled:hover:bg-surface-2 disabled:cursor-default"
+              >
               <div className="relative shrink-0">
                 {activeConv.kind === 'group' ? (
                   <span
@@ -1010,6 +1021,7 @@ export function ChatPage() {
                   )}
                 </p>
               </div>
+              </button>
               <button
                 onClick={() => startChatCall('audio')}
                 disabled={!canCall || callPhase !== 'idle'}
@@ -1077,6 +1089,7 @@ export function ChatPage() {
                         first={item.first}
                         isGroup={activeConv.kind === 'group'}
                         employeesById={employeesById}
+                        onSenderClick={setProfileId}
                         reduce={prefersReducedMotion}
                         onImageClick={setLightbox}
                         isEditing={editing?.id === item.msg.id}
@@ -1178,6 +1191,29 @@ export function ChatPage() {
         }
       />
 
+      <ChatPersonDrawer
+        employeeId={profileId}
+        fallback={
+          activeConv?.kind === 'direct' && activeConv.staffId === profileId
+            ? { name: activeConv.title, photo: activeConv.photo, color: activeConv.avatarColor }
+            : profileId
+              ? { name: employeesById.get(profileId)?.fullName ?? 'Xodim', color: senderColor(profileId) }
+              : undefined
+        }
+        online={activeConv?.kind === 'direct' && activeConv.staffId === profileId ? activeConv.online : undefined}
+        onClose={() => setProfileId(null)}
+        onCall={
+          profileId && callPhase === 'idle' && !meeting
+            ? (media) => {
+                const name =
+                  activeConv?.staffId === profileId ? activeConv.title : employeesById.get(profileId)?.fullName ?? 'Xodim';
+                setProfileId(null);
+                startCall(profileId, name, media);
+              }
+            : undefined
+        }
+      />
+
       {/* Rasm ko'rish (lightbox) */}
       <AnimatePresence>
         {lightbox && (
@@ -1218,6 +1254,7 @@ function MessageRow({
   first,
   isGroup,
   employeesById,
+  onSenderClick,
   reduce,
   onImageClick,
   isEditing,
@@ -1235,6 +1272,8 @@ function MessageRow({
   isGroup: boolean;
   /** Jonli xodimlar (jo'natuvchini `senderId` bo'yicha topish uchun). */
   employeesById: Map<string, LiveLocation>;
+  /** Guruhda jo'natuvchi avatari bosilganda — uning profili. */
+  onSenderClick?: (employeeId: string) => void;
   reduce: boolean;
   onImageClick: (url: string) => void;
   /** Shu xabar hozir tahrirlanmoqda (inline editor ko'rsatiladi). */
@@ -1335,7 +1374,19 @@ function MessageRow({
     >
       {!mine && (
         <div className="w-8 shrink-0">
-          {first && <Avatar name={info.name} src={info.photo} color={info.color} size={32} />}
+          {first &&
+            (onSenderClick && msg.senderId !== ME_ID ? (
+              <button
+                type="button"
+                onClick={() => onSenderClick(msg.senderId)}
+                aria-label={`${info.name} profilini ochish`}
+                className="rounded-full transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+              >
+                <Avatar name={info.name} src={info.photo} color={info.color} size={32} />
+              </button>
+            ) : (
+              <Avatar name={info.name} src={info.photo} color={info.color} size={32} />
+            ))}
         </div>
       )}
       {mine && menuEl}

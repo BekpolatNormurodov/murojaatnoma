@@ -21,6 +21,7 @@ import { CreateDirectConversationDto } from './dto/create-direct-conversation.dt
 import { CreateCitizenConversationDto } from './dto/create-citizen-conversation.dto';
 import { ListChatMessagesQueryDto } from './dto/list-chat-messages-query.dto';
 import { ChatConversationResponse } from './interfaces/chat-conversation-response.interface';
+import { ChatPersonCard } from './interfaces/chat-person-card.interface';
 
 /** The admin operator's sender id — mirrors `ME_ID` in web-admin's chat store. */
 const ME_ID = 'me';
@@ -55,6 +56,35 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
   ) {}
+
+  /**
+   * A colleague's public card for the worker-app chat (tap a name/avatar).
+   * Anything that is not an active employee is the admin side, "Ma’muriyat".
+   */
+  async personCard(id: string): Promise<ChatPersonCard> {
+    const emp = await this.prisma.employee.findFirst({
+      where: { id, isActive: true },
+      select: { id: true, fullName: true, position: true, avatarUrl: true, department: { select: { name: true } } },
+    });
+    if (!emp) {
+      return {
+        id,
+        fullName: 'Ma’muriyat',
+        position: 'Hokimiyat ma’muriyati',
+        department: null,
+        avatarUrl: null,
+        isEmployee: false,
+      };
+    }
+    return {
+      id: emp.id,
+      fullName: emp.fullName,
+      position: emp.position || null,
+      department: emp.department?.name ?? null,
+      avatarUrl: emp.avatarUrl ?? null,
+      isEmployee: true,
+    };
+  }
 
   /**
    * Conversation list, each annotated with its last message and unread count

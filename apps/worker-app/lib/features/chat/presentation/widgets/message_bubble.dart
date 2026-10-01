@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/presentation/widgets/call_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/chat_formatters.dart';
+import 'package:worker_app/features/chat/presentation/widgets/chat_person_sheet.dart';
 import 'package:worker_app/features/chat/presentation/widgets/file_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/image_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/round_video_bubble.dart';
@@ -70,16 +71,26 @@ class MessageBubble extends StatelessWidget {
                   : CrossAxisAlignment.start,
               children: [
                 if (showSenderName && !isMine)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 12, bottom: 3),
-                    child: Text(
-                      message.senderName,
-                      style: AppTextStyles.caption.copyWith(
-                        color: senderNameColor(message.senderId),
-                        fontWeight: FontWeight.w700,
+                  // Ism bosilsa — hamkasbning profili (rasm, lavozim, bo'lim).
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => showChatPersonSheet(
+                      context,
+                      name: message.senderName,
+                      personId: message.senderId,
+                      color: senderNameColor(message.senderId),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 12, bottom: 3),
+                      child: Text(
+                        message.senderName,
+                        style: AppTextStyles.caption.copyWith(
+                          color: senderNameColor(message.senderId),
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ConstrainedBox(

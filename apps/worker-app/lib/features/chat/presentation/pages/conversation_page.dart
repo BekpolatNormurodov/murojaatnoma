@@ -12,6 +12,7 @@ import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
 import 'package:worker_app/features/chat/presentation/widgets/chat_formatters.dart';
+import 'package:worker_app/features/chat/presentation/widgets/chat_person_sheet.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_composer.dart';
 import 'package:worker_app/injection.dart';
@@ -103,6 +104,62 @@ class _ConversationPageState extends State<ConversationPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _animateToBottom());
   }
 
+  void _openProfile(BuildContext context, Conversation c) {
+    final ru = Localizations.localeOf(context).languageCode == 'ru';
+    if (c.id.startsWith('dm-emp-')) {
+      final calls = context.read<CallCubit>();
+      unawaited(
+        showChatPersonSheet(
+          context,
+          name: c.title,
+          personId: 'admin',
+          avatarUrl: c.avatarUrl,
+          actions: AppConfig.useMock
+              ? const []
+              : [
+                  ChatPersonAction(
+                    IconsaxPlusLinear.call,
+                    ru ? 'Звонок' : "Qo'ng'iroq",
+                    () => unawaited(
+                      calls.startCall(
+                        toUserId: 'me',
+                        toName: c.title,
+                        media: CallMedia.audio,
+                      ),
+                    ),
+                  ),
+                  ChatPersonAction(
+                    IconsaxPlusLinear.video,
+                    ru ? 'Видео' : 'Video',
+                    () => unawaited(
+                      calls.startCall(
+                        toUserId: 'me',
+                        toName: c.title,
+                        media: CallMedia.video,
+                      ),
+                    ),
+                  ),
+                ],
+        ),
+      );
+      return;
+    }
+    final group = c.type != ConversationType.shaxsiy;
+    unawaited(
+      showChatPersonSheet(
+        context,
+        name: c.title,
+        avatarUrl: c.avatarUrl,
+        color: group ? AppColors.accent : AppColors.primary,
+        subtitle: group
+            ? (ru
+                  ? '${c.participants} участников'
+                  : '${c.participants} ishtirokchi')
+            : (ru ? 'Обращение гражданина' : 'Fuqaro murojaati'),
+      ),
+    );
+  }
+
   Future<void> _send(
     BuildContext context, {
     required MessageType type,
@@ -135,58 +192,66 @@ class _ConversationPageState extends State<ConversationPage> {
         elevation: 0,
         leading: const AppBackButton(),
         titleSpacing: 0,
-        title: Row(
-          children: [
-            AppAvatar(
-              name: conversation?.title ?? l10n.chat,
-              photoUrl: conversation?.avatarUrl,
-              size: 38,
-              color: conversation?.type == ConversationType.umumiy
-                  ? AppColors.accent
-                  : AppColors.primary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    conversation?.title ?? l10n.chat,
-                    style: AppTextStyles.h3,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  // Suhbatdosh yozayotgan bo'lsa (jonli `chat:typing`) —
-                  // "yozmoqda…", aks holda odatiy holat (onlayn/ishtirokchilar).
-                  // Matn ATAYLAB literal (yangi l10n kaliti umumiy, boshqa
-                  // sessiyalar tomonidan tahrirlanayotgan ARB fayllarga
-                  // tegmaslik uchun).
-                  BlocBuilder<ConversationCubit, ConversationState>(
-                    builder: (context, state) {
-                      final typing =
-                          state is ConversationLoaded && state.peerTyping;
-                      if (typing) {
-                        return Text(
-                          'yozmoqda…',
-                          style: AppTextStyles.caption.copyWith(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        );
-                      }
-                      if (conversation != null) {
-                        return _HeaderSubtitle(conversation: conversation);
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ],
+        // Sarlavha bosilsa — suhbatdoshning profili (katta rasm, lavozim,
+        // qo'ng'iroq).
+        title: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: conversation == null
+              ? null
+              : () => _openProfile(context, conversation),
+          child: Row(
+            children: [
+              AppAvatar(
+                name: conversation?.title ?? l10n.chat,
+                photoUrl: conversation?.avatarUrl,
+                size: 38,
+                color: conversation?.type == ConversationType.umumiy
+                    ? AppColors.accent
+                    : AppColors.primary,
               ),
-            ),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      conversation?.title ?? l10n.chat,
+                      style: AppTextStyles.h3,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    // Suhbatdosh yozayotgan bo'lsa (jonli `chat:typing`) —
+                    // "yozmoqda…", aks holda odatiy holat (onlayn/ishtirokchilar).
+                    // Matn ATAYLAB literal (yangi l10n kaliti umumiy, boshqa
+                    // sessiyalar tomonidan tahrirlanayotgan ARB fayllarga
+                    // tegmaslik uchun).
+                    BlocBuilder<ConversationCubit, ConversationState>(
+                      builder: (context, state) {
+                        final typing =
+                            state is ConversationLoaded && state.peerTyping;
+                        if (typing) {
+                          return Text(
+                            'yozmoqda…',
+                            style: AppTextStyles.caption.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          );
+                        }
+                        if (conversation != null) {
+                          return _HeaderSubtitle(conversation: conversation);
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         // Shaxsiy (admin<->xodim) suhbatda 1:1 qo'ng'iroq tugmalari — faqat
         // jonli rejimda (socket kerak). Bosilганда global `CallCubit`
