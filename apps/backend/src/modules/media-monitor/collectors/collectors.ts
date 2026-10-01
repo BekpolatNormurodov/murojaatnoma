@@ -190,6 +190,9 @@ interface YtRenderer {
 
 const runs = (r?: { runs?: { text?: string }[] }) => (r?.runs ?? []).map((x) => x.text ?? '').join('');
 
+/** Property / sale listings that ride on the district's name — not news. */
+export const LISTING = /(sotiladi|sotuvda|ijaraga|kvartira|xonali uy|продаж|продаю|продается|продаётся|квартир[аы]? в|аренд|for sale|for rent|apartment|cottages?|\bID\s?\d{3,}|\$\s?\d|\d[\d\s,.]*\s?\$|у\.е\.)/i;
+
 const AGO_UNITS: [RegExp, number][] = [
   [/^(mo|months?)$/i, 2.592e9],
   [/^(y|yrs?|years?)$/i, 3.1536e10],
@@ -255,7 +258,7 @@ export async function collectYoutubeWebSearch(queries: string[], now: Date): Pro
       for (const v of parseYoutubeResults(html)) {
         if (!v.videoId || seen.has(v.videoId)) continue;
         const title = runs(v.title);
-        if (!title) continue;
+        if (!title || LISTING.test(title)) continue;
         const owner = v.ownerText?.runs?.[0];
         const snippet = runs(v.detailedMetadataSnippets?.[0]?.snippetText) || runs(v.descriptionSnippet);
         const thumbs = v.thumbnail?.thumbnails ?? [];

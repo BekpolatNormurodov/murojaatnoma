@@ -354,3 +354,13 @@ describe('telegram depth + youtube web search', () => {
     expect(parseRelativeAgo('Premieres tomorrow', now)).toBeNull();
   });
 });
+
+describe('youtube search listing filter', () => {
+  it('drops property ads, keeps news', async () => {
+    const { LISTING } = await import('./collectors/collectors');
+    for (const t of ['190,000$-MIRZO-ULUG’BEK TUMANI', 'New Cottages for Sale in Mirzo Ulugbek District', 'REFAR | Kvartira | Toshkent |ID 5507 Mirzo Ulug’bek', '3-xonali uy sotiladi Mirzo Ulug‘bek'])
+      expect(LISTING.test(t)).toBe(true);
+    for (const t of ['Mirzo Ulug‘bekda odamlar o‘z uyiga erkin kirolmay qoldi', '"BAMASLAHAT". Mirzo Ulug‘bek tumani, "Zakovat" mahallasi'])
+      expect(LISTING.test(t)).toBe(false);
+  });
+});
