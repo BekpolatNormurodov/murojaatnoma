@@ -68,3 +68,4 @@ infra/certs/*.key
 **/*.hprof
 apps/backend/prisma/data/mirzo/passwords.json
 hokimiyat-xodim-*.apk
+hokimiyat-fuqaro-*.apk
