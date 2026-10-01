@@ -64,7 +64,7 @@ export class ChatService {
    * @param archived  false/undefined ⇒ main list (non-archived); true ⇒ Archive view.
    */
   async findAllConversations(archived = false): Promise<ChatConversationResponse[]> {
-    const [conversations, unreadRows] = await Promise.all([
+    const [conversations, unreadRows, employees, allDmIds] = await Promise.all([
       this.prisma.chatConversation.findMany({
         where: { archived },
         include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
@@ -74,7 +74,17 @@ export class ChatService {
         where: { senderId: { not: ME_ID }, status: { not: ChatMsgStatus.read } },
         _count: { _all: true },
       }),
+      this.prisma.employee.findMany({
+        where: { isActive: true },
+        select: { id: true, fullName: true, avatarUrl: true, position: true },
+        orderBy: { fullName: 'asc' },
+      }),
+      this.prisma.chatConversation.findMany({
+        where: { id: { startsWith: DM_PREFIX } },
+        select: { id: true },
+      }),
     ]);
+    const employeeById = new Map(employees.map((e) => [e.id, e]));
 
     const unreadByConversation = new Map(
       unreadRows.map((row) => [row.conversationId, row._count._all]),
@@ -83,11 +93,58 @@ export class ChatService {
       unreadByConversation.set(GROUP_ID, await this.groupUnreadFor(ME_ID));
     }
 
-    return conversations.map(({ messages, ...conversation }) => ({
-      ...conversation,
-      lastMessage: messages[0] ?? null,
-      unreadCount: unreadByConversation.get(conversation.id) ?? 0,
-    }));
+    // Only threads with someone real behind them: the group, citizens, and
+    // DMs of ACTIVE employees. Legacy demo-staff threads (`dm-s1`…) and DMs of
+    // deleted/deactivated employees never reach the list. A DM always shows the
+    // employee's CURRENT name, photo and position (the stored title/photo were
+    // a snapshot from when the thread was opened).
+    const rows: ChatConversationResponse[] = conversations
+      .filter((c) => isLiveThread(c.id, employeeById))
+      .map(({ messages, ...conversation }) => {
+        const emp = conversation.id.startsWith(DM_PREFIX)
+          ? employeeById.get(conversation.id.slice(DM_PREFIX.length))
+          : undefined;
+        return {
+          ...conversation,
+          ...(emp
+            ? { title: emp.fullName, photo: emp.avatarUrl ?? conversation.photo, subtitle: emp.position }
+            : {}),
+          lastMessage: messages[0] ?? null,
+          unreadCount: unreadByConversation.get(conversation.id) ?? 0,
+        };
+      });
+
+    // Every active employee is reachable from the main list, even before the
+    // first message — the thread is created on first write (either side).
+    if (!archived) {
+      const existing = new Set(allDmIds.map((c) => c.id));
+      for (const emp of employees) {
+        const id = `${DM_PREFIX}${emp.id}`;
+        if (existing.has(id)) continue;
+        rows.push({
+          id,
+          kind: ChatConvKind.direct,
+          title: emp.fullName,
+          subtitle: emp.position,
+          avatarColor: null,
+          photo: emp.avatarUrl,
+          staffId: emp.id,
+          online: false,
+          archived: false,
+          lastMessage: null,
+          unreadCount: 0,
+        });
+      }
+    }
+
+    // Group first, then by latest activity, then threads without messages A→Z.
+    const at = (c: ChatConversationResponse) => c.lastMessage?.createdAt.getTime() ?? 0;
+    return rows.sort(
+      (a, b) =>
+        Number(b.id === GROUP_ID) - Number(a.id === GROUP_ID) ||
+        at(b) - at(a) ||
+        a.title.localeCompare(b.title),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -289,11 +346,73 @@ export class ChatService {
     } satisfies ChatMessageCreatedEvent);
   }
 
+  /**
+   * Group-chat row announcing an "everyone" call, with a join button in the
+   * clients (`meta.meeting`). Returns the row id so the gateway can close it
+   * when the meeting ends; null when there is no group thread.
+   */
+  async postMeetingAnnouncement(m: {
+    meetingId: string;
+    title: string;
+    media: 'audio' | 'video';
+    hostName: string;
+  }): Promise<string | null> {
+    // The group thread is normally seeded; never lose an announcement to a
+    // fresh database where it isn't.
+    await this.prisma.chatConversation.upsert({
+      where: { id: GROUP_ID },
+      create: { id: GROUP_ID, kind: ChatConvKind.group, title: 'Umumiy chat', online: false },
+      update: {},
+    });
+    const message = await this.prisma.chatMessage.create({
+      data: {
+        conversationId: GROUP_ID,
+        senderId: ME_ID,
+        kind: ChatMsgKind.call,
+        text: `${m.media === 'video' ? 'Video' : 'Ovozli'} guruh qo'ng'irog'i: ${m.title}`,
+        status: ChatMsgStatus.sent,
+        meta: { meeting: true, meetingId: m.meetingId, title: m.title, media: m.media, hostName: m.hostName, status: 'live' },
+      },
+    });
+    const [withSender] = await this.withSenders([message]);
+    this.events.emit(RT_EVENTS.messageCreated, {
+      conversationId: GROUP_ID,
+      message: withSender,
+    } satisfies ChatMessageCreatedEvent);
+    return message.id;
+  }
+
+  /** The announced meeting ended — the row turns into "tugadi · 12:34". */
+  async closeMeetingAnnouncement(messageId: string, durationSec: number): Promise<void> {
+    const existing = await this.prisma.chatMessage.findUnique({ where: { id: messageId } });
+    if (!existing) return;
+    const meta = (existing.meta ?? {}) as Record<string, unknown>;
+    const title = typeof meta.title === 'string' ? meta.title : "Guruh qo'ng'irog'i";
+    const mm = Math.floor(durationSec / 60);
+    const ss = String(durationSec % 60).padStart(2, '0');
+    const message = await this.prisma.chatMessage.update({
+      where: { id: messageId },
+      data: {
+        text: `Guruh qo'ng'irog'i tugadi: ${title} · ${mm}:${ss}`,
+        durationSec: durationSec || null,
+        meta: { ...meta, status: 'ended', durationSec },
+      },
+    });
+    this.events.emit(RT_EVENTS.messageEdited, {
+      conversationId: existing.conversationId,
+      message,
+    } satisfies ChatMessageEditedEvent);
+  }
+
   /** Chronological (ascending) page of messages, newest `limit` before the `before` cursor. */
   async findMessages(
     conversationId: string,
     query: ListChatMessagesQueryDto,
   ): Promise<ChatMessage[]> {
+    // An employee DM nobody has written in yet is listed but not stored.
+    if (!(await this.conversationExists(conversationId)) && (await this.isEmployeeDm(conversationId))) {
+      return [];
+    }
     await this.ensureConversation(conversationId);
 
     const messages = await this.prisma.chatMessage.findMany({
@@ -416,6 +535,9 @@ export class ChatService {
 
   /** Marks every message NOT sent by "me" as read (mirrors the store's `markRead`). */
   async markRead(conversationId: string, readerId = ME_ID): Promise<{ ok: true }> {
+    if (!(await this.conversationExists(conversationId)) && (await this.isEmployeeDm(conversationId))) {
+      return { ok: true }; // nothing to read yet
+    }
     await this.ensureConversation(conversationId);
 
     // Group unread is per reader (ChatReadCursor); `status` below only drives
@@ -451,7 +573,7 @@ export class ChatService {
     id: string,
     archived: boolean,
   ): Promise<ChatConversationResponse> {
-    await this.ensureConversation(id);
+    await this.ensureConversationForSend(id);
 
     const conversation = await this.prisma.chatConversation.update({
       where: { id },
@@ -588,6 +710,12 @@ export class ChatService {
     return (await this.prisma.chatConversation.count({ where: { id } })) > 0;
   }
 
+  /** `dm-emp-<id>` of an existing employee (the thread itself may not exist yet). */
+  private async isEmployeeDm(id: string): Promise<boolean> {
+    if (!id.startsWith(DM_PREFIX)) return false;
+    return (await this.prisma.employee.count({ where: { id: id.slice(DM_PREFIX.length) } })) > 0;
+  }
+
   /**
    * Like {@link ensureConversation}, but an admin↔employee DM that does not
    * exist yet is created on first write (either side may start it — the
@@ -642,6 +770,17 @@ export class ChatService {
 
     return { ...rest, lastMessage: messages[0] ?? null, unreadCount };
   }
+}
+
+/**
+ * A thread worth listing for the admin: the group, a citizen thread, or the DM
+ * of an active employee. Anything else (legacy demo-staff `dm-s*` rows, DMs of
+ * deleted or deactivated employees) is dead data.
+ */
+function isLiveThread(id: string, activeEmployees: Map<string, unknown>): boolean {
+  if (id === GROUP_ID || id.startsWith('dm-citizen-')) return true;
+  if (id.startsWith(DM_PREFIX)) return activeEmployees.has(id.slice(DM_PREFIX.length));
+  return false;
 }
 
 /**

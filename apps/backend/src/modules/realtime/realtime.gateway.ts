@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -27,7 +28,7 @@ import { PushService } from '../push/push.service';
 import { MEDIA_UPDATED_EVENT, MediaUpdatedEvent } from '../media-monitor/media-monitor.service';
 import { ChatService } from '../chat/chat.service';
 import { CallsService } from './calls.service';
-import { MeetingRoomService } from './meetings-room.service';
+import { MeetingMeta, MeetingRoomService } from './meetings-room.service';
 import { RealtimeService } from './realtime.service';
 import { CallMedia, SocketIdentity } from './interfaces/socket-identity.interface';
 
@@ -55,6 +56,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    */
   private readonly pendingCallTeardown = new Map<string, ReturnType<typeof setTimeout>>();
   private static readonly DISCONNECT_GRACE_MS = 10_000;
+  /** A meeting nobody joined within this long after the invite is closed. */
+  private static readonly MEETING_IDLE_MS = 2 * 60_000;
 
   constructor(
     private readonly jwt: JwtService,
@@ -112,7 +115,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     if (!identity) return;
     // Meeting cleanup is per-socket (keyed by client.id) — always run it.
     for (const meetingId of this.meetings.meetingsOf(client.id)) {
-      this.leaveMeeting(client, meetingId);
+      await this.leaveMeeting(client, meetingId);
     }
     const nowOffline = this.presence.removeSocket(identity.id, client.id);
     if (nowOffline) {
@@ -151,7 +154,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const scope = payload.scope ?? 'employee';
 
     if (scope === 'admin') {
-      return { id: ADMIN_ID, name: payload.username ?? 'Administrator', scope: 'admin' };
+      const admin = await this.prisma.adminUser
+        .findUnique({ where: { id: payload.sub }, select: { fullName: true } })
+        .catch(() => null);
+      return {
+        id: ADMIN_ID,
+        participantId: `admin:${payload.sub}`,
+        name: admin?.fullName || payload.username || 'Administrator',
+        scope: 'admin',
+      };
     }
     if (scope === 'citizen') {
       throw new Error('citizens cannot use realtime');
@@ -162,6 +173,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     });
     return {
       id: payload.sub,
+      participantId: payload.sub,
       name: emp?.fullName ?? 'Xodim',
       avatar: emp?.avatarUrl ?? undefined,
       scope: 'employee',
@@ -471,35 +483,210 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   // ---------------------------------------------------------------------------
-  // Meetings — multi-party mesh WebRTC rooms (yig'ilish / "selektor")
+  // Meetings — multi-party mesh WebRTC rooms (yig'ilish / guruh qo'ng'irog'i)
   // ---------------------------------------------------------------------------
+  // Routing inside a meeting uses `participantId` (admins are `admin:<id>`), so
+  // several admins and any number of employees each get their own peer.
+
+  /**
+   * Admin starts (or re-invites to) a meeting: everyone invited gets
+   * `meeting:incoming` live, offline employees a push, and an "everyone" call
+   * is announced in the group chat with a join button.
+   */
+  @SubscribeMessage('meeting:invite')
+  async onMeetingInvite(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    body: {
+      meetingId?: string;
+      title?: string;
+      media?: 'audio' | 'video';
+      inviteeIds?: string[];
+      all?: boolean;
+      /** Ring people who were already invited too ("Hammani chaqirish" again). */
+      ring?: boolean;
+    },
+  ) {
+    const me = this.requireIdentity(client);
+    if (me.scope !== 'admin') return { ok: false, error: 'forbidden' };
+    const meetingId = sanitizeMeetingId(body.meetingId) ?? `m-${randomUUID().slice(0, 8)}`;
+    const title = (body.title ?? '').trim().slice(0, 120) || "Guruh qo'ng'irog'i";
+    const media = body.media === 'audio' ? 'audio' : 'video';
+
+    const explicit = [...new Set((body.inviteeIds ?? []).filter((id) => typeof id === 'string'))];
+
+    // Register the room BEFORE any await: the host's `meeting:join` is usually
+    // emitted right behind this invite and must find the real title/host/invite
+    // list (not open a default room that makes this invite look like a re-invite).
+    const fresh = this.meetings.info(meetingId) === null;
+    const prior = this.meetings.invitedOf(meetingId);
+    const present = new Set(this.meetings.participants(meetingId).map((p) => p.id));
+    this.meetings.open(meetingId, {
+      title,
+      media,
+      hostId: me.participantId,
+      hostName: me.name,
+      invited: body.all ? 'all' : new Set(explicit),
+    });
+
+    const invitees = body.all
+      ? (
+          await this.prisma.employee.findMany({ where: { isActive: true }, select: { id: true } })
+        ).map((e) => e.id)
+      : explicit;
+    // A second admin opening the same selektor must not re-ring everyone: on an
+    // existing room only NEW invitees ring, unless the host asks to ring again.
+    const toRing = invitees.filter(
+      (id) =>
+        !present.has(id) &&
+        (fresh || body.ring || !(prior === 'all' || prior?.has(id))),
+    );
+
+    const incoming = {
+      meetingId,
+      title,
+      media,
+      host: { id: me.participantId, name: me.name },
+      count: this.meetings.participants(meetingId).length,
+    };
+    for (const id of toRing) this.server.to(`user:${id}`).emit('meeting:incoming', incoming);
+    void this.push
+      .sendToEmployees(
+        toRing.filter((id) => !this.presence.isOnline(id)),
+        () => ({
+          title,
+          body: `${me.name} sizni ${media === 'video' ? 'video' : 'ovozli'} qo'ng'iroqqa chaqirmoqda`,
+          data: { type: 'meeting_invite', meetingId, title, hostName: me.name, media },
+        }),
+      )
+      .catch(() => undefined);
+
+    if (fresh) {
+      // Nobody ever entered (host closed the tab right after inviting) —
+      // don't leave a phantom "live" meeting and ringing invitees behind.
+      setTimeout(() => {
+        const info = this.meetings.info(meetingId);
+        if (!info || info.count > 0) return;
+        const meta = this.meetings.end(meetingId);
+        if (meta) void this.announceMeetingEnded(meetingId, meta, info.startedAt);
+      }, RealtimeGateway.MEETING_IDLE_MS).unref?.();
+    }
+
+    if (body.all && fresh) {
+      const messageId = await this.chat
+        .postMeetingAnnouncement({ meetingId, title, media, hostName: me.name })
+        .catch(() => null);
+      if (messageId) this.meetings.setChatMessage(meetingId, messageId);
+    }
+    return { ok: true, meetingId, invited: toRing.length };
+  }
+
   @SubscribeMessage('meeting:join')
   async onMeetingJoin(
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { meetingId: string },
+    @MessageBody() body: { meetingId: string; audio?: boolean; video?: boolean },
   ) {
     const me = this.requireIdentity(client);
-    const existing = this.meetings.join(body.meetingId, client.id, me);
-    await client.join(`meeting:${body.meetingId}`);
+    const meetingId = sanitizeMeetingId(body.meetingId);
+    if (!meetingId) return { ok: false, error: 'bad-meeting' };
+    if (!this.meetings.canJoin(meetingId, { id: me.participantId, scope: me.scope })) {
+      return { ok: false, error: 'not-invited', participants: [] };
+    }
+    const self = {
+      id: me.participantId,
+      name: me.name,
+      avatar: me.avatar,
+      scope: me.scope,
+      audio: body.audio !== false,
+      video: body.video !== false,
+    };
+    const existing = this.meetings.join(meetingId, client.id, self);
+    await client.join(`meeting:${meetingId}`);
     // Tell those already in the room that a newcomer arrived.
-    client.to(`meeting:${body.meetingId}`).emit('meeting:participant-joined', {
-      meetingId: body.meetingId,
-      participant: { id: me.id, name: me.name, avatar: me.avatar },
+    client.to(`meeting:${meetingId}`).emit('meeting:participant-joined', {
+      meetingId,
+      participant: self,
     });
     // Ack the joiner with the existing participants (it mesh-offers to each).
     return {
-      participants: existing.map((p) => ({ id: p.id, name: p.name, avatar: p.avatar })),
+      ok: true,
+      selfId: me.participantId,
+      meeting: this.meetings.info(meetingId),
+      participants: existing,
     };
   }
 
   @SubscribeMessage('meeting:leave')
-  onMeetingLeave(
+  async onMeetingLeave(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { meetingId: string },
   ) {
     this.requireIdentity(client);
-    this.leaveMeeting(client, body.meetingId);
+    await this.leaveMeeting(client, body.meetingId);
     return { ok: true };
+  }
+
+  /** Mic/camera state, broadcast so tiles show a real muted / camera-off badge. */
+  @SubscribeMessage('meeting:media')
+  onMeetingMedia(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string; audio: boolean; video: boolean },
+  ) {
+    const me = this.requireIdentity(client);
+    const audio = body.audio !== false;
+    const video = body.video !== false;
+    if (!this.meetings.setMedia(body.meetingId, me.participantId, audio, video)) return { ok: false };
+    client.to(`meeting:${body.meetingId}`).emit('meeting:media', {
+      meetingId: body.meetingId,
+      userId: me.participantId,
+      audio,
+      video,
+    });
+    return { ok: true };
+  }
+
+  /** Host or any admin ends the meeting for everyone. */
+  @SubscribeMessage('meeting:end')
+  async onMeetingEnd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string },
+  ) {
+    const me = this.requireIdentity(client);
+    if (me.scope !== 'admin' && !this.meetings.isHost(body.meetingId, me.participantId)) {
+      return { ok: false, error: 'forbidden' };
+    }
+    const info = this.meetings.info(body.meetingId);
+    const meta = this.meetings.end(body.meetingId);
+    if (!meta) return { ok: false };
+    await this.announceMeetingEnded(body.meetingId, meta, info?.startedAt);
+    this.server.in(`meeting:${body.meetingId}`).socketsLeave(`meeting:${body.meetingId}`);
+    return { ok: true };
+  }
+
+  /** An invitee said no — the host sees it. */
+  @SubscribeMessage('meeting:decline')
+  onMeetingDecline(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { meetingId: string },
+  ) {
+    const me = this.requireIdentity(client);
+    const info = this.meetings.info(body.meetingId);
+    if (!info) return { ok: false };
+    for (const sid of this.meetings.socketsFor(body.meetingId, info.hostId)) {
+      this.server.to(sid).emit('meeting:declined', {
+        meetingId: body.meetingId,
+        userId: me.participantId,
+        name: me.name,
+      });
+    }
+    return { ok: true };
+  }
+
+  /** Live meetings the caller may join (for "Qo'shilish" banners on reconnect). */
+  @SubscribeMessage('meeting:active')
+  onMeetingActive(@ConnectedSocket() client: Socket) {
+    const me = this.requireIdentity(client);
+    return { meetings: this.meetings.activeFor({ id: me.participantId, scope: me.scope }) };
   }
 
   @SubscribeMessage('meeting:sdp')
@@ -511,7 +698,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     for (const sid of this.meetings.socketsFor(body.meetingId, body.toUserId)) {
       this.server.to(sid).emit('meeting:sdp', {
         meetingId: body.meetingId,
-        fromUserId: me.id,
+        fromUserId: me.participantId,
         description: body.description,
       });
     }
@@ -526,19 +713,46 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     for (const sid of this.meetings.socketsFor(body.meetingId, body.toUserId)) {
       this.server.to(sid).emit('meeting:ice', {
         meetingId: body.meetingId,
-        fromUserId: me.id,
+        fromUserId: me.participantId,
         candidate: body.candidate,
       });
     }
   }
 
-  private leaveMeeting(client: Socket, meetingId: string): void {
+  private async leaveMeeting(client: Socket, meetingId: string): Promise<void> {
+    const info = this.meetings.info(meetingId);
     const res = this.meetings.leave(meetingId, client.id);
     void client.leave(`meeting:${meetingId}`);
-    if (res?.gone) {
+    if (!res) return;
+    if (res.gone) {
       this.server
         .to(`meeting:${meetingId}`)
-        .emit('meeting:participant-left', { meetingId, userId: res.identity.id });
+        .emit('meeting:participant-left', { meetingId, userId: res.participant.id });
+    }
+    if (res.empty) await this.announceMeetingEnded(meetingId, res.meta, info?.startedAt);
+  }
+
+  /**
+   * The meeting is over: tell the room and every invitee (clears pending
+   * "join" banners/ringing), and close the group-chat announcement.
+   */
+  private async announceMeetingEnded(
+    meetingId: string,
+    meta: MeetingMeta,
+    startedAt?: string,
+  ): Promise<void> {
+    const durationSec = startedAt
+      ? Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000))
+      : 0;
+    const payload = { meetingId, durationSec };
+    this.server.to(`meeting:${meetingId}`).emit('meeting:ended', payload);
+    if (meta.invited === 'all') {
+      this.server.emit('meeting:ended', payload);
+    } else {
+      for (const id of meta.invited) this.server.to(`user:${id}`).emit('meeting:ended', payload);
+    }
+    if (meta.chatMessageId) {
+      await this.chat.closeMeetingAnnouncement(meta.chatMessageId, durationSec).catch(() => undefined);
     }
   }
 
@@ -653,4 +867,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private ringMs(): number {
     return this.config.get('realtime', { infer: true }).ringTimeoutSec * 1000;
   }
+}
+
+/** Room ids come from clients — keep them short and harmless. */
+function sanitizeMeetingId(id: unknown): string | null {
+  if (typeof id !== 'string') return null;
+  const clean = id.trim();
+  return /^[A-Za-z0-9:_-]{1,80}$/.test(clean) ? clean : null;
 }

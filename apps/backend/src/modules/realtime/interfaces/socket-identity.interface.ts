@@ -4,6 +4,11 @@ export type UserScope = 'admin' | 'employee';
 export interface SocketIdentity {
   /** Canonical routing id: 'me' for any admin, the employee id otherwise. */
   id: string;
+  /**
+   * Per-PERSON id for multi-party meetings: `admin:<adminUserId>` for admins
+   * (so two admins are two participants), the employee id otherwise.
+   */
+  participantId: string;
   name: string;
   avatar?: string;
   scope: UserScope;
