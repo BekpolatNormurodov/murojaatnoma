@@ -20,6 +20,7 @@ import {
   Sms,
   Trash,
   RotateLeft,
+  ScanBarcode,
 } from 'iconsax-react';
 import { useNavigate } from 'react-router-dom';
 import { Drawer } from '@/shared/ui/Drawer';
@@ -522,7 +523,17 @@ export function RequestDetail({
                 }
               />
               <div className="min-w-0 flex-1">
-                <div className="font-medium text-ink">{r.citizenName}</div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium text-ink">{r.citizenName}</span>
+                  {r.citizenPhoto && r.source === 'citizen' && (
+                    <span
+                      title="Murojaat fuqaroning ilovadagi yuz rasmi bilan yuborilgan — kim yozgani shu rasmda"
+                      className="inline-flex items-center gap-1 rounded-md bg-success-soft px-1.5 py-0.5 text-[11px] font-medium text-primary-700 dark:text-primary-400"
+                    >
+                      <ScanBarcode size={12} variant="Bulk" /> Yuz tasdiqlangan
+                    </span>
+                  )}
+                </div>
                 <a
                   href={`tel:${r.citizenPhone}`}
                   className="flex items-center gap-1.5 text-[13px] text-accent-600"

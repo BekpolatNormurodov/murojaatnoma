@@ -24,12 +24,14 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     try {
       final result = await remote.checkIn(
         embedding: embedding,
         latitude: latitude,
         longitude: longitude,
+        photoUrl: photoUrl,
       );
       return Right(result);
     } on AlreadyCheckedInException catch (e) {
@@ -46,12 +48,14 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     try {
       final result = await remote.checkOut(
         embedding: embedding,
         latitude: latitude,
         longitude: longitude,
+        photoUrl: photoUrl,
       );
       return Right(result);
     } on AlreadyCheckedOutException catch (e) {

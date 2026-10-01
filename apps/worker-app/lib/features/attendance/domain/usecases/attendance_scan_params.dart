@@ -14,6 +14,7 @@ class AttendanceScanParams extends Equatable {
     required this.embedding,
     required this.latitude,
     required this.longitude,
+    this.photoUrl,
   });
 
   /// Liveness tugagach hisoblangan probe yuz embeddingi.
@@ -21,6 +22,10 @@ class AttendanceScanParams extends Equatable {
   final double latitude;
   final double longitude;
 
+  /// Yuz tekshiruvidan o'tgan kadr (oldin `/uploads`ga yuklangan) — server
+  /// davomat yozuviga "kim keldi" isboti sifatida saqlaydi.
+  final String? photoUrl;
+
   @override
-  List<Object?> get props => [embedding, latitude, longitude];
+  List<Object?> get props => [embedding, latitude, longitude, photoUrl];
 }

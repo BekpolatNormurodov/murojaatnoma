@@ -13,6 +13,8 @@ class AttendanceDay extends Equatable {
     required this.insideGeofence,
     required this.selfConfirmed,
     required this.confirmedAt,
+    this.checkInPhotoUrl,
+    this.checkOutPhotoUrl,
   });
 
   factory AttendanceDay.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,8 @@ class AttendanceDay extends Equatable {
       insideGeofence: json['inside_geofence'] as bool,
       selfConfirmed: json['self_confirmed'] as bool,
       confirmedAt: json['confirmed_at'] as String?,
+      checkInPhotoUrl: json['check_in_photo'] as String?,
+      checkOutPhotoUrl: json['check_out_photo'] as String?,
     );
   }
 
@@ -37,6 +41,10 @@ class AttendanceDay extends Equatable {
   final bool selfConfirmed;
   final String? confirmedAt;
 
+  /// Yuz tekshiruvidan o'tgan kadr (serverda saqlangan) — "kim keldi/ketdi".
+  final String? checkInPhotoUrl;
+  final String? checkOutPhotoUrl;
+
   @override
   List<Object?> get props => [
     date,
@@ -47,6 +55,8 @@ class AttendanceDay extends Equatable {
     insideGeofence,
     selfConfirmed,
     confirmedAt,
+    checkInPhotoUrl,
+    checkOutPhotoUrl,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -58,5 +68,7 @@ class AttendanceDay extends Equatable {
     'inside_geofence': insideGeofence,
     'self_confirmed': selfConfirmed,
     'confirmed_at': confirmedAt,
+    'check_in_photo': checkInPhotoUrl,
+    'check_out_photo': checkOutPhotoUrl,
   };
 }

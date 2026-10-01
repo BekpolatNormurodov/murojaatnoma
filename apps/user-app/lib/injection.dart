@@ -16,6 +16,7 @@ import 'package:user_app/features/auth/domain/usecases/verify_otp.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/data/datasources/face_local_data_source.dart';
 import 'package:user_app/features/face/data/repositories/face_repository_impl.dart';
+import 'package:user_app/features/face/data/services/citizen_face_sync.dart';
 import 'package:user_app/features/face/data/services/face_detector_service.dart';
 import 'package:user_app/features/face/data/services/face_embedder.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
@@ -176,6 +177,10 @@ Future<void> configureDependencies() async {
     // avatari uchun lokal JPG'ga saqlaydi (best-effort); Profil sahifasi
     // uni `currentPath()` orqali o'qiydi.
     ..registerLazySingleton<FacePhotoStore>(FacePhotoStoreImpl.new)
+    // Yuzni serverga bir marta saqlaydi — murojaatlarda "kim yozgan".
+    ..registerLazySingleton<CitizenFaceSync>(
+      () => CitizenFaceSync(getIt<DioClient>()),
+    )
     // `FaceDetectorService` — har safar YANGI instance (factory): ichida
     // native ML Kit `FaceDetector` ushlaydi, `FaceCubit.close()` uni
     // `dispose()` qiladi. Singleton bo'lganda birinchi sahifadan
@@ -191,6 +196,7 @@ Future<void> configureDependencies() async {
         enrollFace: getIt<EnrollFace>(),
         ownerId: ownerId,
         facePhotoStore: getIt<FacePhotoStore>(),
+        faceSync: getIt<CitizenFaceSync>(),
       ),
     )
     // ---- PIN (Faza 3: ilova-qulf — xeshlangan saqlash) ----
@@ -256,6 +262,7 @@ Future<void> configureDependencies() async {
         getIt<DioClient>(),
         authRepository: getIt<AuthRepository>(),
         registrationRepository: getIt<RegistrationRepository>(),
+        faceSync: getIt<CitizenFaceSync>(),
       ),
     )
     ..registerLazySingleton<CitizenRequestsRepository>(

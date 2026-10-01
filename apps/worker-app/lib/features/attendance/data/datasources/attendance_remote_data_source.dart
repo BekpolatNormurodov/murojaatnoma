@@ -19,12 +19,14 @@ abstract class AttendanceRemoteDataSource {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   });
 
   Future<CheckScanResult> checkOut({
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   });
 
   Future<MyAttendance> myAttendance();
@@ -50,6 +52,7 @@ class AttendanceRemoteDataSourceMockImpl
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     final now = DateTime.now();
@@ -76,6 +79,7 @@ class AttendanceRemoteDataSourceMockImpl
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     final now = DateTime.now();
@@ -183,6 +187,7 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     try {
       final response = await _client.dio.post<Map<String, dynamic>>(
@@ -191,6 +196,7 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
           'embedding': embedding,
           'latitude': latitude,
           'longitude': longitude,
+          if (photoUrl != null) 'photoUrl': photoUrl,
         },
       );
       return CheckScanResult.fromJson(response.data ?? const {});
@@ -210,6 +216,7 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     try {
       final response = await _client.dio.post<Map<String, dynamic>>(
@@ -218,6 +225,7 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
           'embedding': embedding,
           'latitude': latitude,
           'longitude': longitude,
+          if (photoUrl != null) 'photoUrl': photoUrl,
         },
       );
       return CheckScanResult.fromJson(response.data ?? const {});

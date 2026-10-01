@@ -10,6 +10,7 @@ import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
 import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
+import 'package:worker_app/features/attendance/data/scan_photo_uploader.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
@@ -253,11 +254,24 @@ Future<void> configureDependencies() async {
       () =>
           AttendanceRepositoryImpl(remote: getIt<AttendanceRemoteDataSource>()),
     )
+    // Jonli rejimda joy qarorini SERVER qiladi (xodimning ofisi +
+    // mahallalari) — mahalliy qattiq-kodlangan radius faqat demo uchun.
     ..registerLazySingleton<CheckIn>(
-      () => CheckIn(getIt<AttendanceRepository>(), getIt<GeofenceService>()),
+      () => CheckIn(
+        getIt<AttendanceRepository>(),
+        getIt<GeofenceService>(),
+        localGate: AppConfig.useMock,
+      ),
     )
     ..registerLazySingleton<CheckOut>(
-      () => CheckOut(getIt<AttendanceRepository>(), getIt<GeofenceService>()),
+      () => CheckOut(
+        getIt<AttendanceRepository>(),
+        getIt<GeofenceService>(),
+        localGate: AppConfig.useMock,
+      ),
+    )
+    ..registerLazySingleton<ScanPhotoUploader>(
+      () => ApiScanPhotoUploader(getIt<DioClient>()),
     )
     ..registerLazySingleton<GetMyAttendance>(
       () => GetMyAttendance(getIt<AttendanceRepository>()),
@@ -299,6 +313,7 @@ Future<void> configureDependencies() async {
         precheck: getIt<AttendancePrecheck>(),
         workerId: workerId,
         facePhotoStore: getIt<FacePhotoStore>(),
+        photoUploader: AppConfig.useMock ? null : getIt<ScanPhotoUploader>(),
         // Ataylab sekinroq (~3s) skaner: yuz ramkada barqaror ushlanib
         // turgan holda progress yoyi 3 soniyada to'ladi — "tez o'qib
         // qo'yish" o'rniga ishonchli, bosqichma-bosqich skaner hissi.

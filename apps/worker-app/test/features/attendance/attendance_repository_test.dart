@@ -26,6 +26,7 @@ class _FakeAttendanceRemoteDataSource implements AttendanceRemoteDataSource {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     final err = checkInError;
     if (err != null) throw err;
@@ -37,6 +38,7 @@ class _FakeAttendanceRemoteDataSource implements AttendanceRemoteDataSource {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     final err = checkOutError;
     if (err != null) throw err;

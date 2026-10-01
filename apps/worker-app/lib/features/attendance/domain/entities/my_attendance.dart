@@ -97,6 +97,8 @@ AttendanceDay dayFromMyAttendanceJson(Map<String, dynamic> json) {
     insideGeofence: checkInJson?['insideGeofence'] as bool? ?? true,
     selfConfirmed: checkInTime != null,
     confirmedAt: checkInTime == null ? null : _hhmm(checkInTime),
+    checkInPhotoUrl: checkInJson?['photoUrl'] as String?,
+    checkOutPhotoUrl: checkOutJson?['photoUrl'] as String?,
   );
 }
 

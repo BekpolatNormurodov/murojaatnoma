@@ -14,6 +14,7 @@ import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
 /// bog'lovchi talabi).
 class _FakeAttendanceRepository implements AttendanceRepository {
   int checkInCallCount = 0;
+  String? lastPhotoUrl;
   Either<Failure, CheckScanResult> checkInResult = const Left(
     ServerFailure('sozlanmagan natija'),
   );
@@ -23,8 +24,10 @@ class _FakeAttendanceRepository implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     checkInCallCount++;
+    lastPhotoUrl = photoUrl;
     return checkInResult;
   }
 
@@ -33,6 +36,7 @@ class _FakeAttendanceRepository implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) async {
     throw UnimplementedError('not used in these tests');
   }
@@ -62,6 +66,24 @@ void main() {
         ..checkInResult = Right(knownResult);
       subject = CheckIn(repository, GeofenceService());
     });
+
+    test(
+      'live backend: no local gate — the real office (8 km from the old '
+      'hard-coded point) reaches the server, with the scan photo',
+      () async {
+        final live = CheckIn(repository, GeofenceService(), localGate: false);
+        const params = AttendanceScanParams(
+          embedding: [0.1, 0.2, 0.3],
+          latitude: 41.311081, // haqiqiy ofis (prod .env)
+          longitude: 69.240562,
+          photoUrl: 'https://murojaatnoma.uz/uploads/scan.jpg',
+        );
+        final result = await live(params);
+        expect(result, Right<Failure, CheckScanResult>(knownResult));
+        expect(repository.checkInCallCount, 1);
+        expect(repository.lastPhotoUrl, params.photoUrl);
+      },
+    );
 
     test(
       'outside geofence -> Left(GeofenceFailure); repository never called',

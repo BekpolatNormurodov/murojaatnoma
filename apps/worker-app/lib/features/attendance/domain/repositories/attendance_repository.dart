@@ -34,6 +34,7 @@ abstract class AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   });
 
   /// Xuddi [checkIn] kabi, lekin bugungi ish kunini yakunlash
@@ -42,6 +43,7 @@ abstract class AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   });
 
   /// Joriy xodimning bugungi holati + so'nggi hafta tarixini bitta

@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
+import 'package:worker_app/features/attendance/data/scan_photo_uploader.dart';
 import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
@@ -114,6 +115,7 @@ class FaceCubit extends Cubit<FaceState> {
     required String workerId,
     AttendancePrecheck? precheck,
     FacePhotoStore? facePhotoStore,
+    ScanPhotoUploader? photoUploader,
     Duration stableDuration = const Duration(milliseconds: 900),
     Duration livenessTimeout = const Duration(seconds: 20),
     DateTime Function() clock = DateTime.now,
@@ -128,6 +130,7 @@ class FaceCubit extends Cubit<FaceState> {
        _precheck = precheck,
        _workerId = workerId,
        _facePhotoStore = facePhotoStore,
+       _photoUploader = photoUploader,
        _stableDuration = stableDuration,
        _livenessTimeout = livenessTimeout,
        _clock = clock,
@@ -157,6 +160,10 @@ class FaceCubit extends Cubit<FaceState> {
   /// `user_app/features/face/presentation/bloc/face_cubit.dart` bilan bir
   /// xil pretsedent.
   final FacePhotoStore? _facePhotoStore;
+
+  /// Yuz tekshiruvidan o'tgan kadrni serverga yuklaydi (davomat isboti);
+  /// `null` (testlar, demo) — yuklanmaydi.
+  final ScanPhotoUploader? _photoUploader;
   final Duration _stableDuration;
   final Duration _livenessTimeout;
   final DateTime Function() _clock;
@@ -805,13 +812,18 @@ class FaceCubit extends Cubit<FaceState> {
 
     _busy = true;
     try {
-      final rgb112 = _cropTo112(image, face.boundingBox);
+      // Kadr bir marta dekodlanadi: 112px yuz — embedding uchun, kengroq
+      // portret — davomat isboti (serverga yuklanadi, web/xodim tarixida).
+      final upright = _uprightFrame(image);
+      final rgb112 = _rgb112(upright, face.boundingBox);
       if (!_embedderLoaded) {
         await _embedder.load();
         _embedderLoaded = true;
       }
       final probe = _embedder.embed(rgb112);
-      final screenshotPath = await _saveScreenshot(rgb112);
+      final screenshotPath = await _saveScreenshot(
+        _cropBox(upright, face.boundingBox, expand: 1.8, size: 360),
+      );
       // Haqiqiy model yuklanmagan bo'lsa (`isFallback`), moslashuvchan
       // (yumshoqroq) chegara ishlatiladi — qarang: `FaceRepository.verify`
       // hujjatlari. Solishtirishning o'zi baribir HAR DOIM haqiqiy kosinus
@@ -832,7 +844,7 @@ class FaceCubit extends Cubit<FaceState> {
     }
   }
 
-  /// Kesilgan yuzni (`rgb112`) `attendance/<sana>.jpg` sifatida ilova
+  /// Yuz atrofidagi portretni `attendance/<sana>-<tur>.jpg` sifatida ilova
   /// hujjatlar papkasiga saqlaydi va to'liq yo'lni qaytaradi. Chaqiruvchi
   /// ([_captureAndVerify]) buni allaqachon `try/catch` ichida chaqiradi —
   /// fayl I/O xatosi (masalan disk to'lgan) shu orqali `FaceError`ga
@@ -842,20 +854,13 @@ class FaceCubit extends Cubit<FaceState> {
   /// Sana inject qilingan `_clock()`dan olinadi (`DateTime.now()`
   /// emas) — sinfning qolgan qismi bilan izchil (Vazifa 17 ko'rib
   /// chiqish, Minor).
-  Future<String> _saveScreenshot(Uint8List rgb112) async {
+  Future<String> _saveScreenshot(img.Image portrait) async {
     final docs = await getApplicationDocumentsDirectory();
     final folder = Directory('${docs.path}/attendance')
       ..createSync(recursive: true);
     final date = _clock().toIso8601String().split('T').first;
-    final file = File('${folder.path}/$date.jpg');
-    final image = img.Image.fromBytes(
-      width: kFaceInputSize,
-      height: kFaceInputSize,
-      bytes: rgb112.buffer,
-      order: img.ChannelOrder.rgb,
-      numChannels: 3,
-    );
-    await file.writeAsBytes(img.encodeJpg(image));
+    final file = File('${folder.path}/$date-${_kind.name}.jpg');
+    await file.writeAsBytes(img.encodeJpg(portrait, quality: 82));
     return file.path;
   }
 
@@ -940,6 +945,12 @@ class FaceCubit extends Cubit<FaceState> {
     }
 
     emit(const FaceCheckingIn());
+    // Kadr — "kim keldi" isboti: avval yuklanadi, URL so'rovga qo'shiladi.
+    // Yuklanmasa (internet sekin) davomat baribir yoziladi, faqat rasmsiz.
+    final uploader = _photoUploader;
+    final photoUrl = uploader != null && screenshotPath.isNotEmpty
+        ? await uploader.upload(screenshotPath)
+        : null;
     // Jonli backend (`useMock == false`) yuz moslikni SERVER hisoblaydi:
     // probe `embedding` + koordinata yuboriladi, yakuniy qaror
     // (`CheckScanResult.isValid`/`faceScore`) serverdan keladi (employeeId
@@ -950,6 +961,7 @@ class FaceCubit extends Cubit<FaceState> {
       embedding: probe,
       latitude: position.latitude,
       longitude: position.longitude,
+      photoUrl: photoUrl,
     );
     final Either<Failure, CheckScanResult> checkInEither;
     if (_kind == AttendanceScanKind.checkOut) {
@@ -1177,7 +1189,47 @@ class FaceCubit extends Cubit<FaceState> {
   /// moslikni kuchli buzadi (qarang: `assets/models/README.md`). Preview
   /// uchun "tabiiy oyna" ko'rinishi FAQAT `MirroredCameraPreview`da
   /// (render qatlami) beriladi — bu yerga hech qachon ko'chirilmasin.
-  Uint8List _cropTo112(CameraImage image, Rect box) {
+  Uint8List _cropTo112(CameraImage image, Rect box) =>
+      _rgb112(_uprightFrame(image), box);
+
+  Uint8List _rgb112(img.Image upright, Rect box) =>
+      _toRgbBytes(_cropBox(upright, box, size: kFaceInputSize));
+
+  /// [box] markazidan [expand] marta kengaytirilgan kvadratni kesib,
+  /// [size]×[size] ga keltiradi (`expand: 1` — aynan bbox, embedding uchun).
+  img.Image _cropBox(
+    img.Image upright,
+    Rect box, {
+    required int size,
+    double expand = 1,
+  }) {
+    final rect = expand == 1
+        ? box
+        : Rect.fromCenter(
+            center: box.center,
+            width: math.max(box.width, box.height) * expand,
+            height: math.max(box.width, box.height) * expand,
+          );
+    final left = _clampInt(rect.left, 0, upright.width - 1);
+    final top = _clampInt(rect.top, 0, upright.height - 1);
+    final right = _clampInt(rect.right, left + 1, upright.width);
+    final bottom = _clampInt(rect.bottom, top + 1, upright.height);
+    final cropped = img.copyCrop(
+      upright,
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    );
+    return img.copyResize(
+      cropped,
+      width: size,
+      height: size,
+      interpolation: img.Interpolation.linear,
+    );
+  }
+
+  img.Image _uprightFrame(CameraImage image) {
     var decoded = Platform.isIOS
         ? _bgraToImage(image)
         : (image.planes.length >= 3
@@ -1199,25 +1251,7 @@ class FaceCubit extends Cubit<FaceState> {
       decoded = img.copyRotate(decoded, angle: rotationDeg);
     }
 
-    final left = _clampInt(box.left, 0, decoded.width - 1);
-    final top = _clampInt(box.top, 0, decoded.height - 1);
-    final right = _clampInt(box.right, left + 1, decoded.width);
-    final bottom = _clampInt(box.bottom, top + 1, decoded.height);
-
-    final cropped = img.copyCrop(
-      decoded,
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
-    );
-    final resized = img.copyResize(
-      cropped,
-      width: kFaceInputSize,
-      height: kFaceInputSize,
-      interpolation: img.Interpolation.linear,
-    );
-    return _toRgbBytes(resized);
+    return decoded;
   }
 
   img.Image _bgraToImage(CameraImage image) {

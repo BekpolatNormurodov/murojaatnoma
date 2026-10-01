@@ -11,6 +11,7 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:user_app/core/constants/face_constants.dart';
+import 'package:user_app/features/face/data/services/citizen_face_sync.dart';
 import 'package:user_app/features/face/data/services/face_detector_service.dart';
 import 'package:user_app/features/face/data/services/face_embedder.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
@@ -44,6 +45,7 @@ class FaceCubit extends Cubit<FaceState> {
     required EnrollFace enrollFace,
     required String ownerId,
     FacePhotoStore? facePhotoStore,
+    CitizenFaceSync? faceSync,
     Duration stableDuration = const Duration(milliseconds: 1500),
     DateTime Function() clock = DateTime.now,
   }) : _detector = detector,
@@ -51,6 +53,7 @@ class FaceCubit extends Cubit<FaceState> {
        _enrollFace = enrollFace,
        _ownerId = ownerId,
        _facePhotoStore = facePhotoStore,
+       _faceSync = faceSync,
        _stableDuration = stableDuration,
        _clock = clock,
        super(const FaceInitializing());
@@ -64,6 +67,9 @@ class FaceCubit extends Cubit<FaceState> {
   /// `null` bo'lsa rasm saqlanmaydi, ro'yxatdan o'tkazish o'zgarishsiz
   /// davom etadi). Best-effort, qurilma-only.
   final FacePhotoStore? _facePhotoStore;
+
+  /// Yuz portretini serverga saqlaydi — murojaatlarda "kim yozgan" (ixtiyoriy).
+  final CitizenFaceSync? _faceSync;
   final Duration _stableDuration;
   final DateTime Function() _clock;
 
@@ -451,7 +457,15 @@ class FaceCubit extends Cubit<FaceState> {
     }
 
     try {
-      final rgb112 = _cropTo112(image, face.boundingBox);
+      final upright = _uprightFrame(image);
+      final rgb112 = _toRgbBytes(
+        _cropBox(upright, face.boundingBox, size: kFaceInputSize),
+      );
+      // Murojaatlarda ko'rinadigan kengroq portret (yuz + atrofi).
+      final portrait = img.encodeJpg(
+        _cropBox(upright, face.boundingBox, size: 360, expand: 1.8),
+        quality: 82,
+      );
 
       // Best-effort: skanerlangan yuzni profil avatari uchun JPG sifatida
       // saqlaymiz. Rasm IXTIYORIY — saqlash muvaffaqiyatsiz bo'lsa ham
@@ -485,6 +499,8 @@ class FaceCubit extends Cubit<FaceState> {
         },
         (_) {
           _finished = true;
+          final sync = _faceSync;
+          if (sync != null) unawaited(sync.saveAndUpload(portrait));
           emit(const FaceSuccess());
         },
       );
@@ -507,7 +523,38 @@ class FaceCubit extends Cubit<FaceState> {
 
   // ================= Qurilma-only: 112x112 RGB kesish =================
 
-  Uint8List _cropTo112(CameraImage image, Rect box) {
+  /// [box] markazidan [expand] marta kengaytirilgan kvadratni kesib,
+  /// [size]×[size] ga keltiradi (`expand: 1` — aynan bbox, embedding uchun).
+  img.Image _cropBox(
+    img.Image upright,
+    Rect box, {
+    required int size,
+    double expand = 1,
+  }) {
+    final side = math.max(box.width, box.height) * expand;
+    final rect = expand == 1
+        ? box
+        : Rect.fromCenter(center: box.center, width: side, height: side);
+    final left = _clampInt(rect.left, 0, upright.width - 1);
+    final top = _clampInt(rect.top, 0, upright.height - 1);
+    final right = _clampInt(rect.right, left + 1, upright.width);
+    final bottom = _clampInt(rect.bottom, top + 1, upright.height);
+    final cropped = img.copyCrop(
+      upright,
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    );
+    return img.copyResize(
+      cropped,
+      width: size,
+      height: size,
+      interpolation: img.Interpolation.linear,
+    );
+  }
+
+  img.Image _uprightFrame(CameraImage image) {
     var decoded = Platform.isIOS
         ? _bgraToImage(image)
         : (image.planes.length >= 3
@@ -528,25 +575,7 @@ class FaceCubit extends Cubit<FaceState> {
       decoded = img.copyRotate(decoded, angle: rotationDeg);
     }
 
-    final left = _clampInt(box.left, 0, decoded.width - 1);
-    final top = _clampInt(box.top, 0, decoded.height - 1);
-    final right = _clampInt(box.right, left + 1, decoded.width);
-    final bottom = _clampInt(box.bottom, top + 1, decoded.height);
-
-    final cropped = img.copyCrop(
-      decoded,
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
-    );
-    final resized = img.copyResize(
-      cropped,
-      width: kFaceInputSize,
-      height: kFaceInputSize,
-      interpolation: img.Interpolation.linear,
-    );
-    return _toRgbBytes(resized);
+    return decoded;
   }
 
   img.Image _bgraToImage(CameraImage image) {

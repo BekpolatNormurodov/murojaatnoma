@@ -42,6 +42,7 @@ class _FakeAttendanceRepository implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) {
     throw UnimplementedError('AttendanceCubit does not call checkIn');
   }
@@ -51,6 +52,7 @@ class _FakeAttendanceRepository implements AttendanceRepository {
     required List<double> embedding,
     required double latitude,
     required double longitude,
+    String? photoUrl,
   }) {
     throw UnimplementedError('AttendanceCubit does not call checkOut');
   }

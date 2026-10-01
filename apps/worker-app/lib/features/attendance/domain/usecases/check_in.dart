@@ -16,22 +16,29 @@ import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_p
 /// chaqiriladi. Shuning uchun bu klass `VerifyFace`/`FaceEmbedder`ga
 /// bog'liq emas — faqat `GeofenceService` va `AttendanceRepository`ga.
 class CheckIn implements UseCase<CheckScanResult, AttendanceScanParams> {
-  CheckIn(this.repository, this.geofenceService);
+  CheckIn(this.repository, this.geofenceService, {this.localGate = true});
 
   final AttendanceRepository repository;
   final GeofenceService geofenceService;
+
+  /// Mahalliy (qattiq-kodlangan) radius tekshiruvi — faqat demo rejimda.
+  /// Jonli backendda qarorni SERVER qiladi (xodimning ofisi + mahallalari);
+  /// eski qattiq-kodlangan nuqta haqiqiy ofisdan ~8 km uzoqda edi.
+  final bool localGate;
 
   @override
   Future<Either<Failure, CheckScanResult>> call(
     AttendanceScanParams params,
   ) async {
-    if (!geofenceService.isInside(params.latitude, params.longitude)) {
+    if (localGate &&
+        !geofenceService.isInside(params.latitude, params.longitude)) {
       return const Left(GeofenceFailure());
     }
     return repository.checkIn(
       embedding: params.embedding,
       latitude: params.latitude,
       longitude: params.longitude,
+      photoUrl: params.photoUrl,
     );
   }
 }

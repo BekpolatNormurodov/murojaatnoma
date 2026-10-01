@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { LoginCurve, LogoutCurve, Location, ShieldCross, Warning2 } from 'iconsax-react';
 import { Badge } from '@/shared/ui/Badge';
+import { Modal } from '@/shared/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
 import type { EmployeeTodayEntry } from './api/types';
@@ -57,6 +59,8 @@ export function AttendanceDayDetail({
           tone={entry.checkIn ? (entry.checkIn.isLate ? 'warning' : 'success') : 'muted'}
           title="Keldi"
           time={entry.checkIn ? clockOf(entry.checkIn.time) : null}
+          photo={entry.checkIn?.photoUrl}
+          photoCaption={`${entry.fullName} · keldi ${entry.checkIn ? clockOf(entry.checkIn.time) : ''}`}
         >
           {entry.checkIn ? (
             <>
@@ -86,6 +90,8 @@ export function AttendanceDayDetail({
           tone={entry.checkOut ? (early > 0 ? 'danger' : 'info') : 'muted'}
           title="Ketdi"
           time={entry.checkOut ? clockOf(entry.checkOut.time) : null}
+          photo={entry.checkOut?.photoUrl}
+          photoCaption={`${entry.fullName} · ketdi ${entry.checkOut ? clockOf(entry.checkOut.time) : ''}`}
         >
           {entry.checkOut ? (
             <>
@@ -113,11 +119,18 @@ export function AttendanceDayDetail({
           </p>
           <ul className="mt-2 space-y-1.5">
             {failed.map((f, i) => (
-              <li key={i} className="flex gap-2 text-[12px] text-ink-soft">
+              <li key={i} className="flex items-start gap-2 text-[12px] text-ink-soft">
                 <span className="w-11 shrink-0 font-semibold tabular-nums text-ink">
                   {clockOf(f.time)}
                 </span>
-                <span className="min-w-0">
+                {f.photoUrl && (
+                  <ScanPhoto
+                    url={f.photoUrl}
+                    size={32}
+                    caption={`Rad etilgan urinish · ${clockOf(f.time)} — kamera oldida kim turgan`}
+                  />
+                )}
+                <span className="min-w-0 flex-1">
                   <span className="font-medium text-ink">
                     {f.type === 'CHECK_IN' ? 'Kelish' : 'Ketish'}:
                   </span>{' '}
@@ -168,12 +181,16 @@ function TimelineItem({
   tone,
   title,
   time,
+  photo,
+  photoCaption,
   children,
 }: {
   icon: React.ReactNode;
   tone: 'success' | 'warning' | 'danger' | 'info' | 'muted';
   title: string;
   time: string | null;
+  photo?: string | null;
+  photoCaption?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -194,8 +211,37 @@ function TimelineItem({
         <span className="text-[13px] font-semibold text-ink">{title}</span>
         <span className="text-[15px] font-bold tabular-nums text-ink">{time ?? '—'}</span>
       </div>
-      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">{children}</div>
+      <div className="mt-0.5 flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">{children}</div>
+        {photo && <ScanPhoto url={photo} caption={photoCaption ?? title} />}
+      </div>
     </li>
+  );
+}
+
+/**
+ * Yuz tekshiruvidan o'tgan (yoki rad etilgan) paytdagi kadr — "kim keldi"
+ * isboti. Bosilsa kattalashadi.
+ */
+function ScanPhoto({ url, caption, size = 48 }: { url: string; caption: string; size?: number }) {
+  const [open, setOpen] = useState(false);
+  const [broken, setBroken] = useState(false);
+  if (broken) return null;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`Skan rasmi: ${caption}`}
+        className="shrink-0 overflow-hidden rounded-lg border border-line bg-surface-2 transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+        style={{ width: size, height: size }}
+      >
+        <img src={url} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBroken(true)} />
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Yuz tekshiruvi kadri" subtitle={caption} width={420}>
+        <img src={url} alt={caption} className="mx-auto max-h-[70vh] w-full rounded-xl object-contain" />
+      </Modal>
+    </>
   );
 }
 

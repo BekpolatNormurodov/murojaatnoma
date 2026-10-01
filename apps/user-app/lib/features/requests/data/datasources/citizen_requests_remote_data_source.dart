@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
 import 'package:user_app/core/mock/mock_citizen_requests.dart';
 import 'package:user_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:user_app/features/face/data/services/citizen_face_sync.dart';
 import 'package:user_app/features/registration/domain/repositories/registration_repository.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/entities/request_message.dart';
@@ -340,12 +341,18 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
     this._client, {
     required AuthRepository authRepository,
     required RegistrationRepository registrationRepository,
+    CitizenFaceSync? faceSync,
   }) : _authRepository = authRepository,
-       _registrationRepository = registrationRepository;
+       _registrationRepository = registrationRepository,
+       _faceSync = faceSync;
 
   final DioClient _client;
   final AuthRepository _authRepository;
   final RegistrationRepository _registrationRepository;
+
+  /// Fuqaroning ro'yxatdan o'tgandagi yuzi — murojaatga "kim yozgan" bo'lib
+  /// qo'shiladi (server faqat shu telefon egasining yuzini qabul qiladi).
+  final CitizenFaceSync? _faceSync;
 
   /// Joriy fuqaroning telefon raqamini (normallashtirilgan) qaytaradi —
   /// sessiya topilmasa bo'sh satr (chaqiruvchilar bo'sh satrni "noma'lum"
@@ -464,10 +471,12 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
     try {
       final phone = await _currentPhone();
       final fullName = await _currentFullName(phone);
+      final photoUrl = await _faceSync?.ensureUploaded();
 
       final response = await _client.dio.post<Map<String, dynamic>>(
         '/applications',
         data: {
+          if (photoUrl != null) 'applicantPhotoUrl': photoUrl,
           'applicantFullName': fullName,
           'applicantPhone': phone,
           'subject': _encodeSubject(

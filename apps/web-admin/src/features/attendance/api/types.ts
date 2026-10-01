@@ -26,6 +26,8 @@ export interface TodayCheckIn {
   faceScore?: number;
   /** Metres from the office point at scan time. */
   distanceM?: number;
+  /** Face frame of the scan ("kim keldi" isboti); null on older scans. */
+  photoUrl?: string | null;
 }
 
 export interface TodayCheckOut {
@@ -33,6 +35,7 @@ export interface TodayCheckOut {
   insideGeofence?: boolean;
   faceScore?: number;
   distanceM?: number;
+  photoUrl?: string | null;
 }
 
 /** A scan the server rejected (face below threshold and/or outside the geofence). */
@@ -42,6 +45,7 @@ export interface TodayFailedScan {
   reason: string | null;
   faceScore: number;
   distanceM: number;
+  photoUrl?: string | null;
 }
 
 export interface TodayLiveLocation {

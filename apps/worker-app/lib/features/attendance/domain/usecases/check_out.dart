@@ -17,22 +17,29 @@ import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
 /// qilingan bo'lsa `AlreadyCheckedOutFailure` (409) — qarang:
 /// `AttendanceRepositoryImpl.checkOut`.
 class CheckOut implements UseCase<CheckScanResult, AttendanceScanParams> {
-  CheckOut(this.repository, this.geofenceService);
+  CheckOut(this.repository, this.geofenceService, {this.localGate = true});
 
   final AttendanceRepository repository;
   final GeofenceService geofenceService;
+
+  /// Mahalliy (qattiq-kodlangan) radius tekshiruvi — faqat demo rejimda.
+  /// Jonli backendda qarorni SERVER qiladi (xodimning ofisi + mahallalari);
+  /// eski qattiq-kodlangan nuqta haqiqiy ofisdan ~8 km uzoqda edi.
+  final bool localGate;
 
   @override
   Future<Either<Failure, CheckScanResult>> call(
     AttendanceScanParams params,
   ) async {
-    if (!geofenceService.isInside(params.latitude, params.longitude)) {
+    if (localGate &&
+        !geofenceService.isInside(params.latitude, params.longitude)) {
       return const Left(GeofenceFailure());
     }
     return repository.checkOut(
       embedding: params.embedding,
       latitude: params.latitude,
       longitude: params.longitude,
+      photoUrl: params.photoUrl,
     );
   }
 }
