@@ -55,7 +55,7 @@ export function SourcesStatus() {
       )}
 
       {sources.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-muted">
+        <p className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-soft">
           Birinchi yig'ish hali tugamadi — bir necha soniyadan so'ng qayta oching.
         </p>
       ) : (
@@ -83,7 +83,7 @@ function PlatformGroup({ platform, list }: { platform: MediaPlatform; list: Medi
           <m.Icon size={16} />
         </span>
         {m.label}
-        <span className="text-xs font-normal text-ink-muted">· {list.length} ta</span>
+        <span className="text-xs font-normal text-ink-soft">· {list.length} ta</span>
       </h3>
       <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
         {list.map((s) => (
@@ -97,7 +97,7 @@ function PlatformGroup({ platform, list }: { platform: MediaPlatform; list: Medi
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-medium text-ink">{s.name}</p>
-              <p className={cn('text-xs leading-snug', s.ok === false ? 'text-red-600 dark:text-red-400' : 'text-ink-muted')}>
+              <p className={cn('text-xs leading-snug', s.ok === false ? 'text-red-600 dark:text-red-400' : 'text-ink-soft')}>
                 {s.ok === false
                   ? s.error
                   : s.ok === null
@@ -106,7 +106,7 @@ function PlatformGroup({ platform, list }: { platform: MediaPlatform; list: Medi
               </p>
             </div>
             {s.ok === false && s.lastSuccessAt && (
-              <span className="shrink-0 text-[11px] text-ink-muted" title="Oxirgi muvaffaqiyatli o'qish">
+              <span className="shrink-0 text-[11px] text-ink-soft" title="Oxirgi muvaffaqiyatli o'qish">
                 {timeAgo(s.lastSuccessAt)}
               </span>
             )}

@@ -224,7 +224,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <div>
       <p className="mb-1.5 text-[13px] font-semibold text-ink">{label}</p>
       {children}
-      {hint && <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{hint}</p>}
     </div>
   );
 }
@@ -249,7 +249,7 @@ function Section({
           {icon}
         </span>
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        {note && <span className="text-xs text-ink-muted">· {note}</span>}
+        {note && <span className="text-xs text-ink-soft">· {note}</span>}
       </div>
       {children}
     </section>
@@ -392,7 +392,7 @@ function GovList({
                   href={`https://gov.uz/oz/${a.slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="truncate text-xs text-ink-muted hover:text-primary-700 hover:underline"
+                  className="truncate text-xs text-ink-soft hover:text-primary-700 hover:underline"
                 >
                   gov.uz/oz/{a.slug}
                 </a>
@@ -412,7 +412,7 @@ function GovList({
                   type="button"
                   onClick={() => onChange(items.filter((x) => x.slug !== a.slug))}
                   aria-label={`${a.name} ni o'chirish`}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-red-600"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-danger-soft hover:text-red-600"
                 >
                   <Trash size={16} />
                 </button>
@@ -475,13 +475,13 @@ function FeedList({
       <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
         {feeds.map((f) => (
           <li key={f.key} className="flex items-center gap-3 px-3 py-2.5">
-            <Global size={16} className="shrink-0 text-ink-muted" />
+            <Global size={16} className="shrink-0 text-ink-soft" />
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-ink">
                 {f.name}
                 {f.official && <ShieldTick size={13} variant="Bold" className="shrink-0 text-accent-600" aria-label="Rasmiy" />}
               </p>
-              <p className="truncate text-xs text-ink-muted">{f.url}</p>
+              <p className="truncate text-xs text-ink-soft">{f.url}</p>
             </div>
             <label className="hidden shrink-0 cursor-pointer items-center gap-1.5 text-xs text-ink-soft sm:flex" title="Davlat nashri — «Rasmiy» belgisi">
               <input
@@ -503,7 +503,7 @@ function FeedList({
                 type="button"
                 onClick={() => onChange(feeds.filter((x) => x.key !== f.key))}
                 aria-label={`${f.name} ni o'chirish`}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-red-600"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-danger-soft hover:text-red-600"
               >
                 <Trash size={16} />
               </button>
@@ -657,7 +657,7 @@ function IntegrationsTab({
         );
       })}
       <p className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-xs leading-relaxed text-ink-soft">
-        <InfoCircle size={16} className="shrink-0 text-ink-muted" />
+        <InfoCircle size={16} className="shrink-0 text-ink-soft" />
         Kalitlar faqat serverdagi <code className="rounded bg-surface px-1">.env</code> faylga yoziladi (kodga emas), so'ng backend qayta ishga
         tushiriladi. Kalit qo'shilmaguncha monitoring qolgan manbalar va avtomatik tahlil bilan ishlayveradi.
       </p>

@@ -37,7 +37,7 @@ export function MediaDashboardWidget() {
             </span>
             <div className="min-w-0">
               <h3 className="text-[15px] font-semibold text-ink">OAV monitoringi</h3>
-              <p className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <p className="flex items-center gap-1.5 text-xs text-ink-soft">
                 <span className={cn('h-1.5 w-1.5 rounded-full', running ? 'animate-pulse bg-amber-500' : 'bg-emerald-500')} />
                 {running
                   ? "Manbalar o'qilmoqda…"
@@ -59,7 +59,7 @@ export function MediaDashboardWidget() {
               <div className="h-4 w-2/3 animate-pulse rounded-lg bg-surface-2" />
             </div>
           ) : isError ? (
-            <p className="mt-4 text-sm text-ink-muted">Monitoring ma'lumotini yuklab bo'lmadi.</p>
+            <p className="mt-4 text-sm text-ink-soft">Monitoring ma'lumotini yuklab bo'lmadi.</p>
           ) : (
             <>
               <p className="mt-4 text-[16px] font-bold leading-snug text-ink">
@@ -67,7 +67,7 @@ export function MediaDashboardWidget() {
               </p>
               {digest && <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-ink-soft">{digest.summary}</p>}
               {ov && (
-                <p className="mt-4 text-xs font-medium text-ink-muted">
+                <p className="mt-4 text-xs font-medium text-ink-soft">
                   So'nggi 7 kun: <b className="text-ink">{ov.totals.all}</b> ta xabar
                   {ov.totals.unseen > 0 && <> · <b className="text-ink">{ov.totals.unseen}</b> ta ko'rilmagan</>}
                 </p>
@@ -115,7 +115,7 @@ export function MediaDashboardWidget() {
             {isLoading
               ? Array.from({ length: 3 }).map((_, i) => <li key={i} className="h-14 animate-pulse rounded-xl bg-surface-2" />)
               : list.length === 0
-                ? <li className="rounded-xl border border-dashed border-line p-4 text-center text-[13px] text-ink-muted">So'nggi 7 kunda xabar yo'q</li>
+                ? <li className="rounded-xl border border-dashed border-line p-4 text-center text-[13px] text-ink-soft">So'nggi 7 kunda xabar yo'q</li>
                 : list.map((it) => {
                     const s = SENTIMENT_META[it.sentiment];
                     return (
@@ -131,13 +131,13 @@ export function MediaDashboardWidget() {
                             <p className="line-clamp-2 text-[13px] font-medium leading-snug text-ink group-hover:text-primary-700 dark:group-hover:text-primary-300">
                               {it.title}
                             </p>
-                            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
+                            <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-soft">
                               <s.Icon size={12} color={s.color} variant="Bold" />
                               <span className="truncate">{it.sourceName}</span>
                               {it.official && <OfficialBadge compact />} · {shortTime(it.publishedAt)}
                             </p>
                           </div>
-                          <ExportSquare size={15} className="mt-0.5 shrink-0 text-ink-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                          <ExportSquare size={15} className="mt-0.5 shrink-0 text-ink-soft opacity-0 transition-opacity group-hover:opacity-100" />
                         </a>
                       </li>
                     );

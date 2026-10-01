@@ -59,7 +59,7 @@ export function SentimentBar({
               <span key={p.key} className="inline-flex items-center gap-1.5">
                 <m.Icon size={14} color={m.color} variant="Bold" />
                 {m.label} <b className="font-semibold tabular-nums text-ink">{p.n}</b>
-                {total > 0 && <span className="text-ink-muted">({Math.round((p.n / total) * 100)}%)</span>}
+                {total > 0 && <span className="text-ink-soft">({Math.round((p.n / total) * 100)}%)</span>}
               </span>
             );
           })}
@@ -104,7 +104,7 @@ export function MediaDigestCard({
           </span>
           <div className="min-w-0">
             <h2 className="text-[15px] font-semibold text-ink">Xulosa</h2>
-            <p className="text-xs text-ink-muted">
+            <p className="text-xs text-ink-soft">
               {digest ? (
                 <>
                   {fullTime(digest.createdAt)} holatiga · so'nggi {hours >= 48 ? `${Math.round(hours / 24)} kun` : `${hours} soat`} ·{' '}
@@ -137,8 +137,8 @@ export function MediaDigestCard({
             <div className="h-4 w-2/3 animate-pulse rounded-lg bg-surface-2" />
           </div>
         ) : !digest ? (
-          <div className="mt-5 rounded-xl border border-dashed border-line p-5 text-center text-sm text-ink-muted">
-            <Timer1 size={28} className="mx-auto mb-2 text-ink-muted" variant="Bulk" />
+          <div className="mt-5 rounded-xl border border-dashed border-line p-5 text-center text-sm text-ink-soft">
+            <Timer1 size={28} className="mx-auto mb-2 text-ink-soft" variant="Bulk" />
             Birinchi yig'ish davom etmoqda — xulosa bir necha daqiqada paydo bo'ladi.
           </div>
         ) : (
@@ -209,7 +209,7 @@ export function MediaDigestCard({
                                         <pm.Icon size={12} />
                                       </span>
                                       <span className="truncate">{l!.sourceName}</span>
-                                      <span className="text-ink-muted">{shortTime(l!.publishedAt)}</span>
+                                      <span className="text-ink-soft">{shortTime(l!.publishedAt)}</span>
                                       <ExportSquare size={11} />
                                     </a>
                                   );
@@ -281,13 +281,13 @@ function DigestHistory({ open, onClose }: { open: boolean; onClose: () => void }
           ))}
         </div>
       ) : !data?.length ? (
-        <p className="text-sm text-ink-muted">Hali xulosa yo'q.</p>
+        <p className="text-sm text-ink-soft">Hali xulosa yo'q.</p>
       ) : (
         <ol className="relative space-y-4 border-l border-line pl-5">
           {data.map((d) => (
             <li key={d.id} className="relative">
               <span className="absolute -left-[26px] top-1.5 h-3 w-3 rounded-full border-2 border-surface bg-violet-500" />
-              <p className="text-xs text-ink-muted">
+              <p className="text-xs text-ink-soft">
                 {fullTime(d.createdAt)} · {d.itemCount} ta material · {aiModelLabel(d.model)}
               </p>
               <p className="mt-1 text-[14px] font-semibold text-ink">{d.headline}</p>

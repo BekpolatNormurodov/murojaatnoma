@@ -4,7 +4,7 @@ import { cn } from '@/shared/lib/cn';
 import { formatCompact } from '@/shared/lib/format';
 import type { MediaItem, MediaSentiment, MediaStatus } from './api';
 import { Highlight, SourceLogo } from './MediaIcons';
-import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, clock, freshAgo, fullTime } from './meta';
+import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, clock, dayShort, freshAgo, fullTime } from './meta';
 
 interface Props {
   item: MediaItem;
@@ -15,7 +15,7 @@ interface Props {
   onOpen?: (item: MediaItem) => void;
   onTopic?: (topic: string) => void;
   /** Ticks every minute so "12 daqiqa oldin" stays true. */
-  now?: number;
+  now: number;
 }
 
 /**
@@ -49,21 +49,23 @@ export const MediaItemCard = memo(function MediaItemCard({
         'group relative grid grid-cols-[minmax(0,1fr)_76px] gap-x-3 rounded-2xl border bg-surface p-3.5 transition-all duration-200',
         "[grid-template-areas:'src_src'_'title_thumb'_'sum_sum'_'meta_meta']",
         "sm:grid-cols-[144px_minmax(0,1fr)] sm:gap-x-4 sm:p-4 sm:[grid-template-areas:'thumb_src'_'thumb_title'_'thumb_sum'_'thumb_meta']",
-        'hover:-translate-y-px hover:shadow-card focus-within:ring-2 focus-within:ring-primary-300',
+        // Desktop grid: a magazine tile — picture on top, text below, actions pinned to the bottom.
+        "h-full xl:grid-cols-1 xl:grid-rows-[auto_auto_auto_1fr_auto] xl:overflow-hidden xl:p-0 xl:[grid-template-areas:'thumb'_'src'_'title'_'sum'_'meta']",
+        'motion-safe:hover:-translate-y-px hover:shadow-card focus-within:ring-2 focus-within:ring-primary-400',
         important ? 'border-amber-300 dark:border-amber-500/50' : 'border-line hover:border-primary-200',
         hidden && 'opacity-60',
       )}
     >
       {unseen && (
         <span
-          className="absolute left-0 top-4 h-8 w-1 rounded-r-full bg-primary-500"
+          className="absolute left-0 top-4 z-10 h-8 w-1 rounded-r-full bg-primary-500"
           aria-label="Yangi"
           title="Ko'rilmagan"
         />
       )}
 
       {/* Thumbnail / platform tile */}
-      <div className="relative mt-1.5 h-[76px] w-[76px] self-start overflow-hidden rounded-xl bg-surface-2 [grid-area:thumb] sm:mt-0 sm:h-24 sm:w-36">
+      <div className="relative mt-1.5 h-[76px] w-[76px] self-start overflow-hidden rounded-xl bg-surface-2 [grid-area:thumb] sm:mt-0 sm:h-24 sm:w-36 xl:aspect-[16/9] xl:h-auto xl:w-full xl:rounded-none">
         {showImage ? (
           <img
             src={item.imageUrl!}
@@ -74,10 +76,37 @@ export const MediaItemCard = memo(function MediaItemCard({
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
           />
         ) : (
-          <div className={cn('flex h-full w-full items-center justify-center', platform.tile)}>
-            <platform.Icon size={30} />
+          <div
+            className={cn(
+              'flex h-full w-full flex-col items-center justify-center gap-2',
+              platform.tile,
+              'xl:bg-gradient-to-br xl:from-accent-500/15 xl:via-primary-500/10 xl:to-violet-500/20',
+            )}
+          >
+            <span className="xl:hidden">
+              <platform.Icon size={30} />
+            </span>
+            <span className="hidden flex-col items-center gap-2 xl:flex">
+              <SourceLogo item={item} size={52} className="shadow-lg ring-4 ring-white/70 dark:ring-white/10" />
+              <span className="max-w-[85%] truncate text-xs font-semibold text-ink">{item.sourceName}</span>
+            </span>
           </div>
         )}
+        {/* Desktop tile: mood + views on the picture, so the source line has room */}
+        <span
+          className={cn(
+            'absolute right-2 top-2 hidden items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold shadow-sm ring-1 backdrop-blur xl:inline-flex',
+            senti.pill,
+          )}
+        >
+          <senti.Icon size={13} variant="Bold" color="currentColor" aria-hidden="true" />
+          {senti.label}
+        </span>
+        {item.views ? (
+          <span className="absolute bottom-2 right-2 hidden items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur xl:inline-flex" title="Ko'rishlar">
+            <Eye size={12} /> {formatCompact(item.views)}
+          </span>
+        ) : null}
         <span
           className="absolute bottom-1.5 left-1.5 flex h-6 w-6 items-center justify-center rounded-lg bg-white/95 shadow-sm dark:bg-slate-900/90"
           style={{ color: platform.color }}
@@ -88,47 +117,49 @@ export const MediaItemCard = memo(function MediaItemCard({
       </div>
 
       {/* Source line */}
-      <div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted [grid-area:src]">
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-soft [grid-area:src] xl:px-4 xl:pt-3.5">
         <SourceLogo item={item} size={16} />
         <span className="min-w-0 truncate font-medium text-ink-soft">{item.sourceName}</span>
         {item.official && <OfficialBadge />}
         <span aria-hidden="true">·</span>
         <time dateTime={item.publishedAt} title={fullTime(item.publishedAt)} className="shrink-0 font-semibold tabular-nums text-ink-soft">
+          {/* Desktop grid has no day separators — the day goes on the card. */}
+          <span className="hidden xl:inline">{dayShort(item.publishedAt, new Date(now))}, </span>
           {clock(item.publishedAt)}
         </time>
         {ago && <span className="hidden shrink-0 sm:inline">· {ago}</span>}
         {item.views ? (
-          <span className="hidden shrink-0 items-center gap-0.5 sm:inline-flex" title="Ko'rishlar">
+          <span className="hidden shrink-0 items-center gap-0.5 sm:inline-flex xl:hidden" title="Ko'rishlar">
             <span aria-hidden="true">·</span>
             <Eye size={13} /> {formatCompact(item.views)}
           </span>
         ) : null}
         <span
           className={cn(
-            'ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1',
+            'ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold ring-1 sm:px-2 xl:hidden',
             senti.pill,
           )}
         >
-          <senti.Icon size={13} variant="Bold" color="currentColor" />
-          {senti.label}
+          <senti.Icon size={13} variant="Bold" color="currentColor" aria-hidden="true" />
+          <span className="sr-only sm:not-sr-only">{senti.label}</span>
         </span>
       </div>
 
       {/* Title — stretched link */}
-      <h3 className="mt-1.5 min-w-0 text-[14px] font-semibold leading-snug text-ink [grid-area:title] sm:text-[15px]">
+      <h3 className="mt-1.5 min-w-0 text-[15px] font-semibold leading-snug text-ink [grid-area:title] sm:text-base xl:px-4">
         <a
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
           onClick={() => onOpen?.(item)}
-          className="line-clamp-3 outline-none after:absolute after:inset-0 after:rounded-2xl after:content-[''] group-hover:text-primary-700 sm:line-clamp-2 dark:group-hover:text-primary-300"
+          className="line-clamp-3 outline-none after:absolute after:inset-0 after:rounded-2xl after:content-[''] group-hover:text-primary-700 sm:line-clamp-2 xl:line-clamp-3 dark:group-hover:text-primary-300"
         >
           <Highlight text={item.title} term={search} />
         </a>
       </h3>
 
       {summary ? (
-        <p className="mt-1.5 line-clamp-2 min-w-0 text-[13px] leading-relaxed text-ink-soft [grid-area:sum] sm:mt-1">
+        <p className="mt-1.5 line-clamp-2 min-w-0 text-[14px] leading-relaxed text-ink-soft [grid-area:sum] sm:mt-1 xl:line-clamp-3 xl:px-4">
           {item.aiSummary && (
             <MagicStar size={13} variant="Bold" className="mr-1 inline -translate-y-px text-violet-500" aria-label="AI xulosa" />
           )}
@@ -139,7 +170,7 @@ export const MediaItemCard = memo(function MediaItemCard({
       )}
 
       {/* Meta + actions */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-2.5 [grid-area:meta]">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-2.5 [grid-area:meta] xl:px-4 xl:pb-3">
         {item.topic && (
           <button
             type="button"
@@ -185,7 +216,7 @@ export const MediaItemCard = memo(function MediaItemCard({
             onClick={() => onOpen?.(item)}
             aria-label="Asl manbada ochish"
             title="Asl manbada ochish"
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-500/10"
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-soft outline-none transition-colors hover:bg-primary-50 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-400 dark:hover:bg-primary-500/10"
           >
             <ExportSquare size={17} />
           </a>
@@ -226,7 +257,7 @@ function IconAction({
       aria-label={label}
       aria-pressed={active}
       title={label}
-      className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+      className="flex h-9 w-9 items-center justify-center rounded-xl text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-400"
     >
       {children}
     </button>
@@ -259,7 +290,7 @@ function SentimentMenu({ value, onChange }: { value: MediaSentiment; onChange: (
         aria-expanded={open}
         aria-label="Baholashni o'zgartirish"
         title="Baholashni o'zgartirish"
-        className="flex h-9 items-center gap-0.5 rounded-xl px-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className="flex h-9 items-center gap-0.5 rounded-xl px-1.5 text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-400"
       >
         <cur.Icon size={17} color={cur.color} variant="Bold" />
         <ArrowDown2 size={12} />

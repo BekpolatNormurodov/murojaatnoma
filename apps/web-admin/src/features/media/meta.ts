@@ -116,6 +116,12 @@ export function dayLabel(iso: string, now = new Date()): string {
   return `${d.getDate()}-${UZ_MONTHS_FULL[d.getMonth()]}${year}, ${UZ_WEEKDAYS[d.getDay()]}`;
 }
 
+/** "Bugun" / "Kecha" / "29-sentabr" — compact day for a card's time line. */
+export function dayShort(iso: string, now = new Date()): string {
+  const full = dayLabel(iso, now);
+  return full.split(',')[0];
+}
+
 /** "hozirgina" / "12 daqiqa oldin" / "3 soat oldin" — only for the last 24 h, else null. */
 export function freshAgo(iso: string, now = Date.now()): string | null {
   const diff = now - new Date(iso).getTime();

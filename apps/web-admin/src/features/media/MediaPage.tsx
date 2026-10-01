@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   ArrowDown2,
@@ -10,23 +10,17 @@ import {
   Eye,
   FilterSearch,
   MagicStar,
-  Notification,
   Radar,
   Refresh2,
   SearchNormal1,
-  Setting2,
   ShieldTick,
   Star1,
   TickSquare,
-  TrendDown,
-  TrendUp,
   Warning2,
 } from 'iconsax-react';
-import { PageHeader } from '@/shared/ui/PageHeader';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
-import { timeAgo } from '@/shared/lib/format';
 import { usePermissions } from '@/shared/lib/permissions';
 import {
   type MediaFilters,
@@ -36,7 +30,6 @@ import {
   type MediaPlatform,
   type MediaSentiment,
   type MediaStatus,
-  type MediaStatusInfo,
   useMarkAllSeen,
   useMediaItems,
   useMediaLive,
@@ -46,16 +39,15 @@ import {
   useUpdateMediaItem,
 } from './api';
 import { MediaDigestCard } from './MediaDigestCard';
+import { MediaHero } from './MediaHero';
+import { MediaLeadCard } from './MediaLeadCard';
 import { MediaItemCard } from './MediaItemCard';
 import { MediaSettingsModal, type SettingsTab } from './MediaSettingsModal';
 import { SourceLogo } from './MediaIcons';
-import { PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel, shortTime } from './meta';
+import { PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel } from './meta';
 
-const PERIODS: { key: Exclude<MediaPeriod, 'all'>; label: string }[] = [
-  { key: '24h', label: '24 soat' },
-  { key: '7d', label: '7 kun' },
-  { key: '30d', label: '30 kun' },
-];
+/** Visible keyboard focus for every custom control on the page. */
+const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface';
 
 const STATUS_OPTIONS: { key: MediaStatus | ''; label: string }[] = [
   { key: '', label: 'Barcha holatlar' },
@@ -81,6 +73,8 @@ export function MediaPage() {
   const [source, setSource] = useState<{ key: string; name: string } | undefined>();
   const [lowRelevance, setLowRelevance] = useState(false);
   const [kind, setKind] = useState<'official' | 'media' | undefined>();
+  const [moreFilters, setMoreFilters] = useState(false);
+  const reduceMotion = useReducedMotion();
   const [searchText, setSearchText] = useState('');
   const [search, setSearch] = useState('');
   const [settingsOpen, setSettingsOpen] = useState<false | SettingsTab>(false);
@@ -152,10 +146,12 @@ export function MediaPage() {
 
   const running = !!ov?.status.running || refresh.isPending;
   const failedSources = ov?.status.sources.filter((x) => x.ok === false).length ?? 0;
+  const secondaryActive = (sentiment ? 1 : 0) + (status ? 1 : 0) + (lowRelevance ? 1 : 0);
   // Newest first, split by local day ("Bugun", "Kecha", "29-sentabr ...").
+  const lead = items[0];
   const groups = useMemo(() => {
     const out: { key: string; label: string; items: MediaItem[] }[] = [];
-    for (const it of items) {
+    for (const it of items.slice(1)) {
       const k = dayKey(it.publishedAt);
       const last = out[out.length - 1];
       if (last && last.key === k) last.items.push(it);
@@ -229,65 +225,33 @@ export function MediaPage() {
 
   return (
     <div className="isolate">
-      <PageHeader
-        title="OAV monitoringi"
-        subtitle="Saytlar, Telegram, YouTube va Instagram'da tuman haqidagi xabarlar — har 15 daqiqada avtomatik yig'iladi"
-        action={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-            <LiveStatus status={ov?.status} running={running} />
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setSettingsOpen(failedSources > 0 ? 'status' : 'keywords')}
-                aria-label={failedSources > 0 ? `Sozlamalar — ${failedSources} ta manbada xato` : 'Sozlamalar'}
-                title={failedSources > 0 ? `${failedSources} ta manbada xato — «Holat» bo'limida` : 'Kalit so\'zlar, manbalar, holat va integratsiyalar'}
-                className="relative"
-              >
-                <Setting2 size={17} /> <span className="hidden sm:inline">Sozlamalar</span>
-                {failedSources > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold text-white ring-2 ring-surface">
-                    {failedSources}
-                  </span>
-                )}
-              </Button>
-              <Button onClick={onRefresh} disabled={running} className="flex-1 sm:flex-none">
-                <Refresh2 size={17} className={running ? 'animate-spin' : undefined} />
-                {running ? 'Yangilanmoqda…' : 'Yangilash'}
-              </Button>
-            </div>
-          </div>
-        }
+      <MediaHero
+        ov={ov}
+        period={period}
+        onPeriod={setPeriod}
+        running={running}
+        onRefresh={onRefresh}
+        onSettings={() => setSettingsOpen(failedSources > 0 ? 'status' : 'keywords')}
+        failedSources={failedSources}
+        active={kind === 'official' ? 'official' : sentiment === 'negative' ? 'negative' : sentiment === 'positive' ? 'positive' : null}
+        onFilter={(f) => {
+          if (f === 'all') clearFilters();
+          else if (f === 'official') setKind(kind === 'official' ? undefined : 'official');
+          else setSentiment(sentiment === f ? undefined : f);
+          scrollToFeed();
+        }}
       />
 
-      {/* Period */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div role="tablist" aria-label="Davr" className="inline-flex rounded-xl border border-line bg-surface p-1">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              role="tab"
-              aria-selected={period === p.key}
-              onClick={() => setPeriod(p.key)}
-              className={cn(
-                'h-8 rounded-lg px-3.5 text-[13px] font-medium transition-colors',
-                period === p.key ? 'bg-primary-600 text-white shadow-sm' : 'text-ink-soft hover:text-ink',
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        {ov?.status.ai.lastError && (
-          <button
-            type="button"
-            onClick={() => setSettingsOpen('keys')}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30"
-            title={ov.status.ai.lastError}
-          >
-            <Warning2 size={15} /> AI ishlamadi — avtomatik tahlil ishlatildi
-          </button>
-        )}
-      </div>
+      {ov?.status.ai.lastError && (
+        <button
+          type="button"
+          onClick={() => setSettingsOpen('keys')}
+          className="mb-5 inline-flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30"
+          title={ov.status.ai.lastError}
+        >
+          <Warning2 size={15} /> AI ishlamadi — avtomatik tahlil ishlatildi
+        </button>
+      )}
 
       <HowItWorks sourceCount={ov?.status.sources.length} />
 
@@ -295,67 +259,15 @@ export function MediaPage() {
         <Card className="flex flex-col items-center gap-3 p-10 text-center">
           <Warning2 size={36} variant="Bulk" className="text-danger" />
           <p className="font-semibold text-ink">Monitoring ma'lumotlarini yuklab bo'lmadi</p>
-          <p className="text-sm text-ink-muted">{overviewQ.error instanceof Error ? overviewQ.error.message : ''}</p>
+          <p className="text-sm text-ink-soft">{overviewQ.error instanceof Error ? overviewQ.error.message : ''}</p>
           <Button variant="secondary" onClick={() => overviewQ.refetch()}>
             <Refresh2 size={16} /> Qayta urinish
           </Button>
         </Card>
       ) : (
         <>
-          {/* KPI */}
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-            <Kpi
-              label="Jami xabarlar"
-              value={ov?.totals.all}
-              icon={<DocumentText size={20} variant="Bulk" />}
-              tint="bg-accent-50 text-accent-600 dark:bg-accent-500/15 dark:text-accent-300"
-              delta={ov ? deltaPct(ov.totals.all, ov.totals.previous) : undefined}
-              hint={ov && ov.totals.official > 0 ? `${ov.totals.official} tasi rasmiy manbadan` : 'oldingi davrga nisbatan'}
-              onClick={() => {
-                clearFilters();
-                scrollToFeed();
-              }}
-            />
-            <Kpi
-              label="Salbiy"
-              value={ov?.totals.negative}
-              icon={<SENTIMENT_META.negative.Icon size={20} variant="Bulk" />}
-              tint="bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-300"
-              share={ov ? share(ov.totals.negative, ov.totals.all) : undefined}
-              active={sentiment === 'negative'}
-              onClick={() => {
-                setSentiment(sentiment === 'negative' ? undefined : 'negative');
-                scrollToFeed();
-              }}
-            />
-            <Kpi
-              label="Ijobiy"
-              value={ov?.totals.positive}
-              icon={<SENTIMENT_META.positive.Icon size={20} variant="Bulk" />}
-              tint="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"
-              share={ov ? share(ov.totals.positive, ov.totals.all) : undefined}
-              active={sentiment === 'positive'}
-              onClick={() => {
-                setSentiment(sentiment === 'positive' ? undefined : 'positive');
-                scrollToFeed();
-              }}
-            />
-            <Kpi
-              label="Ko'rilmagan"
-              value={ov?.totals.unseen}
-              icon={<Notification size={20} variant="Bulk" />}
-              tint="bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
-              hint={ov?.totals.important ? `${ov.totals.important} ta muhim` : undefined}
-              active={status === 'new'}
-              onClick={() => {
-                setStatus(status === 'new' ? '' : 'new');
-                scrollToFeed();
-              }}
-            />
-          </div>
-
           {/* Digest + platforms */}
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <div className="xl:col-span-2">
               <MediaDigestCard
                 digest={ov?.digest ?? null}
@@ -389,8 +301,14 @@ export function MediaPage() {
           <Card className="p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
               <div>
-                <h2 className="text-[17px] font-bold tracking-tight text-ink">Eng yangi xabarlar</h2>
-                <p className="mt-0.5 text-xs text-ink-muted">
+                <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-ink">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-70 motion-safe:animate-ping" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                  </span>
+                  Yangiliklar
+                </h2>
+                <p className="mt-0.5 text-xs text-ink-soft">
                   Eng so'nggisi tepada · vaqt Toshkent bo'yicha
                   {ov?.status.lastRun && <> · {clock(ov.status.lastRun.finishedAt)} da yangilandi</>}
                 </p>
@@ -412,13 +330,14 @@ export function MediaPage() {
                   aria-selected={kind === t.key}
                   onClick={() => setKind(t.key)}
                   className={cn(
-                    'flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-[13px] font-medium transition-colors',
+                    'flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-[13px] font-semibold transition-colors sm:px-2',
+                    FOCUS,
                     kind === t.key ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink',
                     t.key === 'official' && kind === t.key && 'text-accent-700 dark:text-accent-300',
                   )}
                 >
-                  {t.icon}
-                  <span className="truncate sm:hidden">{t.short}</span>
+                  <span className="hidden sm:inline-flex">{t.icon}</span>
+                  <span className="sm:hidden">{t.short}</span>
                   <span className="hidden truncate sm:inline">{t.label}</span>
                   <Count n={t.n} />
                 </button>
@@ -427,7 +346,7 @@ export function MediaPage() {
 
             {/* Search */}
             <div className="relative">
-              <SearchNormal1 size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
+              <SearchNormal1 size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-soft" />
               <input
                 ref={searchRef}
                 type="search"
@@ -447,18 +366,22 @@ export function MediaPage() {
                       searchRef.current?.focus();
                     }}
                     aria-label="Qidiruvni tozalash"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-line hover:text-ink"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-line hover:text-ink"
                   >
                     <CloseCircle size={18} />
                   </button>
                 ) : (
-                  <kbd className="hidden rounded-md border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-ink-muted sm:block">/</kbd>
+                  <kbd className="hidden rounded-md border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-ink-soft sm:block">/</kbd>
                 )}
               </div>
             </div>
 
             {/* Platform chips */}
-            <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Platforma">
+            <div
+              className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
+              role="group"
+              aria-label="Platforma"
+            >
               <Chip active={!platform} onClick={() => setPlatform(undefined)} icon={<Category size={15} variant={!platform ? 'Bold' : 'Linear'} />}>
                 Hammasi
                 <Count n={ov?.totals.all} />
@@ -483,8 +406,22 @@ export function MediaPage() {
               })}
             </div>
 
-            {/* Sentiment + advanced */}
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {/* Sentiment + advanced — always visible from sm, a disclosure on phones */}
+            <button
+              type="button"
+              onClick={() => setMoreFilters((v) => !v)}
+              aria-expanded={moreFilters}
+              aria-controls="media-more-filters"
+              className={cn('mt-2 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-medium text-ink-soft sm:hidden', FOCUS)}
+            >
+              <FilterSearch size={16} />
+              Qo'shimcha filtrlar
+              {secondaryActive > 0 && (
+                <span className="rounded-md bg-primary-600 px-1.5 text-[11px] font-bold text-white">{secondaryActive}</span>
+              )}
+              <ArrowDown2 size={14} className={cn('transition-transform', moreFilters && 'rotate-180')} />
+            </button>
+            <div id="media-more-filters" className={cn('mt-2 flex-wrap items-center gap-1.5', moreFilters ? 'flex' : 'hidden sm:flex')}>
               {SENTIMENTS.map((s) => {
                 const m = SENTIMENT_META[s];
                 const on = sentiment === s;
@@ -524,7 +461,7 @@ export function MediaPage() {
             {/* Active filters summary */}
             {(topic || source || activeFilters > 0) && (
               <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
-                <FilterSearch size={16} className="text-ink-muted" />
+                <FilterSearch size={16} className="text-ink-soft" />
                 {topic && <ActiveTag onClear={() => setTopic(undefined)}>Mavzu: {topic}</ActiveTag>}
                 {source && <ActiveTag onClear={() => setSource(undefined)}>Manba: {source.name}</ActiveTag>}
                 {search && (
@@ -549,7 +486,7 @@ export function MediaPage() {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <p className="text-[13px] text-ink-soft" aria-live="polite">
                 {itemsQ.isLoading ? 'Yuklanmoqda…' : <><b className="font-semibold text-ink tabular-nums">{total}</b> ta xabar</>}
-                {itemsQ.isFetching && !itemsQ.isLoading && <span className="ml-2 text-ink-muted">yangilanmoqda…</span>}
+                {itemsQ.isFetching && !itemsQ.isLoading && <span className="ml-2 text-ink-soft">yangilanmoqda…</span>}
               </p>
               {canWrite && (ov?.totals.unseen ?? 0) > 0 && (
                 <button
@@ -577,31 +514,46 @@ export function MediaPage() {
                   lowRelevance={lowRelevance}
                 />
               ) : (
-                groups.map((g) => (
-                  <Fragment key={g.key}>
-                    <div className="flex items-center gap-3 pt-1 first:pt-0">
-                      <span className={cn('text-xs font-bold uppercase tracking-wide', g.label === 'Bugun' ? 'text-primary-700 dark:text-primary-300' : 'text-ink-muted')}>
-                        {g.label}
-                      </span>
-                      <span className="h-px flex-1 bg-line" />
-                      <span className="text-[11px] tabular-nums text-ink-muted">{g.items.length} ta</span>
-                    </div>
-                    {g.items.map((it) => (
-                      <motion.div key={it.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-                        <MediaItemCard
-                          item={it}
-                          search={search}
-                          canWrite={canWrite}
-                          onStatus={onStatus}
-                          onSentiment={onSentiment}
-                          onOpen={onOpen}
-                          onTopic={onTopic}
-                          now={now}
-                        />
-                      </motion.div>
-                    ))}
-                  </Fragment>
-                ))
+                <>
+                  {lead && <MediaLeadCard item={lead} search={search} now={now} onOpen={onOpen} />}
+                  {/* Phones/tablets: day separators. Desktop: one continuous 2-column grid
+                      (groups become display:contents), the day shown on each card. */}
+                  <div className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0">
+                  {groups.map((g) => (
+                    <Fragment key={g.key}>
+                      <div className="flex items-center gap-3 pt-2 xl:hidden">
+                        <span className={cn('text-xs font-bold uppercase tracking-wide', g.label === 'Bugun' ? 'text-primary-700 dark:text-primary-300' : 'text-ink-soft')}>
+                          {g.label}
+                        </span>
+                        <span className="h-px flex-1 bg-line" />
+                        <span className="text-[11px] tabular-nums text-ink-soft">{g.items.length} ta</span>
+                      </div>
+                      <div className="grid gap-3 xl:contents">
+                        {g.items.map((it, i) => (
+                          <motion.div
+                            key={it.id}
+                            className="h-full"
+                            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: Math.min(i, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            <MediaItemCard
+                              item={it}
+                              search={search}
+                              canWrite={canWrite}
+                              onStatus={onStatus}
+                              onSentiment={onSentiment}
+                              onOpen={onOpen}
+                              onTopic={onTopic}
+                              now={now}
+                            />
+                          </motion.div>
+                        ))}
+                      </div>
+                    </Fragment>
+                  ))}
+                  </div>
+                </>
               )}
             </div>
 
@@ -702,7 +654,7 @@ function HowItWorks({ sourceCount }: { sourceCount?: number }) {
     { icon: <MagicStar size={18} variant="Bulk" />, title: 'Xulosa yoziladi', text: "Asosiysi, xavflar va tavsiyalar — bir qarashda" },
   ];
   return (
-    <section aria-label="Qanday ishlaydi" className="relative mb-5 rounded-2xl border border-line bg-surface p-4 shadow-card">
+    <section aria-label="Qanday ishlaydi" className="relative mb-5 rounded-2xl border border-line bg-surface p-3.5 shadow-card sm:p-4">
       <button
         type="button"
         onClick={() => {
@@ -714,12 +666,12 @@ function HowItWorks({ sourceCount }: { sourceCount?: number }) {
           }
         }}
         aria-label="Yopish"
-        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-2 hover:text-ink"
+        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-surface-2 hover:text-ink"
       >
         <CloseCircle size={18} />
       </button>
       <p className="mb-3 pr-8 text-[13px] font-semibold text-ink">Qanday ishlaydi?</p>
-      <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ol className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {steps.map((st, i) => (
           <li key={st.title} className="flex items-start gap-3">
             <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
@@ -730,106 +682,12 @@ function HowItWorks({ sourceCount }: { sourceCount?: number }) {
             </span>
             <div className="min-w-0">
               <p className="text-[13px] font-semibold text-ink">{st.title}</p>
-              <p className="text-xs leading-relaxed text-ink-muted">{st.text}</p>
+              <p className="hidden text-xs leading-relaxed text-ink-soft sm:block">{st.text}</p>
             </div>
           </li>
         ))}
       </ol>
     </section>
-  );
-}
-
-function deltaPct(cur: number, prev: number): number | undefined {
-  if (prev === 0) return cur > 0 ? 100 : undefined;
-  return Math.round(((cur - prev) / prev) * 100);
-}
-function share(n: number, total: number): number | undefined {
-  return total > 0 ? Math.round((n / total) * 100) : undefined;
-}
-
-function LiveStatus({ status, running }: { status?: MediaStatusInfo; running: boolean }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const h = window.setInterval(() => tick((n) => n + 1), 30_000);
-    return () => window.clearInterval(h);
-  }, []);
-  const last = status?.lastRun?.finishedAt;
-  return (
-    <div className="flex h-10 min-w-0 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-xs text-ink-soft">
-      <span className="relative flex h-2.5 w-2.5 shrink-0">
-        {(running || status?.enabled) && (
-          <span className={cn('absolute inline-flex h-full w-full animate-ping rounded-full opacity-60', running ? 'bg-amber-400' : 'bg-emerald-400')} />
-        )}
-        <span className={cn('relative inline-flex h-2.5 w-2.5 rounded-full', running ? 'bg-amber-500' : status?.enabled ? 'bg-emerald-500' : 'bg-slate-400')} />
-      </span>
-      {running ? (
-        <span className="font-medium text-ink">Manbalar o'qilmoqda…</span>
-      ) : (
-        <span className="truncate">
-          <span className="font-medium text-ink">{status?.enabled === false ? "O'chirilgan" : 'Jonli'}</span>
-          {last && <> · {timeAgo(last)}</>}
-          {status?.nextRunAt && <span className="hidden md:inline"> · keyingisi {shortTime(status.nextRunAt)}</span>}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function Kpi({
-  label,
-  value,
-  icon,
-  tint,
-  delta,
-  share: sharePct,
-  hint,
-  active,
-  onClick,
-}: {
-  label: string;
-  value?: number;
-  icon: React.ReactNode;
-  tint: string;
-  delta?: number;
-  share?: number;
-  hint?: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'group rounded-2xl border bg-surface p-4 text-left shadow-card transition-all hover:-translate-y-0.5 hover:border-primary-200 focus-visible:ring-2 focus-visible:ring-primary-300 sm:p-5',
-        active ? 'border-primary-400 ring-2 ring-primary-100 dark:ring-primary-500/20' : 'border-line',
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl', tint)}>{icon}</span>
-        {delta !== undefined && (
-          <span
-            className={cn(
-              'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold',
-              delta >= 0 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300',
-            )}
-          >
-            {delta >= 0 ? <TrendUp size={12} /> : <TrendDown size={12} />}
-            {delta > 0 ? '+' : ''}
-            {delta}%
-          </span>
-        )}
-        {sharePct !== undefined && <span className="text-xs font-semibold tabular-nums text-ink-muted">{sharePct}%</span>}
-      </div>
-      <p className="mt-3 text-[26px] font-bold leading-none tracking-tight text-ink tabular-nums sm:text-[28px]">
-        {value === undefined ? <span className="inline-block h-7 w-12 animate-pulse rounded-lg bg-surface-2 align-middle" /> : value}
-      </p>
-      <p className="mt-1.5 truncate text-[13px] text-ink-soft">
-        {label}
-        {hint && <span className="text-ink-muted"> · {hint}</span>}
-      </p>
-    </button>
   );
 }
 
@@ -851,6 +709,7 @@ function PlatformCard({ ov, active, onPick }: { ov?: MediaOverview; active?: Med
               aria-pressed={active === p}
               className={cn(
                 'flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-surface-2',
+                FOCUS,
                 active === p && 'bg-surface-2 ring-1 ring-primary-300',
               )}
             >
@@ -903,7 +762,7 @@ function TimelineCard({ ov, loading }: { ov?: MediaOverview; loading: boolean })
         {loading && !ov ? (
           <div className="mx-3 h-full animate-pulse rounded-xl bg-surface-2" />
         ) : peak === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-ink-muted">
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-ink-soft">
             <DocumentText size={30} variant="Bulk" />
             Bu davrda xabar yo'q
           </div>
@@ -968,7 +827,7 @@ function TopicsCard({ ov, active, onPick }: { ov?: MediaOverview; active?: strin
         {!ov ? (
           Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded-xl bg-surface-2" />)
         ) : topics.length === 0 ? (
-          <p className="py-8 text-center text-sm text-ink-muted">Hali mavzu yo'q</p>
+          <p className="py-8 text-center text-sm text-ink-soft">Hali mavzu yo'q</p>
         ) : (
           topics.map((t) => {
             const neutral = t.count - t.negative - t.positive;
@@ -980,6 +839,7 @@ function TopicsCard({ ov, active, onPick }: { ov?: MediaOverview; active?: strin
                 aria-pressed={active === t.topic}
                 className={cn(
                   'w-full rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-surface-2',
+                FOCUS,
                   active === t.topic && 'bg-surface-2 ring-1 ring-primary-300',
                 )}
               >
@@ -1021,7 +881,7 @@ function TopSourcesCard({
         {!ov ? (
           Array.from({ length: 4 }).map((_, i) => <li key={i} className="mb-1 h-11 animate-pulse rounded-xl bg-surface-2" />)
         ) : list.length === 0 ? (
-          <li className="py-6 text-center text-sm text-ink-muted">Bu davrda manba yo'q</li>
+          <li className="py-6 text-center text-sm text-ink-soft">Bu davrda manba yo'q</li>
         ) : (
           list.map((s) => (
             <li key={s.sourceName}>
@@ -1031,6 +891,7 @@ function TopSourcesCard({
                 aria-pressed={active === s.source}
                 className={cn(
                   'flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-surface-2',
+                FOCUS,
                   active === s.source && 'bg-surface-2 ring-1 ring-primary-300',
                 )}
               >
@@ -1078,7 +939,8 @@ function Chip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-[13px] font-medium transition-colors',
+        'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border px-3 text-[13px] font-medium transition-colors',
+        FOCUS,
         active ? activeCls : 'border-line bg-surface text-ink-soft hover:border-primary-300 hover:text-ink',
       )}
     >
@@ -1121,7 +983,7 @@ function Select({
           </option>
         ))}
       </select>
-      <ArrowDown2 size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted" />
+      <ArrowDown2 size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-soft" />
     </div>
   );
 }
@@ -1167,11 +1029,11 @@ function EmptyFeed({
 }) {
   return (
     <div className="flex flex-col items-center rounded-2xl border border-dashed border-line px-6 py-12 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 text-ink-muted">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 text-ink-soft">
         <SearchNormal1 size={26} />
       </span>
       <p className="mt-4 font-semibold text-ink">{filtered ? "Bu filtrlar bo'yicha xabar topilmadi" : "Bu davrda tuman haqida xabar yo'q"}</p>
-      <p className="mt-1 max-w-sm text-sm text-ink-muted">
+      <p className="mt-1 max-w-sm text-sm text-ink-soft">
         Monitoring har 15 daqiqada davom etadi. Qidiruvni kengaytirib ko'ring:
       </p>
       <div className="mt-4 flex flex-wrap justify-center gap-2">
