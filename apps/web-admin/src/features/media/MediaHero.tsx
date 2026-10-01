@@ -140,7 +140,7 @@ export function MediaHero({
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
             label="Jami xabarlar"
-            sub={`so'nggi ${periodLabel}`}
+            sub={t && t.stories && t.stories < t.all ? `${t.stories} ta voqea · so'nggi ${periodLabel}` : `so'nggi ${periodLabel}`}
             value={t?.all}
             icon={<DocumentText size={20} variant="Bulk" />}
             tone="from-white/15 to-white/5"

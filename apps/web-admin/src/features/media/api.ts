@@ -41,6 +41,19 @@ export interface MediaItem {
   status: MediaStatus;
   /** Published by a state body (gov.uz, President's press office, UzA, parliament, hokimlik). */
   official: boolean;
+  storyId?: string | null;
+  /** Other outlets that carried the same story (grouped feed). */
+  alsoIn?: StoryRef[];
+  storySize?: number;
+}
+
+export interface StoryRef {
+  id: string;
+  sourceName: string;
+  url: string;
+  platform: MediaPlatform;
+  official: boolean;
+  publishedAt: string;
 }
 
 export interface MediaDigest {
@@ -97,6 +110,8 @@ export interface MediaOverview {
   minRelevance: number;
   totals: {
     all: number;
+    /** Distinct events (a story told by 3 outlets counts once). */
+    stories: number;
     positive: number;
     neutral: number;
     negative: number;
@@ -155,6 +170,7 @@ export interface MediaSettings {
   keywords: string[];
   weakKeywords: string[];
   excludes: string[];
+  placeKeywords: string[];
   rssFeeds: MediaFeedConfig[];
   telegramChannels: string[];
   officialTelegramChannels: string[];
@@ -211,7 +227,7 @@ export function useMediaItems(f: MediaFilters) {
     queryKey: ['media', 'items', f],
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
-      api.get<{ items: MediaItem[]; total: number; page: number; limit: number }>(
+      api.get<{ items: MediaItem[]; total: number; page: number; limit: number; grouped?: boolean }>(
         `/media/items${qs({ ...f, page: pageParam, limit: PAGE })}`,
       ),
     getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),

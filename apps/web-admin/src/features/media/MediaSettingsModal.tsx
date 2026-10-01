@@ -126,6 +126,12 @@ function SettingsForm({
             <TagInput value={draft.excludes} onChange={(v) => set('excludes', v)} disabled={!canEdit} tone="red" />
           </Field>
           <Field
+            label="Tuman joylari (massivlar)"
+            hint="Tuman nomi aytilmagan, lekin joy nomi bor xabarlar uchun (TTZ, Qorasuv ...). Tumanning 70 ta mahallasi zonalar bazasidan avtomatik qo'shiladi; boshqa tuman/viloyat tilga olinsa hisoblanmaydi."
+          >
+            <TagInput value={draft.placeKeywords} onChange={(v) => set('placeKeywords', v)} disabled={!canEdit} />
+          </Field>
+          <Field
             label={`Minimal moslik: ${draft.minRelevance}%`}
             hint="Bundan past baholangan xabarlar lentada yashiriladi (filtrdan «past moslik»ni yoqib ko'rish mumkin)."
           >

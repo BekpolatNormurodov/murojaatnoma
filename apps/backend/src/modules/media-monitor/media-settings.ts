@@ -24,6 +24,11 @@ export interface MediaSettings {
   weakKeywords: string[];
   /** Cut out before matching: "Mirzo Ulug'bek nomidagi ...". */
   excludes: string[];
+  /**
+   * District places named without the district (massivs, landmarks). The
+   * district's 70 mahallas come from the zones table automatically.
+   */
+  placeKeywords: string[];
   rssFeeds: MediaFeedConfig[];
   /** Public Telegram channel usernames (read via t.me/s/<name>, no token). */
   telegramChannels: string[];
@@ -82,6 +87,7 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     "Mirzo Ulug'bek metro",
     'метро Мирзо Улугбек',
   ],
+  placeKeywords: ['TTZ', 'ТТЗ', 'Qorasuv', 'Қорасув', 'Карасу'],
   rssFeeds: [
     { key: 'kunuz', name: 'Kun.uz', url: 'https://kun.uz/news/rss', enabled: true },
     { key: 'daryo', name: 'Daryo', url: 'https://daryo.uz/rss/', enabled: true },
@@ -250,6 +256,7 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     keywords: uniq(s.keywords ?? d.keywords),
     weakKeywords: uniq(s.weakKeywords ?? d.weakKeywords),
     excludes: uniq(s.excludes ?? d.excludes),
+    placeKeywords: uniq(s.placeKeywords ?? d.placeKeywords),
     rssFeeds: (s.rssFeeds ?? d.rssFeeds).filter((f) => f && f.key && /^https?:\/\//i.test(f.url)),
     telegramChannels: uniq((s.telegramChannels ?? d.telegramChannels).map(cleanHandle)),
     officialTelegramChannels: uniq((s.officialTelegramChannels ?? d.officialTelegramChannels).map(cleanHandle)),

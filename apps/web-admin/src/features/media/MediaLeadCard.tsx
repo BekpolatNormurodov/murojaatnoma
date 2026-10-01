@@ -4,7 +4,7 @@ import { ArrowRight, MagicStar } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import type { MediaItem } from './api';
 import { Highlight, SourceLogo } from './MediaIcons';
-import { OfficialBadge } from './MediaItemCard';
+import { OfficialBadge, StorySources } from './MediaItemCard';
 import { PLATFORM_META, SENTIMENT_META, clock, dayLabel, freshAgo, fullTime } from './meta';
 
 /**
@@ -109,6 +109,7 @@ export function MediaLeadCard({
           {item.topic && (
             <span className="rounded-lg bg-surface-2 px-2.5 py-1 text-xs font-medium text-ink-soft ring-1 ring-line">{item.topic}</span>
           )}
+          <StorySources refs={item.alsoIn} />
           <span className="ml-auto inline-flex items-center gap-1 text-[13px] font-semibold text-primary-700 dark:text-primary-300">
             Asl manbada o'qish
             <ArrowRight size={16} className="transition-transform motion-safe:group-hover:translate-x-1" />

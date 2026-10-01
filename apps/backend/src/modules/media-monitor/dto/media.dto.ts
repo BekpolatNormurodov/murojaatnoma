@@ -60,6 +60,11 @@ export class ListMediaQueryDto extends MediaOverviewQueryDto {
   @MaxLength(60)
   topic?: string;
 
+  @ApiPropertyOptional({ enum: ['story', 'none'], default: 'story', description: "Bir voqea bir kartada (filtrlar qo'llanganda o'chadi)" })
+  @IsOptional()
+  @IsIn(['story', 'none'])
+  group?: 'story' | 'none';
+
   @ApiPropertyOptional({ enum: ['official', 'media'], description: 'Rasmiy (davlat) manbalar yoki OAV' })
   @IsOptional()
   @IsIn(['official', 'media'])
@@ -167,6 +172,10 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String] })
   @WordList()
   excludes?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: "Tuman joylari (massivlar); mahallalar zonalardan avtomatik" })
+  @WordList()
+  placeKeywords?: string[];
 
   @ApiPropertyOptional({ type: [MediaFeedDto] })
   @IsOptional()

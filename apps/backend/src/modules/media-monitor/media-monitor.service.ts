@@ -38,12 +38,16 @@ import {
   DigestResult,
   ItemAnalysis,
   analyzeByRules,
+  ruleSentiment,
+  ruleTopic,
   analyzeWithClaude,
   digestByRules,
   digestWithClaude,
 } from './media-analyzer';
 import { DEFAULT_MEDIA_SETTINGS, MediaSettings, SOURCES_VERSION, cleanHandle, mergeSettings, upgradeSources } from './media-settings';
-import { fingerprintOf, matchKeywords, relevanceFromMatch, truncate } from './media-text.util';
+import { fingerprintOf, truncate } from './media-text.util';
+import { PlaceGazetteer, buildGazetteer, scoreRelevance } from './media-relevance';
+import { StoryCandidate, assignStories, STORY_WINDOW_MS } from './media-story';
 
 /** Emitted after every run that stored something; RealtimeGateway pushes it to admins. */
 export const MEDIA_UPDATED_EVENT = 'media.updated';
@@ -109,6 +113,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private lastYtWebAt = 0;
   private lastTgDeepAt = 0;
   private rescoredOnce = false;
+  private gazetteer: { at: number; key: string; value: PlaceGazetteer } | null = null;
   private lastCleanupAt = 0;
   private aiError: string | null = null;
   /** Last-read "AI tahlil" switch (for the sync status() view). */
@@ -228,27 +233,87 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
    */
   async rescoreStored(s: MediaSettings): Promise<number> {
     const since = new Date(Date.now() - BACKFILL_MAX_AGE_MS);
+    const gaz = await this.loadGazetteer(s);
     const rows = await this.prisma.mediaItem.findMany({
       where: { publishedAt: { gte: since }, NOT: { analyzedBy: 'ai' } },
-      select: { id: true, source: true, platform: true, title: true, excerpt: true, relevance: true, keywords: true },
+      select: {
+        id: true, source: true, platform: true, title: true, excerpt: true, relevance: true, keywords: true,
+        sentiment: true, topic: true, analyzedBy: true,
+      },
     });
     const own = new Set(s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`));
     const local = new Set(s.localTelegramChannels.map((c) => `tg:${c.toLowerCase()}`));
     const updates: Prisma.PrismaPromise<unknown>[] = [];
     for (const r of rows) {
-      if (own.has(r.source)) continue;
-      const m = matchKeywords(r.title, r.excerpt ?? '', s.keywords, s.weakKeywords, s.excludes);
       const viaSearch = r.source.startsWith('google') || r.platform === 'youtube';
-      const base = relevanceFromMatch(m, viaSearch);
-      const relevance = local.has(r.source) ? Math.max(LOCAL_CHANNEL_RELEVANCE, base) : base;
-      const keywords = [...m.strong, ...m.weak];
-      if (relevance !== r.relevance || keywords.join('|') !== r.keywords.join('|')) {
-        updates.push(this.prisma.mediaItem.update({ where: { id: r.id }, data: { relevance, keywords } }));
+      const res = scoreRelevance({
+        title: r.title, body: r.excerpt ?? '', keywords: s.keywords, weakKeywords: s.weakKeywords,
+        excludes: s.excludes, gazetteer: gaz, viaSearch,
+      });
+      const relevance = own.has(r.source)
+        ? Math.max(95, res.relevance)
+        : local.has(r.source)
+          ? Math.max(LOCAL_CHANNEL_RELEVANCE, res.relevance)
+          : res.relevance;
+      // An admin's manual mood correction ("manual") is never overwritten.
+      const sentiment = r.analyzedBy === 'manual' ? r.sentiment : ruleSentiment(r.title, r.excerpt ?? '');
+      const topic = ruleTopic(r.title, r.excerpt ?? '');
+      if (
+        relevance !== r.relevance ||
+        res.keywords.join('|') !== r.keywords.join('|') ||
+        sentiment !== r.sentiment ||
+        topic !== r.topic
+      ) {
+        updates.push(
+          this.prisma.mediaItem.update({ where: { id: r.id }, data: { relevance, keywords: res.keywords, sentiment, topic } }),
+        );
       }
     }
     for (let i = 0; i < updates.length; i += 200) await this.prisma.$transaction(updates.slice(i, i + 200));
     if (updates.length) this.logger.log(`media rescore: ${updates.length}/${rows.length} items re-scored`);
+    await this.groupStories(since);
     return updates.length;
+  }
+
+  /**
+   * District mahallas (zones table, 3 spellings) + configured places, cached
+   * for 6 h — the gazetteer behind "Zakovat mahallasida ..." matches.
+   */
+  private async loadGazetteer(s: MediaSettings): Promise<PlaceGazetteer> {
+    const key = s.placeKeywords.join('|');
+    if (this.gazetteer && this.gazetteer.key === key && Date.now() - this.gazetteer.at < 6 * 3_600_000) {
+      return this.gazetteer.value;
+    }
+    const zones = await this.prisma.zone.findMany({
+      where: { kind: 'MAHALLA' },
+      select: { nameUzLat: true, nameUzCyr: true, nameRu: true },
+    });
+    const value = buildGazetteer(zones, s.placeKeywords);
+    this.gazetteer = { at: Date.now(), key, value };
+    return value;
+  }
+
+  /** Groups not-yet-grouped items (since `since`) into stories across outlets. */
+  private async groupStories(since: Date, onlyIds?: string[]): Promise<number> {
+    const freshRows = await this.prisma.mediaItem.findMany({
+      where: onlyIds ? { id: { in: onlyIds } } : { publishedAt: { gte: since }, storyId: null },
+      select: { id: true, title: true, publishedAt: true, storyId: true, relevance: true, official: true },
+      orderBy: { publishedAt: 'asc' },
+    });
+    if (!freshRows.length) return 0;
+    const from = new Date(freshRows[0].publishedAt.getTime() - STORY_WINDOW_MS);
+    const known = await this.prisma.mediaItem.findMany({
+      where: { publishedAt: { gte: from }, storyId: { not: null }, id: { notIn: freshRows.map((r) => r.id) } },
+      select: { id: true, title: true, publishedAt: true, storyId: true, relevance: true, official: true },
+    });
+    const assignments = assignStories(freshRows as StoryCandidate[], known as StoryCandidate[]);
+    const ops = assignments.map((a) =>
+      this.prisma.mediaItem.update({ where: { id: a.id }, data: { storyId: a.storyId, isStoryLead: a.isStoryLead } }),
+    );
+    for (let i = 0; i < ops.length; i += 200) await this.prisma.$transaction(ops.slice(i, i + 200));
+    const merged = assignments.filter((a) => !a.isStoryLead).length;
+    if (merged) this.logger.log(`media stories: ${merged} item(s) joined an existing story`);
+    return merged;
   }
 
   // ---------------------------------------------------------------------------
@@ -297,8 +362,10 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     this.aiError = null;
 
     const results = await this.collectAll(settings, firstRun, now);
-    const created = await this.ingest(results, settings, now);
+    const gazetteer = await this.loadGazetteer(settings);
+    const created = await this.ingest(results, settings, now, gazetteer);
     const analyzed = await this.analyze(created, settings);
+    if (created.length) await this.groupStories(now, created.map((c) => c.id));
     const relevantNew = analyzed.filter((i) => i.relevance >= settings.minRelevance);
     const negativeNew = relevantNew.filter((i) => i.sentiment === 'negative').length;
 
@@ -375,14 +442,19 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   }
 
   /** Keyword filter + de-duplication + insert. Returns only rows that are new. */
-  private async ingest(results: SourceRunResult[], s: MediaSettings, now: Date): Promise<(MediaItem & { _text: string })[]> {
+  private async ingest(
+    results: SourceRunResult[],
+    s: MediaSettings,
+    now: Date,
+    gazetteer: PlaceGazetteer,
+  ): Promise<(MediaItem & { _text: string })[]> {
     const minDate = now.getTime() - MAX_ITEM_AGE_MS;
     type Candidate = Prisma.MediaItemCreateManyInput & { _text: string };
     const candidates: Candidate[] = [];
     for (const r of results) {
       let matched = 0;
       for (const raw of r.items) {
-        const c = toCandidate(raw, s, minDate);
+        const c = toCandidate(raw, s, minDate, gazetteer);
         if (!c) continue;
         matched++;
         candidates.push(c);
@@ -621,14 +693,17 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const [rows, prevTotal, digest, alerts, latest, topViewed] = await Promise.all([
       this.prisma.mediaItem.findMany({
         where: { ...base, publishedAt: { gte: from } },
-        select: { sourceName: true, source: true, platform: true, sentiment: true, topic: true, publishedAt: true, status: true, official: true },
+        select: {
+          sourceName: true, source: true, platform: true, sentiment: true, topic: true, publishedAt: true, status: true,
+          official: true, storyId: true, id: true,
+        },
       }),
       this.prisma.mediaItem.count({ where: { ...base, publishedAt: { gte: prevFrom, lt: from } } }),
       this.prisma.mediaDigest.findFirst({ orderBy: { createdAt: 'desc' } }),
       this.prisma.mediaItem.findMany({
-        where: { ...base, publishedAt: { gte: from }, OR: [{ sentiment: 'negative' }, { status: 'important' }] },
+        where: { ...base, publishedAt: { gte: from }, isStoryLead: true, OR: [{ sentiment: 'negative' }, { status: 'important' }] },
         orderBy: [{ publishedAt: 'desc' }],
-        take: 6,
+        take: 40,
       }),
       this.prisma.mediaItem.findMany({ where: { ...base, publishedAt: { gte: from } }, orderBy: { publishedAt: 'desc' }, take: 6 }),
       this.prisma.mediaItem.findMany({
@@ -649,7 +724,19 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         })
       : [];
 
-    const totals = { all: rows.length, positive: 0, neutral: 0, negative: 0, important: 0, unseen: 0, official: 0, previous: prevTotal };
+    const storySize = new Map<string, number>();
+    for (const r of rows) storySize.set(r.storyId ?? r.id, (storySize.get(r.storyId ?? r.id) ?? 0) + 1);
+    const totals = {
+      all: rows.length,
+      stories: storySize.size,
+      positive: 0,
+      neutral: 0,
+      negative: 0,
+      important: 0,
+      unseen: 0,
+      official: 0,
+      previous: prevTotal,
+    };
     const platforms: Record<string, number> = { web: 0, telegram: 0, youtube: 0, instagram: 0 };
     const sources = new Map<string, { source: string; sourceName: string; platform: string; count: number; negative: number }>();
     const topics = new Map<string, { topic: string; count: number; negative: number; positive: number }>();
@@ -682,7 +769,11 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       timeline: buildTimeline(rows, from, now, hours <= 48 ? 'hour' : 'day'),
       digest,
       digestRefs,
-      alerts,
+      // "Diqqat talab qiladi", most important first (see attentionScore).
+      alerts: [...alerts]
+        .map((a) => ({ ...a, storySize: storySize.get(a.storyId ?? a.id) ?? 1 }))
+        .sort((x, y) => attentionScore(y, now) - attentionScore(x, now))
+        .slice(0, 6),
       latest,
       topViewed,
       status: this.status(),
@@ -714,11 +805,34 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         { keywords: { has: term } },
       ];
     }
+    // One card per story — unless the user narrows the feed (then every match counts).
+    const narrowed = !!(q.platform || q.sentiment || q.topic || q.source || q.kind || term || q.status);
+    const grouped = (q.group ?? 'story') === 'story' && !narrowed;
+    if (grouped) where.isStoryLead = true;
     const [items, total] = await Promise.all([
       this.prisma.mediaItem.findMany({ where, orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * limit, take: limit }),
       this.prisma.mediaItem.count({ where }),
     ]);
-    return { items, total, page, limit };
+    const storyIds = items.map((i) => i.storyId).filter((x): x is string => !!x);
+    const members = storyIds.length
+      ? await this.prisma.mediaItem.findMany({
+          where: { storyId: { in: storyIds }, id: { notIn: items.map((i) => i.id) }, status: { not: 'hidden' } },
+          select: { id: true, storyId: true, sourceName: true, url: true, platform: true, official: true, publishedAt: true },
+          orderBy: { publishedAt: 'asc' },
+        })
+      : [];
+    const byStory = new Map<string, typeof members>();
+    for (const m of members) byStory.set(m.storyId!, [...(byStory.get(m.storyId!) ?? []), m]);
+    return {
+      items: items.map((i) => {
+        const also = i.storyId ? (byStory.get(i.storyId) ?? []) : [];
+        return { ...i, alsoIn: also.slice(0, 8), storySize: 1 + also.length };
+      }),
+      total,
+      page,
+      limit,
+      grouped,
+    };
   }
 
   async digests(limit = 12) {
@@ -732,7 +846,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       where: { id },
       data: {
         ...(dto.status ? { status: dto.status } : {}),
-        ...(dto.sentiment ? { sentiment: dto.sentiment } : {}),
+        ...(dto.sentiment ? { sentiment: dto.sentiment, analyzedBy: 'manual' } : {}),
       },
     });
   }
@@ -760,6 +874,7 @@ function toCandidate(
   raw: RawMediaItem,
   s: MediaSettings,
   minDate: number,
+  gazetteer: PlaceGazetteer,
 ): (Prisma.MediaItemCreateManyInput & { _text: string }) | null {
   if (!raw.title || !raw.url || !raw.externalId) return null;
   // The district's own page posts rarely and searches reach back — keep two months of those.
@@ -768,10 +883,13 @@ function toCandidate(
     : raw.backfill ? minDate - (BACKFILL_MAX_AGE_MS - MAX_ITEM_AGE_MS)
     : minDate;
   if (raw.publishedAt.getTime() < oldest) return null;
-  const m = matchKeywords(raw.title, raw.text, s.keywords, s.weakKeywords, s.excludes);
+  const res = scoreRelevance({
+    title: raw.title, body: raw.text, keywords: s.keywords, weakKeywords: s.weakKeywords,
+    excludes: s.excludes, gazetteer, viaSearch: raw.viaSearch,
+  });
   // The district's own hokimligi page is about the district by definition; a
   // district-local channel's posts are what its residents read.
-  const base = relevanceFromMatch(m, !!raw.viaSearch);
+  const base = res.relevance;
   const relevance = raw.alwaysRelevant
     ? Math.max(95, base)
     : raw.localChannel
@@ -791,11 +909,32 @@ function toCandidate(
     views: raw.views ?? null,
     publishedAt: raw.publishedAt,
     fingerprint: fingerprintOf(raw.title),
-    keywords: [...m.strong, ...m.weak],
+    keywords: res.keywords,
     relevance,
     official: raw.official === true,
     _text: raw.text,
   };
+}
+
+/**
+ * How urgently the hokimiyat should look at an item: bad news and items an
+ * admin starred first, then the wider the echo (outlets, views) and the
+ * fresher, the higher.
+ */
+function attentionScore(
+  i: { sentiment: MediaSentiment; status: string; official: boolean; views: number | null; relevance: number; publishedAt: Date; storySize: number },
+  now: Date,
+): number {
+  let s = 0;
+  if (i.sentiment === 'negative') s += 40;
+  if (i.status === 'important') s += 30;
+  if (i.official) s += 10;
+  s += Math.min(20, Math.log10((i.views ?? 0) + 1) * 4);
+  s += Math.min(20, (i.storySize - 1) * 8);
+  s += i.relevance / 10;
+  const ageH = (now.getTime() - i.publishedAt.getTime()) / 3_600_000;
+  s += ageH < 24 ? 10 : ageH < 72 ? 5 : 0;
+  return s;
 }
 
 async function mapLimit<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {

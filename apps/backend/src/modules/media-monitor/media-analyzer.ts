@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { normalizeText, truncate } from './media-text.util';
+import { normalizeText, stripHandles, truncate } from './media-text.util';
 
 /**
  * Scoring of collected items (relevance / sentiment / topic / one-line
@@ -78,54 +78,102 @@ export interface DigestResult {
 // ---------------------------------------------------------------------------
 
 /** Normalised stems (see normalizeText: no apostrophes, ғ→г, ў→у ...). */
-const NEGATIVE = [
-  'shikoyat', 'norozi', 'muammo', 'avariya', 'yongin', 'ogirlik', 'jinoyat', 'hibsga', 'halok', 'jabrlan',
-  'uzilish', 'uzildi', 'suv yoq', 'svet yoq', 'gaz yoq', 'tirbandlik', 'korrupsiya', 'pora', 'firibgar',
-  'noqonuniy', 'jarima', 'portla', 'qulab', 'qulash', 'zaharlan', 'vafot', 'buzib tashla',
-  'adolatsiz', 'xavfli', 'giyohvand', 'narkotik', 'javobgarlikka tortil', 'qamoq', 'zoravonlik', 'ifloslan', 'chiqindi uyum', 'ishdan boshat', 'mojaro', 'janjal', 'urib',
-  'жалоб', 'проблем', 'авари', 'пожар', 'краж', 'преступ', 'задержа', 'погиб', 'пострада', 'отключ',
-  'пробк', 'корруп', 'взятк', 'мошен', 'незакон', 'штраф', 'взрыв', 'обрушен', 'отравл', 'смерт',
-  'недовол', 'возмущ', 'снос', 'дтп', 'конфликт', 'избил', 'нарушен', 'грязн', 'свалк',
-  'наркот', 'марихуан', 'к ответственности', 'арест', 'насили', 'уголовн',
+/**
+ * Sentiment lexicon v2 — normalised stems (see normalizeText: no apostrophes,
+ * ғ→г, ў→у ...) with weights. 3 = a tragedy or crime, 2 = a real problem,
+ * 1 = a mild signal. Title words count twice.
+ */
+const NEGATIVE: [string, number][] = [
+  // 3 — deaths, disasters, crime
+  ...w(3, ['halok', 'vafot', 'olimiga', 'portla', 'yongin', 'avariya', 'yth', 'yol transport hodisa', 'avtohalokat', 'jinoyat',
+    'korrupsiya', 'pora', 'ogirla', 'zoravonlik', 'qotil', 'talon', 'zaharlan', 'qulab tush', 'giyohvand', 'narkotik',
+    'погиб', 'смерт', 'взрыв', 'пожар', 'авари', 'дтп', 'преступ', 'корруп', 'взятк', 'краж', 'убий', 'насили', 'отравл',
+    'обруш', 'наркот', 'марихуан']),
+  // 2 — problems people feel
+  ...w(2, ['shikoyat', 'norozi', 'muammo', 'uzilish', 'uzildi', 'suv yoq', 'svet yoq', 'gaz yoq', 'suvsiz', 'gazsiz', 'tirbandlik',
+    'jarima', 'noqonuniy', 'firibgar', 'hibsga', 'ushlandi', 'javobgarlikka', 'buzib tashla', 'ifloslan', 'chiqindi uyum',
+    'jabrlan', 'xavfli', 'adolatsiz', 'mojaro', 'janjal', 'urib ketdi', 'qamoq', 'ishdan boshat', 'kirolmay', 'qiynalmoqda',
+    'жалоб', 'проблем', 'недовол', 'возмущ', 'отключ', 'без воды', 'без газа', 'без света', 'пробк', 'штраф', 'незакон',
+    'мошен', 'задерж', 'арест', 'загрязн', 'пострада', 'конфликт', 'избил', 'нарушен', 'свалк', 'снос', 'сбил', 'травм']),
+  // 1 — mild
+  ...w(1, ['kechik', 'navbat', 'qimmatla', 'narx osh', 'shovqin', 'chang', 'очеред', 'подорож', 'шум', 'пыль', 'опоздан']),
 ];
-const POSITIVE = [
-  'ochildi', 'foydalanishga topshir', 'qurib bitkaz', 'tamirlandi', 'tamirdan chiq', 'obodonlashtir',
-  'yordam', 'taqdirlan', 'golib', 'muvaffaqiyat', 'rekonstruksiya', 'kokalamzor', 'bayram', 'festival',
-  'sovga', 'minnatdor', 'yangi maktab', 'yangi bogcha', 'yangi park', 'qulaylik', 'hal qilindi', 'tiklandi',
-  'открыт', 'введен в эксплуатац', 'построен', 'отремонтир', 'благоустр', 'помощ', 'награжд', 'победи',
-  'успешн', 'реконструкц', 'озелен', 'праздн', 'фестивал', 'благодар', 'решена', 'восстановл', 'улучш',
-];
-const TOPIC_STEMS: Record<string, string[]> = {
-  'Kommunal xizmatlar': ['ichimlik suv', 'suv taminot', 'suv yoq', 'tabiiy gaz', 'gaz yoq', 'elektr', 'svet', 'issiqlik', 'kanalizatsiya', 'chiqindi', 'axlat', 'kommunal', 'водоснаб', 'без воды', 'газоснаб', 'без газа', 'электроэнерг', 'без света', 'отоплен', 'канализ', 'мусор', 'коммунал'],
-  "Yo'l va transport": ['yollar', 'yolni', 'yol harakat', 'avtomobil yol', 'transport', 'avtobus', 'tirbandlik', 'svetofor', 'metro', 'piyoda', 'avtohalokat', 'yhh', 'дорог', 'транспорт', 'автобус', 'пробк', 'светофор', 'дтп', 'пешеход'],
-  'Qurilish va obodonlashtirish': ['qurilish', 'bino', 'tamir', 'obodon', 'park', 'kokalamzor', 'turar joy', 'строител', 'здани', 'ремонт', 'благоустр', 'парк', 'озелен', 'снос', 'жилой'],
-  "Ta'lim": ['maktab', 'bogcha', 'talaba', 'oqituvchi', 'universitet', 'oquvchi', 'школ', 'детсад', 'студент', 'учител', 'университет', 'школьник'],
-  "Sog'liqni saqlash": ['shifoxona', 'poliklinika', 'shifokor', 'kasal', 'tibbiy', 'больниц', 'поликлин', 'врач', 'болезн', 'медицин'],
-  'Ijtimoiy himoya': ['nafaqa', 'kam taminlangan', 'ijtimoiy', 'nogiron', 'muhtoj', 'пенси', 'пособи', 'малоимущ', 'инвалид', 'социальн'],
-  'Xavfsizlik va huquqbuzarlik': ['jinoyat', 'ogirlik', 'firibgar', 'hibs', 'militsiya', 'ichki ishlar', 'yongin', 'sud', 'преступ', 'краж', 'мошен', 'задерж', 'полиц', 'мвд', 'пожар', 'суд'],
-  Ekologiya: ['ekolog', 'havo', 'chang', 'daraxt kes', 'экологи', 'воздух', 'вырубк', 'пыль'],
-  'Iqtisodiyot va tadbirkorlik': ['tadbirkor', 'biznes', 'savdo', 'bozor', 'narx', 'investitsiya', 'ish orni', 'bank', 'предприним', 'бизнес', 'торгов', 'рынок', 'цены', 'подорож', 'инвести', 'банк'],
-  'Hokimiyat faoliyati': ['hokim', 'hokimlik', 'hokimiyat', 'sayyor qabul', 'deputat', 'хоким', 'депутат'],
-  'Madaniyat va sport': ['madaniyat', 'sport', 'festival', 'konsert', 'bayram', 'musobaqa', 'культур', 'спорт', 'фестивал', 'концерт', 'праздн', 'соревнов'],
-};
 
-const count = (text: string, stems: readonly string[]) => stems.reduce((n, s) => (text.includes(s) ? n + 1 : n), 0);
+const POSITIVE: [string, number][] = [
+  ...w(2, ['ochildi', 'foydalanishga topshir', 'qurib bitkaz', 'tamirlandi', 'tamirdan chiq', 'obodonlashtir', 'hal qilindi',
+    'hal etildi', 'bartaraf etildi', 'tiklandi', 'taqdirlan', 'golib', 'muvaffaqiyat', 'rekonstruksiya', 'kokalamzor',
+    'yangi maktab', 'yangi bogcha', 'yangi park', 'minnatdor', 'открыт', 'введен в эксплуатац', 'построен', 'отремонтир',
+    'благоустр', 'устранен', 'восстановл', 'решен', 'награжд', 'победи', 'успешн', 'реконструкц', 'озелен', 'благодар']),
+  ...w(1, ['yordam', 'sovga', 'bayram', 'festival', 'qulaylik', 'qollab', 'imtiyoz', 'bepul', 'yaxshilan', 'helps', 'помощ',
+    'праздн', 'фестивал', 'подарк', 'бесплатн', 'льгот', 'улучш', 'поддерж']),
+];
+
+/** "…problem was fixed / supply restored" — the negative words describe what is now solved. */
+const RESOLUTION = ['bartaraf etildi', 'hal qilindi', 'hal etildi', 'tiklandi', 'qayta tiklandi', 'taminlandi', 'yechim',
+  'hal qilish', 'hal etish', 'bartaraf etish', 'korib chiqildi', 'устранен', 'восстановл', 'решен', 'возобновл', 'решени',
+  'устранени'];
+/** "muammo yo'q", "muammosiz" — the negative stem is negated. */
+const NEGATED = ['muammo yoq', 'muammosiz', 'shikoyat yoq', 'без проблем', 'проблем нет'];
+
+function w(weight: number, stems: string[]): [string, number][] {
+  return stems.map((st) => [st, weight]);
+}
+
+const score = (text: string, lexicon: readonly [string, number][]) =>
+  lexicon.reduce((n, [stem, weight]) => (text.includes(stem) ? n + weight : n), 0);
+
+export function sentimentScore(title: string, text: string): number {
+  const t = normalizeText(stripHandles(`${title} ${title} ${text}`));
+  let neg = score(t, NEGATIVE);
+  const pos = score(t, POSITIVE);
+  // A fixed problem is good news: the problem words describe what is now solved.
+  let bonus = 0;
+  if (RESOLUTION.some((r) => t.includes(r))) {
+    neg = Math.floor(neg / 3);
+    bonus = 1;
+  }
+  if (NEGATED.some((r) => t.includes(r))) neg = Math.max(0, neg - 2);
+  return pos + bonus - neg;
+}
 
 export function ruleSentiment(title: string, text: string): Sentiment {
-  const t = normalizeText(`${title} ${title} ${text}`); // title counts twice
-  const neg = count(t, NEGATIVE);
-  const pos = count(t, POSITIVE);
-  if (neg > pos) return 'negative';
-  if (pos > neg) return 'positive';
+  const sc = sentimentScore(title, text);
+  // A tragedy word in the headline is negative whatever else is said.
+  const head = normalizeText(title);
+  if (NEGATIVE.some(([stem, wt]) => wt === 3 && head.includes(stem)) && !RESOLUTION.some((r) => head.includes(r))) return 'negative';
+  if (sc <= -2) return 'negative';
+  if (sc >= 2) return 'positive';
   return 'neutral';
 }
 
+/**
+ * Topic stems with weights; the title counts three times. The district's own
+ * name and "tuman hokimligi" sign-offs are removed first so every item does
+ * not become "Hokimiyat faoliyati".
+ */
+const TOPIC_STEMS: Record<string, string[]> = {
+  'Kommunal xizmatlar': ['ichimlik suv', 'suv taminot', 'suv yoq', 'tabiiy gaz', 'gaz yoq', 'elektr', 'svet', 'issiqlik', 'isitish', 'kanalizatsiya', 'chiqindi', 'axlat', 'kommunal', 'водоснаб', 'без воды', 'газоснаб', 'без газа', 'электроэнерг', 'без света', 'отоплен', 'канализ', 'мусор', 'коммунал'],
+  "Yo'l va transport": ['yollar', 'yolni', 'yol harakat', 'avtomobil yol', 'transport', 'avtobus', 'tirbandlik', 'svetofor', 'metro', 'piyoda', 'avtohalokat', 'yth', 'harakati vaqtincha', 'дорог', 'транспорт', 'автобус', 'пробк', 'светофор', 'дтп', 'пешеход'],
+  'Qurilish va obodonlashtirish': ['qurilish', 'bino', 'tamir', 'obodon', 'park', 'kokalamzor', 'turar joy', 'kop qavatli', 'строител', 'здани', 'ремонт', 'благоустр', 'парк', 'озелен', 'снос', 'жилой', 'многоэтаж'],
+  "Ta'lim": ['maktab', 'bogcha', 'talaba', 'oqituvchi', 'universitet', 'oquvchi', 'dmtt', 'школ', 'детсад', 'студент', 'учител', 'университет', 'школьник'],
+  "Sog'liqni saqlash": ['shifoxona', 'poliklinika', 'shifokor', 'kasal', 'tibbiy', 'vrach', 'больниц', 'поликлин', 'врач', 'болезн', 'медицин'],
+  'Ijtimoiy himoya': ['nafaqa', 'kam taminlangan', 'ijtimoiy', 'nogiron', 'muhtoj', 'temir daftar', 'пенси', 'пособи', 'малоимущ', 'инвалид', 'социальн'],
+  'Xavfsizlik va huquqbuzarlik': ['jinoyat', 'ogirlik', 'firibgar', 'hibs', 'militsiya', 'ichki ishlar', 'iib', 'yongin', 'sud ', 'sudi', 'prokuratura', 'yth', 'преступ', 'краж', 'мошен', 'задерж', 'полиц', 'мвд', 'пожар', 'суд', 'прокурат', 'дтп'],
+  Ekologiya: ['ekolog', 'havo sifati', 'chang', 'daraxt kes', 'daraxt', 'экологи', 'воздух', 'вырубк', 'пыль', 'деревь'],
+  'Iqtisodiyot va tadbirkorlik': ['tadbirkor', 'biznes', 'savdo', 'bozor', 'narx', 'investitsiya', 'ish orni', 'bank', 'ish yarmarka', 'предприним', 'бизнес', 'торгов', 'рынок', 'цены', 'подорож', 'инвести', 'банк'],
+  'Hokimiyat faoliyati': ['sayyor qabul', 'shaxsiy qabul', 'fuqarolar qabul', 'hokim qabul', 'hokim boshchiligida', 'yigilish otkaz', 'deputat', 'kengash', 'murojaat', 'приём граждан', 'прием граждан', 'депутат', 'хоким провел', 'совещани'],
+  'Madaniyat va sport': ['madaniyat', 'sport', 'festival', 'konsert', 'bayram', 'musobaqa', 'futbol', 'культур', 'спорт', 'фестивал', 'концерт', 'праздн', 'соревнов', 'футбол'],
+};
+
+const DISTRICT_NOISE = [/mirzo ulugbek tumani? hokimligi/g, /mirzo ulugbek/g, /мирзо[ -]улугбек\S*/g, /tumani hokimligi/g, /туман[и]? хокимлиги/g];
+
 export function ruleTopic(title: string, text: string): string {
-  const t = ` ${normalizeText(`${title} ${title} ${text}`)} `;
+  let t = ` ${normalizeText(stripHandles(`${title} ${title} ${title} ${text}`))} `;
+  for (const re of DISTRICT_NOISE) t = t.replace(re, ' ');
   let best = 'Boshqa';
   let bestN = 0;
   for (const [topic, stems] of Object.entries(TOPIC_STEMS)) {
-    const n = count(t, stems);
+    const n = stems.reduce((acc, st) => acc + (t.split(st).length - 1), 0);
     if (n > bestN) {
       best = topic;
       bestN = n;

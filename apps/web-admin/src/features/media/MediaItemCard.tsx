@@ -2,9 +2,9 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { ArrowDown2, Eye, EyeSlash, ExportSquare, MagicStar, ShieldTick, Star1, TickCircle } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import { formatCompact } from '@/shared/lib/format';
-import type { MediaItem, MediaSentiment, MediaStatus } from './api';
+import type { MediaItem, MediaSentiment, MediaStatus, StoryRef } from './api';
 import { Highlight, SourceLogo } from './MediaIcons';
-import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, clock, dayShort, freshAgo, fullTime } from './meta';
+import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, clock, dayShort, freshAgo, fullTime, shortTime } from './meta';
 
 interface Props {
   item: MediaItem;
@@ -171,6 +171,7 @@ export const MediaItemCard = memo(function MediaItemCard({
 
       {/* Meta + actions */}
       <div className="flex min-w-0 flex-wrap items-center gap-1.5 pt-2.5 [grid-area:meta] xl:px-4 xl:pb-3">
+        <StorySources refs={item.alsoIn} />
         {item.topic && (
           <button
             type="button"
@@ -225,6 +226,65 @@ export const MediaItemCard = memo(function MediaItemCard({
     </article>
   );
 });
+
+/**
+ * "Yana 2 manbada" — the same story from other outlets; click for the list
+ * (each opens its own original).
+ */
+export function StorySources({ refs }: { refs?: StoryRef[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === 'Escape' : !ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', close);
+    };
+  }, [open]);
+  if (!refs?.length) return null;
+  return (
+    <div ref={ref} className="relative z-10">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-accent-50 pl-1 pr-2 text-[11px] font-semibold text-accent-800 ring-1 ring-accent-200 transition-colors hover:bg-accent-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 dark:bg-accent-500/10 dark:text-accent-300 dark:ring-accent-500/30"
+        title="Shu voqea boshqa manbalarda ham"
+      >
+        <span className="flex -space-x-1.5">
+          {refs.slice(0, 3).map((r) => (
+            <SourceLogo key={r.id} item={{ url: r.url, sourceName: r.sourceName, platform: r.platform }} size={18} className="ring-2 ring-surface" />
+          ))}
+        </span>
+        Yana {refs.length} manbada
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Boshqa manbalar" className="absolute bottom-full left-0 mb-1.5 w-72 overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-pop">
+          {refs.map((r) => (
+            <a
+              key={r.id}
+              href={r.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] text-ink hover:bg-surface-2"
+            >
+              <SourceLogo item={{ url: r.url, sourceName: r.sourceName, platform: r.platform }} size={18} />
+              <span className="min-w-0 flex-1 truncate font-medium">{r.sourceName}</span>
+              {r.official && <ShieldTick size={13} variant="Bold" className="shrink-0 text-accent-600" />}
+              <span className="shrink-0 text-xs tabular-nums text-ink-soft">{shortTime(r.publishedAt)}</span>
+              <ExportSquare size={13} className="shrink-0 text-ink-soft" />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** State body (gov.uz, President's press office, UzA, parliament, hokimlik). */
 export function OfficialBadge({ compact = false }: { compact?: boolean }) {

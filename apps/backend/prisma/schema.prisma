@@ -1340,11 +1340,15 @@ model MediaItem {
   analyzedBy  String?
   /// Published by a state body (gov.uz agency, President's press office, UzA, parliament, hokimlik).
   official    Boolean         @default(false)
+  /// Same event across outlets (media-story.ts): the lead is shown, the rest as "+N manbada".
+  storyId     String?
+  isStoryLead Boolean         @default(true)
   status      MediaItemStatus @default(new)
 
   @@unique([source, externalId])
   @@index([publishedAt])
   @@index([fingerprint])
+  @@index([storyId])
   @@map("media_items")
 }
 

@@ -477,7 +477,20 @@ export function MediaPage() {
                 {/* Result header */}
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <p className="text-[13px] text-ink-soft" aria-live="polite">
-                    {itemsQ.isLoading ? 'Yuklanmoqda…' : <><b className="font-semibold text-ink tabular-nums">{total}</b> ta xabar</>}
+                    {itemsQ.isLoading ? (
+                      'Yuklanmoqda…'
+                    ) : itemsQ.data?.pages[0]?.grouped ? (
+                      <>
+                        <b className="font-semibold text-ink tabular-nums">{total}</b> ta voqea
+                        <span className="ml-1 text-ink-soft" title="Bir voqea bir nechta manbada chiqsa — bitta kartada, «Yana N manbada» bilan">
+                          (bir xil xabarlar birlashtirildi)
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <b className="font-semibold text-ink tabular-nums">{total}</b> ta xabar
+                      </>
+                    )}
                     {itemsQ.isFetching && !itemsQ.isLoading && <span className="ml-2 text-ink-soft">yangilanmoqda…</span>}
                   </p>
                   {canWrite && (ov?.totals.unseen ?? 0) > 0 && (

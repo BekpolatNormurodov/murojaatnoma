@@ -375,3 +375,92 @@ describe('channel signatures are not mentions', () => {
     expect(match("Mirzo Ulug‘bek tumanida yo'l ta'mirlandi", 'Батафсил 👉 @MIRZO_ULUGBEK').strong.length).toBeGreaterThan(0);
   });
 });
+
+describe('rules v2', () => {
+  const gaz = () =>
+    require('./media-relevance').buildGazetteer(
+      [
+        { nameUzLat: 'Zakovat mahallasi', nameUzCyr: 'Заковат маҳалласи', nameRu: 'Заковат махалля' },
+        { nameUzLat: 'Shahriobod mahallasi', nameUzCyr: 'Шаҳриобод маҳалласи', nameRu: 'Шахриобод махалля' },
+        { nameUzLat: 'Nur mahallasi', nameUzCyr: 'Нур маҳалласи', nameRu: 'Нур махалля' },
+      ],
+      ['TTZ', 'ТТЗ', 'Qorasuv'],
+    );
+  const rel = (title: string, body = '', viaSearch = false) =>
+    require('./media-relevance').scoreRelevance({
+      title, body, keywords: S.keywords, weakKeywords: S.weakKeywords, excludes: S.excludes, gazetteer: gaz(), viaSearch,
+    });
+
+  it('scores the district by evidence and context', () => {
+    expect(rel("Mirzo Ulug‘bek tumanida yo'l ta'mirlandi").relevance).toBeGreaterThanOrEqual(90);
+    // a mahalla of the district, without naming the district
+    expect(rel('Zakovat mahallasida yangi bog‘cha ochildi').reason).toBe('place');
+    expect(rel('Zakovat mahallasida yangi bog‘cha ochildi').relevance).toBeGreaterThanOrEqual(55);
+    expect(rel('ТТЗ массивида ёнғин').relevance).toBeGreaterThanOrEqual(55);
+    expect(rel('Qorasuvda yangi park ochildi').relevance).toBeGreaterThanOrEqual(55);
+    expect(rel('Qorasuvchi yigit').relevance).toBe(0);
+    // the same name in another region is not ours
+    expect(rel('Samarqand viloyati Zakovat mahallasida tadbir').relevance).toBe(0);
+    // 3-letter mahalla names are ignored (too common)
+    expect(rel('Nur mahallasida tadbir').relevance).toBe(0);
+    // bare name: district context vs astronomer / university
+    expect(rel("Mirzo Ulug'bek hokimi aholi bilan uchrashdi").relevance).toBeGreaterThanOrEqual(60);
+    expect(rel("Mirzo Ulug'bek — buyuk astronom, Temuriylar davri olimi").relevance).toBe(0);
+    expect(rel("Mirzo Ulug'bek nomidagi universitet talabalari (Toshkent)").relevance).toBe(0);
+    // the channel signature is not a mention
+    expect(rel('Ob-havo: yomg‘ir kutilmoqda', 'Batafsil 👉 @MIRZO_ULUGBEK').relevance).toBe(0);
+    // search hit without words
+    expect(rel('Untitled', '', true).relevance).toBe(35);
+  });
+
+  it('weights sentiment and treats fixed problems as good news', () => {
+    const { ruleSentiment } = require('./media-analyzer');
+    expect(ruleSentiment("Mirzo Ulug'bek tumanida YTH: ikki kishi halok bo'ldi", '')).toBe('negative');
+    expect(ruleSentiment("Qorasuvda suv ta'minotidagi muammo bartaraf etildi", '')).toBe('positive');
+    expect(ruleSentiment('Aholi gaz yo‘qligidan shikoyat qilmoqda', '')).toBe('negative');
+    expect(ruleSentiment('Mahallada muammo yo‘q, hammasi joyida', '')).toBe('neutral');
+    expect(ruleSentiment('Yangi park foydalanishga topshirildi', '')).toBe('positive');
+    expect(ruleSentiment('Hokim mahalla faollari bilan uchrashdi', '')).toBe('neutral');
+    // "solving problems" is constructive, not a complaint
+    expect(ruleSentiment('Shaxsiy qabullar — muammolar yechimiga zamin yaratmoqda', '')).not.toBe('negative');
+    expect(ruleSentiment("Tumandagi o'zgarishlar", "aniqlangan muammolar yechimi bo'yicha tizimli ishlar")).not.toBe('negative');
+  });
+
+  it('does not call everything "Hokimiyat faoliyati"', () => {
+    const { ruleTopic } = require('./media-analyzer');
+    expect(ruleTopic("Mirzo Ulug'bek tumani hokimligi: Shahriobod ko'chasida yo'l harakati vaqtincha cheklanadi", '')).toBe("Yo'l va transport");
+    expect(ruleTopic('Shaxsiy qabul: fuqarolar murojaatlariga amaliy yechim', '')).toBe('Hokimiyat faoliyati');
+    expect(ruleTopic("Mirzo Ulug'bek tumanidagi 45-maktabda yangi o'quv yili", '')).toBe("Ta'lim");
+  });
+
+  it('groups the same story across outlets and scripts', () => {
+    const { assignStories, storySimilarity, storyTokens } = require('./media-story');
+    const at = (h: number) => new Date(Date.UTC(2026, 8, 28, h));
+    const lat = 'Li 9 va BYD to‘qnashuvi: sud qarori e’lon qilindi';
+    const cyr = 'Li 9 ва BYD тўқнашуви: ЙТҲдан кўра суди кўпроқ шов-шув бўлган ишда суд қарори эълон қилинди';
+    expect(storySimilarity(storyTokens(lat), storyTokens(cyr))).toBeGreaterThanOrEqual(0.6);
+    expect(storySimilarity(storyTokens(lat), storyTokens("Mirzo Ulug'bek tumanida yangi maktab ochildi"))).toBe(0);
+    const out = assignStories(
+      [
+        { id: 'b', title: cyr, publishedAt: at(9), storyId: null, relevance: 80, official: false },
+        { id: 'c', title: "Mirzo Ulug'bek tumanida yangi maktab ochildi", publishedAt: at(10), storyId: null, relevance: 90, official: false },
+      ],
+      [{ id: 'a', title: lat, publishedAt: at(8), storyId: 'a', relevance: 80, official: false }],
+    );
+    const by = Object.fromEntries(out.map((o: { id: string }) => [o.id, o]));
+    expect(by.b).toMatchObject({ storyId: 'a', isStoryLead: false });
+    expect(by.c).toMatchObject({ storyId: 'c', isStoryLead: true });
+  });
+
+  it('moves the story lead to a more relevant / official member', () => {
+    const { assignStories } = require('./media-story');
+    const t = new Date('2026-09-28T09:00:00Z');
+    const out = assignStories(
+      [{ id: 'gov', title: 'Shahriobod ko‘chasida transport harakati vaqtincha cheklanadi', publishedAt: t, storyId: null, relevance: 95, official: true }],
+      [{ id: 'tg', title: 'Shahriobod ko‘chasida transport harakati vaqtincha cheklanadi!', publishedAt: t, storyId: 'tg', relevance: 80, official: false }],
+    );
+    const by = Object.fromEntries(out.map((o: { id: string }) => [o.id, o]));
+    expect(by.gov).toMatchObject({ storyId: 'tg', isStoryLead: true });
+    expect(by.tg).toMatchObject({ storyId: 'tg', isStoryLead: false });
+  });
+});
