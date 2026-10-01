@@ -23,6 +23,7 @@ import { Select } from '@/shared/ui/Select';
 import { DISTRICTS } from '@/shared/data/mock';
 import type { Camera, CameraStatus } from '@/shared/data/types';
 import { formatNumber, timeAgo } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { useCameras } from './useCameras';
@@ -189,7 +190,7 @@ export function CamerasPage() {
       cameras.filter((c) => {
         const s = status === 'all' || c.status === status;
         const d = district === 'all' || c.districtId === district;
-        const q = !query || c.name.toLowerCase().includes(query.toLowerCase());
+        const q = matchesSearch(query, c.name);
         return s && d && q;
       }),
     [cameras, status, district, query],

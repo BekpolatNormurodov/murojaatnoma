@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
 
@@ -48,7 +49,10 @@ export function periodRange(period: StatsPeriod): { from: string; to: string; la
  * Faqat drawer ochilganda (employeeId bor bo'lganda) so'raladi.
  */
 export function useEmployeeStats(employeeId: string | null, period: StatsPeriod) {
-  const { from, to } = periodRange(period);
+  // periodRange() uses `new Date()`, so it MUST be memoized on `period` — otherwise
+  // `to` changes every render, the queryKey churns, and the query refetches in an
+  // infinite loop (200+ req/s). Snapshot the range once per period selection.
+  const { from, to } = useMemo(() => periodRange(period), [period]);
   return useQuery({
     queryKey: ['employee-stats', employeeId, from, to],
     queryFn: () =>

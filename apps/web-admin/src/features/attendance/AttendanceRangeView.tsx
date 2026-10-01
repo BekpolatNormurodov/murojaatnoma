@@ -16,6 +16,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { useAttendanceRangeReport } from './useAttendanceRangeReport';
 
 const AVATAR_TINTS = ['#10b981', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
@@ -41,6 +42,7 @@ interface RangeRow {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
   validScans: number;
   lateCount: number;
   lateMinutes: number;
@@ -70,6 +72,7 @@ export function AttendanceRangeView({
       employeeId: e.employeeId,
       fullName: e.fullName,
       position: e.position,
+      avatarUrl: e.avatarUrl,
       validScans: e.validScans,
       lateCount: e.lateCount,
       lateMinutes: e.lateMinutes,
@@ -79,6 +82,7 @@ export function AttendanceRangeView({
       employeeId: a.employeeId,
       fullName: a.fullName,
       position: a.position,
+      avatarUrl: a.avatarUrl,
       validScans: 0,
       lateCount: 0,
       lateMinutes: 0,
@@ -88,11 +92,8 @@ export function AttendanceRangeView({
   }, [data]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) => r.fullName.toLowerCase().includes(q) || r.position.toLowerCase().includes(q),
-    );
+    // Kirill/lotin farqisiz qidiruv.
+    return rows.filter((r) => matchesSearch(query, r.fullName, r.position));
   }, [rows, query]);
 
   const stats = useMemo(() => {
@@ -181,7 +182,7 @@ export function AttendanceRangeView({
                     >
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-3">
-                          <Avatar name={r.fullName} color={tintFor(r.employeeId)} size={36} />
+                          <Avatar name={r.fullName} src={r.avatarUrl ?? undefined} color={tintFor(r.employeeId)} size={36} />
                           <div className="min-w-0">
                             <div className="truncate font-medium text-ink">{r.fullName || '—'}</div>
                             <div className="text-[11px] text-ink-muted">{r.position || '—'}</div>

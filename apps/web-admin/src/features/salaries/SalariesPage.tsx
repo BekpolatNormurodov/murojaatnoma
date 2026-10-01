@@ -21,6 +21,7 @@ import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { Pagination } from '@/shared/ui/Pagination';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
@@ -69,9 +70,9 @@ export function SalariesPage() {
 
   const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (q && !r.fullName.toLowerCase().includes(q) && !r.position.toLowerCase().includes(q)) return false;
+      // Kirill/lotin farqisiz qidiruv.
+      if (!matchesSearch(query, r.fullName, r.position)) return false;
       if (statusFilter === 'assigned' && !r.salary) return false;
       if (statusFilter === 'unassigned' && r.salary) return false;
       return true;

@@ -74,7 +74,15 @@ function markerIcon(
 ): L.DivIcon {
   const color = statusColor(loc);
   const initial = initials(loc.fullName).charAt(0);
-  const ring = selected ? 'box-shadow:0 0 0 4px rgba(16,185,129,0.35);' : '';
+  // Marker body = xodim RASMI (bo'lsa), aks holda birinchi harf. Holat rangi
+  // endi rasm atrofidagi HALQA (box-shadow) sifatida saqlanadi — shunda ham
+  // foto, ham holat (kelgan/kechikkan/hududdan tashqari) ko'rinadi.
+  const body = loc.avatarUrl
+    ? `<img src="${escapeAttr(loc.avatarUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+        color:#fff;font:600 13px system-ui;background:${color};">${initial}</div>`;
+  const statusRing = `0 0 0 2px ${color}`;
+  const selRing = selected ? ',0 0 0 5px rgba(16,185,129,0.35)' : '';
   // Freshness dot in the top-right corner — GREEN online / GREY offline — a
   // separate axis from the status-color body. The aria-label (built by the
   // caller) already spells out online/offline, so this dot is not the sole cue.
@@ -86,11 +94,10 @@ function markerIcon(
     className: 'emp-marker',
     html: `<div role="img" aria-label="${escapeAttr(ariaLabel)}"
       style="position:relative;width:32px;height:32px;">
-      <div style="width:32px;height:32px;border-radius:50%;background:${color};color:#fff;
-        display:flex;align-items:center;justify-content:center;font:600 13px system-ui;
-        border:2px solid #fff;${ring}">${initial}</div>
+      <div style="width:32px;height:32px;border-radius:50%;overflow:hidden;background:${color};
+        border:2px solid #fff;box-shadow:${statusRing}${selRing};">${body}</div>
       <span style="position:absolute;top:-1px;right:-1px;width:10px;height:10px;
-        border-radius:50%;background:${dotColor};border:2px solid #fff;"></span>
+        border-radius:50%;background:${dotColor};border:2px solid #fff;z-index:1;"></span>
     </div>`,
     iconSize: [32, 32],
     iconAnchor: [16, 16],

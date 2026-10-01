@@ -20,6 +20,7 @@ export interface EmployeeTodayEntry {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
   department: string | null;
   checkIn: TodayCheckIn | null;
   checkOut: TodayCheckOut | null;
@@ -49,6 +50,7 @@ export interface EmployeeDailySummary {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
   firstCheckIn: string | null;
   lastCheckOut: string | null;
   validScans: number;
@@ -62,6 +64,7 @@ export interface ReportAbsentee {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
 }
 
 export interface AttendanceMonthlyReport {

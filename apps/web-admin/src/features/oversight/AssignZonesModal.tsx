@@ -3,6 +3,7 @@ import { CloseCircle, Location, RotateRight, SearchNormal1, TickCircle, TickSqua
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { useMahallas, useAssignZones } from './useZones';
 import type { OversightRow } from './useOversight';
 
@@ -33,9 +34,9 @@ export function AssignZonesModal({ row, onClose }: { row: OversightRow | null; o
     // Defensive: never assume the API returned an array (a transient error page
     // or envelope would otherwise crash the list render with `.map is not a function`).
     const all = Array.isArray(mahallas) ? mahallas : [];
-    const s = q.trim().toLowerCase();
-    if (!s) return all;
-    return all.filter((m) => m.nameUzLat.toLowerCase().includes(s) || (m.nameUzCyr ?? '').toLowerCase().includes(s) || m.code.includes(s));
+    if (!q.trim()) return all;
+    // Kirill/lotin farqisiz — kod bo'yicha ham (matchesSearch kodni ham qamraydi).
+    return all.filter((m) => matchesSearch(q, m.nameUzLat, m.nameUzCyr, m.code));
   }, [mahallas, q]);
 
   function toggle(code: string) {

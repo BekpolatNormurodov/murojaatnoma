@@ -20,6 +20,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatDate, formatSom, formatSomShort } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { useBonuses, type Bonus } from './useBonuses';
@@ -61,11 +62,8 @@ export function BonusesPage() {
   }, [toast]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return bonuses;
-    return bonuses.filter(
-      (b) => b.recipientName.toLowerCase().includes(q) || b.reason.toLowerCase().includes(q),
-    );
+    // Kirill/lotin farqisiz qidiruv.
+    return bonuses.filter((b) => matchesSearch(query, b.recipientName, b.reason));
   }, [bonuses, query]);
 
   const stats = useMemo(() => {

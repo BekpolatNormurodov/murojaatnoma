@@ -29,6 +29,7 @@ import { DISTRICTS } from '@/shared/data/mock';
 import type { Worker, WorkerStatus } from '@/shared/data/types';
 import { api } from '@/shared/api/client';
 import { formatNumber } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { WorkerDetail } from './WorkerDetail';
@@ -167,13 +168,9 @@ export function WorkersPage() {
   const insideCount = workers.filter((w) => w.insideRegion).length;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return workers.filter((w) => {
-      const matchesQuery =
-        !q ||
-        w.name.toLowerCase().includes(q) ||
-        w.position.toLowerCase().includes(q) ||
-        w.phone.toLowerCase().includes(q);
+      // Kirill/lotin farqisiz qidiruv (telefonni ham qamraydi).
+      const matchesQuery = matchesSearch(query, w.name, w.position, w.phone);
       const matchesQuickFilter =
         filter === 'all' ||
         (filter === 'inside' && w.insideRegion) ||

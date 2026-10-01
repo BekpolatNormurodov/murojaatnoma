@@ -33,6 +33,7 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { Button } from '@/shared/ui/Button';
 import { DateRangePicker } from '@/shared/ui/DatePicker';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { useAttendanceToday, todayIso } from './useAttendanceToday';
 import { useAttendanceMonthlyReport } from './useAttendanceMonthlyReport';
 import { AttendanceRangeView } from './AttendanceRangeView';
@@ -107,14 +108,11 @@ export function AttendancePage() {
   const summary = data?.summary;
 
   const rows = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return roster.filter(
       (r) =>
         (filter === 'all' || r.status === filter) &&
-        (!q ||
-          r.fullName.toLowerCase().includes(q) ||
-          (r.position ?? '').toLowerCase().includes(q) ||
-          (r.department ?? '').toLowerCase().includes(q)),
+        // Kirill/lotin farqisiz qidiruv.
+        matchesSearch(query, r.fullName, r.position, r.department),
     );
   }, [roster, filter, query]);
 
@@ -351,7 +349,7 @@ export function AttendancePage() {
                         >
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-3">
-                              <Avatar name={r.fullName} color={tintFor(r.employeeId)} size={36} />
+                              <Avatar name={r.fullName} src={r.avatarUrl ?? undefined} color={tintFor(r.employeeId)} size={36} />
                               <div>
                                 <div className="font-medium text-ink">{r.fullName}</div>
                                 <div className="text-[11px] text-ink-muted">{r.position}</div>

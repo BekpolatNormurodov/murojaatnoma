@@ -52,6 +52,7 @@ import { APP_USER_STATUS_META } from '@/shared/data/mock';
 import type { AppUser, AppUserDevice, AppUserStatus } from '@/shared/data/types';
 import type { AppUserStats } from './api/types';
 import { formatNumber, formatDate, timeAgo } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 
 type StatusFilter = AppUserStatus | 'all';
@@ -240,15 +241,11 @@ export function AppUsersPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
     const list = users.filter((u) => {
       const matchesStatus = status === 'all' || u.status === status;
       const matchesDevice = device === 'all' || u.device === device;
-      const matchesQuery =
-        !q ||
-        u.name.toLowerCase().includes(q) ||
-        u.phone.includes(q) ||
-        u.region.toLowerCase().includes(q);
+      // Kirill/lotin farqisiz qidiruv (telefonni ham qamraydi).
+      const matchesQuery = matchesSearch(query, u.name, u.phone, u.region);
       return matchesStatus && matchesDevice && matchesQuery;
     });
     list.sort((a, b) => {

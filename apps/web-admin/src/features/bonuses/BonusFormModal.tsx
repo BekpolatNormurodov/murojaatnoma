@@ -21,6 +21,7 @@ import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { useWorkers } from '@/features/workers/useWorkers';
 import { useStaff } from '@/features/staff/useStaff';
 import type { CreateBonusInput } from './useBonusMutations';
@@ -192,12 +193,12 @@ export function BonusFormModal({
   }
 
   const people = useMemo(() => {
-    const q = personQuery.trim().toLowerCase();
+    // Kirill/lotin farqisiz qidiruv.
     if (source === 'worker') {
-      return workers.filter((w) => !q || w.name.toLowerCase().includes(q) || w.position.toLowerCase().includes(q));
+      return workers.filter((w) => matchesSearch(personQuery, w.name, w.position));
     }
     if (source === 'staff') {
-      return staffList.filter((s) => !q || s.name.toLowerCase().includes(q) || s.position.toLowerCase().includes(q));
+      return staffList.filter((s) => matchesSearch(personQuery, s.name, s.position));
     }
     return [];
   }, [source, personQuery, workers, staffList]);

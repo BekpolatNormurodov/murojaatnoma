@@ -23,6 +23,7 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { Select } from '@/shared/ui/Select';
 import { api } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { usePermissions } from '@/shared/lib/permissions';
 import { timeAgo } from '@/shared/lib/format';
 import { ROLE_META, WEEKDAYS } from '@/shared/data/mock';
@@ -98,17 +99,11 @@ export function StaffPage() {
   }, [toast]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return staff.filter((s) => {
       if (roleFilter !== 'all' && s.role !== roleFilter) return false;
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.position.toLowerCase().includes(q) ||
-        s.department.toLowerCase().includes(q) ||
-        s.login.toLowerCase().includes(q)
-      );
+      // Kirill/lotin farqisiz qidiruv.
+      return matchesSearch(query, s.name, s.position, s.department, s.login);
     });
   }, [staff, roleFilter, statusFilter, query]);
 

@@ -43,6 +43,7 @@ import type {
   WorkerStatus,
 } from '@/shared/data/types';
 import { formatSom, formatDate } from '@/shared/lib/format';
+import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
 import { getDeadline, urgencyMeta } from './deadline';
@@ -746,17 +747,12 @@ function WorkerPickerModal({
   const cat = CATEGORY_META[request.category];
 
   const list = useMemo(() => {
-    const needle = q.trim().toLowerCase();
     const score = (w: Worker) =>
       (w.specialization.includes(request.category) ? 2 : 0) +
       (w.districtId === request.districtId ? 1 : 0);
     return workers
-      .filter(
-        (w) =>
-          !needle ||
-          w.name.toLowerCase().includes(needle) ||
-          w.position.toLowerCase().includes(needle),
-      )
+      // Kirill/lotin farqisiz qidiruv.
+      .filter((w) => matchesSearch(q, w.name, w.position))
       .slice()
       .sort((a, b) => score(b) - score(a) || b.rating - a.rating);
   }, [workers, q, request.category, request.districtId]);

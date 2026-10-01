@@ -19,8 +19,13 @@ import type { ChatConversation, ChatMessage, CreateChatMessageInput } from '@/sh
 export function useConversations(archived = false) {
   return useQuery({
     queryKey: ['chat', 'conversations', archived],
+    // Only send the param for the Archive view. Omitting it for the main list
+    // (backend default = non-archived) sidesteps any `archived=false`
+    // mis-parsing on the server and keeps the URL clean.
     queryFn: () =>
-      api.get<ChatConversation[]>(`/chat/conversations?archived=${archived}`),
+      api.get<ChatConversation[]>(
+        archived ? '/chat/conversations?archived=true' : '/chat/conversations',
+      ),
     staleTime: 15_000,
   });
 }

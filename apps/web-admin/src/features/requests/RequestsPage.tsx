@@ -31,6 +31,7 @@ import { useRequests } from '@/shared/store/requests';
 import { useWorkers } from '@/features/workers/useWorkers';
 import type { RequestStatus } from '@/shared/data/types';
 import { cn } from '@/shared/lib/cn';
+import { matchesSearch } from '@/shared/lib/translit';
 import { usePermissions } from '@/shared/lib/permissions';
 import { formatDate } from '@/shared/lib/format';
 import { DatePicker } from '@/shared/ui/DatePicker';
@@ -177,14 +178,10 @@ export function RequestsPage() {
   }, [items]);
 
   const filtered = useMemo(() => {
-    const q = query.toLowerCase();
     const list = items.filter(({ r, dl }) => {
       const matchesTab = tab === 'all' || r.status === tab;
-      const matchesQuery =
-        !q ||
-        r.title.toLowerCase().includes(q) ||
-        r.region.toLowerCase().includes(q) ||
-        r.citizenName.toLowerCase().includes(q);
+      // Kirill/lotin farqisiz qidiruv.
+      const matchesQuery = matchesSearch(query, r.title, r.region, r.citizenName);
 
       let matchesDeadline = true;
       if (deadlineFilter === 'open') matchesDeadline = isOpen(r);
