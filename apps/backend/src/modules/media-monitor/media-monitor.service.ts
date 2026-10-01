@@ -15,6 +15,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { MediaPlatform, RawMediaItem, SourceRunResult } from './collectors/collector.types';
 import {
   collectGoogleNews,
+  collectGoogleNewsOfficial,
+  collectGovUz,
   collectInstagram,
   collectRss,
   collectTelegram,
@@ -78,6 +80,7 @@ const PERIOD_HOURS: Record<Exclude<MediaPeriod, 'all'>, number> = { '24h': 24, '
 const CRON_EVERY_15_MIN = '0 */15 * * * *';
 const TASHKENT_OFFSET_MS = 5 * 3_600_000; // UTC+5, no DST
 const MAX_ITEM_AGE_MS = 14 * 86_400_000;
+const OWN_SOURCE_MAX_AGE_MS = 60 * 86_400_000;
 const YT_SEARCH_EVERY_MS = 30 * 60_000;
 const DIGEST_MAX_AGE_MS = 3 * 3_600_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
@@ -175,8 +178,9 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         keys.add(f.key);
       }
     }
-    if (dto.telegramChannels) {
-      for (const ch of dto.telegramChannels.map(cleanHandle)) {
+    for (const list of [dto.telegramChannels, dto.officialTelegramChannels]) {
+      if (!list) continue;
+      for (const ch of list.map(cleanHandle)) {
         if (!/^[A-Za-z0-9_]{4,64}$/.test(ch)) throw new BadRequestException(`Telegram kanal nomi noto'g'ri: ${ch}`);
       }
     }
@@ -269,7 +273,12 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const c = this.cfg;
     const tasks: (() => Promise<SourceRunResult>)[] = [
       ...s.rssFeeds.filter((f) => f.enabled).map((f) => () => collectRss(f, now)),
-      ...s.telegramChannels.map((ch) => () => collectTelegram(ch, now)),
+      ...s.telegramChannels
+        .filter((ch) => !s.officialTelegramChannels.some((o) => o.toLowerCase() === ch.toLowerCase()))
+        .map((ch) => () => collectTelegram(ch, now)),
+      ...s.officialTelegramChannels.map((ch) => () => collectTelegram(ch, now, true)),
+      ...s.govAuthorities.map((a) => () => collectGovUz(a, now)),
+      () => collectGoogleNewsOfficial(s.googleNewsQuery, s.googleNewsSites, firstRun, now),
       ...s.youtubeChannels.map((id) => () => collectYoutubeChannel(id, now)),
       () => collectGoogleNews(s.googleNewsQuery, firstRun, now),
     ];
@@ -547,7 +556,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const [rows, prevTotal, digest, alerts, latest] = await Promise.all([
       this.prisma.mediaItem.findMany({
         where: { ...base, publishedAt: { gte: from } },
-        select: { sourceName: true, source: true, platform: true, sentiment: true, topic: true, publishedAt: true, status: true },
+        select: { sourceName: true, source: true, platform: true, sentiment: true, topic: true, publishedAt: true, status: true, official: true },
       }),
       this.prisma.mediaItem.count({ where: { ...base, publishedAt: { gte: prevFrom, lt: from } } }),
       this.prisma.mediaDigest.findFirst({ orderBy: { createdAt: 'desc' } }),
@@ -570,12 +579,13 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         })
       : [];
 
-    const totals = { all: rows.length, positive: 0, neutral: 0, negative: 0, important: 0, unseen: 0, previous: prevTotal };
+    const totals = { all: rows.length, positive: 0, neutral: 0, negative: 0, important: 0, unseen: 0, official: 0, previous: prevTotal };
     const platforms: Record<string, number> = { web: 0, telegram: 0, youtube: 0, instagram: 0 };
     const sources = new Map<string, { source: string; sourceName: string; platform: string; count: number; negative: number }>();
     const topics = new Map<string, { topic: string; count: number; negative: number; positive: number }>();
     for (const r of rows) {
       totals[r.sentiment]++;
+      if (r.official) totals.official++;
       if (r.status === 'important') totals.important++;
       if (r.status === 'new') totals.unseen++;
       platforms[r.platform] = (platforms[r.platform] ?? 0) + 1;
@@ -622,6 +632,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     if (q.sentiment) where.sentiment = q.sentiment;
     if (q.topic) where.topic = q.topic;
     if (q.source) where.source = q.source;
+    if (q.kind) where.official = q.kind === 'official';
     const term = q.q?.trim();
     if (term) {
       where.OR = [
@@ -680,9 +691,12 @@ function toCandidate(
   minDate: number,
 ): (Prisma.MediaItemCreateManyInput & { _text: string }) | null {
   if (!raw.title || !raw.url || !raw.externalId) return null;
-  if (raw.publishedAt.getTime() < minDate) return null;
+  // The district's own page posts rarely — keep two months of it for context.
+  const oldest = raw.alwaysRelevant ? minDate - (OWN_SOURCE_MAX_AGE_MS - MAX_ITEM_AGE_MS) : minDate;
+  if (raw.publishedAt.getTime() < oldest) return null;
   const m = matchKeywords(raw.title, raw.text, s.keywords, s.weakKeywords, s.excludes);
-  const relevance = relevanceFromMatch(m, !!raw.viaSearch);
+  // The district's own hokimligi page is about the district by definition.
+  const relevance = raw.alwaysRelevant ? Math.max(95, relevanceFromMatch(m, false)) : relevanceFromMatch(m, !!raw.viaSearch);
   if (relevance === 0) return null;
   return {
     source: raw.source,
@@ -699,6 +713,7 @@ function toCandidate(
     fingerprint: fingerprintOf(raw.title),
     keywords: [...m.strong, ...m.weak],
     relevance,
+    official: raw.official === true,
     _text: raw.text,
   };
 }

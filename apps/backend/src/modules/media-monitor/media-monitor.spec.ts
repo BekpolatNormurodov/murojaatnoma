@@ -237,3 +237,48 @@ describe('instagram collector', () => {
     expect(r.skipped).toContain('INSTAGRAM_ACCESS_TOKEN');
   });
 });
+
+describe('gov.uz portal parser', () => {
+  it('reads the news list from the Next.js RSC payload', async () => {
+    const { parseGovUzNews } = await import('./collectors/gov-uz.parser');
+    const payload =
+      '6:["$","$f",null,{"children":["$","$L26",null,{"authority":"mirzoulugbek","data":{"data":[' +
+      '{"id":222547,"date":"2026-09-22 17:20:00","title":"Shaxsiy qabullar \\"yechim\\" [1]","anons":"Hokim o‘rinbosarlari qabul o‘tkazdi.","views":330,"anons_image":"https://api-portal.gov.uz/a.jpg"},' +
+      '{"id":222548,"date":"2026-09-04 10:50:00","title":"Ikkinchi","anons":"","views":5,"anons_image":""}' +
+      '],"total":2}}]}]';
+    // Split across two pushes like the real page does.
+    const half = Math.floor(payload.length / 2);
+    const html =
+      `<script>self.__next_f.push([1,${JSON.stringify(payload.slice(0, half))}])</script>` +
+      `<script>self.__next_f.push([1,${JSON.stringify(payload.slice(half))}])</script>`;
+    const items = parseGovUzNews(html, { slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true }, new Date('2026-10-01T00:00:00Z'));
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({
+      source: 'gov:mirzoulugbek',
+      externalId: '222547',
+      url: 'https://gov.uz/oz/mirzoulugbek/news/view/222547',
+      title: 'Shaxsiy qabullar "yechim" [1]',
+      text: 'Hokim o‘rinbosarlari qabul o‘tkazdi.',
+      imageUrl: 'https://api-portal.gov.uz/a.jpg',
+      views: 330,
+      official: true,
+      alwaysRelevant: true,
+    });
+    // Local Tashkent time → UTC
+    expect(items[0].publishedAt.toISOString()).toBe('2026-09-22T12:20:00.000Z');
+    expect(items[1].imageUrl).toBeUndefined();
+    expect(parseGovUzNews('<html></html>', { slug: 'x', name: 'x', own: false })).toEqual([]);
+  });
+});
+
+describe('official Google results', () => {
+  it('drops portal pages that are just the agency name or contacts', async () => {
+    const { isPortalPage } = await import('./collectors/collectors');
+    expect(isPortalPage('Тошкент шаҳар Мирзо Улуғбек тумани ҳокимлиги')).toBe(true);
+    expect(isPortalPage('Хокимият Мирзо-Улугбекского района города Ташкента')).toBe(true);
+    expect(isPortalPage('Контакты')).toBe(true);
+    expect(isPortalPage("Mirzo Ulug'bek tumanida yangi maktab foydalanishga topshirildi")).toBe(false);
+    expect(isPortalPage('В Мирзо-Улугбекском районе внедряется цифровое управление и новая модель безопасности')).toBe(false);
+    expect(isPortalPage('ЛИЧНЫЕ ПРИЁМЫ — ОСНОВА ДЛЯ РЕШЕНИЯ ПРОБЛЕМ')).toBe(false);
+  });
+});

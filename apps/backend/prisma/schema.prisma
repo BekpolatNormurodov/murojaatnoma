@@ -1338,6 +1338,8 @@ model MediaItem {
   aiSummary   String?         @db.Text
   /// "ai" (Claude) or "rules" (offline lexicon) — so the UI can say how it was scored.
   analyzedBy  String?
+  /// Published by a state body (gov.uz agency, President's press office, UzA, parliament, hokimlik).
+  official    Boolean         @default(false)
   status      MediaItemStatus @default(new)
 
   @@unique([source, externalId])

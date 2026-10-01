@@ -39,6 +39,8 @@ export interface MediaItem {
   aiSummary: string | null;
   analyzedBy: 'ai' | 'rules' | null;
   status: MediaStatus;
+  /** Published by a state body (gov.uz, President's press office, UzA, parliament, hokimlik). */
+  official: boolean;
 }
 
 export interface MediaDigest {
@@ -100,6 +102,7 @@ export interface MediaOverview {
     negative: number;
     important: number;
     unseen: number;
+    official: number;
     previous: number;
   };
   platforms: Record<MediaPlatform, number>;
@@ -125,6 +128,8 @@ export interface MediaFilters {
   topic?: string;
   source?: string;
   q?: string;
+  /** official = state bodies, media = news outlets. */
+  kind?: 'official' | 'media';
   /** 0 ⇒ also weakly-related items. */
   minRelevance?: number;
 }
@@ -134,6 +139,14 @@ export interface MediaFeedConfig {
   name: string;
   url: string;
   enabled: boolean;
+  official?: boolean;
+}
+
+export interface GovAuthority {
+  slug: string;
+  name: string;
+  /** The district's own hokimligi — every post counts. */
+  own: boolean;
 }
 
 export interface MediaSettings {
@@ -142,6 +155,9 @@ export interface MediaSettings {
   excludes: string[];
   rssFeeds: MediaFeedConfig[];
   telegramChannels: string[];
+  officialTelegramChannels: string[];
+  govAuthorities: GovAuthority[];
+  googleNewsSites: string[];
   youtubeChannels: string[];
   youtubeQuery: string;
   instagramHashtags: string[];
@@ -193,6 +209,16 @@ export function useMediaItems(f: MediaFilters) {
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     refetchInterval: FALLBACK_POLL_MS,
+  });
+}
+
+/** Per-source health of the last run (settings modal → Holat). */
+export function useMediaStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['media', 'status'],
+    queryFn: () => api.get<MediaStatusInfo>('/media/status'),
+    enabled,
+    refetchInterval: (q) => (q.state.data?.running ? 3_000 : 30_000),
   });
 }
 

@@ -6,6 +6,7 @@ import { timeAgo } from '@/shared/lib/format';
 import { useMediaLive, useMediaOverview } from './api';
 import { SentimentBar } from './MediaDigestCard';
 import { SourceLogo } from './MediaIcons';
+import { OfficialBadge } from './MediaItemCard';
 import { PLATFORMS, PLATFORM_META, SENTIMENT_META, aiModelLabel, shortTime } from './meta';
 
 /**
@@ -132,7 +133,8 @@ export function MediaDashboardWidget() {
                             </p>
                             <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-muted">
                               <s.Icon size={12} color={s.color} variant="Bold" />
-                              <span className="truncate">{it.sourceName}</span> · {shortTime(it.publishedAt)}
+                              <span className="truncate">{it.sourceName}</span>
+                              {it.official && <OfficialBadge compact />} · {shortTime(it.publishedAt)}
                             </p>
                           </div>
                           <ExportSquare size={15} className="mt-0.5 shrink-0 text-ink-muted opacity-0 transition-opacity group-hover:opacity-100" />

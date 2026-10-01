@@ -1,18 +1,21 @@
 import { useState } from 'react';
-import { Add, CloseCircle, Global, InfoCircle, Key, MagicStar, SearchNormal1, TickCircle, Trash, Warning2 } from 'iconsax-react';
+import { Add, Bank, CloseCircle, Global, InfoCircle, Key, MagicStar, SearchNormal1, ShieldTick, TickCircle, Trash, Warning2 } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Switch } from '@/shared/ui/Switch';
 import { cn } from '@/shared/lib/cn';
-import type { MediaFeedConfig, MediaSettings, MediaSettingsView } from './api';
+import type { GovAuthority, MediaFeedConfig, MediaSettings, MediaSettingsView } from './api';
 import { useMediaSettings, useSaveMediaSettings } from './api';
 import { PLATFORM_META } from './meta';
+import { SourcesStatus } from './SourcesStatus';
 
-type Tab = 'keywords' | 'sources' | 'keys';
+export type SettingsTab = 'keywords' | 'sources' | 'status' | 'keys';
+type Tab = SettingsTab;
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'keywords', label: "Kalit so'zlar" },
   { key: 'sources', label: 'Manbalar' },
+  { key: 'status', label: 'Holat' },
   { key: 'keys', label: 'Integratsiyalar' },
 ];
 
@@ -57,7 +60,7 @@ function SettingsBody({ onClose, canEdit, initialTab }: { onClose: () => void; c
         ))}
       </div>
 
-      {!canEdit && (
+      {!canEdit && tab !== 'status' && (
         <p className="mb-4 flex items-start gap-2 rounded-xl bg-info-soft p-3 text-[13px] text-accent-700 dark:bg-accent-500/10 dark:text-accent-300">
           <InfoCircle size={18} className="shrink-0" /> Faqat bosh administrator o'zgartira oladi — siz ko'rish rejimidasiz.
         </p>
@@ -105,7 +108,10 @@ function SettingsForm({
 
   return (
     <>
-      {tab === 'keywords' ? (
+      {tab === 'status' ? (
+        // Read-only: health of every source from the last run (draft edits stay intact).
+        <SourcesStatus />
+      ) : tab === 'keywords' ? (
         <div className="space-y-5">
           <Field
             label="Asosiy kalit so'zlar"
@@ -138,6 +144,21 @@ function SettingsForm({
         </div>
       ) : tab === 'sources' ? (
         <div className="space-y-6">
+          {/* State bodies first — their posts get the «Rasmiy» badge. */}
+          <Section icon={<ShieldTick size={16} variant="Bold" />} color="#2563eb" title="Davlat manbalari" note="«Rasmiy» belgisi bilan ko'rinadi">
+            <Field
+              label="Hukumat portali (gov.uz) sahifalari"
+              hint="gov.uz/oz/<nom> — RSS yo'q, yangiliklar sahifadan o'qiladi. «Tuman o'zi» belgilansa, kalit so'zsiz hammasi olinadi."
+            >
+              <GovList items={draft.govAuthorities} onChange={(v) => set('govAuthorities', v)} disabled={!canEdit} />
+            </Field>
+            <Field label="Rasmiy Telegram kanallar" hint="Prezident matbuot kotibi, UzA, parlament, shahar hokimligi, prokuratura ...">
+              <TagInput value={draft.officialTelegramChannels} onChange={(v) => set('officialTelegramChannels', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Rasmiy saytlar (Google News orqali)" hint="Bu domenlarda tuman haqida chiqqan sahifalar qidiriladi.">
+              <TagInput value={draft.googleNewsSites} onChange={(v) => set('googleNewsSites', v)} disabled={!canEdit} placeholder="masalan: tashkent.uz" />
+            </Field>
+          </Section>
           <Section icon={<PLATFORM_META.web.Icon size={16} />} color={PLATFORM_META.web.color} title="Yangilik saytlari (RSS)">
             <FeedList feeds={draft.rssFeeds} onChange={(v) => set('rssFeeds', v)} disabled={!canEdit} />
           </Section>
@@ -179,7 +200,7 @@ function SettingsForm({
         </p>
       )}
 
-      {canEdit && (
+      {canEdit && tab !== 'status' && (
         <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 flex flex-wrap items-center gap-2 border-t border-line bg-surface px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
           <Button variant="ghost" size="sm" onClick={() => setDraft(structuredClone(data.defaults))}>
             Standart holat
@@ -334,6 +355,99 @@ function TagInput({
   );
 }
 
+/** gov.uz agency pages: slug + display name + "the district itself" flag. */
+function GovList({
+  items,
+  onChange,
+  disabled,
+}: {
+  items: GovAuthority[];
+  onChange: (v: GovAuthority[]) => void;
+  disabled?: boolean;
+}) {
+  const [slug, setSlug] = useState('');
+  const [name, setName] = useState('');
+  const clean = slug
+    .trim()
+    .replace(/^https?:\/\/(www\.)?gov\.uz\/(oz|uz|ru|en)\//i, '')
+    .replace(/\/.*$/, '')
+    .toLowerCase();
+  const valid = /^[a-z0-9-]{2,60}$/.test(clean) && !items.some((i) => i.slug === clean);
+  const add = () => {
+    if (!valid) return;
+    onChange([...items, { slug: clean, name: name.trim() || clean, own: false }]);
+    setSlug('');
+    setName('');
+  };
+  return (
+    <div className="space-y-2">
+      {items.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
+          {items.map((a) => (
+            <li key={a.slug} className="flex items-center gap-3 px-3 py-2.5">
+              <Bank size={16} className="shrink-0 text-accent-600" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-medium text-ink">{a.name}</p>
+                <a
+                  href={`https://gov.uz/oz/${a.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-xs text-ink-muted hover:text-primary-700 hover:underline"
+                >
+                  gov.uz/oz/{a.slug}
+                </a>
+              </div>
+              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-ink-soft" title="Tumanning o'z sahifasi — hamma yangiligi tumanga oid">
+                <input
+                  type="checkbox"
+                  checked={a.own}
+                  disabled={disabled}
+                  onChange={(e) => onChange(items.map((x) => (x.slug === a.slug ? { ...x, own: e.target.checked } : x)))}
+                  className="h-4 w-4 rounded accent-primary-600"
+                />
+                Tuman o'zi
+              </label>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onChange(items.filter((x) => x.slug !== a.slug))}
+                  aria-label={`${a.name} ni o'chirish`}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-red-600"
+                >
+                  <Trash size={16} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!disabled && (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="gov.uz havola yoki nom (masalan: tashkent)"
+            aria-label="gov.uz sahifa"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-primary-400"
+          />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="Ko'rinadigan nomi"
+            aria-label="Nomi"
+            className="h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-primary-400 sm:w-48"
+          />
+          <Button variant="secondary" onClick={add} disabled={!valid}>
+            <Add size={16} /> Qo'shish
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FeedList({
   feeds,
   onChange,
@@ -363,9 +477,22 @@ function FeedList({
           <li key={f.key} className="flex items-center gap-3 px-3 py-2.5">
             <Global size={16} className="shrink-0 text-ink-muted" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium text-ink">{f.name}</p>
+              <p className="flex items-center gap-1.5 truncate text-[13px] font-medium text-ink">
+                {f.name}
+                {f.official && <ShieldTick size={13} variant="Bold" className="shrink-0 text-accent-600" aria-label="Rasmiy" />}
+              </p>
               <p className="truncate text-xs text-ink-muted">{f.url}</p>
             </div>
+            <label className="hidden shrink-0 cursor-pointer items-center gap-1.5 text-xs text-ink-soft sm:flex" title="Davlat nashri — «Rasmiy» belgisi">
+              <input
+                type="checkbox"
+                checked={!!f.official}
+                disabled={disabled}
+                onChange={(e) => onChange(feeds.map((x) => (x.key === f.key ? { ...x, official: e.target.checked } : x)))}
+                className="h-4 w-4 rounded accent-accent-600"
+              />
+              Rasmiy
+            </label>
             <Switch
               checked={f.enabled}
               disabled={disabled}

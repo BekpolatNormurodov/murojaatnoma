@@ -1,10 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { ArrowDown2, Eye, EyeSlash, ExportSquare, MagicStar, Star1, TickCircle } from 'iconsax-react';
+import { ArrowDown2, Eye, EyeSlash, ExportSquare, MagicStar, ShieldTick, Star1, TickCircle } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import { formatCompact } from '@/shared/lib/format';
 import type { MediaItem, MediaSentiment, MediaStatus } from './api';
 import { Highlight, SourceLogo } from './MediaIcons';
-import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, fullTime, shortTime } from './meta';
+import { PLATFORM_META, SENTIMENT_META, SENTIMENTS, clock, freshAgo, fullTime } from './meta';
 
 interface Props {
   item: MediaItem;
@@ -14,6 +14,8 @@ interface Props {
   onSentiment: (id: string, sentiment: MediaSentiment) => void;
   onOpen?: (item: MediaItem) => void;
   onTopic?: (topic: string) => void;
+  /** Ticks every minute so "12 daqiqa oldin" stays true. */
+  now?: number;
 }
 
 /**
@@ -28,7 +30,9 @@ export const MediaItemCard = memo(function MediaItemCard({
   onSentiment,
   onOpen,
   onTopic,
+  now,
 }: Props) {
+  const ago = freshAgo(item.publishedAt, now);
   const [imgFailed, setImgFailed] = useState(false);
   const platform = PLATFORM_META[item.platform] ?? PLATFORM_META.web;
   const senti = SENTIMENT_META[item.sentiment];
@@ -87,10 +91,12 @@ export const MediaItemCard = memo(function MediaItemCard({
       <div className="flex min-w-0 items-center gap-1.5 text-xs text-ink-muted [grid-area:src]">
         <SourceLogo item={item} size={16} />
         <span className="min-w-0 truncate font-medium text-ink-soft">{item.sourceName}</span>
+        {item.official && <OfficialBadge />}
         <span aria-hidden="true">·</span>
-        <time dateTime={item.publishedAt} title={fullTime(item.publishedAt)} className="shrink-0 tabular-nums">
-          {shortTime(item.publishedAt)}
+        <time dateTime={item.publishedAt} title={fullTime(item.publishedAt)} className="shrink-0 font-semibold tabular-nums text-ink-soft">
+          {clock(item.publishedAt)}
         </time>
+        {ago && <span className="hidden shrink-0 sm:inline">· {ago}</span>}
         {item.views ? (
           <span className="hidden shrink-0 items-center gap-0.5 sm:inline-flex" title="Ko'rishlar">
             <span aria-hidden="true">·</span>
@@ -188,6 +194,19 @@ export const MediaItemCard = memo(function MediaItemCard({
     </article>
   );
 });
+
+/** State body (gov.uz, President's press office, UzA, parliament, hokimlik). */
+export function OfficialBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-accent-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-accent-700 ring-1 ring-accent-200 dark:bg-accent-500/15 dark:text-accent-300 dark:ring-accent-500/30"
+      title="Rasmiy davlat manbasi"
+    >
+      <ShieldTick size={11} variant="Bold" />
+      {!compact && 'Rasmiy'}
+    </span>
+  );
+}
 
 function IconAction({
   label,

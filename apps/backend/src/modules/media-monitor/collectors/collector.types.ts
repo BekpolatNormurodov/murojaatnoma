@@ -20,6 +20,10 @@ export interface RawMediaItem {
    * to contain the keyword, so a non-match still counts a little.
    */
   viaSearch?: boolean;
+  /** Published by a state body (gov.uz agency, President's press office, UzA, parliament, hokimlik). */
+  official?: boolean;
+  /** The district's own channel — relevant without a keyword match. */
+  alwaysRelevant?: boolean;
 }
 
 /** One collector run's outcome, shown on the "Manbalar" panel. */

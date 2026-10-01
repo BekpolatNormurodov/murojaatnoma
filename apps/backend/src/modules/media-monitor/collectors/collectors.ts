@@ -2,6 +2,7 @@ import { MediaSettings } from '../media-settings';
 import { decodeEntities, parseFeedDate } from '../media-text.util';
 import { RawMediaItem, SourceRunResult, errorText, fetchJson, fetchText } from './collector.types';
 import { parseFeed } from './feed.parser';
+import { GovAuthority, parseGovUzNews } from './gov-uz.parser';
 import { parseTelegramPreview } from './telegram.parser';
 
 /**
@@ -26,6 +27,7 @@ export async function collectRss(feed: MediaSettings['rssFeeds'][number], now: D
         imageUrl: e.imageUrl,
         author: e.author,
         publishedAt: parseFeedDate(e.published, now),
+        official: feed.official === true,
       }),
     );
   } catch (err) {
@@ -34,11 +36,11 @@ export async function collectRss(feed: MediaSettings['rssFeeds'][number], now: D
   return base;
 }
 
-export async function collectTelegram(channel: string, now: Date): Promise<SourceRunResult> {
+export async function collectTelegram(channel: string, now: Date, official = false): Promise<SourceRunResult> {
   const base: SourceRunResult = { key: `tg:${channel.toLowerCase()}`, name: `@${channel}`, platform: 'telegram', items: [] };
   try {
     const html = await fetchText(`https://t.me/s/${encodeURIComponent(channel)}`);
-    base.items = parseTelegramPreview(html, channel, now);
+    base.items = parseTelegramPreview(html, channel, now).map((i) => ({ ...i, official }));
     if (base.items[0]) base.name = base.items[0].sourceName;
     else if (!html.includes('tgme_widget_message')) base.error = 'Kanal topilmadi yoki yopiq';
   } catch (err) {
@@ -74,6 +76,59 @@ export async function collectGoogleNews(query: string, firstRun: boolean, now: D
         viaSearch: true,
       };
     });
+  } catch (err) {
+    base.error = errorText(err);
+  }
+  return base;
+}
+
+/**
+ * The same district query, restricted to official domains (gov.uz,
+ * president.uz, tashkent.uz, parliament ...). Those portals publish no RSS,
+ * but Google indexes them — this is how hokimlik / ministry pages get in.
+ */
+export async function collectGoogleNewsOfficial(
+  query: string,
+  sites: string[],
+  firstRun: boolean,
+  now: Date,
+): Promise<SourceRunResult> {
+  const base: SourceRunResult = { key: 'google-official', name: 'Google News · davlat saytlari', platform: 'web', items: [] };
+  if (!query || !sites.length) return { ...base, skipped: "Davlat saytlari ro'yxati bo'sh" };
+  const siteExpr = sites.map((s) => `site:${s}`).join(' OR ');
+  const r = await collectGoogleNews(`(${query}) (${siteExpr})`, firstRun, now);
+  return {
+    ...base,
+    error: r.error,
+    skipped: r.skipped,
+    items: r.items
+      // Portal chrome pages ("Kontaktlar", "Rahbariyat") are not news.
+      .filter((i) => !isPortalPage(i.title))
+      .map((i) => ({ ...i, source: 'google-official', official: true })),
+  };
+}
+
+const STATIC_PAGE = /^(контакт|руководств|rahbariyat|aloqa|kontakt|biz haqimizda|о нас|haqida|tuzilma|структура|vakansiya|вакансии)/i;
+const AGENCY_NAME = /(hokimligi|ҳокимлиги|хокимлиги|hokimiyati|хокимият|ҳокимият|администрац)/i;
+
+/**
+ * Portal chrome, not news: "Kontaktlar", "Rahbariyat", or a title that is only
+ * the agency's own name ("Тошкент шаҳар Мирзо Улуғбек тумани ҳокимлиги").
+ */
+export function isPortalPage(title: string): boolean {
+  const t = title.trim();
+  if (STATIC_PAGE.test(t)) return true;
+  const words = t.split(/\s+/).filter(Boolean).length;
+  return words <= 8 && AGENCY_NAME.test(t) && !/[!?:«»"“”]/.test(t);
+}
+
+/** An agency's news list on the Government portal (gov.uz/oz/<slug>/news/news). */
+export async function collectGovUz(authority: GovAuthority, now: Date): Promise<SourceRunResult> {
+  const base: SourceRunResult = { key: `gov:${authority.slug}`, name: authority.name, platform: 'web', items: [] };
+  try {
+    const html = await fetchText(`https://gov.uz/oz/${encodeURIComponent(authority.slug)}/news/news`);
+    base.items = parseGovUzNews(html, authority, now);
+    if (!base.items.length) base.error = "Sahifadan yangilik o'qilmadi (gov.uz tuzilishi o'zgargan bo'lishi mumkin)";
   } catch (err) {
     base.error = errorText(err);
   }

@@ -1,3 +1,7 @@
+import type { GovAuthority } from './collectors/gov-uz.parser';
+
+export type { GovAuthority };
+
 /**
  * What the monitor watches and for which words. Stored as one JSON row
  * (media_settings.key = "config") so the hokimiyat can tune keywords and
@@ -9,6 +13,8 @@ export interface MediaFeedConfig {
   name: string;
   url: string;
   enabled: boolean;
+  /** A state outlet (UzA, gov.uz ...) — items get the "Rasmiy" badge. */
+  official?: boolean;
 }
 
 export interface MediaSettings {
@@ -21,6 +27,12 @@ export interface MediaSettings {
   rssFeeds: MediaFeedConfig[];
   /** Public Telegram channel usernames (read via t.me/s/<name>, no token). */
   telegramChannels: string[];
+  /** Telegram channels of state bodies (President's press secretary, UzA, parliament, city hokimligi ...). */
+  officialTelegramChannels: string[];
+  /** Agency pages on the Government portal gov.uz (no RSS there — read from the page). */
+  govAuthorities: GovAuthority[];
+  /** Official domains for a second, site-restricted Google News search. */
+  googleNewsSites: string[];
   /** YouTube channel ids (UC...) read via their public RSS, no key needed. */
   youtubeChannels: string[];
   /** YouTube Data API search query (only with YOUTUBE_API_KEY). */
@@ -61,14 +73,34 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     { key: 'daryo-ru', name: 'Daryo (ru)', url: 'https://daryo.uz/ru/rss/', enabled: true },
     { key: 'gazeta', name: 'Gazeta.uz', url: 'https://www.gazeta.uz/uz/rss/', enabled: true },
     { key: 'gazeta-ru', name: 'Gazeta.uz (ru)', url: 'https://www.gazeta.uz/ru/rss/', enabled: true },
-    { key: 'uza', name: 'UzA', url: 'https://uza.uz/uz/rss', enabled: true },
-    { key: 'uza-ru', name: 'UzA (ru)', url: 'https://uza.uz/ru/rss', enabled: true },
+    { key: 'uza', name: 'UzA', url: 'https://uza.uz/uz/rss', enabled: true, official: true },
+    { key: 'uza-ru', name: 'UzA (ru)', url: 'https://uza.uz/ru/rss', enabled: true, official: true },
     { key: 'podrobno', name: 'Podrobno.uz', url: 'https://podrobno.uz/rss/', enabled: true },
     { key: 'uznews', name: 'UzNews', url: 'https://www.uznews.uz/rss', enabled: true },
     { key: 'xabar', name: 'Xabar.uz', url: 'https://xabar.uz/uz/rss', enabled: true },
     { key: 'spot', name: 'Spot.uz', url: 'https://www.spot.uz/rss/', enabled: true },
+    { key: 'nuz', name: 'Nuz.uz', url: 'https://nuz.uz/feed', enabled: true },
+    { key: 'aniq', name: 'Aniq.uz', url: 'https://aniq.uz/rss', enabled: true },
+    { key: 'zamin', name: 'Zamin.uz', url: 'https://zamin.uz/rss.xml', enabled: true },
+    { key: 'review', name: 'Review.uz', url: 'https://review.uz/rss', enabled: true },
+    { key: 'uzdaily', name: 'UzDaily', url: 'https://uzdaily.uz/uz/rss', enabled: true },
+    { key: 'hook', name: 'Hook.report', url: 'https://hook.report/feed', enabled: true },
   ],
-  telegramChannels: ['kunuzofficial', 'daryo', 'gazetauz', 'uznews', 'qalampir', 'spotuz'],
+  telegramChannels: ['kunuzofficial', 'daryo', 'gazetauz', 'uznews', 'qalampir', 'spotuz', 'aniquz', 'zaminuz'],
+  // Verified 2026-10-01 (official names, active): President's press secretary,
+  // UzA, O'zbekiston 24, Qonunchilik palatasi, Senat, Toshkent shahar hokimligi
+  // matbuot xizmati, Bosh prokuratura.
+  officialTelegramChannels: [
+    'Press_Secretary_Uz',
+    'uza_uz',
+    'uzbekistan24',
+    'qonunchilikpalatasi',
+    'senatuz',
+    'poytaxt_uz',
+    'prokuratura_uz',
+  ],
+  govAuthorities: [{ slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true }],
+  googleNewsSites: ['gov.uz', 'president.uz', 'tashkent.uz', 'parliament.gov.uz', 'senat.uz', 'yuz.uz', 'xs.uz'],
   // Official channels (verified 2026-10-01): KunUZ, Daryo, Gazeta.uz (uz), Gazeta.uz (ru), UzA.
   youtubeChannels: [
     'UCVPst_iSyaVYpuOP4ogRhlw',
@@ -98,6 +130,11 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     excludes: uniq(s.excludes ?? d.excludes),
     rssFeeds: (s.rssFeeds ?? d.rssFeeds).filter((f) => f && f.key && /^https?:\/\//i.test(f.url)),
     telegramChannels: uniq((s.telegramChannels ?? d.telegramChannels).map(cleanHandle)),
+    officialTelegramChannels: uniq((s.officialTelegramChannels ?? d.officialTelegramChannels).map(cleanHandle)),
+    govAuthorities: (s.govAuthorities ?? d.govAuthorities)
+      .filter((a) => a && /^[a-z0-9-]{2,60}$/.test(a.slug))
+      .map((a) => ({ slug: a.slug, name: (a.name || a.slug).trim(), own: a.own === true })),
+    googleNewsSites: uniq((s.googleNewsSites ?? d.googleNewsSites).map((x) => x.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase())),
     youtubeChannels: uniq(s.youtubeChannels ?? d.youtubeChannels),
     youtubeQuery: (s.youtubeQuery ?? d.youtubeQuery).trim(),
     instagramHashtags: uniq((s.instagramHashtags ?? d.instagramHashtags).map((h) => h.replace(/^#/, ''))),

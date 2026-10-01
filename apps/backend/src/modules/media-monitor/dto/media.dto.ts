@@ -60,6 +60,11 @@ export class ListMediaQueryDto extends MediaOverviewQueryDto {
   @MaxLength(60)
   topic?: string;
 
+  @ApiPropertyOptional({ enum: ['official', 'media'], description: 'Rasmiy (davlat) manbalar yoki OAV' })
+  @IsOptional()
+  @IsIn(['official', 'media'])
+  kind?: 'official' | 'media';
+
   @ApiPropertyOptional({ example: 'tg:daryo', description: 'MediaItem.source' })
   @IsOptional()
   @IsString()
@@ -125,6 +130,25 @@ export class MediaFeedDto {
   @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.enabled)
   @IsBoolean()
   enabled!: boolean;
+
+  @IsOptional()
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.official)
+  @IsBoolean()
+  official?: boolean;
+}
+
+export class GovAuthorityDto {
+  @Matches(/^[a-z0-9-]{2,60}$/, { message: 'gov.uz manzil qismi (masalan: mirzoulugbek)' })
+  slug!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  name!: string;
+
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.own)
+  @IsBoolean()
+  own!: boolean;
 }
 
 /** Optional list of short phrases (keywords, channels, hashtags). */
@@ -155,6 +179,25 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String] })
   @WordList()
   telegramChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @WordList()
+  officialTelegramChannels?: string[];
+
+  @ApiPropertyOptional({ type: [GovAuthorityDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => GovAuthorityDto)
+  govAuthorities?: GovAuthorityDto[];
+
+  @ApiPropertyOptional({ type: [String], example: ['gov.uz', 'president.uz'] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @Matches(/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}\/?$/i, { each: true, message: 'Domen: masalan gov.uz' })
+  googleNewsSites?: string[];
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()

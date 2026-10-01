@@ -88,6 +88,44 @@ export function shortTime(iso: string): string {
   return `${d.getDate()}-${UZ_MONTHS[d.getMonth()]} ${hm}`;
 }
 
+const UZ_MONTHS_FULL = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+const UZ_WEEKDAYS = ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'];
+
+/** "14:05" */
+export function clock(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Local calendar day, for grouping the feed. */
+export function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/** "Bugun" / "Kecha" / "29-sentabr, seshanba" (+ year when not this year). */
+export function dayLabel(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const same = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+  if (same(d, now)) return 'Bugun';
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  if (same(d, y)) return 'Kecha';
+  const year = d.getFullYear() !== now.getFullYear() ? ` ${d.getFullYear()}` : '';
+  return `${d.getDate()}-${UZ_MONTHS_FULL[d.getMonth()]}${year}, ${UZ_WEEKDAYS[d.getDay()]}`;
+}
+
+/** "hozirgina" / "12 daqiqa oldin" / "3 soat oldin" — only for the last 24 h, else null. */
+export function freshAgo(iso: string, now = Date.now()): string | null {
+  const diff = now - new Date(iso).getTime();
+  if (!(diff >= 0) || diff > 24 * 3_600_000) return null;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'hozirgina';
+  if (mins < 60) return `${mins} daqiqa oldin`;
+  return `${Math.floor(mins / 60)} soat oldin`;
+}
+
 export function fullTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
