@@ -42,6 +42,17 @@ export interface KeywordMatch {
  * first, so "Mirzo Ulug'bek nomidagi universitet" does not count as the
  * district while "Mirzo Ulug'bek tumanida" still does.
  */
+/**
+ * Channel plumbing that is not content: @handles, t.me / instagram links and
+ * "Batafsil 👉 @kanal" sign-offs. @MIRZO_ULUGBEK at the foot of every post of
+ * that channel is a signature, not a mention of the district.
+ */
+export function stripHandles(s: string): string {
+  return s
+    .replace(/(?:https?:\/\/)?(?:t\.me|telegram\.me|instagram\.com|youtube\.com\/@)\/?[^\s)]*/gi, ' ')
+    .replace(/(^|[^\w])@[A-Za-z][\w.]{2,}/g, '$1 ');
+}
+
 export function matchKeywords(
   title: string,
   body: string,
@@ -50,7 +61,7 @@ export function matchKeywords(
   excludes: readonly string[],
 ): KeywordMatch {
   const strip = (s: string) => {
-    let out = ` ${normalizeText(s)} `;
+    let out = ` ${normalizeText(stripHandles(s))} `;
     for (const ex of excludes) {
       const n = normalizeText(ex);
       if (n) out = out.split(n).join(' ');

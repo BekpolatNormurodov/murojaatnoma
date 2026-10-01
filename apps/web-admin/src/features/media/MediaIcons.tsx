@@ -68,17 +68,32 @@ export function SourceLogo({
 }
 
 /** Highlights `term` inside `text` (case-insensitive) with <mark>. */
+/** Every spelling of the district's name: Mirzo Ulug‘bek / Ulugʻbek / Ulugbek / Улуғбек / Мирзо-Улугбекский ... */
+const DISTRICT = String.raw`(?:Mirzo[\s\-]*Ulu[gğ]['ʻʼ‘’\u0060]?bek|Мирзо[\s\-]*Улу[гғ]бек)[\p{L}]*`;
+
+/**
+ * Marks the district's name (green) — so every card shows *why* it is here —
+ * and the current search term (amber).
+ */
 export function Highlight({ text, term }: { text: string; term?: string }) {
   const t = term?.trim();
-  if (!t || t.length < 2) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'));
+  const termSrc = t && t.length >= 2 ? t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+  const re = new RegExp(`(${DISTRICT}${termSrc ? `|${termSrc}` : ''})`, 'giu');
+  const districtRe = new RegExp(`^${DISTRICT}$`, 'iu');
+  const parts = text.split(re);
   return (
     <>
       {parts.map((p, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded bg-amber-200/70 px-0.5 text-inherit dark:bg-amber-400/30">
-            {p}
-          </mark>
+          districtRe.test(p) ? (
+            <mark key={i} className="rounded bg-emerald-100 px-0.5 font-semibold text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200">
+              {p}
+            </mark>
+          ) : (
+            <mark key={i} className="rounded bg-amber-200/70 px-0.5 text-inherit dark:bg-amber-400/30">
+              {p}
+            </mark>
+          )
         ) : (
           p
         ),

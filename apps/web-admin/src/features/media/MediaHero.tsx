@@ -78,7 +78,7 @@ export function MediaHero({
               </span>
             </h1>
             <p className="mt-2 text-sm text-white/75">
-              {ov ? `${ov.status.sources.length} ta manba` : '40+ manba'} har 15 daqiqada o'qiladi
+              {ov?.status.sources.length ? `${ov.status.sources.length} ta manba` : '150+ manba'} har 15 daqiqada o'qiladi
               {last && <> · oxirgi yangilanish <b className="font-semibold text-white">{clock(last)}</b> ({timeAgo(last)})</>}
             </p>
           </div>

@@ -364,3 +364,14 @@ describe('youtube search listing filter', () => {
       expect(LISTING.test(t)).toBe(false);
   });
 });
+
+describe('channel signatures are not mentions', () => {
+  it('ignores @handles and t.me links when matching the district', () => {
+    const m1 = match('Октябрь ойида кутилаётган об-ҳаво эълон қилинди', 'Батафсил 👉 @MIRZO_ULUGBEK');
+    expect(m1.strong).toEqual([]);
+    expect(m1.weak).toEqual([]);
+    expect(match('Yangilik', 'Kanalga obuna: https://t.me/mirzo_ulugbek').weak).toEqual([]);
+    // a real mention next to the signature still counts
+    expect(match("Mirzo Ulug‘bek tumanida yo'l ta'mirlandi", 'Батафсил 👉 @MIRZO_ULUGBEK').strong.length).toBeGreaterThan(0);
+  });
+});

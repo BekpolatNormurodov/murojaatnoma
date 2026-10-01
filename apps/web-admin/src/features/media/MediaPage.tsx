@@ -4,11 +4,13 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import {
   ArrowDown2,
   Category,
+  Chart21,
   CloseCircle,
   DocumentText,
   EmojiHappy,
   Eye,
   FilterSearch,
+  Location,
   MagicStar,
   Radar,
   Refresh2,
@@ -18,6 +20,7 @@ import {
   TickSquare,
   Warning2,
 } from 'iconsax-react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
@@ -44,7 +47,8 @@ import { MediaLeadCard } from './MediaLeadCard';
 import { MediaItemCard } from './MediaItemCard';
 import { MediaSettingsModal, type SettingsTab } from './MediaSettingsModal';
 import { SourceLogo } from './MediaIcons';
-import { PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel } from './meta';
+import { PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel, shortTime } from './meta';
+import { formatCompact } from '@/shared/lib/format';
 
 /** Visible keyboard focus for every custom control on the page. */
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 focus-visible:ring-offset-surface';
@@ -81,7 +85,22 @@ export function MediaPage() {
   const now = useNow(60_000);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
-  const feedRef = useRef<HTMLDivElement>(null);
+  const feedRef = useRef<HTMLElement>(null);
+  const [params, setParams] = useSearchParams();
+  const tab: ViewTab = params.get('tab') === 'stats' ? 'stats' : 'news';
+  const setTab = useCallback(
+    (t: ViewTab) =>
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          if (t === 'stats') next.set('tab', 'stats');
+          else next.delete('tab');
+          return next;
+        },
+        { replace: true },
+      ),
+    [setParams],
+  );
 
   const toast = useCallback((text: string, tone: Toast['tone'] = 'ok') => {
     const id = Date.now() + Math.random();
@@ -174,9 +193,11 @@ export function MediaPage() {
     setSearch('');
   }
 
-  function scrollToFeed() {
-    feedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
+  /** Filters always land on the news view (stats cards and hero tiles call this). */
+  const scrollToFeed = useCallback(() => {
+    setTab('news');
+    window.setTimeout(() => feedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }, [setTab]);
 
   async function onRefresh() {
     try {
@@ -218,10 +239,13 @@ export function MediaPage() {
     },
     [canWrite, update],
   );
-  const onTopic = useCallback((t: string) => {
-    setTopic(t);
-    scrollToFeed();
-  }, []);
+  const onTopic = useCallback(
+    (t: string) => {
+      setTopic(t);
+      scrollToFeed();
+    },
+    [scrollToFeed],
+  );
 
   return (
     <div className="isolate">
@@ -253,9 +277,290 @@ export function MediaPage() {
         </button>
       )}
 
-      <HowItWorks sourceCount={ov?.status.sources.length} />
+      {/* News and statistics are separate views (?tab=stats keeps the link). */}
+      <ViewTabs tab={tab} onTab={setTab} newsCount={ov?.totals.all} unseen={ov?.totals.unseen} />
 
-      {overviewQ.isError && !ov ? (
+      {tab === 'news' ? (
+        <>
+          <HowItWorks sourceCount={ov?.status.sources.length} />
+          <section ref={feedRef} className="min-w-0 scroll-mt-20" aria-label="Xabarlar lentasi">
+              <Card className="p-4 sm:p-5">
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-ink">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-70 motion-safe:animate-ping" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+                      </span>
+                      Yangiliklar
+                    </h2>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft">
+                      <span
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30"
+                        title="Faqat «Mirzo Ulug'bek tumani» tilga olingan xabarlar. Aniq bo'lmaganlari — «Qo'shimcha filtrlar»da."
+                      >
+                        <Location size={13} variant="Bold" /> Mirzo Ulug'bek tumani haqida
+                      </span>
+                      <span>Eng so'nggisi tepada · Toshkent vaqti</span>
+                      {ov?.status.lastRun && <span>· {clock(ov.status.lastRun.finishedAt)} da yangilandi</span>}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Who is speaking: state bodies vs the press */}
+                <div role="tablist" aria-label="Manba turi" className="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
+                  {(
+                    [
+                      { key: undefined, label: 'Hammasi', short: 'Hammasi', icon: <Category size={16} />, n: ov?.totals.all },
+                      { key: 'official', label: 'Rasmiy manbalar', short: 'Rasmiy', icon: <ShieldTick size={16} variant="Bold" />, n: ov?.totals.official },
+                      { key: 'media', label: 'OAV va tarmoqlar', short: 'OAV', icon: <DocumentText size={16} />, n: ov ? ov.totals.all - ov.totals.official : undefined },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.label}
+                      role="tab"
+                      aria-selected={kind === t.key}
+                      onClick={() => setKind(t.key)}
+                      className={cn(
+                        'flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-[13px] font-semibold transition-colors sm:px-2',
+                        FOCUS,
+                        kind === t.key ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink',
+                        t.key === 'official' && kind === t.key && 'text-accent-700 dark:text-accent-300',
+                      )}
+                    >
+                      <span className="hidden sm:inline-flex">{t.icon}</span>
+                      <span className="sm:hidden">{t.short}</span>
+                      <span className="hidden truncate sm:inline">{t.label}</span>
+                      <Count n={t.n} />
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                  <SearchNormal1 size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-soft" />
+                  <input
+                    ref={searchRef}
+                    type="search"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Sarlavha, matn, manba yoki kalit so'z bo'yicha qidirish…"
+                    aria-label="Xabarlarni qidirish"
+                    className="h-11 w-full rounded-xl border border-line bg-surface-2 pl-10 pr-20 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-primary-400 focus:bg-surface focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20 [&::-webkit-search-cancel-button]:hidden"
+                  />
+                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                    {searchText ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchText('');
+                          setSearch('');
+                          searchRef.current?.focus();
+                        }}
+                        aria-label="Qidiruvni tozalash"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-line hover:text-ink"
+                      >
+                        <CloseCircle size={18} />
+                      </button>
+                    ) : (
+                      <kbd className="hidden rounded-md border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-ink-soft sm:block">/</kbd>
+                    )}
+                  </div>
+                </div>
+
+                {/* Platform chips */}
+                <div
+                  className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
+                  role="group"
+                  aria-label="Platforma"
+                >
+                  <Chip active={!platform} onClick={() => setPlatform(undefined)} icon={<Category size={15} variant={!platform ? 'Bold' : 'Linear'} />}>
+                    Hammasi
+                    <Count n={ov?.totals.all} />
+                  </Chip>
+                  {PLATFORMS.map((p) => {
+                    const m = PLATFORM_META[p];
+                    return (
+                      <Chip
+                        key={p}
+                        active={platform === p}
+                        onClick={() => setPlatform(platform === p ? undefined : p)}
+                        icon={
+                          <span style={{ color: platform === p ? undefined : m.color }}>
+                            <m.Icon size={15} />
+                          </span>
+                        }
+                      >
+                        {m.label}
+                        <Count n={ov?.platforms[p]} />
+                      </Chip>
+                    );
+                  })}
+                </div>
+
+                {/* Sentiment + advanced — always visible from sm, a disclosure on phones */}
+                <button
+                  type="button"
+                  onClick={() => setMoreFilters((v) => !v)}
+                  aria-expanded={moreFilters}
+                  aria-controls="media-more-filters"
+                  className={cn('mt-2 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-medium text-ink-soft sm:hidden', FOCUS)}
+                >
+                  <FilterSearch size={16} />
+                  Qo'shimcha filtrlar
+                  {secondaryActive > 0 && (
+                    <span className="rounded-md bg-primary-600 px-1.5 text-[11px] font-bold text-white">{secondaryActive}</span>
+                  )}
+                  <ArrowDown2 size={14} className={cn('transition-transform', moreFilters && 'rotate-180')} />
+                </button>
+                <div id="media-more-filters" className={cn('mt-2 flex-wrap items-center gap-1.5', moreFilters ? 'flex' : 'hidden sm:flex')}>
+                  {SENTIMENTS.map((s) => {
+                    const m = SENTIMENT_META[s];
+                    const on = sentiment === s;
+                    return (
+                      <Chip
+                        key={s}
+                        active={on}
+                        tone={s}
+                        onClick={() => setSentiment(on ? undefined : s)}
+                        icon={<m.Icon size={15} variant="Bold" color={on ? 'currentColor' : m.color} />}
+                      >
+                        {m.label}
+                        <Count n={ov?.totals[s]} />
+                      </Chip>
+                    );
+                  })}
+                  <Select
+                    value={status}
+                    onChange={(v) => setStatus(v as MediaStatus | '')}
+                    options={STATUS_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
+                    label="Holat"
+                  />
+                  <label
+                    className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-xl px-2.5 text-[13px] text-ink-soft hover:bg-surface-2"
+                    title="Tumanga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish (masalan, faqat «Mirzo Ulug'bek» deb yozilgan — olim, ko'cha yoki metro bo'lishi mumkin)"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={lowRelevance}
+                      onChange={(e) => setLowRelevance(e.target.checked)}
+                      className="h-4 w-4 rounded accent-primary-600"
+                    />
+                    Aniq bo'lmaganlar ham
+                  </label>
+                </div>
+
+                {/* Active filters summary */}
+                {(topic || source || activeFilters > 0) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
+                    <FilterSearch size={16} className="text-ink-soft" />
+                    {topic && <ActiveTag onClear={() => setTopic(undefined)}>Mavzu: {topic}</ActiveTag>}
+                    {source && <ActiveTag onClear={() => setSource(undefined)}>Manba: {source.name}</ActiveTag>}
+                    {search && (
+                      <ActiveTag
+                        onClear={() => {
+                          setSearchText('');
+                          setSearch('');
+                        }}
+                      >
+                        «{search}»
+                      </ActiveTag>
+                    )}
+                    {activeFilters > 0 && (
+                      <button type="button" onClick={clearFilters} className="ml-auto text-[13px] font-medium text-primary-700 hover:underline dark:text-primary-300">
+                        Filtrlarni tozalash
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Result header */}
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <p className="text-[13px] text-ink-soft" aria-live="polite">
+                    {itemsQ.isLoading ? 'Yuklanmoqda…' : <><b className="font-semibold text-ink tabular-nums">{total}</b> ta xabar</>}
+                    {itemsQ.isFetching && !itemsQ.isLoading && <span className="ml-2 text-ink-soft">yangilanmoqda…</span>}
+                  </p>
+                  {canWrite && (ov?.totals.unseen ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => markAll.mutate(undefined, { onSuccess: (r) => toast(`${r.updated} ta xabar ko'rildi deb belgilandi`) })}
+                      disabled={markAll.isPending}
+                      className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-ink-soft hover:bg-surface-2 hover:text-ink disabled:opacity-60"
+                    >
+                      <TickSquare size={16} /> Hammasini ko'rildi
+                    </button>
+                  )}
+                </div>
+
+                {/* List */}
+                <div className="mt-3 space-y-3">
+                  {itemsQ.isLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => <FeedSkeleton key={i} />)
+                  ) : items.length === 0 ? (
+                    <EmptyFeed
+                      filtered={activeFilters > 0}
+                      period={period}
+                      onClear={clearFilters}
+                      onWiden={() => setPeriod('30d')}
+                      onLow={() => setLowRelevance(true)}
+                      lowRelevance={lowRelevance}
+                    />
+                  ) : (
+                    <>
+                      {lead && <MediaLeadCard item={lead} search={search} now={now} onOpen={onOpen} />}
+                      {/* Phones/tablets: day separators. Desktop: one continuous 2-column grid
+                          (groups become display:contents), the day shown on each card. */}
+                      <div className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0 min-[1400px]:grid-cols-3">
+                      {groups.map((g) => (
+                        <Fragment key={g.key}>
+                          <div className="flex items-center gap-3 pt-2 xl:hidden">
+                            <span className={cn('text-xs font-bold uppercase tracking-wide', g.label === 'Bugun' ? 'text-primary-700 dark:text-primary-300' : 'text-ink-soft')}>
+                              {g.label}
+                            </span>
+                            <span className="h-px flex-1 bg-line" />
+                            <span className="text-[11px] tabular-nums text-ink-soft">{g.items.length} ta</span>
+                          </div>
+                          <div className="grid gap-3 xl:contents">
+                            {g.items.map((it, i) => (
+                              <motion.div
+                                key={it.id}
+                                className="h-full"
+                                initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3, delay: Math.min(i, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}
+                              >
+                                <MediaItemCard
+                                  item={it}
+                                  search={search}
+                                  canWrite={canWrite}
+                                  onStatus={onStatus}
+                                  onSentiment={onSentiment}
+                                  onOpen={onOpen}
+                                  onTopic={onTopic}
+                                  now={now}
+                                />
+                              </motion.div>
+                            ))}
+                          </div>
+                        </Fragment>
+                      ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {itemsQ.hasNextPage && (
+                  <div className="mt-4 flex justify-center">
+                    <Button variant="secondary" onClick={() => itemsQ.fetchNextPage()} disabled={itemsQ.isFetchingNextPage}>
+                      <ArrowDown2 size={16} />
+                      {itemsQ.isFetchingNextPage ? 'Yuklanmoqda…' : `Yana ko'rsatish (${total - items.length})`}
+                    </Button>
+                  </div>
+                )}
+              </Card>
+          </section>
+        </>
+      ) : overviewQ.isError && !ov ? (
         <Card className="flex flex-col items-center gap-3 p-10 text-center">
           <Warning2 size={36} variant="Bulk" className="text-danger" />
           <p className="font-semibold text-ink">Monitoring ma'lumotlarini yuklab bo'lmadi</p>
@@ -265,7 +570,7 @@ export function MediaPage() {
           </Button>
         </Card>
       ) : (
-        <>
+        <div className="space-y-5">
           {/* Digest + platforms */}
           <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             <div className="xl:col-span-2">
@@ -292,303 +597,41 @@ export function MediaPage() {
               }}
             />
           </div>
-        </>
+          {/* Trend + topics */}
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+            <div className="xl:col-span-2">
+              <TimelineCard ov={ov} loading={overviewQ.isLoading} tall />
+            </div>
+            <TopicsCard
+              ov={ov}
+              active={topic}
+              onPick={(t) => {
+                setTopic(topic === t ? undefined : t);
+                scrollToFeed();
+              }}
+            />
+          </div>
+          {/* Who writes, what is read most, official vs press */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            <TopSourcesCard
+              ov={ov}
+              active={source?.key}
+              onPick={(s) => {
+                setSource(source?.key === s.key ? undefined : s);
+                scrollToFeed();
+              }}
+            />
+            <TopViewedCard ov={ov} />
+            <KindCard
+              ov={ov}
+              onPick={(k) => {
+                setKind(k);
+                scrollToFeed();
+              }}
+            />
+          </div>
+        </div>
       )}
-
-      {/* Feed */}
-      <div ref={feedRef} className="mt-5 grid scroll-mt-20 grid-cols-1 gap-5 xl:grid-cols-3">
-        <section className="min-w-0 xl:col-span-2" aria-label="Xabarlar lentasi">
-          <Card className="p-4 sm:p-5">
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <h2 className="flex items-center gap-2 text-xl font-bold tracking-tight text-ink">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-70 motion-safe:animate-ping" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-                  </span>
-                  Yangiliklar
-                </h2>
-                <p className="mt-0.5 text-xs text-ink-soft">
-                  Eng so'nggisi tepada · vaqt Toshkent bo'yicha
-                  {ov?.status.lastRun && <> · {clock(ov.status.lastRun.finishedAt)} da yangilandi</>}
-                </p>
-              </div>
-            </div>
-
-            {/* Who is speaking: state bodies vs the press */}
-            <div role="tablist" aria-label="Manba turi" className="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-surface-2 p-1">
-              {(
-                [
-                  { key: undefined, label: 'Hammasi', short: 'Hammasi', icon: <Category size={16} />, n: ov?.totals.all },
-                  { key: 'official', label: 'Rasmiy manbalar', short: 'Rasmiy', icon: <ShieldTick size={16} variant="Bold" />, n: ov?.totals.official },
-                  { key: 'media', label: 'OAV va tarmoqlar', short: 'OAV', icon: <DocumentText size={16} />, n: ov ? ov.totals.all - ov.totals.official : undefined },
-                ] as const
-              ).map((t) => (
-                <button
-                  key={t.label}
-                  role="tab"
-                  aria-selected={kind === t.key}
-                  onClick={() => setKind(t.key)}
-                  className={cn(
-                    'flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-[13px] font-semibold transition-colors sm:px-2',
-                    FOCUS,
-                    kind === t.key ? 'bg-surface text-ink shadow-sm' : 'text-ink-soft hover:text-ink',
-                    t.key === 'official' && kind === t.key && 'text-accent-700 dark:text-accent-300',
-                  )}
-                >
-                  <span className="hidden sm:inline-flex">{t.icon}</span>
-                  <span className="sm:hidden">{t.short}</span>
-                  <span className="hidden truncate sm:inline">{t.label}</span>
-                  <Count n={t.n} />
-                </button>
-              ))}
-            </div>
-
-            {/* Search */}
-            <div className="relative">
-              <SearchNormal1 size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-soft" />
-              <input
-                ref={searchRef}
-                type="search"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Sarlavha, matn, manba yoki kalit so'z bo'yicha qidirish…"
-                aria-label="Xabarlarni qidirish"
-                className="h-11 w-full rounded-xl border border-line bg-surface-2 pl-10 pr-20 text-sm text-ink outline-none transition placeholder:text-ink-muted focus:border-primary-400 focus:bg-surface focus:ring-2 focus:ring-primary-100 dark:focus:ring-primary-500/20 [&::-webkit-search-cancel-button]:hidden"
-              />
-              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                {searchText ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSearchText('');
-                      setSearch('');
-                      searchRef.current?.focus();
-                    }}
-                    aria-label="Qidiruvni tozalash"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft hover:bg-line hover:text-ink"
-                  >
-                    <CloseCircle size={18} />
-                  </button>
-                ) : (
-                  <kbd className="hidden rounded-md border border-line bg-surface px-1.5 py-0.5 text-[11px] font-medium text-ink-soft sm:block">/</kbd>
-                )}
-              </div>
-            </div>
-
-            {/* Platform chips */}
-            <div
-              className="-mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden"
-              role="group"
-              aria-label="Platforma"
-            >
-              <Chip active={!platform} onClick={() => setPlatform(undefined)} icon={<Category size={15} variant={!platform ? 'Bold' : 'Linear'} />}>
-                Hammasi
-                <Count n={ov?.totals.all} />
-              </Chip>
-              {PLATFORMS.map((p) => {
-                const m = PLATFORM_META[p];
-                return (
-                  <Chip
-                    key={p}
-                    active={platform === p}
-                    onClick={() => setPlatform(platform === p ? undefined : p)}
-                    icon={
-                      <span style={{ color: platform === p ? undefined : m.color }}>
-                        <m.Icon size={15} />
-                      </span>
-                    }
-                  >
-                    {m.label}
-                    <Count n={ov?.platforms[p]} />
-                  </Chip>
-                );
-              })}
-            </div>
-
-            {/* Sentiment + advanced — always visible from sm, a disclosure on phones */}
-            <button
-              type="button"
-              onClick={() => setMoreFilters((v) => !v)}
-              aria-expanded={moreFilters}
-              aria-controls="media-more-filters"
-              className={cn('mt-2 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-medium text-ink-soft sm:hidden', FOCUS)}
-            >
-              <FilterSearch size={16} />
-              Qo'shimcha filtrlar
-              {secondaryActive > 0 && (
-                <span className="rounded-md bg-primary-600 px-1.5 text-[11px] font-bold text-white">{secondaryActive}</span>
-              )}
-              <ArrowDown2 size={14} className={cn('transition-transform', moreFilters && 'rotate-180')} />
-            </button>
-            <div id="media-more-filters" className={cn('mt-2 flex-wrap items-center gap-1.5', moreFilters ? 'flex' : 'hidden sm:flex')}>
-              {SENTIMENTS.map((s) => {
-                const m = SENTIMENT_META[s];
-                const on = sentiment === s;
-                return (
-                  <Chip
-                    key={s}
-                    active={on}
-                    tone={s}
-                    onClick={() => setSentiment(on ? undefined : s)}
-                    icon={<m.Icon size={15} variant="Bold" color={on ? 'currentColor' : m.color} />}
-                  >
-                    {m.label}
-                    <Count n={ov?.totals[s]} />
-                  </Chip>
-                );
-              })}
-              <Select
-                value={status}
-                onChange={(v) => setStatus(v as MediaStatus | '')}
-                options={STATUS_OPTIONS.map((o) => ({ value: o.key, label: o.label }))}
-                label="Holat"
-              />
-              <label
-                className="inline-flex h-9 cursor-pointer select-none items-center gap-2 rounded-xl px-2.5 text-[13px] text-ink-soft hover:bg-surface-2"
-                title="Tumanga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish (masalan, faqat «Mirzo Ulug'bek» deb yozilgan — olim, ko'cha yoki metro bo'lishi mumkin)"
-              >
-                <input
-                  type="checkbox"
-                  checked={lowRelevance}
-                  onChange={(e) => setLowRelevance(e.target.checked)}
-                  className="h-4 w-4 rounded accent-primary-600"
-                />
-                Aniq bo'lmaganlar ham
-              </label>
-            </div>
-
-            {/* Active filters summary */}
-            {(topic || source || activeFilters > 0) && (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
-                <FilterSearch size={16} className="text-ink-soft" />
-                {topic && <ActiveTag onClear={() => setTopic(undefined)}>Mavzu: {topic}</ActiveTag>}
-                {source && <ActiveTag onClear={() => setSource(undefined)}>Manba: {source.name}</ActiveTag>}
-                {search && (
-                  <ActiveTag
-                    onClear={() => {
-                      setSearchText('');
-                      setSearch('');
-                    }}
-                  >
-                    «{search}»
-                  </ActiveTag>
-                )}
-                {activeFilters > 0 && (
-                  <button type="button" onClick={clearFilters} className="ml-auto text-[13px] font-medium text-primary-700 hover:underline dark:text-primary-300">
-                    Filtrlarni tozalash
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Result header */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <p className="text-[13px] text-ink-soft" aria-live="polite">
-                {itemsQ.isLoading ? 'Yuklanmoqda…' : <><b className="font-semibold text-ink tabular-nums">{total}</b> ta xabar</>}
-                {itemsQ.isFetching && !itemsQ.isLoading && <span className="ml-2 text-ink-soft">yangilanmoqda…</span>}
-              </p>
-              {canWrite && (ov?.totals.unseen ?? 0) > 0 && (
-                <button
-                  type="button"
-                  onClick={() => markAll.mutate(undefined, { onSuccess: (r) => toast(`${r.updated} ta xabar ko'rildi deb belgilandi`) })}
-                  disabled={markAll.isPending}
-                  className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-ink-soft hover:bg-surface-2 hover:text-ink disabled:opacity-60"
-                >
-                  <TickSquare size={16} /> Hammasini ko'rildi
-                </button>
-              )}
-            </div>
-
-            {/* List */}
-            <div className="mt-3 space-y-3">
-              {itemsQ.isLoading ? (
-                Array.from({ length: 4 }).map((_, i) => <FeedSkeleton key={i} />)
-              ) : items.length === 0 ? (
-                <EmptyFeed
-                  filtered={activeFilters > 0}
-                  period={period}
-                  onClear={clearFilters}
-                  onWiden={() => setPeriod('30d')}
-                  onLow={() => setLowRelevance(true)}
-                  lowRelevance={lowRelevance}
-                />
-              ) : (
-                <>
-                  {lead && <MediaLeadCard item={lead} search={search} now={now} onOpen={onOpen} />}
-                  {/* Phones/tablets: day separators. Desktop: one continuous 2-column grid
-                      (groups become display:contents), the day shown on each card. */}
-                  <div className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0">
-                  {groups.map((g) => (
-                    <Fragment key={g.key}>
-                      <div className="flex items-center gap-3 pt-2 xl:hidden">
-                        <span className={cn('text-xs font-bold uppercase tracking-wide', g.label === 'Bugun' ? 'text-primary-700 dark:text-primary-300' : 'text-ink-soft')}>
-                          {g.label}
-                        </span>
-                        <span className="h-px flex-1 bg-line" />
-                        <span className="text-[11px] tabular-nums text-ink-soft">{g.items.length} ta</span>
-                      </div>
-                      <div className="grid gap-3 xl:contents">
-                        {g.items.map((it, i) => (
-                          <motion.div
-                            key={it.id}
-                            className="h-full"
-                            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3, delay: Math.min(i, 8) * 0.04, ease: [0.22, 1, 0.36, 1] }}
-                          >
-                            <MediaItemCard
-                              item={it}
-                              search={search}
-                              canWrite={canWrite}
-                              onStatus={onStatus}
-                              onSentiment={onSentiment}
-                              onOpen={onOpen}
-                              onTopic={onTopic}
-                              now={now}
-                            />
-                          </motion.div>
-                        ))}
-                      </div>
-                    </Fragment>
-                  ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {itemsQ.hasNextPage && (
-              <div className="mt-4 flex justify-center">
-                <Button variant="secondary" onClick={() => itemsQ.fetchNextPage()} disabled={itemsQ.isFetchingNextPage}>
-                  <ArrowDown2 size={16} />
-                  {itemsQ.isFetchingNextPage ? 'Yuklanmoqda…' : `Yana ko'rsatish (${total - items.length})`}
-                </Button>
-              </div>
-            )}
-          </Card>
-        </section>
-
-        {/* Side: analytics only (configuration lives in Sozlamalar) */}
-        <aside className="min-w-0 space-y-5">
-          <TimelineCard ov={ov} loading={overviewQ.isLoading} />
-          <TopicsCard
-            ov={ov}
-            active={topic}
-            onPick={(t) => {
-              setTopic(topic === t ? undefined : t);
-              scrollToFeed();
-            }}
-          />
-          <TopSourcesCard
-            ov={ov}
-            active={source?.key}
-            onPick={(s) => {
-              setSource(source?.key === s.key ? undefined : s);
-              scrollToFeed();
-            }}
-          />
-        </aside>
-      </div>
 
       <MediaSettingsModal
         open={!!settingsOpen}
@@ -648,7 +691,7 @@ function HowItWorks({ sourceCount }: { sourceCount?: number }) {
   });
   if (hidden) return null;
   const steps = [
-    { icon: <Radar size={18} variant="Bulk" />, title: `${sourceCount ?? '40'}+ manba`, text: "Davlat saytlari, OAV, Telegram, YouTube har 15 daqiqada o'qiladi" },
+    { icon: <Radar size={18} variant="Bulk" />, title: `${sourceCount || 150}+ manba`, text: "Davlat saytlari, OAV, Telegram, YouTube har 15 daqiqada o'qiladi" },
     { icon: <FilterSearch size={18} variant="Bulk" />, title: 'Tumanga oidi ajratiladi', text: "«Mirzo Ulug'bek tumani» haqidagilar qoladi, boshqalari tashlanadi" },
     { icon: <EmojiHappy size={18} variant="Bulk" />, title: 'Baholanadi', text: 'Har bir xabar: ijobiy, neytral yoki salbiy va mavzusi' },
     { icon: <MagicStar size={18} variant="Bulk" />, title: 'Xulosa yoziladi', text: "Asosiysi, xavflar va tavsiyalar — bir qarashda" },
@@ -733,7 +776,7 @@ function PlatformCard({ ov, active, onPick }: { ov?: MediaOverview; active?: Med
   );
 }
 
-function TimelineCard({ ov, loading }: { ov?: MediaOverview; loading: boolean }) {
+function TimelineCard({ ov, loading, tall = false }: { ov?: MediaOverview; loading: boolean; tall?: boolean }) {
   const points = ov?.timeline.points ?? [];
   const hourly = ov?.timeline.unit === 'hour';
   const data = points.map((p) => {
@@ -758,7 +801,7 @@ function TimelineCard({ ov, loading }: { ov?: MediaOverview; loading: boolean })
           </span>
         ))}
       </div>
-      <div className="h-56 px-2 pb-3 pt-3">
+      <div className={cn('px-2 pb-3 pt-3', tall ? 'h-72 sm:h-80' : 'h-56')}>
         {loading && !ov ? (
           <div className="mx-3 h-full animate-pulse rounded-xl bg-surface-2" />
         ) : peak === 0 ? (
@@ -859,6 +902,141 @@ function TopicsCard({ ov, active, onPick }: { ov?: MediaOverview; active?: strin
             );
           })
         )}
+      </div>
+    </Card>
+  );
+}
+
+type ViewTab = 'news' | 'stats';
+
+/** "Yangiliklar | Statistika" — two views of the same monitoring, URL-addressable. */
+function ViewTabs({
+  tab,
+  onTab,
+  newsCount,
+  unseen,
+}: {
+  tab: ViewTab;
+  onTab: (t: ViewTab) => void;
+  newsCount?: number;
+  unseen?: number;
+}) {
+  const items = [
+    { key: 'news' as const, label: 'Yangiliklar', icon: <DocumentText size={18} variant={tab === 'news' ? 'Bold' : 'Linear'} />, badge: newsCount },
+    { key: 'stats' as const, label: 'Statistika', icon: <Chart21 size={18} variant={tab === 'stats' ? 'Bold' : 'Linear'} />, badge: undefined },
+  ];
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-3">
+      <div role="tablist" aria-label="Ko'rinish" className="inline-flex rounded-2xl border border-line bg-surface p-1 shadow-card">
+        {items.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={tab === t.key}
+            onClick={() => onTab(t.key)}
+            className={cn(
+              'relative inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors sm:px-5',
+              FOCUS,
+              tab === t.key ? 'text-white' : 'text-ink-soft hover:text-ink',
+            )}
+          >
+            {tab === t.key && (
+              <motion.span layoutId="media-view-pill" className="absolute inset-0 rounded-xl bg-primary-600 shadow" transition={{ type: 'spring', stiffness: 420, damping: 34 }} />
+            )}
+            <span className="relative inline-flex items-center gap-2">
+              {t.icon}
+              {t.label}
+              {t.badge !== undefined && (
+                <span className={cn('rounded-md px-1.5 text-[11px] font-bold tabular-nums', tab === t.key ? 'bg-white/20' : 'bg-surface-2 text-ink')}>{t.badge}</span>
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
+      {tab === 'news' && unseen ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-800 ring-1 ring-primary-200 dark:bg-primary-500/10 dark:text-primary-300 dark:ring-primary-500/30">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary-500" /> {unseen} ta ko'rilmagan
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** What people actually watched / read (views from Telegram & YouTube). */
+function TopViewedCard({ ov }: { ov?: MediaOverview }) {
+  const list = ov?.topViewed ?? [];
+  return (
+    <Card>
+      <CardHeader title="Eng ko'p ko'rilgan" subtitle="Telegram va YouTube ko'rishlari bo'yicha" />
+      <ol className="p-3 sm:p-4">
+        {!ov ? (
+          Array.from({ length: 4 }).map((_, i) => <li key={i} className="mb-1 h-12 animate-pulse rounded-xl bg-surface-2" />)
+        ) : list.length === 0 ? (
+          <li className="py-6 text-center text-sm text-ink-soft">Bu davrda ko'rishlar soni yo'q</li>
+        ) : (
+          list.map((it, i) => (
+            <li key={it.id}>
+              <a
+                href={it.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn('flex items-start gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-surface-2', FOCUS)}
+              >
+                <span className="mt-0.5 w-5 shrink-0 text-center text-sm font-bold tabular-nums text-ink-soft">{i + 1}</span>
+                <SourceLogo item={it} size={22} className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 text-[13px] font-medium leading-snug text-ink">{it.title}</span>
+                  <span className="mt-0.5 block text-xs text-ink-soft">
+                    {it.sourceName} · {shortTime(it.publishedAt)}
+                  </span>
+                </span>
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-xs font-bold tabular-nums text-ink">
+                  <Eye size={13} /> {formatCompact(it.views ?? 0)}
+                </span>
+              </a>
+            </li>
+          ))
+        )}
+      </ol>
+    </Card>
+  );
+}
+
+/** State bodies vs the press — how much of the talk is official. */
+function KindCard({ ov, onPick }: { ov?: MediaOverview; onPick: (k: 'official' | 'media') => void }) {
+  const official = ov?.totals.official ?? 0;
+  const media = ov ? ov.totals.all - official : 0;
+  const total = Math.max(1, official + media);
+  const rows = [
+    { key: 'official' as const, label: 'Rasmiy manbalar', hint: "hokimlik, vazirliklar, UzA, parlament", n: official, color: 'bg-accent-500', icon: <ShieldTick size={18} variant="Bold" /> },
+    { key: 'media' as const, label: 'OAV va tarmoqlar', hint: 'saytlar, Telegram, YouTube', n: media, color: 'bg-primary-500', icon: <DocumentText size={18} variant="Bold" /> },
+  ];
+  return (
+    <Card>
+      <CardHeader title="Kim gapirmoqda" subtitle="Rasmiy manbalar va OAV ulushi" />
+      <div className="space-y-3 p-4 sm:p-5">
+        <div className="flex h-3 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={`Rasmiy ${official}, OAV ${media}`}>
+          <span className="h-full bg-accent-500 transition-[width] duration-500" style={{ width: `${(official / total) * 100}%` }} />
+          <span className="h-full bg-primary-500 transition-[width] duration-500" style={{ width: `${(media / total) * 100}%` }} />
+        </div>
+        {rows.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => onPick(r.key)}
+            className={cn('flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-surface-2', FOCUS)}
+          >
+            <span className={cn('flex h-10 w-10 items-center justify-center rounded-xl text-white', r.color)}>{r.icon}</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-semibold text-ink">{r.label}</span>
+              <span className="block truncate text-xs text-ink-soft">{r.hint}</span>
+            </span>
+            <span className="text-right">
+              <span className="block text-xl font-bold tabular-nums text-ink">{ov ? r.n : '—'}</span>
+              <span className="block text-xs text-ink-soft">{Math.round((r.n / total) * 100)}%</span>
+            </span>
+          </button>
+        ))}
       </div>
     </Card>
   );

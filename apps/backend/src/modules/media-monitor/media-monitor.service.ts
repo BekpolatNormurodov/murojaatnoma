@@ -87,7 +87,7 @@ const TG_DEEP_EVERY_MS = 3 * 3_600_000;
 /** History found by search (Telegram ?q=, YouTube search) — older posts still matter. */
 const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
 /** District-local channel posts without a keyword: visible, but below keyword hits. */
-const LOCAL_CHANNEL_RELEVANCE = 60;
+const LOCAL_CHANNEL_RELEVANCE = 40;
 const DIGEST_MAX_AGE_MS = 3 * 3_600_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 const SETTINGS_KEY = 'config';
@@ -108,6 +108,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private lastYtSearchAt = 0;
   private lastYtWebAt = 0;
   private lastTgDeepAt = 0;
+  private rescoredOnce = false;
   private lastCleanupAt = 0;
   private aiError: string | null = null;
   /** Last-read "AI tahlil" switch (for the sync status() view). */
@@ -215,7 +216,39 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       create: { key: SETTINGS_KEY, value: next as unknown as Prisma.InputJsonValue },
       update: { value: next as unknown as Prisma.InputJsonValue },
     });
+    // New keywords / channel roles apply to what is already stored, not only to the next run.
+    void this.rescoreStored(next).catch((err: unknown) => this.logger.warn(`rescore failed: ${String(err)}`));
     return this.settingsView();
+  }
+
+  /**
+   * Re-applies the keyword rules to stored rule-scored items of the last 60
+   * days (e.g. after the matcher stopped counting @handles, or the hokimiyat
+   * changed keywords). AI-scored items keep their AI relevance.
+   */
+  async rescoreStored(s: MediaSettings): Promise<number> {
+    const since = new Date(Date.now() - BACKFILL_MAX_AGE_MS);
+    const rows = await this.prisma.mediaItem.findMany({
+      where: { publishedAt: { gte: since }, NOT: { analyzedBy: 'ai' } },
+      select: { id: true, source: true, platform: true, title: true, excerpt: true, relevance: true, keywords: true },
+    });
+    const own = new Set(s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`));
+    const local = new Set(s.localTelegramChannels.map((c) => `tg:${c.toLowerCase()}`));
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
+    for (const r of rows) {
+      if (own.has(r.source)) continue;
+      const m = matchKeywords(r.title, r.excerpt ?? '', s.keywords, s.weakKeywords, s.excludes);
+      const viaSearch = r.source.startsWith('google') || r.platform === 'youtube';
+      const base = relevanceFromMatch(m, viaSearch);
+      const relevance = local.has(r.source) ? Math.max(LOCAL_CHANNEL_RELEVANCE, base) : base;
+      const keywords = [...m.strong, ...m.weak];
+      if (relevance !== r.relevance || keywords.join('|') !== r.keywords.join('|')) {
+        updates.push(this.prisma.mediaItem.update({ where: { id: r.id }, data: { relevance, keywords } }));
+      }
+    }
+    for (let i = 0; i < updates.length; i += 200) await this.prisma.$transaction(updates.slice(i, i + 200));
+    if (updates.length) this.logger.log(`media rescore: ${updates.length}/${rows.length} items re-scored`);
+    return updates.length;
   }
 
   // ---------------------------------------------------------------------------
@@ -256,6 +289,10 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const started = Date.now();
     const now = new Date(started);
     const settings = await this.getSettings();
+    if (!this.rescoredOnce) {
+      this.rescoredOnce = true;
+      await this.rescoreStored(settings);
+    }
     const firstRun = (await this.prisma.mediaItem.count()) === 0;
     this.aiError = null;
 
@@ -581,7 +618,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const prevFrom = new Date(from.getTime() - hours * 3_600_000);
     const base: Prisma.MediaItemWhereInput = { relevance: { gte: min }, status: { not: 'hidden' } };
 
-    const [rows, prevTotal, digest, alerts, latest] = await Promise.all([
+    const [rows, prevTotal, digest, alerts, latest, topViewed] = await Promise.all([
       this.prisma.mediaItem.findMany({
         where: { ...base, publishedAt: { gte: from } },
         select: { sourceName: true, source: true, platform: true, sentiment: true, topic: true, publishedAt: true, status: true, official: true },
@@ -594,6 +631,11 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         take: 6,
       }),
       this.prisma.mediaItem.findMany({ where: { ...base, publishedAt: { gte: from } }, orderBy: { publishedAt: 'desc' }, take: 6 }),
+      this.prisma.mediaItem.findMany({
+        where: { ...base, publishedAt: { gte: from }, views: { gt: 0 } },
+        orderBy: [{ views: 'desc' }],
+        take: 6,
+      }),
     ]);
 
     // Links behind the xulosa's "Xavflar" so each risk opens its original posts.
@@ -642,6 +684,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       digestRefs,
       alerts,
       latest,
+      topViewed,
       status: this.status(),
     };
   }

@@ -117,6 +117,8 @@ export interface MediaOverview {
   digestRefs: { id: string; url: string; title: string; sourceName: string; platform: MediaPlatform; publishedAt: string }[];
   alerts: MediaItem[];
   latest: MediaItem[];
+  /** Most-viewed items of the period (Telegram / YouTube view counts). */
+  topViewed: MediaItem[];
   status: MediaStatusInfo;
 }
 
