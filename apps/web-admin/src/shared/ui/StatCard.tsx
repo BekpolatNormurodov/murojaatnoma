@@ -38,7 +38,7 @@ export function StatCard({
     <>
       <div className="flex items-start justify-between gap-2">
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-11 sm:w-11"
           style={{ background: `${tint}1a`, color: tint }}
         >
           <Icon size={22} variant="Bulk" />
@@ -47,7 +47,7 @@ export function StatCard({
           <span
             title={deltaLabel ? `Oldingi ${deltaLabel}ga nisbatan` : undefined}
             className={cn(
-              'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold',
+              'inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold',
               delta === 0
                 ? 'bg-surface-2 text-ink-soft'
                 : good
@@ -57,7 +57,9 @@ export function StatCard({
           >
             {delta !== 0 && (up ? <ArrowUp size={13} /> : <ArrowDown size={13} />)}
             {formatDelta(Math.abs(delta))}
-            {deltaLabel && <span className="font-medium opacity-70">· {deltaLabel}</span>}
+            {deltaLabel && (
+              <span className="hidden font-medium opacity-70 sm:inline">· {deltaLabel}</span>
+            )}
           </span>
         )}
       </div>
