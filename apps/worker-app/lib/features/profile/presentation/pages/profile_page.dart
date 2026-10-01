@@ -13,6 +13,7 @@ import 'package:worker_app/features/auth/domain/repositories/auth_repository.dar
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
+import 'package:worker_app/core/session/session_service.dart';
 import 'package:worker_app/injection.dart';
 
 /// "Profil" tabi — sozlamalar ekrani: profil sarlavhasi (avatar/ism/lavozim/
@@ -68,12 +69,10 @@ class ProfilePage extends StatelessWidget {
     // xizmati muvaffaqiyatsiz bo'lsa) chiqish HECH QACHON ilovani
     // qulatmasligi kerak — shuning uchun bu yerda ushlanadi va
     // navigatsiya baribir davom etadi.
-    try {
-      await getIt<AuthRepository>().logout();
-    } on Object catch (_) {
-      // Xato e'tiborsiz qoldiriladi — quyidagi navigatsiya baribir sodir
-      // bo'ladi.
-    }
+    // To'liq tozalash: server (refresh revoke + FCM), lokatsiya navbati, yuz
+    // shabloni, oflayn kesh. Har qadam himoyalangan — hech qachon xato
+    // bermaydi va internet yo'q bo'lsa ham ~6 s ichida tugaydi.
+    await SessionService().logout();
     if (!context.mounted) return;
     final auth = context.read<AuthCubit>();
     final router = GoRouter.of(context);

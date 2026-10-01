@@ -28,6 +28,9 @@ Future<void> bootstrap() async {
   await _restoreSession();
   unawaited(_initNotifications());
   unawaited(_initPush());
+  // Server sessiyani rad etsa (refresh 401) — login ekraniga qaytaramiz
+  // (aks holda har ekranda "sessiya tugagan" xatolari chiqib turardi).
+  AuthInterceptor.sessionExpired.listen((_) => getIt<AuthCubit>().reset());
   _initRealtime();
   runApp(const WorkerApp());
 }
@@ -136,8 +139,14 @@ Future<void> _restoreSession() async {
 
   try {
     final templateResult = await getIt<FaceRepository>().getTemplate();
+    final workerId = authCubit.state.session?.workerId;
     templateResult.fold((_) {}, (template) {
-      if (template != null) authCubit.markFaceEnrolled();
+      // Shablon SHU xodimniki bo'lsagina — qurilmada boshqa xodimdan qolgan
+      // yuz bilan "ro'yxatdan o'tgan" deb hisoblanmasin.
+      if (template != null &&
+          (workerId == null || template.workerId == workerId)) {
+        authCubit.markFaceEnrolled();
+      }
     });
   } on Object {
     // Yuz holatini tiklab bo'lmasa — jim o'tkazib yuboriladi (foydalanuvchi

@@ -268,7 +268,13 @@ class _LogoutButton extends StatelessWidget {
             // Saqlangan JWT/sessiyani ham tozalash kerak — aks holda
             // `AuthInterceptor` keyingi so'rovlarga eskirgan tokenni
             // qo'shib yuboraveradi.
-            await getIt<AuthRepository>().logout();
+            // Chiqish HECH QACHON to'xtab qolmasin (masalan saqlash xatosi) —
+            // xato bo'lsa ham navigatsiya davom etadi.
+            try {
+              await getIt<AuthRepository>().logout();
+            } on Object {
+              // ignore
+            }
             if (!context.mounted) return;
             final auth = context.read<AuthCubit>();
             final router = GoRouter.of(context);

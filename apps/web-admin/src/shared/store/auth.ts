@@ -43,8 +43,12 @@ interface AuthState {
   refreshToken: string | null;
   /** Real login: POST /auth/admin/login (username + password). */
   login: (username: string, password: string) => Promise<AuthResult>;
-  /** Silent access-token rotation via the refresh token. */
-  refresh: () => Promise<boolean>;
+  /**
+   * Silent access-token rotation via the refresh token.
+   * 'rejected' = the server refused it (session really over);
+   * 'network'  = couldn't reach the server — the session is still valid.
+   */
+  refresh: () => Promise<RefreshResult>;
   logout: () => void;
 }
 
@@ -71,8 +75,16 @@ function messageOf(data: unknown, fallback: string): string {
   return fallback;
 }
 
+export type RefreshResult = 'ok' | 'rejected' | 'network';
+
 // Shared in-flight refresh so concurrent 401s trigger only one refresh call.
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: Promise<RefreshResult> | null = null;
+
+function newIdempotencyKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 export const useAuth = create<AuthState>()(
   persist(
@@ -108,30 +120,45 @@ export const useAuth = create<AuthState>()(
 
       refresh: () => {
         const rt = get().refreshToken;
-        if (!rt) return Promise.resolve(false);
+        if (!rt) return Promise.resolve<RefreshResult>('rejected');
         if (refreshInFlight) return refreshInFlight;
 
-        refreshInFlight = (async () => {
+        refreshInFlight = (async (): Promise<RefreshResult> => {
+          // Same key on every attempt: if the server rotated the token but the
+          // response was lost, the retry replays the SAME new pair (the old
+          // token is already revoked) instead of logging the admin out.
+          const key = newIdempotencyKey();
           try {
-            const res = await fetch(`${API_BASE}/auth/admin/refresh`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ refreshToken: rt }),
-            });
-            if (!res.ok) {
-              set({ isAuthed: false, user: null, token: null, refreshToken: null });
-              return false;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              let res: Response;
+              try {
+                res = await fetch(`${API_BASE}/auth/admin/refresh`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key },
+                  body: JSON.stringify({ refreshToken: rt }),
+                });
+              } catch {
+                await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+                continue; // network error — retry
+              }
+              if (res.status >= 500) {
+                await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+                continue;
+              }
+              if (!res.ok) {
+                set({ isAuthed: false, user: null, token: null, refreshToken: null });
+                return 'rejected';
+              }
+              const d = (await res.json()) as LoginResponse;
+              set({
+                isAuthed: true,
+                user: toUser(d.admin),
+                token: d.accessToken,
+                refreshToken: d.refreshToken,
+              });
+              return 'ok';
             }
-            const d = (await res.json()) as LoginResponse;
-            set({
-              isAuthed: true,
-              user: toUser(d.admin),
-              token: d.accessToken,
-              refreshToken: d.refreshToken,
-            });
-            return true;
-          } catch {
-            return false;
+            return 'network';
           } finally {
             refreshInFlight = null;
           }
@@ -139,8 +166,20 @@ export const useAuth = create<AuthState>()(
         return refreshInFlight;
       },
 
-      logout: () =>
-        set({ isAuthed: false, user: null, token: null, refreshToken: null }),
+      logout: () => {
+        // Revoke the refresh token server-side (it stayed valid for 30 days).
+        // keepalive: survives the hard redirect to /login that follows.
+        const rt = get().refreshToken;
+        if (rt) {
+          void fetch(`${API_BASE}/auth/admin/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: rt }),
+            keepalive: true,
+          }).catch(() => undefined);
+        }
+        set({ isAuthed: false, user: null, token: null, refreshToken: null });
+      },
     }),
     {
       name: "hokimiyat-auth",

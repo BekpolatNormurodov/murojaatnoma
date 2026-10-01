@@ -33,15 +33,50 @@ function parseError(status: number, data: unknown): string {
   return `Xatolik (${status})`;
 }
 
+function newKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** Seconds until the access token's `exp` (Infinity if unknown). */
+function secondsLeft(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      exp?: number;
+    };
+    return payload.exp ? payload.exp - Date.now() / 1000 : Infinity;
+  } catch {
+    return Infinity;
+  }
+}
+
+/**
+ * Refresh BEFORE the access token expires (≤30 s left) instead of letting the
+ * request fail with 401 first — saves a round-trip on slow links and keeps the
+ * console free of 401 noise after the tab was idle.
+ */
+async function refreshIfExpiring(): Promise<void> {
+  const { token, refreshToken } = useAuth.getState();
+  if (token && refreshToken && secondsLeft(token) < 30) {
+    await useAuth.getState().refresh();
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   allowRetry = true,
+  idempotencyKey: string = newKey(),
 ): Promise<T> {
+  await refreshIfExpiring();
   const { token } = useAuth.getState();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
+  // Writes carry an Idempotency-Key: a double-click / replay after a dropped
+  // connection is executed once by the backend.
+  if (method !== 'GET') headers['Idempotency-Key'] = idempotencyKey;
 
   let payload: string | undefined;
   if (body !== undefined) {
@@ -49,12 +84,21 @@ async function request<T>(
     payload = JSON.stringify(body);
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method, headers, body: payload });
+  } catch {
+    throw new ApiError(0, "Internetga ulanib bo'lmadi — aloqani tekshirib, qayta urining");
+  }
 
   // Access token expired: try a single silent refresh, then replay once.
   if (res.status === 401 && allowRetry) {
     const refreshed = await useAuth.getState().refresh();
-    if (refreshed) return request<T>(method, path, body, false);
+    if (refreshed === 'ok') return request<T>(method, path, body, false, idempotencyKey);
+    if (refreshed === 'network') {
+      // Session is still valid — don't log out on a network blip.
+      throw new ApiError(0, "Internetga ulanib bo'lmadi — aloqani tekshirib, qayta urining");
+    }
     useAuth.getState().logout();
     throw new ApiError(401, 'Sessiya tugadi, qayta kiring');
   }
@@ -82,15 +126,24 @@ function safeJson(text: string): unknown {
  * boundary itself. Mirrors {@link request}'s single silent-refresh-on-401 retry.
  */
 async function uploadRequest<T>(path: string, formData: FormData, allowRetry = true): Promise<T> {
+  await refreshIfExpiring();
   const { token } = useAuth.getState();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers, body: formData });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { method: 'POST', headers, body: formData });
+  } catch {
+    throw new ApiError(0, "Internetga ulanib bo'lmadi — aloqani tekshirib, qayta urining");
+  }
 
   if (res.status === 401 && allowRetry) {
     const refreshed = await useAuth.getState().refresh();
-    if (refreshed) return uploadRequest<T>(path, formData, false);
+    if (refreshed === 'ok') return uploadRequest<T>(path, formData, false);
+    if (refreshed === 'network') {
+      throw new ApiError(0, "Internetga ulanib bo'lmadi — aloqani tekshirib, qayta urining");
+    }
     useAuth.getState().logout();
     throw new ApiError(401, 'Sessiya tugadi, qayta kiring');
   }

@@ -12,6 +12,9 @@ abstract class FaceLocalDataSource {
 
   /// Shablonni shifrlangan xotiraga yozadi (mavjud bo'lsa, almashtiradi).
   Future<void> write(FaceTemplate template);
+
+  /// Logout: boshqa xodim shu qurilmada oldingi yuz bilan kira olmasin.
+  Future<void> clear();
 }
 
 /// `FlutterSecureStorage` (platform keychain/keystore) orqali ishlaydigan
@@ -25,6 +28,15 @@ class FaceLocalDataSourceImpl implements FaceLocalDataSource {
 
   /// Yuz shabloni JSON'i shu kalit ostida saqlanadi.
   static const _templateKey = 'face_template';
+
+  @override
+  Future<void> clear() async {
+    try {
+      await _storage.delete(key: _templateKey);
+    } on Object {
+      // best-effort
+    }
+  }
 
   @override
   Future<FaceTemplate?> read() async {

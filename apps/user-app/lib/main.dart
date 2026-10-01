@@ -22,6 +22,9 @@ Future<void> bootstrap() async {
   await configureDependencies();
   await _restoreSession();
   unawaited(_initNotifications());
+  // Server sessiyani rad etsa (refresh 401) — login ekraniga qaytaramiz
+  // (aks holda har ekranda "sessiya tugagan" xatolari chiqib turardi).
+  AuthInterceptor.sessionExpired.listen((_) => getIt<AuthCubit>().reset());
   runApp(const UserApp());
 }
 

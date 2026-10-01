@@ -45,7 +45,8 @@ class WorkerApp extends StatelessWidget {
             // tinglovchi qo'shamiz (navigatsiyaning YAGONA manbai — UI o'zi
             // navigatsiya qilmaydi).
             builder: (context, child) => _CallNavigationHost(
-              child: child ?? const SizedBox.shrink(),
+              // Internet holati (oflayn / sekin / tiklandi) — butun ilova ustida.
+              child: NetworkBanner(child: child ?? const SizedBox.shrink()),
             ),
           );
         },

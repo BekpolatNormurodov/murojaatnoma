@@ -1,3 +1,8 @@
+import 'dart:async';
+
+import 'package:app_core/src/network/cache/response_cache.dart';
+import 'package:app_core/src/network/interceptors/idempotency_interceptor.dart';
+import 'package:app_core/src/network/network_status.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -70,10 +75,18 @@ class AuthInterceptor extends Interceptor {
     }
 
     // Yangi access token olamiz (bir vaqtda faqat bitta refresh).
-    final newAccess = await (_refreshing ??=
-        _performRefresh(options.baseUrl, refreshToken)
-            .whenComplete(() => _refreshing = null));
+    final newAccess = await (_refreshing ??= _performRefresh(
+      options.baseUrl,
+      refreshToken,
+    ).whenComplete(() => _refreshing = null));
 
+    if (newAccess == _networkFailure) {
+      // Refresh tarmoq sababli o'tmadi (sekin/uzilgan internet) — sessiya
+      // HALI haqiqiy. Tokenlarni O'CHIRMAYMIZ (ilgari bu holatda foydalanuvchi
+      // tizimdan chiqarib yuborilardi); keyingi so'rovda yana urinadi.
+      handler.next(err);
+      return;
+    }
     if (newAccess == null || newAccess.isEmpty) {
       await _clearTokens();
       handler.next(err);
@@ -97,32 +110,95 @@ class AuthInterceptor extends Interceptor {
 
   /// `POST /auth/refresh` — yangi juftlikni oladi, `SharedPreferences`ga
   /// saqlaydi va yangi access tokenni qaytaradi (har qanday xatoda `null`).
+  /// [_performRefresh] natijasi: tarmoq xatosi (server javob bermadi).
+  static const String _networkFailure = '__network_failure__';
+
+  /// Yangi access token; server rad etsa `null`; tarmoq xatosida
+  /// [_networkFailure]. Ulanish xatolarida bir xil `Idempotency-Key` bilan
+  /// 3 martagacha qayta uriniladi — server birinchi urinishni bajarib javob
+  /// yo'qolgan bo'lsa, xuddi o'sha yangi juftlikni qaytaradi (refresh token
+  /// rotatsiyasi "yo'qolgan javob"da sessiyani buzmaydi).
   Future<String?> _performRefresh(String baseUrl, String refreshToken) async {
-    try {
-      final bare = Dio(
-        BaseOptions(baseUrl: baseUrl, contentType: 'application/json'),
-      );
-      final res = await bare.post<dynamic>(
-        '/auth/refresh',
-        data: {'refreshToken': refreshToken},
-      );
-      final data = res.data;
-      if (data is! Map) return null;
-      final access = data['accessToken'] as String?;
-      final newRefresh = data['refreshToken'] as String?;
-      if (access == null || access.isEmpty) return null;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(tokenKey, access);
-      if (newRefresh != null && newRefresh.isNotEmpty) {
-        await prefs.setString(refreshTokenKey, newRefresh);
+    final bare = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        contentType: 'application/json',
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 20),
+        headers: {
+          IdempotencyInterceptor.header: IdempotencyInterceptor.newKey(),
+        },
+      ),
+    );
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        final res = await bare.post<dynamic>(
+          '/auth/refresh',
+          data: {'refreshToken': refreshToken},
+        );
+        final data = res.data;
+        if (data is! Map) return null;
+        final access = data['accessToken'] as String?;
+        final newRefresh = data['refreshToken'] as String?;
+        if (access == null || access.isEmpty) return null;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(tokenKey, access);
+        if (newRefresh != null && newRefresh.isNotEmpty) {
+          await prefs.setString(refreshTokenKey, newRefresh);
+        }
+        return access;
+      } on DioException catch (e) {
+        if (e.response != null) return null; // server rad etdi (401/400)
+        if (!NetworkStatus.isConnectivityError(e)) return null;
+        await Future<void>.delayed(Duration(milliseconds: 700 * (attempt + 1)));
+      } on Object {
+        return null;
       }
-      return access;
-    } on Object {
-      return null;
     }
+    return _networkFailure;
   }
 
+  /// To'liq chiqish (ikkala ilova ham ishlatadi):
+  ///  1. serverda refresh tokenni bekor qiladi (`POST /auth/logout`, 4 s,
+  ///     best-effort — oflaynda ham chiqish TO'XTAB QOLMAYDI);
+  ///  2. tokenlarni o'chiradi;
+  ///  3. oflayn javob keshini tozalaydi (keyingi foydalanuvchi ko'rmasin).
+  static Future<void> endSession(Dio dio) async {
+    final prefs = await SharedPreferences.getInstance();
+    final refreshToken = prefs.getString(refreshTokenKey);
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      try {
+        await dio
+            .post<dynamic>(
+              '/auth/logout',
+              data: {'refreshToken': refreshToken},
+              options: Options(
+                extra: const {'noRetry': true},
+                sendTimeout: const Duration(seconds: 4),
+                receiveTimeout: const Duration(seconds: 4),
+              ),
+            )
+            .timeout(const Duration(seconds: 5));
+      } on Object {
+        // best-effort: token o'zi 30 kunda eskiradi
+      }
+    }
+    await prefs.remove(tokenKey);
+    await prefs.remove(refreshTokenKey);
+    await ResponseCache.instance.clear();
+  }
+
+  static final StreamController<void> _expired =
+      StreamController<void>.broadcast();
+
+  /// Server sessiyani RAD ETDI (refresh 401/400) — ilova login ekraniga
+  /// o'tishi kerak. (Tarmoq xatosi bu yerga KELMAYDI.)
+  static Stream<void> get sessionExpired => _expired.stream;
+
   Future<void> _clearTokens() async {
+    final hadSession =
+        (await SharedPreferences.getInstance()).getString(tokenKey) != null;
+    if (hadSession) _expired.add(null);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(tokenKey);
     await prefs.remove(refreshTokenKey);

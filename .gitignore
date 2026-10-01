@@ -67,3 +67,4 @@ infra/certs/*.key
 # Java heap dumps (build OOM artifacts)
 **/*.hprof
 apps/backend/prisma/data/mirzo/passwords.json
+hokimiyat-xodim-*.apk

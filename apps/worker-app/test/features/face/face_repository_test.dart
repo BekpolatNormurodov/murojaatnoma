@@ -10,6 +10,9 @@ import 'package:worker_app/features/face/domain/entities/face_template.dart';
 /// `FlutterSecureStorage` platform kanaliga bog'liq emas. `readError`/
 /// `writeError` orqali platformadagi xatoliklarni simulyatsiya qiladi.
 class _FakeFaceLocalDataSource implements FaceLocalDataSource {
+  @override
+  Future<void> clear() async {}
+
   FaceTemplate? stored;
   Exception? readError;
   Exception? writeError;

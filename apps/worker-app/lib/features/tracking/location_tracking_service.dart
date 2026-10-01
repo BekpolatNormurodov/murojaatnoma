@@ -78,6 +78,13 @@ class LocationTrackingService {
     return true;
   }
 
+  /// Logout: navbatdagi (yuborilmagan) nuqtalarni o'chiradi — aks holda
+  /// shu qurilmaga keyin kirgan BOSHQA xodim tokeni bilan yuborilardi.
+  Future<void> clearOutbox() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_outboxKey);
+  }
+
   Future<void> stop() async {
     _running = false;
     await _positionSub?.cancel();
