@@ -19,6 +19,8 @@ export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram';
 export type MediaSentiment = 'positive' | 'neutral' | 'negative';
 export type MediaStatus = 'new' | 'seen' | 'important' | 'hidden';
 export type MediaPeriod = '24h' | '7d' | '30d' | 'all';
+/** district = Mirzo Ulug'bek tumani (default), city = Toshkent shahri (incl. the district), region = Toshkent viloyati. */
+export type MediaArea = 'district' | 'city' | 'region';
 
 export interface MediaItem {
   id: string;
@@ -34,6 +36,9 @@ export interface MediaItem {
   publishedAt: string;
   keywords: string[];
   relevance: number;
+  /** 0..100 per wider area (see MediaArea). */
+  cityRelevance?: number;
+  regionRelevance?: number;
   sentiment: MediaSentiment;
   topic: string | null;
   aiSummary: string | null;
@@ -107,6 +112,7 @@ export interface MediaStatusInfo {
 
 export interface MediaOverview {
   period: MediaPeriod;
+  area: MediaArea;
   minRelevance: number;
   totals: {
     all: number;
@@ -139,6 +145,7 @@ export interface MediaOverview {
 
 export interface MediaFilters {
   period: MediaPeriod;
+  area?: MediaArea;
   platform?: MediaPlatform;
   sentiment?: MediaSentiment;
   status?: MediaStatus;
@@ -164,6 +171,8 @@ export interface GovAuthority {
   name: string;
   /** The district's own hokimligi — every post counts. */
   own: boolean;
+  /** City / region hokimligi — every post counts for that area. */
+  area?: 'city' | 'region';
 }
 
 export interface MediaSettings {
@@ -175,6 +184,8 @@ export interface MediaSettings {
   telegramChannels: string[];
   officialTelegramChannels: string[];
   localTelegramChannels: string[];
+  cityTelegramChannels: string[];
+  regionTelegramChannels: string[];
   telegramSearchQueries: string[];
   youtubeSearchQueries: string[];
   officialYoutubeChannels: string[];
@@ -211,10 +222,10 @@ function qs(params: Record<string, string | number | undefined>): string {
   return s ? `?${s}` : '';
 }
 
-export function useMediaOverview(period: MediaPeriod = '7d') {
+export function useMediaOverview(period: MediaPeriod = '7d', area: MediaArea = 'district') {
   return useQuery({
-    queryKey: ['media', 'overview', period],
-    queryFn: () => api.get<MediaOverview>(`/media/overview${qs({ period })}`),
+    queryKey: ['media', 'overview', period, area],
+    queryFn: () => api.get<MediaOverview>(`/media/overview${qs({ period, area: area === 'district' ? undefined : area })}`),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
     // While a run is in progress, follow it closely; otherwise a slow fallback poll.
@@ -228,7 +239,7 @@ export function useMediaItems(f: MediaFilters) {
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       api.get<{ items: MediaItem[]; total: number; page: number; limit: number; grouped?: boolean }>(
-        `/media/items${qs({ ...f, page: pageParam, limit: PAGE })}`,
+        `/media/items${qs({ ...f, area: f.area === 'district' ? undefined : f.area, page: pageParam, limit: PAGE })}`,
       ),
     getNextPageParam: (last) => (last.page * last.limit < last.total ? last.page + 1 : undefined),
     staleTime: 30_000,

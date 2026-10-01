@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { ArrowDown2, Eye, EyeSlash, ExportSquare, MagicStar, ShieldTick, Star1, TickCircle } from 'iconsax-react';
+import { ArrowDown2, Eye, EyeSlash, ExportSquare, Location, MagicStar, ShieldTick, Star1, TickCircle } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import { formatCompact } from '@/shared/lib/format';
 import type { MediaItem, MediaSentiment, MediaStatus, StoryRef } from './api';
@@ -16,6 +16,8 @@ interface Props {
   onTopic?: (topic: string) => void;
   /** Ticks every minute so "12 daqiqa oldin" stays true. */
   now: number;
+  /** City view: flag items that are about our district. */
+  markDistrict?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export const MediaItemCard = memo(function MediaItemCard({
   onOpen,
   onTopic,
   now,
+  markDistrict,
 }: Props) {
   const ago = freshAgo(item.publishedAt, now);
   const [imgFailed, setImgFailed] = useState(false);
@@ -121,6 +124,7 @@ export const MediaItemCard = memo(function MediaItemCard({
         <SourceLogo item={item} size={16} />
         <span className="min-w-0 truncate font-medium text-ink-soft">{item.sourceName}</span>
         {item.official && <OfficialBadge />}
+        {markDistrict && item.relevance >= 50 && <DistrictBadge />}
         <span aria-hidden="true">·</span>
         <time dateTime={item.publishedAt} title={fullTime(item.publishedAt)} className="shrink-0 font-semibold tabular-nums text-ink-soft">
           {/* Desktop grid has no day separators — the day goes on the card. */}
@@ -283,6 +287,19 @@ export function StorySources({ refs }: { refs?: StoryRef[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** In the Toshkent shahri view: this one is about Mirzo Ulug'bek tumani. */
+export function DistrictBadge() {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30"
+      title="Mirzo Ulug'bek tumani haqida"
+    >
+      <Location size={11} variant="Bold" />
+      Tuman
+    </span>
   );
 }
 

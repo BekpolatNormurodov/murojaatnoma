@@ -2,9 +2,9 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { DocumentText, EmojiHappy, EmojiSad, ExportSquare, Refresh2, Setting2, ShieldTick, TrendDown, TrendUp } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
-import type { MediaItem, MediaOverview, MediaPeriod } from './api';
+import type { MediaArea, MediaItem, MediaOverview, MediaPeriod } from './api';
 import { SourceLogo } from './MediaIcons';
-import { clock } from './meta';
+import { AREAS, AREA_META, clock } from './meta';
 import { useCountUp } from './useCountUp';
 
 const PERIODS: { key: Exclude<MediaPeriod, 'all'>; label: string }[] = [
@@ -21,6 +21,8 @@ type Filter = 'all' | 'negative' | 'positive' | 'official';
  */
 export function MediaHero({
   ov,
+  area,
+  onArea,
   period,
   onPeriod,
   running,
@@ -31,6 +33,8 @@ export function MediaHero({
   onFilter,
 }: {
   ov?: MediaOverview;
+  area: MediaArea;
+  onArea: (a: MediaArea) => void;
   period: Exclude<MediaPeriod, 'all'>;
   onPeriod: (p: Exclude<MediaPeriod, 'all'>) => void;
   running: boolean;
@@ -72,7 +76,7 @@ export function MediaHero({
               {running ? "Manbalar o'qilmoqda" : 'OAV monitoringi · jonli'}
             </span>
             <h1 className="mt-3 text-2xl font-bold leading-tight tracking-tight sm:text-3xl lg:text-[34px]">
-              Mirzo Ulug'bek tumani haqida
+              {AREA_META[area].about}
               <span className="block bg-gradient-to-r from-emerald-200 via-sky-200 to-violet-200 bg-clip-text text-transparent">
                 OAV va davlat manbalari nima demoqda
               </span>
@@ -111,8 +115,40 @@ export function MediaHero({
           </div>
         </div>
 
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+        {/* Area: the district (default), the whole capital, the region around it */}
+        <div role="tablist" aria-label="Hudud" className="grid w-full grid-cols-3 rounded-xl bg-black/20 p-1 ring-1 ring-white/10 backdrop-blur sm:inline-flex sm:w-auto">
+          {AREAS.map((a) => {
+            const m = AREA_META[a];
+            const on = area === a;
+            return (
+              <button
+                key={a}
+                role="tab"
+                aria-selected={on}
+                onClick={() => onArea(a)}
+                title={a === 'city' ? "Butun poytaxt — Mirzo Ulug'bek tumani ham kiradi" : m.label}
+                className={cn(
+                  'relative flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:px-3.5',
+                  on ? 'text-[#064e3b]' : 'text-white/80 hover:text-white',
+                )}
+              >
+                {on && (
+                  <motion.span
+                    layoutId="media-area-pill"
+                    className="absolute inset-0 rounded-lg bg-white shadow"
+                    transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <m.Icon size={16} variant={on ? 'Bold' : 'Linear'} className="relative hidden shrink-0 sm:block" />
+                <span className="relative truncate">{m.short}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Period */}
-        <div role="tablist" aria-label="Davr" className="mt-5 inline-flex rounded-xl bg-black/20 p-1 ring-1 ring-white/10 backdrop-blur">
+        <div role="tablist" aria-label="Davr" className="inline-flex rounded-xl bg-black/20 p-1 ring-1 ring-white/10 backdrop-blur">
           {PERIODS.map((p) => (
             <button
               key={p.key}
@@ -134,6 +170,7 @@ export function MediaHero({
               <span className="relative">{p.label}</span>
             </button>
           ))}
+        </div>
         </div>
 
         {/* The four numbers — each filters the feed */}

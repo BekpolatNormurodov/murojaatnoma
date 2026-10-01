@@ -1,5 +1,5 @@
-import { EmojiHappy, EmojiNormal, EmojiSad, type Icon } from 'iconsax-react';
-import type { MediaItem, MediaPlatform, MediaSentiment } from './api';
+import { Buildings2, EmojiHappy, EmojiNormal, EmojiSad, Location, Map1, type Icon } from 'iconsax-react';
+import type { MediaArea, MediaItem, MediaPlatform, MediaSentiment } from './api';
 import { InstagramIcon, TelegramIcon, WebIcon, YoutubeIcon } from './MediaIcons';
 
 interface PlatformMeta {
@@ -145,3 +145,36 @@ export function aiModelLabel(model: string | null | undefined): string {
   if (model.includes('haiku')) return 'Claude Haiku';
   return model;
 }
+
+/** The three area filters (hero switch, feed header, empty state). */
+export const AREAS: MediaArea[] = ['district', 'city', 'region'];
+export const AREA_META: Record<
+  MediaArea,
+  { label: string; short: string; about: string; empty: string; lowHint: string; Icon: Icon }
+> = {
+  district: {
+    label: "Mirzo Ulug'bek tumani",
+    short: "Mirzo Ulug'bek",
+    about: "Mirzo Ulug'bek tumani haqida",
+    empty: "Bu davrda tuman haqida xabar yo'q",
+    lowHint:
+      "Tumanga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish (masalan, faqat «Mirzo Ulug'bek» deb yozilgan — olim, ko'cha yoki metro bo'lishi mumkin)",
+    Icon: Location,
+  },
+  city: {
+    label: 'Toshkent shahri',
+    short: 'Toshkent shahri',
+    about: 'Toshkent shahri haqida',
+    empty: "Bu davrda Toshkent shahri haqida xabar yo'q",
+    lowHint: "«Toshkent» so'zi faqat o'tib ketgan xabarlarni ham ko'rsatish (masalan, poyezd yo'nalishi yoki taqqoslash)",
+    Icon: Buildings2,
+  },
+  region: {
+    label: 'Toshkent viloyati',
+    short: 'Toshkent viloyati',
+    about: 'Toshkent viloyati haqida',
+    empty: "Bu davrda Toshkent viloyati haqida xabar yo'q",
+    lowHint: "Viloyatga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish",
+    Icon: Map1,
+  },
+};

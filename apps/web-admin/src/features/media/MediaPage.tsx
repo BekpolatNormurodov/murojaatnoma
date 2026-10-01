@@ -15,7 +15,6 @@ import {
   Flag,
   Global,
   Hashtag,
-  Location,
   MagicStar,
   Notification,
   Radar,
@@ -35,6 +34,7 @@ import {
   type MediaFilters,
   type MediaItem,
   type MediaOverview,
+  type MediaArea,
   type MediaPeriod,
   type MediaPlatform,
   type MediaSentiment,
@@ -54,7 +54,7 @@ import { MediaLeadCard } from './MediaLeadCard';
 import { MediaItemCard } from './MediaItemCard';
 import { MediaSettingsModal, type SettingsTab } from './MediaSettingsModal';
 import { SourceLogo } from './MediaIcons';
-import { PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel, shortTime } from './meta';
+import { AREA_META, PLATFORMS, PLATFORM_META, SENTIMENTS, SENTIMENT_META, clock, dayKey, dayLabel, shortTime } from './meta';
 import { formatCompact } from '@/shared/lib/format';
 
 /** Visible keyboard focus for every custom control on the page. */
@@ -93,6 +93,26 @@ export function MediaPage() {
   const feedRef = useRef<HTMLElement>(null);
   const [params, setParams] = useSearchParams();
   const tab: ViewTab = params.get('tab') === 'stats' ? 'stats' : 'news';
+  // ?area=city|region — Mirzo Ulug'bek tumani is the default (no param).
+  const areaParam = params.get('area');
+  const area: MediaArea = areaParam === 'city' || areaParam === 'region' ? areaParam : 'district';
+  const setArea = useCallback(
+    (a: MediaArea) => {
+      // A source picked in one area may not write about the next one.
+      setSource(undefined);
+      setParams(
+        (p) => {
+          const next = new URLSearchParams(p);
+          if (a === 'district') next.delete('area');
+          else next.set('area', a);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+  const areaMeta = AREA_META[area];
   const setTab = useCallback(
     (t: ViewTab) =>
       setParams(
@@ -146,10 +166,11 @@ export function MediaPage() {
     ),
   );
 
-  const overviewQ = useMediaOverview(period);
+  const overviewQ = useMediaOverview(period, area);
   const ov = overviewQ.data;
   const filters: MediaFilters = {
     period,
+    area,
     platform,
     sentiment,
     status: status || undefined,
@@ -255,6 +276,8 @@ export function MediaPage() {
     <div className="isolate">
       <MediaHero
         ov={ov}
+        area={area}
+        onArea={setArea}
         period={period}
         onPeriod={setPeriod}
         running={running}
@@ -302,9 +325,13 @@ export function MediaPage() {
                     <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft">
                       <span
                         className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/30"
-                        title="Faqat «Mirzo Ulug'bek tumani» tilga olingan xabarlar. Aniq bo'lmaganlarini pastdagi «Aniq bo'lmaganlar ham» yoqadi."
+                        title={
+                          area === 'city'
+                            ? "Toshkent shahri tilga olingan xabarlar — Mirzo Ulug'bek tumani haqidagilar ham («Tuman» belgisi bilan)"
+                            : `Faqat «${areaMeta.label}» tilga olingan xabarlar. Aniq bo'lmaganlarini pastdagi «Aniq bo'lmaganlar ham» yoqadi.`
+                        }
                       >
-                        <Location size={13} variant="Bold" /> Mirzo Ulug'bek tumani haqida
+                        <areaMeta.Icon size={13} variant="Bold" /> {areaMeta.about}
                       </span>
                       <span>Eng so'nggisi tepada · Toshkent vaqti</span>
                       {ov?.status.lastRun && <span>· {clock(ov.status.lastRun.finishedAt)} da yangilandi</span>}
@@ -460,7 +487,7 @@ export function MediaPage() {
                     <LabeledSwitch
                       checked={lowRelevance}
                       onChange={setLowRelevance}
-                      hint="Tumanga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish (masalan, faqat «Mirzo Ulug'bek» deb yozilgan — olim, ko'cha yoki metro bo'lishi mumkin)"
+                      hint={areaMeta.lowHint}
                     >
                       Aniq bo'lmaganlar ham
                     </LabeledSwitch>
@@ -483,6 +510,7 @@ export function MediaPage() {
                     Array.from({ length: 4 }).map((_, i) => <FeedSkeleton key={i} />)
                   ) : items.length === 0 ? (
                     <EmptyFeed
+                      emptyText={areaMeta.empty}
                       filtered={activeFilters > 0}
                       period={period}
                       onClear={clearFilters}
@@ -492,7 +520,7 @@ export function MediaPage() {
                     />
                   ) : (
                     <>
-                      {lead && <MediaLeadCard item={lead} search={search} now={now} onOpen={onOpen} />}
+                      {lead && <MediaLeadCard item={lead} search={search} now={now} onOpen={onOpen} markDistrict={area === 'city'} />}
                       {/* Phones/tablets: day separators. Desktop: one continuous 2-column grid
                           (groups become display:contents), the day shown on each card. */}
                       <div className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0 min-[1400px]:grid-cols-3">
@@ -523,6 +551,7 @@ export function MediaPage() {
                                   onOpen={onOpen}
                                   onTopic={onTopic}
                                   now={now}
+                                  markDistrict={area === 'city'}
                                 />
                               </motion.div>
                             ))}
@@ -563,7 +592,8 @@ export function MediaPage() {
                 digest={ov?.digest ?? null}
                 refs={ov?.digestRefs ?? []}
                 loading={overviewQ.isLoading}
-                canWrite={canWrite}
+                // City / region xulosa is written live by the rules — nothing to re-write.
+                canWrite={canWrite && area === 'district'}
                 regenerating={regenerate.isPending}
                 onRegenerate={() =>
                   regenerate.mutate(undefined, {
@@ -677,7 +707,7 @@ function HowItWorks({ sourceCount }: { sourceCount?: number }) {
   if (hidden) return null;
   const steps = [
     { icon: <Radar size={18} variant="Bulk" />, title: `${sourceCount || 150}+ manba`, text: "Davlat saytlari, OAV, Telegram, YouTube har 15 daqiqada o'qiladi" },
-    { icon: <FilterSearch size={18} variant="Bulk" />, title: 'Tumanga oidi ajratiladi', text: "«Mirzo Ulug'bek tumani» haqidagilar qoladi, boshqalari tashlanadi" },
+    { icon: <FilterSearch size={18} variant="Bulk" />, title: 'Hudud bo‘yicha ajratiladi', text: "Mirzo Ulug'bek tumani, Toshkent shahri va viloyati — tepadagi tugmalar bilan" },
     { icon: <EmojiHappy size={18} variant="Bulk" />, title: 'Baholanadi', text: 'Har bir xabar: ijobiy, neytral yoki salbiy va mavzusi' },
     { icon: <MagicStar size={18} variant="Bulk" />, title: 'Xulosa yoziladi', text: "Asosiysi, xavflar va tavsiyalar — bir qarashda" },
   ];
@@ -1095,7 +1125,9 @@ function EmptyFeed({
   onClear,
   onWiden,
   onLow,
+  emptyText,
 }: {
+  emptyText: string;
   filtered: boolean;
   period: MediaPeriod;
   lowRelevance: boolean;
@@ -1108,7 +1140,7 @@ function EmptyFeed({
       <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-2 text-ink-soft">
         <SearchNormal1 size={26} />
       </span>
-      <p className="mt-4 font-semibold text-ink">{filtered ? "Bu filtrlar bo'yicha xabar topilmadi" : "Bu davrda tuman haqida xabar yo'q"}</p>
+      <p className="mt-4 font-semibold text-ink">{filtered ? "Bu filtrlar bo'yicha xabar topilmadi" : emptyText}</p>
       <p className="mt-1 max-w-sm text-sm text-ink-soft">
         Monitoring har 15 daqiqada davom etadi. Qidiruvni kengaytirib ko'ring:
       </p>

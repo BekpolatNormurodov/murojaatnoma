@@ -4,7 +4,7 @@ import { ArrowRight, MagicStar } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import type { MediaItem } from './api';
 import { Highlight, SourceLogo } from './MediaIcons';
-import { OfficialBadge, StorySources } from './MediaItemCard';
+import { DistrictBadge, OfficialBadge, StorySources } from './MediaItemCard';
 import { PLATFORM_META, SENTIMENT_META, clock, dayLabel, freshAgo, fullTime } from './meta';
 
 /**
@@ -16,11 +16,14 @@ export function MediaLeadCard({
   search,
   now,
   onOpen,
+  markDistrict,
 }: {
   item: MediaItem;
   search?: string;
   now: number;
   onOpen?: (item: MediaItem) => void;
+  /** City view: flag a lead that is about our district. */
+  markDistrict?: boolean;
 }) {
   const reduce = useReducedMotion();
   const [imgFailed, setImgFailed] = useState(false);
@@ -73,6 +76,7 @@ export function MediaLeadCard({
           <SourceLogo item={item} size={20} />
           <span className="min-w-0 truncate font-semibold text-ink">{item.sourceName}</span>
           {item.official && <OfficialBadge />}
+          {markDistrict && item.relevance >= 50 && <DistrictBadge />}
           <span aria-hidden="true">·</span>
           <time dateTime={item.publishedAt} title={fullTime(item.publishedAt)} className="font-semibold tabular-nums">
             {dayLabel(item.publishedAt, new Date(now))}, {clock(item.publishedAt)}

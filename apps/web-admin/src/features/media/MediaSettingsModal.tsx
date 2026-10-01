@@ -154,7 +154,7 @@ function SettingsForm({
           <Section icon={<ShieldTick size={16} variant="Bold" />} color="#2563eb" title="Davlat manbalari" note="«Rasmiy» belgisi bilan ko'rinadi">
             <Field
               label="Hukumat portali (gov.uz) sahifalari"
-              hint="gov.uz/oz/<nom> — RSS yo'q, yangiliklar sahifadan o'qiladi. «Tuman o'zi» belgilansa, kalit so'zsiz hammasi olinadi."
+              hint="gov.uz/oz/<nom> — RSS yo'q, yangiliklar sahifadan o'qiladi. Tuman, shahar yoki viloyat hokimligi tanlansa, uning hamma yangiligi shu hududga kiradi."
             >
               <GovList items={draft.govAuthorities} onChange={(v) => set('govAuthorities', v)} disabled={!canEdit} />
             </Field>
@@ -174,6 +174,12 @@ function SettingsForm({
             </Field>
             <Field label="Tuman kanallari" hint="Tumanga bag'ishlangan kanallar — kalit so'z bo'lmasa ham hamma postlari olinadi (reklama tashlanadi).">
               <TagInput value={draft.localTelegramChannels} onChange={(v) => set('localTelegramChannels', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Toshkent shahri kanallari" hint="Poytaxt kanallari — postlari «Toshkent shahri» bo'limiga nom tilga olinmasa ham kiradi.">
+              <TagInput value={draft.cityTelegramChannels ?? []} onChange={(v) => set('cityTelegramChannels', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Toshkent viloyati kanallari" hint="Viloyat kanallari — postlari «Toshkent viloyati» bo'limiga kiradi.">
+              <TagInput value={draft.regionTelegramChannels ?? []} onChange={(v) => set('regionTelegramChannels', v)} disabled={!canEdit} prefix="@" />
             </Field>
             <Field label="Kanallar ichida qidiriladigan yozilishlar" hint="Har kanal nomni turlicha yozadi (Ulug‘bek / Ulugʻbek / Ulugbek / Улуғбек) — har biri alohida qidiriladi.">
               <TagInput value={draft.telegramSearchQueries} onChange={(v) => set('telegramSearchQueries', v)} disabled={!canEdit} tone="amber" />
@@ -420,16 +426,28 @@ function GovList({
                   gov.uz/oz/{a.slug}
                 </a>
               </div>
-              <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-ink-soft" title="Tumanning o'z sahifasi — hamma yangiligi tumanga oid">
-                <input
-                  type="checkbox"
-                  checked={a.own}
-                  disabled={disabled}
-                  onChange={(e) => onChange(items.map((x) => (x.slug === a.slug ? { ...x, own: e.target.checked } : x)))}
-                  className="h-4 w-4 rounded accent-primary-600"
-                />
-                Tuman o'zi
-              </label>
+              <select
+                value={a.own ? 'own' : (a.area ?? '')}
+                disabled={disabled}
+                aria-label={`${a.name} — kimning sahifasi`}
+                title="Hokimlik sahifasi bo'lsa, hamma yangiligi shu hududga oid deb olinadi; aks holda kalit so'z bo'yicha"
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onChange(
+                    items.map((x) =>
+                      x.slug === a.slug
+                        ? { slug: x.slug, name: x.name, own: v === 'own', ...(v === 'city' || v === 'region' ? { area: v } : {}) }
+                        : x,
+                    ),
+                  );
+                }}
+                className="h-8 shrink-0 rounded-lg border border-line bg-surface px-2 text-xs text-ink outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100 disabled:opacity-60 dark:focus:ring-primary-500/20"
+              >
+                <option value="">Kalit so'z bo'yicha</option>
+                <option value="own">Tuman hokimligi</option>
+                <option value="city">Shahar hokimligi</option>
+                <option value="region">Viloyat hokimligi</option>
+              </select>
               {!disabled && (
                 <button
                   type="button"
