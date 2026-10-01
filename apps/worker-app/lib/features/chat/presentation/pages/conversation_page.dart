@@ -174,9 +174,12 @@ class _ConversationPageState extends State<ConversationPage> {
         // chiquvchi qo'ng'iroqni boshlaydi (`toUserId: 'me'` = admin), va
         // `app.dart`dagi tinglovchi `/call/:id` ekranini ochadi.
         actions: [
+          // Faqat Ma'muriyat DM'ida (`dm-emp-<self>`). Murojaat (fuqaro)
+          // suhbatlari ham `shaxsiy` turida — ilgari ularda ham tugma chiqib,
+          // fuqaro ismi bilan ADMINGA qo'ng'iroq qilardi.
           if (!AppConfig.useMock &&
               conversation != null &&
-              conversation.type == ConversationType.shaxsiy) ...[
+              conversation.id.startsWith('dm-emp-')) ...[
             IconButton(
               icon: const Icon(
                 IconsaxPlusLinear.call,

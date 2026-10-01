@@ -1,6 +1,7 @@
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
+import 'package:worker_app/features/chat/presentation/widgets/call_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/chat_formatters.dart';
 import 'package:worker_app/features/chat/presentation/widgets/file_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/image_bubble.dart';
@@ -94,6 +95,7 @@ class MessageBubble extends StatelessWidget {
                       message: message,
                     ),
                     MessageType.sticker => StickerBubble(message: message),
+                    MessageType.call => CallBubble(message: message),
                   },
                 ),
               ],

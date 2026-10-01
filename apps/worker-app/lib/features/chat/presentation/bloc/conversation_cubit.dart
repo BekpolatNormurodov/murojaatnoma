@@ -401,6 +401,9 @@ class ConversationCubit extends Cubit<ConversationState> {
               durationMs: durationSec == null ? null : durationSec * 1000,
               sizeBytes: fileSize,
             ),
+      call: type == MessageType.call && json['meta'] is Map<String, dynamic>
+          ? CallInfo.fromJson(json['meta'] as Map<String, dynamic>)
+          : null,
       createdAt:
           json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
       status: _statusFromContract(json['status'] as String?),
@@ -414,6 +417,7 @@ class ConversationCubit extends Cubit<ConversationState> {
       'file' => MessageType.file,
       'voice' => MessageType.voice,
       'video' => MessageType.roundVideo,
+      'call' => MessageType.call,
       _ => MessageType.text,
     };
   }
@@ -425,7 +429,7 @@ class ConversationCubit extends Cubit<ConversationState> {
       MessageType.file => 'file',
       MessageType.voice => 'voice',
       MessageType.roundVideo => 'video',
-      MessageType.text || MessageType.sticker => 'text',
+      MessageType.text || MessageType.sticker || MessageType.call => 'text',
     };
   }
 

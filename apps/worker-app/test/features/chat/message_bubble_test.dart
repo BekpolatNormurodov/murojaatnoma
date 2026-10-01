@@ -49,8 +49,15 @@ Message _message({required MessageType type, required bool isMine}) {
         path: '',
         durationMs: 6000,
       ),
-      MessageType.text || MessageType.sticker => null,
+      MessageType.text || MessageType.sticker || MessageType.call => null,
     },
+    call: type == MessageType.call
+        ? CallInfo(
+            video: false,
+            status: isMine ? 'ended' : 'missed',
+            durationSec: isMine ? 151 : 0,
+          )
+        : null,
   );
 }
 
@@ -83,5 +90,32 @@ void main() {
         });
       }
     }
+  });
+
+  group('CallBubble (calls in chat history)', () {
+    testWidgets('outgoing answered call shows direction + duration', (
+      tester,
+    ) async {
+      await _pumpBubble(
+        tester,
+        MessageBubble(
+          message: _message(type: MessageType.call, isMine: true),
+          showSenderName: false,
+        ),
+      );
+      expect(find.text("Chiquvchi qo'ng'iroq"), findsOneWidget);
+      expect(find.textContaining('2:31'), findsOneWidget);
+    });
+
+    testWidgets('incoming missed call is labelled as missed', (tester) async {
+      await _pumpBubble(
+        tester,
+        MessageBubble(
+          message: _message(type: MessageType.call, isMine: false),
+          showSenderName: false,
+        ),
+      );
+      expect(find.text("O'tkazib yuborilgan qo'ng'iroq"), findsOneWidget);
+    });
   });
 }

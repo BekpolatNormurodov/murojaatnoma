@@ -1,7 +1,45 @@
 import 'package:equatable/equatable.dart';
 
 /// Xabar turi. `roundVideo` — Telegram uslubidagi doiraviy video xabar.
-enum MessageType { text, image, file, voice, roundVideo, sticker }
+enum MessageType { text, image, file, voice, roundVideo, sticker, call }
+
+/// `kind: call` xabarining tafsiloti — server admin<->xodim qo'ng'iroq
+/// tugaganda DM'ga yozadi (chat tarixida qo'ng'iroqlar ko'rinishi uchun).
+class CallInfo extends Equatable {
+  const CallInfo({
+    required this.video,
+    required this.status,
+    required this.durationSec,
+  });
+
+  factory CallInfo.fromJson(Map<String, dynamic> json) => CallInfo(
+    video: json['media'] == 'video',
+    status: json['status'] as String? ?? 'ended',
+    durationSec: (json['durationSec'] as num?)?.toInt() ?? 0,
+  );
+
+  final bool video;
+
+  /// ended | missed | rejected | cancelled | busy
+  final String status;
+  final int durationSec;
+
+  /// Javobsiz (o'tkazib yuborilgan / bekor / band / rad) qo'ng'iroqmi.
+  bool get unanswered =>
+      status == 'missed' ||
+      status == 'cancelled' ||
+      status == 'busy' ||
+      status == 'rejected';
+
+  @override
+  List<Object?> get props => [video, status, durationSec];
+
+  Map<String, dynamic> toJson() => {
+    'media': video ? 'video' : 'audio',
+    'status': status,
+    'durationSec': durationSec,
+  };
+}
 
 /// Xabarning yetkazilish holati.
 enum MessageStatus { yuborilmoqda, yuborildi, yetkazildi, oqildi }
@@ -64,6 +102,7 @@ class Message extends Equatable {
     this.text,
     this.attachment,
     this.stickerId,
+    this.call,
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
@@ -79,6 +118,9 @@ class Message extends Equatable {
           ? null
           : ChatAttachment.fromJson(json['attachment'] as Map<String, dynamic>),
       stickerId: json['sticker_id'] as String?,
+      call: json['call'] == null
+          ? null
+          : CallInfo.fromJson(json['call'] as Map<String, dynamic>),
       createdAt: json['created_at'] as String,
       status: MessageStatus.values.byName(json['status'] as String),
     );
@@ -101,6 +143,9 @@ class Message extends Equatable {
 
   /// Stiker identifikatori — faqat [MessageType.sticker] uchun.
   final String? stickerId;
+
+  /// Faqat [MessageType.call] uchun.
+  final CallInfo? call;
   final String createdAt;
   final MessageStatus status;
 
@@ -115,6 +160,7 @@ class Message extends Equatable {
     text,
     attachment,
     stickerId,
+    call,
     createdAt,
     status,
   ];
@@ -129,6 +175,7 @@ class Message extends Equatable {
     'text': text,
     'attachment': attachment?.toJson(),
     'sticker_id': stickerId,
+    'call': call?.toJson(),
     'created_at': createdAt,
     'status': status.name,
   };

@@ -117,6 +117,7 @@ String _previewFor({required MessageType type, String? text}) {
     MessageType.voice => 'Ovozli xabar',
     MessageType.roundVideo => 'Video xabar',
     MessageType.sticker => 'Stiker',
+    MessageType.call => "Qo'ng'iroq",
   };
 }
 
@@ -429,6 +430,7 @@ String _chatPreview(Map<String, dynamic> last) {
     'file' => 'Fayl',
     'voice' => 'Ovozli xabar',
     'video' => 'Video xabar',
+    'call' => "📞 ${text ?? "Qo'ng'iroq"}",
     _ => text ?? '',
   };
 }
@@ -465,9 +467,11 @@ Message _messageFromChat(
     id: json['id'] as String? ?? 'RT-${DateTime.now().microsecondsSinceEpoch}',
     conversationId: json['conversationId'] as String? ?? conversationId,
     senderId: senderId,
+    // Server now attaches the sender's real name (group thread: who wrote).
     senderName: isMine
         ? 'Siz'
-        : (senderId == 'me' ? "Ma'muriyat" : 'Xodim'),
+        : (json['senderName'] as String? ??
+              (senderId == 'me' ? "Ma'muriyat" : 'Xodim')),
     isMine: isMine,
     type: type,
     text: json['text'] as String?,
@@ -480,6 +484,9 @@ Message _messageFromChat(
             durationMs: durationSec == null ? null : durationSec * 1000,
             sizeBytes: fileSize,
           ),
+    call: type == MessageType.call && json['meta'] is Map<String, dynamic>
+        ? CallInfo.fromJson(json['meta'] as Map<String, dynamic>)
+        : null,
     createdAt:
         json['createdAt'] as String? ?? DateTime.now().toIso8601String(),
     status: _chatStatusToStatus(json['status'] as String?),
@@ -493,6 +500,7 @@ MessageType _chatKindToType(String? kind) {
     'file' => MessageType.file,
     'voice' => MessageType.voice,
     'video' => MessageType.roundVideo,
+    'call' => MessageType.call,
     _ => MessageType.text,
   };
 }
@@ -505,7 +513,8 @@ String _kindToContract(MessageType type) {
     MessageType.file => 'file',
     MessageType.voice => 'voice',
     MessageType.roundVideo => 'video',
-    MessageType.text || MessageType.sticker => 'text',
+    // `call` rows are server-written only; never sent by a client.
+    MessageType.text || MessageType.sticker || MessageType.call => 'text',
   };
 }
 
@@ -618,5 +627,6 @@ String _fallbackText({required MessageType type, String? stickerId}) {
     MessageType.voice => 'Ovozli xabar',
     MessageType.roundVideo => 'Video xabar',
     MessageType.sticker => 'Stiker',
+    MessageType.call => "Qo'ng'iroq",
   };
 }
