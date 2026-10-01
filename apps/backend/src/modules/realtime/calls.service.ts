@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { CallLog } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ChatService } from '../chat/chat.service';
 import { CallMedia, CallStatus } from './interfaces/socket-identity.interface';
 
 /** Live (in-memory) state of a call in progress — the ICE/SDP relay reads this
@@ -29,8 +30,37 @@ interface CreateCallInput {
 @Injectable()
 export class CallsService {
   private readonly active = new Map<string, ActiveCall>();
+  private readonly logger = new Logger(CallsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chat: ChatService,
+  ) {}
+
+  /**
+   * Mirror a terminal call into the admin↔employee chat thread (kind: call) so
+   * it shows in both chat histories. Every terminal path (reject, cancel, end,
+   * ring-timeout, disconnect teardown, busy) funnels through `finish`/`record`,
+   * so this is the single hook. Never lets a chat failure break signaling.
+   */
+  private mirrorToChat(
+    call: { callerId: string; calleeId: string; media: CallMedia },
+    callId: string,
+    status: CallStatus,
+    durationSec: number,
+  ): void {
+    this.chat
+      .recordCall({ callId, callerId: call.callerId, calleeId: call.calleeId, media: call.media, status, durationSec })
+      .catch((err: unknown) =>
+        this.logger.warn(`call ${callId} → chat row failed: ${err instanceof Error ? err.message : err}`),
+      );
+  }
+
+  /** Is `userId` the caller or callee of this live call? */
+  isParticipant(callId: string, userId: string): boolean {
+    const call = this.active.get(callId);
+    return !!call && (call.callerId === userId || call.calleeId === userId);
+  }
 
   /** Is the user already ringing/on another call? */
   isBusy(userId: string): boolean {
@@ -72,7 +102,7 @@ export class CallsService {
 
   /** Record a one-off terminal call (e.g. busy) without tracking it live. */
   async record(input: CreateCallInput, status: CallStatus): Promise<CallLog> {
-    return this.prisma.callLog.create({
+    const row = await this.prisma.callLog.create({
       data: {
         callerId: input.callerId,
         callerName: input.callerName,
@@ -83,6 +113,8 @@ export class CallsService {
         endedAt: new Date(),
       },
     });
+    this.mirrorToChat(input, row.id, status, 0);
+    return row;
   }
 
   get(callId: string): ActiveCall | undefined {
@@ -120,6 +152,9 @@ export class CallsService {
     await this.prisma.callLog
       .update({ where: { id: callId }, data: { status, endedAt, durationSec } })
       .catch(() => undefined);
+    // Only the first terminal transition is mirrored (a second finish for the
+    // same call — e.g. end racing a disconnect teardown — finds no live call).
+    if (call) this.mirrorToChat(call, callId, status, durationSec);
     this.active.delete(callId);
     return durationSec;
   }

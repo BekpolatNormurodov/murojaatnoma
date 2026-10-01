@@ -23,6 +23,9 @@ import {
   Archive,
   ArchiveMinus,
   Broom,
+  CallIncoming,
+  CallOutgoing,
+  CallSlash,
   type Icon as IconType,
 } from 'iconsax-react';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -135,7 +138,65 @@ function previewText(m: ChatMessage): string {
   if (m.kind === 'file') return `📎 ${m.fileName ?? 'Fayl'}`;
   if (m.kind === 'voice') return '🎤 Ovozli xabar';
   if (m.kind === 'video') return '🎥 Video xabar';
+  if (m.kind === 'call') return `📞 ${callTitle(m)}`;
   return m.text ?? '';
+}
+
+/* ---------------- Qo'ng'iroq yozuvi (kind: call) ---------------- */
+
+/** "Kiruvchi/Chiquvchi/O'tkazib yuborilgan ..." — admin nuqtai nazaridan. */
+function callTitle(m: ChatMessage): string {
+  const outgoing = m.senderId === ME_ID;
+  const video = m.meta?.media === 'video';
+  const status = m.meta?.status;
+  const what = video ? "video qo'ng'iroq" : "qo'ng'iroq";
+  if (status === 'missed' || status === 'cancelled' || status === 'busy') {
+    return outgoing ? `Javobsiz ${what}` : `O'tkazib yuborilgan ${what}`;
+  }
+  if (status === 'rejected') return outgoing ? `Rad etilgan ${what}` : `Rad etildi — ${what}`;
+  return outgoing ? `Chiquvchi ${what}` : `Kiruvchi ${what}`;
+}
+
+function callDuration(sec: number | undefined): string | null {
+  if (!sec || sec <= 0) return null;
+  const m = Math.floor(sec / 60);
+  return `${m}:${String(sec % 60).padStart(2, '0')}`;
+}
+
+/** Telegram uslubidagi qo'ng'iroq qatori — suhbat tarixida qo'ng'iroqlar ko'rinadi. */
+function CallRow({ msg }: { msg: ChatMessage }) {
+  const outgoing = msg.senderId === ME_ID;
+  const status = msg.meta?.status;
+  const failed = status === 'missed' || status === 'cancelled' || status === 'busy' || status === 'rejected';
+  const IconCmp = failed ? CallSlash : outgoing ? CallOutgoing : CallIncoming;
+  const duration = callDuration(msg.meta?.durationSec ?? msg.durationSec);
+  return (
+    <div className={cn('mt-3 flex', outgoing ? 'justify-end' : 'justify-start')}>
+      <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-2.5 shadow-card">
+        <span
+          className={cn(
+            'flex h-9 w-9 items-center justify-center rounded-full',
+            failed ? 'bg-danger-soft text-danger' : 'bg-primary-50 text-primary-600',
+          )}
+        >
+          {msg.meta?.media === 'video' && !failed ? (
+            <Video size={18} variant="Bold" />
+          ) : (
+            <IconCmp size={18} variant="Bold" />
+          )}
+        </span>
+        <div className="min-w-0">
+          <p className={cn('text-[13.5px] font-semibold', failed ? 'text-danger' : 'text-ink')}>
+            {callTitle(msg)}
+          </p>
+          <p className="text-[11.5px] text-ink-muted">
+            {timeHM(msg.createdAt)}
+            {duration ? ` · ${duration}` : ''}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ---------------- Skeleton (yuklanmoqda) ---------------- */
@@ -935,6 +996,8 @@ export function ChatPage() {
                           {item.label}
                         </span>
                       </div>
+                    ) : item.msg.kind === 'call' ? (
+                      <CallRow key={item.id} msg={item.msg} />
                     ) : (
                       <MessageRow
                         key={item.id}

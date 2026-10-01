@@ -1047,6 +1047,10 @@ enum ChatMsgKind {
   voice
   // Telegram-style round video note (has url + durationSec, like voice).
   video
+  // System row written by the realtime gateway when a 1:1 call between the
+  // admin and an employee finishes — so calls show up in the chat history.
+  // `meta` = { callId, media: 'audio'|'video', status, durationSec }.
+  call
 }
 
 enum ChatMsgStatus {
@@ -1091,6 +1095,8 @@ model ChatMessage {
   status         ChatMsgStatus @default(sent)
   // Set when the body was edited (allowed only while status != read).
   editedAt       DateTime?
+  // Structured payload for system kinds (kind = call: callId/media/status/durationSec).
+  meta           Json?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -1098,6 +1104,19 @@ model ChatMessage {
 
   @@index([conversationId, createdAt])
   @@map("chat_messages")
+}
+
+// Per-reader "read up to" cursor. `ChatMessage.status` is a single per-message
+// field, which is right for a 1:1 DM but wrong for the group thread: one
+// employee reading `group-all` would zero everyone's unread badge. Group
+// unread counts are therefore derived from each reader's own cursor.
+model ChatReadCursor {
+  conversationId String
+  readerId       String // "me" (admin) or an employee id
+  lastReadAt     DateTime @default(now())
+
+  @@id([conversationId, readerId])
+  @@map("chat_read_cursors")
 }
 
 // ---------------------------------------------------------------------------

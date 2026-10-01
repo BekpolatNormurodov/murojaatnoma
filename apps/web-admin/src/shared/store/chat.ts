@@ -10,7 +10,17 @@ import { create } from "zustand";
 export const ME_ID = "me";
 export const GROUP_ID = "group-all";
 
-export type ChatMessageKind = "text" | "image" | "file" | "voice" | "video";
+/** "call" — server-written row for a finished admin↔employee call (never sent by a client). */
+export type ChatMessageKind = "text" | "image" | "file" | "voice" | "video" | "call";
+
+/** `meta` of a `kind: "call"` row. */
+export interface ChatCallMeta {
+  callId: string;
+  media: "audio" | "video";
+  /** ended | missed | rejected | cancelled | busy */
+  status: string;
+  durationSec: number;
+}
 /** "sending" — faqat klient tomonidagi optimistik holat (server javobidan
  *  oldin ko'rsatiladi); server hech qachon uni qaytarmaydi. */
 export type ChatMessageStatus = "sending" | "sent" | "delivered" | "read";
@@ -36,6 +46,8 @@ export interface ChatMessage {
   /** Xabar tahrirlangan bo'lsa — oxirgi tahrir vaqti (ISO). Bo'lmasa — tahrirlanmagan. */
   editedAt?: string;
   status: ChatMessageStatus;
+  /** Faqat `kind: "call"` uchun — qo'ng'iroq natijasi. */
+  meta?: ChatCallMeta | null;
 }
 
 export interface Conversation {

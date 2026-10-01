@@ -19,7 +19,8 @@ export const RT_EVENTS = {
 
 export interface ChatMessageCreatedEvent {
   conversationId: string;
-  message: ChatMessage;
+  /** Carries `senderName`/`senderAvatar` so clients can label group messages. */
+  message: ChatMessage & { senderName?: string; senderAvatar?: string | null };
 }
 
 export interface ChatMessageDeletedEvent {

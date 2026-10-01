@@ -170,8 +170,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   // ---------------------------------------------------------------------------
   // Chat — client → server
   // ---------------------------------------------------------------------------
+  // Every chat event is scoped with ChatService.canAccess — the admin ('me')
+  // reaches any thread, an employee only `group-all` + their own `dm-emp-<self>`
+  // (same rule as the REST /chat/my/* routes, so the socket can't bypass it).
   @SubscribeMessage('chat:join')
   onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: { conversationId: string }) {
+    const identity = this.requireIdentity(client);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) {
+      return { ok: false, error: 'forbidden' };
+    }
     void client.join(`conv:${body.conversationId}`);
     return { ok: true };
   }
@@ -197,6 +204,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     },
   ) {
     const identity = this.requireIdentity(client);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) {
+      return { ok: false, error: 'forbidden' };
+    }
     const message = await this.chat.sendMessage(body.conversationId, {
       senderId: identity.id,
       kind: body.kind,
@@ -215,7 +225,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() body: { conversationId: string },
   ) {
     const identity = this.requireIdentity(client);
-    await this.chat.markRead(body.conversationId, identity.id);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) {
+      return { ok: false, error: 'forbidden' };
+    }
+    if (identity.scope === 'admin') {
+      await this.chat.markRead(body.conversationId, identity.id);
+    } else {
+      // Tolerates the employee's not-yet-created DM (no-op instead of 404).
+      await this.chat.markMyRead(identity.id, body.conversationId);
+    }
     return { ok: true };
   }
 
@@ -225,6 +243,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() body: { conversationId: string; isTyping: boolean },
   ) {
     const identity = this.requireIdentity(client);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) return;
     client.to(`conv:${body.conversationId}`).emit('chat:typing', {
       conversationId: body.conversationId,
       userId: identity.id,
@@ -237,8 +256,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { conversationId: string; messageId: string },
   ) {
-    this.requireIdentity(client);
-    await this.chat.deleteMessage(body.conversationId, body.messageId);
+    const identity = this.requireIdentity(client);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) {
+      return { ok: false, error: 'forbidden' };
+    }
+    // Admin moderates any message; an employee only their own.
+    await this.chat.deleteMessage(
+      body.conversationId,
+      body.messageId,
+      identity.scope === 'admin' ? undefined : identity.id,
+    );
     return { ok: true };
   }
 
@@ -247,8 +274,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { conversationId: string; messageId: string; text: string },
   ) {
-    this.requireIdentity(client);
-    const message = await this.chat.editMessage(body.conversationId, body.messageId, body.text);
+    const identity = this.requireIdentity(client);
+    if (!this.chat.canAccess(identity.id, body.conversationId)) {
+      return { ok: false, error: 'forbidden' };
+    }
+    const message = await this.chat.editMessage(
+      body.conversationId,
+      body.messageId,
+      body.text,
+      identity.scope === 'admin' ? undefined : identity.id,
+    );
     return { ok: true, message };
   }
 
@@ -335,9 +370,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { callId: string },
   ) {
-    this.requireIdentity(client);
+    const identity = this.requireIdentity(client);
     const call = this.calls.get(body.callId);
-    if (!call) return { ok: false };
+    if (!call || call.calleeId !== identity.id) return { ok: false };
     this.calls.clearRing(call);
     await this.calls.accept(body.callId);
     this.server.to(`user:${call.callerId}`).emit('call:accepted', { callId: body.callId });
@@ -349,9 +384,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { callId: string },
   ) {
-    this.requireIdentity(client);
+    const identity = this.requireIdentity(client);
     const call = this.calls.get(body.callId);
-    if (!call) return { ok: false };
+    if (!call || call.calleeId !== identity.id) return { ok: false };
     this.calls.clearRing(call);
     await this.calls.finish(body.callId, 'rejected');
     this.server.to(`user:${call.callerId}`).emit('call:rejected', { callId: body.callId });
@@ -363,9 +398,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { callId: string },
   ) {
-    this.requireIdentity(client);
+    const identity = this.requireIdentity(client);
     const call = this.calls.get(body.callId);
-    if (!call) return { ok: false };
+    if (!call || call.callerId !== identity.id) return { ok: false };
     this.calls.clearRing(call);
     await this.calls.finish(body.callId, 'cancelled');
     this.server.to(`user:${call.calleeId}`).emit('call:cancelled', { callId: body.callId });
@@ -419,7 +454,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {
     const identity = this.requireIdentity(client);
     const call = this.calls.get(body.callId);
-    if (!call) return { ok: false };
+    if (!call || !this.calls.isParticipant(body.callId, identity.id)) return { ok: false };
     this.calls.clearRing(call);
     const durationSec = await this.calls.finish(body.callId, 'ended');
     const other = call.callerId === identity.id ? call.calleeId : call.callerId;
