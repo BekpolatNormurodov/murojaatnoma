@@ -87,4 +87,14 @@ export const envValidationSchema = Joi.object({
   TURN_USERNAME: Joi.string().allow('').default(''),
   TURN_CREDENTIAL: Joi.string().allow('').default(''),
   CALL_RING_TIMEOUT_SEC: Joi.number().integer().positive().default(35),
+
+  // OAV monitoringi (modules/media-monitor). All optional — secrets live only
+  // in the server's gitignored .env (repo is public).
+  MEDIA_MONITOR_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
+  ANTHROPIC_API_KEY: Joi.string().allow('').default(''),
+  MEDIA_AI_MODEL: Joi.string().allow('').default(''),
+  YOUTUBE_API_KEY: Joi.string().allow('').default(''),
+  INSTAGRAM_ACCESS_TOKEN: Joi.string().allow('').default(''),
+  INSTAGRAM_BUSINESS_ID: Joi.string().allow('').default(''),
+  INSTAGRAM_GRAPH_VERSION: Joi.string().allow('').default(''),
 });

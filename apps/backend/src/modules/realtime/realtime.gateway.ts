@@ -24,6 +24,7 @@ import {
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { PushService } from '../push/push.service';
+import { MEDIA_UPDATED_EVENT, MediaUpdatedEvent } from '../media-monitor/media-monitor.service';
 import { ChatService } from '../chat/chat.service';
 import { CallsService } from './calls.service';
 import { MeetingRoomService } from './meetings-room.service';
@@ -318,6 +319,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       conversationId: e.conversationId,
       action: e.action,
     });
+  }
+
+  /** OAV monitoringi found new items / wrote a new xulosa → admins' pages refresh live. */
+  @OnEvent(MEDIA_UPDATED_EVENT)
+  broadcastMediaUpdate(e: MediaUpdatedEvent): void {
+    this.server.to(`user:${ADMIN_ID}`).emit('media:update', e);
   }
 
   // ---------------------------------------------------------------------------

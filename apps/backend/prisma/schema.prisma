@@ -1290,3 +1290,90 @@ model BonusRequest {
   @@index([employeeId])
   @@map("bonus_requests")
 }
+
+// ---------------------------------------------------------------------------
+// OAV monitoringi (media monitoring) — every 15 min the backend collects news
+// about the district from news sites (RSS), Telegram channels, Google News,
+// YouTube and Instagram, scores each item (relevance / sentiment / topic) and
+// writes an AI xulosa (digest) for the hokim's dashboard.
+// ---------------------------------------------------------------------------
+enum MediaSentiment {
+  positive
+  neutral
+  negative
+}
+
+enum MediaItemStatus {
+  new
+  seen
+  important
+  hidden
+}
+
+model MediaItem {
+  id          String          @id @default(cuid())
+  /// Collector key: "rss:kunuz", "tg:daryo", "google", "youtube", "instagram" ...
+  source      String
+  /// Display name of the outlet / channel ("Kun.uz", "Daryo | Rasmiy kanal").
+  sourceName  String
+  /// web | telegram | youtube | instagram
+  platform    String
+  externalId  String
+  url         String
+  title       String
+  excerpt     String?         @db.Text
+  imageUrl    String?
+  author      String?
+  views       Int?
+  publishedAt DateTime
+  fetchedAt   DateTime        @default(now())
+  /// Normalised title prefix — the same story from kun.uz RSS and Google News is stored once.
+  fingerprint String
+  /// Configured keywords that matched the text.
+  keywords    String[]
+  /// 0..100 — how surely this is about the district (not the astronomer / a street name).
+  relevance   Int             @default(50)
+  sentiment   MediaSentiment  @default(neutral)
+  topic       String?
+  aiSummary   String?         @db.Text
+  /// "ai" (Claude) or "rules" (offline lexicon) — so the UI can say how it was scored.
+  analyzedBy  String?
+  status      MediaItemStatus @default(new)
+
+  @@unique([source, externalId])
+  @@index([publishedAt])
+  @@index([fingerprint])
+  @@map("media_items")
+}
+
+model MediaDigest {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  periodFrom      DateTime
+  periodTo        DateTime
+  itemCount       Int
+  positive        Int      @default(0)
+  neutral         Int      @default(0)
+  negative        Int      @default(0)
+  headline        String
+  summary         String   @db.Text
+  /// [{ name, count, sentiment }]
+  topics          Json
+  /// [{ title, detail, level: high|medium|low, itemIds: string[] }]
+  risks           Json
+  /// string[]
+  recommendations Json
+  /// Claude model id, or "rules" when no ANTHROPIC_API_KEY is configured.
+  model           String
+
+  @@index([createdAt])
+  @@map("media_digests")
+}
+
+model MediaSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@map("media_settings")
+}

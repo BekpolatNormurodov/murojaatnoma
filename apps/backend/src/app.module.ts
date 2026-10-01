@@ -30,6 +30,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { HealthModule } from './modules/health/health.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { LocationsModule } from './modules/locations/locations.module';
+import { MediaMonitorModule } from './modules/media-monitor/media-monitor.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OversightModule } from './modules/oversight/oversight.module';
 import { PointsModule } from './modules/points/points.module';
@@ -90,6 +91,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     OversightModule,
     // Per-employee period stats (bu oy/o'tgan oy/oraliq) for the detail drawer
     EmployeeStatsModule,
+    // OAV monitoringi — kun.uz/Telegram/YouTube/Instagram about the district, every 15 min
+    MediaMonitorModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

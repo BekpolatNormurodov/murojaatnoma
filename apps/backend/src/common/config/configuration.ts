@@ -83,6 +83,23 @@ export interface AppConfig {
     /** Seconds an unanswered call rings before it is marked "missed". */
     ringTimeoutSec: number;
   };
+  /**
+   * OAV monitoringi. Every key is optional: without them the monitor still runs
+   * on RSS + Telegram + Google News with rule-based scoring; each key unlocks
+   * one more source (or the AI xulosa).
+   */
+  media: {
+    enabled: boolean;
+    /** Claude API key — AI relevance/sentiment + the xulosa. Empty ⇒ rule-based. */
+    anthropicApiKey: string;
+    aiModel: string;
+    /** YouTube Data API v3 key — keyword search across all of YouTube. Empty ⇒ channel RSS only. */
+    youtubeApiKey: string;
+    /** Instagram Graph API long-lived token + the connected IG business account id. */
+    instagramAccessToken: string;
+    instagramBusinessId: string;
+    instagramGraphVersion: string;
+  };
 }
 
 export default (): AppConfig => ({
@@ -149,5 +166,14 @@ export default (): AppConfig => ({
     turnUsername: process.env.TURN_USERNAME ?? '',
     turnCredential: process.env.TURN_CREDENTIAL ?? '',
     ringTimeoutSec: parseInt(process.env.CALL_RING_TIMEOUT_SEC ?? '35', 10),
+  },
+  media: {
+    enabled: (process.env.MEDIA_MONITOR_ENABLED ?? 'true').toLowerCase() === 'true',
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+    aiModel: process.env.MEDIA_AI_MODEL || 'claude-sonnet-5-5',
+    youtubeApiKey: process.env.YOUTUBE_API_KEY ?? '',
+    instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN ?? '',
+    instagramBusinessId: process.env.INSTAGRAM_BUSINESS_ID ?? '',
+    instagramGraphVersion: process.env.INSTAGRAM_GRAPH_VERSION || 'v24.0',
   },
 });

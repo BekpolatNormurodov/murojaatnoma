@@ -1,0 +1,69 @@
+export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram';
+
+/** One post/article as a collector found it, before keyword matching. */
+export interface RawMediaItem {
+  source: string;
+  sourceName: string;
+  platform: MediaPlatform;
+  externalId: string;
+  url: string;
+  title: string;
+  /** Plain text body/description (no HTML). */
+  text: string;
+  imageUrl?: string;
+  author?: string;
+  views?: number;
+  publishedAt: Date;
+  /**
+   * True when the platform itself already searched for our query (Google
+   * News, YouTube search, Instagram hashtag) — the text we get may be too short
+   * to contain the keyword, so a non-match still counts a little.
+   */
+  viaSearch?: boolean;
+}
+
+/** One collector run's outcome, shown on the "Manbalar" panel. */
+export interface SourceRunResult {
+  key: string;
+  name: string;
+  platform: MediaPlatform;
+  items: RawMediaItem[];
+  error?: string;
+  /** Collector skipped on purpose (missing token, rate window not reached). */
+  skipped?: string;
+}
+
+/** fetch() with a hard timeout and a browser-like UA (some outlets 403 bots). */
+export async function fetchText(url: string, timeoutMs = 15_000, headers: Record<string, string> = {}): Promise<string> {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 MurojaatnomaMonitor/1.0',
+      Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9, */*;q=0.8',
+      'Accept-Language': 'uz,ru;q=0.9,en;q=0.6',
+      ...headers,
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+export async function fetchJson<T>(url: string, timeoutMs = 15_000): Promise<T> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const body = (await res.json().catch(() => ({}))) as T & { error?: { message?: string } };
+  if (!res.ok) {
+    const msg = body?.error?.message ?? `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return body;
+}
+
+export function errorText(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') return 'Javob kelmadi (timeout)';
+    return err.message.slice(0, 300);
+  }
+  return String(err).slice(0, 300);
+}
