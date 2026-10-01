@@ -156,6 +156,11 @@ export interface MediaSettings {
   rssFeeds: MediaFeedConfig[];
   telegramChannels: string[];
   officialTelegramChannels: string[];
+  localTelegramChannels: string[];
+  telegramSearchQueries: string[];
+  youtubeSearchQueries: string[];
+  officialYoutubeChannels: string[];
+  ownYoutubeChannels: string[];
   govAuthorities: GovAuthority[];
   googleNewsSites: string[];
   youtubeChannels: string[];

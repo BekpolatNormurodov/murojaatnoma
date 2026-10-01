@@ -18,6 +18,7 @@ import {
   collectGoogleNewsOfficial,
   collectGovUz,
   collectInstagram,
+  collectYoutubeWebSearch,
   collectRss,
   collectTelegram,
   collectYoutubeChannel,
@@ -82,6 +83,11 @@ const TASHKENT_OFFSET_MS = 5 * 3_600_000; // UTC+5, no DST
 const MAX_ITEM_AGE_MS = 14 * 86_400_000;
 const OWN_SOURCE_MAX_AGE_MS = 60 * 86_400_000;
 const YT_SEARCH_EVERY_MS = 30 * 60_000;
+const TG_DEEP_EVERY_MS = 3 * 3_600_000;
+/** History found by search (Telegram ?q=, YouTube search) — older posts still matter. */
+const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
+/** District-local channel posts without a keyword: visible, but below keyword hits. */
+const LOCAL_CHANNEL_RELEVANCE = 60;
 const DIGEST_MAX_AGE_MS = 3 * 3_600_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 const SETTINGS_KEY = 'config';
@@ -100,6 +106,8 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private current: Promise<RunSummary> | null = null;
   private lastRun: RunSummary | null = null;
   private lastYtSearchAt = 0;
+  private lastYtWebAt = 0;
+  private lastTgDeepAt = 0;
   private lastCleanupAt = 0;
   private aiError: string | null = null;
   /** Last-read "AI tahlil" switch (for the sync status() view). */
@@ -188,7 +196,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         keys.add(f.key);
       }
     }
-    for (const list of [dto.telegramChannels, dto.officialTelegramChannels]) {
+    for (const list of [dto.telegramChannels, dto.officialTelegramChannels, dto.localTelegramChannels]) {
       if (!list) continue;
       for (const ch of list.map(cleanHandle)) {
         if (!/^[A-Za-z0-9_]{4,64}$/.test(ch)) throw new BadRequestException(`Telegram kanal nomi noto'g'ri: ${ch}`);
@@ -282,17 +290,26 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
   private async collectAll(s: MediaSettings, firstRun: boolean, now: Date): Promise<SourceRunResult[]> {
     const c = this.cfg;
+    // Deep Telegram pass (3 pages of history + in-channel search for every
+    // district spelling) on the first run and every 3 h; otherwise the newest page only.
+    const deepTg = now.getTime() - this.lastTgDeepAt >= TG_DEEP_EVERY_MS - 30_000;
+    if (deepTg) this.lastTgDeepAt = now.getTime();
     const tasks: (() => Promise<SourceRunResult>)[] = [
       ...s.rssFeeds.filter((f) => f.enabled).map((f) => () => collectRss(f, now)),
-      ...s.telegramChannels
-        .filter((ch) => !s.officialTelegramChannels.some((o) => o.toLowerCase() === ch.toLowerCase()))
-        .map((ch) => () => collectTelegram(ch, now)),
-      ...s.officialTelegramChannels.map((ch) => () => collectTelegram(ch, now, true)),
+      // Every channel once: official > local > media, so a handle listed twice is read once.
+      ...uniqueChannels(s).map(({ ch, official, local }) => () =>
+        collectTelegram(ch, now, official, deepTg ? { pages: 3, queries: s.telegramSearchQueries, local } : { local }),
+      ),
       ...s.govAuthorities.map((a) => () => collectGovUz(a, now)),
       () => collectGoogleNewsOfficial(s.googleNewsQuery, s.googleNewsSites, firstRun, now),
-      ...s.youtubeChannels.map((id) => () => collectYoutubeChannel(id, now)),
+      ...uniqueYoutube(s).map(({ id, official, own }) => () => collectYoutubeChannel(id, now, { official, own })),
       () => collectGoogleNews(s.googleNewsQuery, firstRun, now),
     ];
+    // Keyless YouTube search — district videos from any channel, every 30 min.
+    if (now.getTime() - this.lastYtWebAt >= YT_SEARCH_EVERY_MS - 30_000) {
+      this.lastYtWebAt = now.getTime();
+      tasks.push(() => collectYoutubeWebSearch(s.youtubeSearchQueries, now));
+    }
     // YouTube search burns 100 quota units per call — at most every 30 min.
     if (c.youtubeApiKey && now.getTime() - this.lastYtSearchAt >= YT_SEARCH_EVERY_MS - 30_000) {
       this.lastYtSearchAt = now.getTime();
@@ -315,7 +332,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
     const results = await mapLimit(tasks, 8);
     // Forget sources that were removed from the settings.
-    const live = new Set(results.map((r) => r.key).concat('youtube-search'));
+    const live = new Set(results.map((r) => r.key).concat('youtube-search', 'youtube-web'));
     for (const k of [...this.health.keys()]) if (!live.has(k)) this.health.delete(k);
     return results;
   }
@@ -702,12 +719,21 @@ function toCandidate(
   minDate: number,
 ): (Prisma.MediaItemCreateManyInput & { _text: string }) | null {
   if (!raw.title || !raw.url || !raw.externalId) return null;
-  // The district's own page posts rarely — keep two months of it for context.
-  const oldest = raw.alwaysRelevant ? minDate - (OWN_SOURCE_MAX_AGE_MS - MAX_ITEM_AGE_MS) : minDate;
+  // The district's own page posts rarely and searches reach back — keep two months of those.
+  const oldest =
+    raw.alwaysRelevant ? minDate - (OWN_SOURCE_MAX_AGE_MS - MAX_ITEM_AGE_MS)
+    : raw.backfill ? minDate - (BACKFILL_MAX_AGE_MS - MAX_ITEM_AGE_MS)
+    : minDate;
   if (raw.publishedAt.getTime() < oldest) return null;
   const m = matchKeywords(raw.title, raw.text, s.keywords, s.weakKeywords, s.excludes);
-  // The district's own hokimligi page is about the district by definition.
-  const relevance = raw.alwaysRelevant ? Math.max(95, relevanceFromMatch(m, false)) : relevanceFromMatch(m, !!raw.viaSearch);
+  // The district's own hokimligi page is about the district by definition; a
+  // district-local channel's posts are what its residents read.
+  const base = relevanceFromMatch(m, !!raw.viaSearch);
+  const relevance = raw.alwaysRelevant
+    ? Math.max(95, base)
+    : raw.localChannel
+      ? Math.max(LOCAL_CHANNEL_RELEVANCE, base)
+      : base;
   if (relevance === 0) return null;
   return {
     source: raw.source,
@@ -740,6 +766,33 @@ async function mapLimit<T>(tasks: (() => Promise<T>)[], limit: number): Promise<
   };
   await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
   return out;
+}
+
+/** Each YouTube channel once, with its strongest role (own > official > media). */
+function uniqueYoutube(s: MediaSettings): { id: string; official: boolean; own: boolean }[] {
+  const out = new Map<string, { id: string; official: boolean; own: boolean }>();
+  const put = (id: string, official: boolean, own: boolean) => {
+    const prev = out.get(id);
+    out.set(id, { id, official: official || !!prev?.official, own: own || !!prev?.own });
+  };
+  s.youtubeChannels.forEach((c) => put(c, false, false));
+  s.officialYoutubeChannels.forEach((c) => put(c, true, false));
+  s.ownYoutubeChannels.forEach((c) => put(c, true, true));
+  return [...out.values()];
+}
+
+/** Each Telegram handle once, with its strongest role (official > local > media). */
+function uniqueChannels(s: MediaSettings): { ch: string; official: boolean; local: boolean }[] {
+  const out = new Map<string, { ch: string; official: boolean; local: boolean }>();
+  const put = (ch: string, official: boolean, local: boolean) => {
+    const k = ch.toLowerCase();
+    const prev = out.get(k);
+    out.set(k, { ch, official: official || !!prev?.official, local: local || !!prev?.local });
+  };
+  s.telegramChannels.forEach((c) => put(c, false, false));
+  s.localTelegramChannels.forEach((c) => put(c, false, true));
+  s.officialTelegramChannels.forEach((c) => put(c, true, false));
+  return [...out.values()];
 }
 
 function nextQuarterHour(d: Date): Date {

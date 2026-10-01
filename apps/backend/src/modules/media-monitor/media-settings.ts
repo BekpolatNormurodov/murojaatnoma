@@ -29,12 +29,22 @@ export interface MediaSettings {
   telegramChannels: string[];
   /** Telegram channels of state bodies (President's press secretary, UzA, parliament, city hokimligi ...). */
   officialTelegramChannels: string[];
+  /** District-local channels: every post is kept (keyword or not), ads dropped. */
+  localTelegramChannels: string[];
+  /** Spellings searched inside every Telegram channel (each channel writes the name differently). */
+  telegramSearchQueries: string[];
+  /** Keyless YouTube searches (newest first) — district videos from any channel. */
+  youtubeSearchQueries: string[];
   /** Agency pages on the Government portal gov.uz (no RSS there — read from the page). */
   govAuthorities: GovAuthority[];
   /** Official domains for a second, site-restricted Google News search. */
   googleNewsSites: string[];
   /** YouTube channel ids (UC...) read via their public RSS, no key needed. */
   youtubeChannels: string[];
+  /** State bodies' YouTube channels (city hokimligi, President's press service ...) — "Rasmiy". */
+  officialYoutubeChannels: string[];
+  /** The district hokimligi's own YouTube — every video counts. */
+  ownYoutubeChannels: string[];
   /** YouTube Data API search query (only with YOUTUBE_API_KEY). */
   youtubeQuery: string;
   /** Instagram hashtags (without #) — Graph API hashtag search. */
@@ -52,7 +62,7 @@ export interface MediaSettings {
 }
 
 /** Bump when default sources are added; saved configs then receive the new ones once. */
-export const SOURCES_VERSION = 2;
+export const SOURCES_VERSION = 4;
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   keywords: [
@@ -122,6 +132,10 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   ],
   telegramChannels: [
     'kunuzofficial', 'daryo', 'gazetauz', 'uznews', 'qalampir', 'spotuz', 'aniquz', 'zaminuz',
+    // Discovered from mentions/forwards inside the channels above (server-verified, active, ≥3K subs).
+    'tyxuzbek', 'oblakouz', 'liveuz', 'kunuz', 'kunuzen', 'qalampirlive', 'qalampirfm', 'daryo_live',
+    'nova24live', 'gazetauz_ozb', 'uznewsuzb', 'spotuz_uz', 'anhor_uzb', 'aniquzbek', 'sputnikuzbek',
+    'millar_milliy', 'tashkentskiyekuranty',
     // Added 2026-10-01 (active, verified from the server). mirzo_ulugbek = local
     // district news channel (not the hokimlik); toshkent24/toshkentliklar = city.
     'mirzo_ulugbek', 'toshkent24', 'toshkentliklar', 'kunuzru', 'kun_uz', 'podrobno', 'repostuz',
@@ -141,6 +155,24 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     'prokuratura_uz',
     'iivuz',
     'uzedu',
+    'shmirziyoyev',
+    'sshmirziyoyeva',
+    'uz_kadastr',
+    'codd_tashkent',
+    'iivuz_tv',
+    'matbuot_kotibi_uz',
+    'eduuz',
+  ],
+  localTelegramChannels: ['mirzo_ulugbek'],
+  // Verified 2026-10-01: kun.uz matches only "Улуғбек"/"Ulug‘bek", daryo "Ulug‘bek"/"Ulugʻbek",
+  // gazeta "Ulugbek"/"Улугбек" — so every spelling is searched.
+  telegramSearchQueries: ['Mirzo Ulug‘bek', 'Mirzo Ulugʻbek', 'Mirzo Ulugbek', 'Мирзо Улуғбек', 'Мирзо Улугбек', 'Мирзо-Улугбек'],
+  youtubeSearchQueries: [
+    "Mirzo Ulug'bek tumani",
+    'Mirzo Ulugbek tumani',
+    'Мирзо Улуғбек тумани',
+    'Мирзо-Улугбекский район',
+    "Mirzo Ulug'bek tumani hokimligi",
   ],
   govAuthorities: [
     { slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true },
@@ -176,7 +208,28 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     'UCeeyfrVR6Mhm4d1O_6JEvVg',
     'UCJ7ZRiL-zspyi0u-r9fyBaA',
     'UCuEEUmuM5KHNmaPKnLL-P7w',
+    // Found via keyless search for the district (verified active from the server):
+    // UZREPORT TV, Anhor, Vaqt Uz, BBC Uzbek, Ozodlik, Bugungi masala, UZ Qurilish, F. Mahmudxo'jayev.
+    'UCFVnOdIXSURzhSQLQhrILWQ',
+    'UCOBl50C64XgaIhGk8lnzRAQ',
+    'UCZb4Dwb3TjW8wn7iK5QWQSw',
+    'UCQvZD_M4nzOSyrPx0LfgOmQ',
+    'UCv9n8Z9zQ8luNEOnro9D_Cg',
+    'UCSemEKDZHY_0s0HbHGDJUuw',
+    'UCyD0rFiBqWI_JEG8STj75Qg',
+    'UCi-CoG1aqqBKE7j2vE7pTjg',
   ],
+  // Toshkent shahar hokimligi, Prezident press-xizmati, Toshkent shahar soliq boshqarmasi,
+  // Toshkent shahar IIBB, Toshkent telekanali.
+  officialYoutubeChannels: [
+    'UC0lSmuOGz7tujTQIoop4UbA',
+    'UC61Jnumjuz8NXhSuLoZD2xg',
+    'UCMnak3ZKXeHNPujMSBgvQnw',
+    'UCqvzVzj88MUAzRVJADyC0cQ',
+    'UCcD0MhDDpGT-CEfO53zldtA',
+  ],
+  // "Mirzo Ulugbek tuman hokimligi Matbuot xizmati"
+  ownYoutubeChannels: ['UC1agOw-aS7iHgozgkQJ9RAg'],
   youtubeQuery: '"Mirzo Ulug\'bek tumani"|"Мирзо-Улугбекский район"|"Mirzo Ulugbek tumani"',
   instagramHashtags: ['mirzoulugbektumani', 'mirzoulugbek'],
   instagramAccounts: ['kun.uz', 'daryo.uz', 'gazeta.uz'],
@@ -200,11 +253,16 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     rssFeeds: (s.rssFeeds ?? d.rssFeeds).filter((f) => f && f.key && /^https?:\/\//i.test(f.url)),
     telegramChannels: uniq((s.telegramChannels ?? d.telegramChannels).map(cleanHandle)),
     officialTelegramChannels: uniq((s.officialTelegramChannels ?? d.officialTelegramChannels).map(cleanHandle)),
+    localTelegramChannels: uniq((s.localTelegramChannels ?? d.localTelegramChannels).map(cleanHandle)),
+    telegramSearchQueries: uniq(s.telegramSearchQueries ?? d.telegramSearchQueries).slice(0, 12),
+    youtubeSearchQueries: uniq(s.youtubeSearchQueries ?? d.youtubeSearchQueries).slice(0, 12),
     govAuthorities: (s.govAuthorities ?? d.govAuthorities)
       .filter((a) => a && /^[a-z0-9-]{2,60}$/.test(a.slug))
       .map((a) => ({ slug: a.slug, name: (a.name || a.slug).trim(), own: a.own === true })),
     googleNewsSites: uniq((s.googleNewsSites ?? d.googleNewsSites).map((x) => x.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase())),
     youtubeChannels: uniq(s.youtubeChannels ?? d.youtubeChannels),
+    officialYoutubeChannels: uniq(s.officialYoutubeChannels ?? d.officialYoutubeChannels),
+    ownYoutubeChannels: uniq(s.ownYoutubeChannels ?? d.ownYoutubeChannels),
     youtubeQuery: (s.youtubeQuery ?? d.youtubeQuery).trim(),
     instagramHashtags: uniq((s.instagramHashtags ?? d.instagramHashtags).map((h) => h.replace(/^#/, ''))),
     instagramAccounts: uniq((s.instagramAccounts ?? d.instagramAccounts).map(cleanHandle)),
@@ -231,7 +289,10 @@ export function upgradeSources(s: MediaSettings): MediaSettings | null {
     rssFeeds: [...s.rssFeeds, ...d.rssFeeds.filter((f) => !s.rssFeeds.some((x) => x.key === f.key || x.url === f.url))],
     telegramChannels: [...s.telegramChannels, ...d.telegramChannels.filter((c) => !tg.has(c.toLowerCase()) && !otg.has(c.toLowerCase()))],
     officialTelegramChannels: [...s.officialTelegramChannels, ...d.officialTelegramChannels.filter((c) => !otg.has(c.toLowerCase()))],
+    localTelegramChannels: [...s.localTelegramChannels, ...d.localTelegramChannels.filter((c) => !s.localTelegramChannels.includes(c))],
     youtubeChannels: [...s.youtubeChannels, ...d.youtubeChannels.filter((c) => !s.youtubeChannels.includes(c))],
+    officialYoutubeChannels: [...s.officialYoutubeChannels, ...d.officialYoutubeChannels.filter((c) => !s.officialYoutubeChannels.includes(c))],
+    ownYoutubeChannels: [...s.ownYoutubeChannels, ...d.ownYoutubeChannels.filter((c) => !s.ownYoutubeChannels.includes(c))],
     govAuthorities: [...s.govAuthorities, ...d.govAuthorities.filter((a) => !s.govAuthorities.some((x) => x.slug === a.slug))],
     googleNewsSites: [...s.googleNewsSites, ...d.googleNewsSites.filter((x) => !s.googleNewsSites.includes(x))],
     sourcesVersion: SOURCES_VERSION,

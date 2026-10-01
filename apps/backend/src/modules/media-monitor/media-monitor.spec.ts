@@ -299,3 +299,58 @@ describe('default-source upgrade', () => {
     expect(upgradeSources(up)).toBeNull();
   });
 });
+
+describe('telegram depth + youtube web search', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+  const page = (ch: string, posts: { id: number; text: string; at: string }[]) =>
+    `<meta property="og:title" content="${ch} kanal">` +
+    posts
+      .map(
+        (p) =>
+          `<div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message" data-post="${ch}/${p.id}">` +
+          `<div class="tgme_widget_message_text js-message_text">${p.text}</div><time datetime="${p.at}"></time></div></div>`,
+      )
+      .join('');
+  const ok = (body: string) => ({ ok: true, status: 200, text: async () => body }) as unknown as Response;
+
+  it('pages back with ?before=, searches each spelling, de-duplicates and drops ads', async () => {
+    const urls: string[] = [];
+    global.fetch = jest.fn(async (u: string | URL | Request) => {
+      const url = String(u);
+      urls.push(url);
+      if (url.includes('?before=100')) return ok(page('Kun', [{ id: 98, text: 'Eski xabar', at: '2026-09-20T10:00:00Z' }]));
+      if (url.includes('?before=')) return ok(page('Kun', []));
+      if (url.includes('?q=')) return ok(page('Kun', [{ id: 50, text: "Mirzo Ulug‘bek tumanida yo'l ta'mirlandi", at: '2026-09-10T10:00:00Z' }, { id: 101, text: 'Yangi', at: '2026-10-01T09:00:00Z' }]));
+      return ok(page('Kun', [{ id: 101, text: 'Yangi', at: '2026-10-01T09:00:00Z' }, { id: 100, text: '#reklama Chegirma!', at: '2026-10-01T08:00:00Z' }, { id: 102, text: 'Ikkinchi', at: '2026-10-01T10:00:00Z' }]));
+    }) as typeof fetch;
+    const { collectTelegram } = await import('./collectors/collectors');
+    const r = await collectTelegram('Kun', new Date('2026-10-01T12:00:00Z'), false, { pages: 3, queries: ['Mirzo Ulug‘bek', 'Мирзо Улуғбек'] });
+    const ids = r.items.map((i) => i.externalId).sort();
+    expect(ids).toEqual(['Kun/101', 'Kun/102', 'Kun/50', 'Kun/98'].sort());
+    expect(r.items.find((i) => i.externalId === 'Kun/50')?.backfill).toBe(true);
+    expect(r.items.find((i) => i.externalId === 'Kun/101')?.backfill).toBeUndefined();
+    expect(urls.filter((u) => u.includes('?q=')).length).toBe(2);
+    // the ad (100) is dropped but still anchors paging, so no range is read twice
+    expect(urls.some((u) => u.includes('?before=100'))).toBe(true);
+  });
+
+  it('parses YouTube results and relative upload times', async () => {
+    const { parseYoutubeResults, parseRelativeAgo } = await import('./collectors/collectors');
+    const data = { contents: { a: [{ videoRenderer: { videoId: 'abc', title: { runs: [{ text: "Mirzo Ulug'bek tumani" }] }, publishedTimeText: { simpleText: '10 hours ago' } } }, { other: 1 }] } };
+    const html = `<script>var ytInitialData = ${JSON.stringify(data)};</script>`;
+    expect(parseYoutubeResults(html).map((v) => v.videoId)).toEqual(['abc']);
+    const now = new Date('2026-10-01T12:00:00Z');
+    expect(parseRelativeAgo('10 hours ago', now)!.toISOString()).toBe('2026-10-01T02:00:00.000Z');
+    expect(parseRelativeAgo('Streamed 2 days ago', now)!.toISOString()).toBe('2026-09-29T12:00:00.000Z');
+    expect(parseRelativeAgo('3y ago', now)!.getUTCFullYear()).toBe(2023);
+    expect(parseRelativeAgo('5mo ago', now)!.toISOString().slice(0, 7)).toBe('2026-05');
+    expect(parseRelativeAgo('10h ago', now)!.toISOString()).toBe('2026-10-01T02:00:00.000Z');
+    expect(parseRelativeAgo('45m ago', now)!.toISOString()).toBe('2026-10-01T11:15:00.000Z');
+    expect(parseRelativeAgo('2w ago', now)!.toISOString().slice(0, 10)).toBe('2026-09-17');
+    expect(parseRelativeAgo(undefined, now)).toBeNull();
+    expect(parseRelativeAgo('Premieres tomorrow', now)).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@ import { decodeEntities, parseFeedDate } from '../media-text.util';
 import { RawMediaItem, SourceRunResult, errorText, fetchJson, fetchText } from './collector.types';
 import { parseFeed } from './feed.parser';
 import { GovAuthority, parseGovUzNews } from './gov-uz.parser';
-import { parseTelegramPreview } from './telegram.parser';
+import { minPostId, parseTelegramPreview } from './telegram.parser';
 
 /**
  * Every collector returns a SourceRunResult and never throws — one dead site
@@ -36,16 +36,58 @@ export async function collectRss(feed: MediaSettings['rssFeeds'][number], now: D
   return base;
 }
 
-export async function collectTelegram(channel: string, now: Date, official = false): Promise<SourceRunResult> {
+export interface TelegramDepth {
+  /** Pages of channel history (20 posts each, newest first). Default 1. */
+  pages?: number;
+  /** In-channel searches (`t.me/s/<ch>?q=...`) — finds older posts about the district. */
+  queries?: string[];
+  /** District-local channel: keep every post, keyword or not. */
+  local?: boolean;
+}
+
+/**
+ * Public channel preview `t.me/s/<channel>` (no token). The page holds only the
+ * newest ~20 posts, so deeper runs also page back with `?before=<id>` and run
+ * Telegram's own in-channel search for each district spelling — that is what
+ * actually surfaces the (rare) posts about the district.
+ */
+export async function collectTelegram(
+  channel: string,
+  now: Date,
+  official = false,
+  depth: TelegramDepth = {},
+): Promise<SourceRunResult> {
   const base: SourceRunResult = { key: `tg:${channel.toLowerCase()}`, name: `@${channel}`, platform: 'telegram', items: [] };
+  const url = `https://t.me/s/${encodeURIComponent(channel)}`;
+  const seen = new Map<string, RawMediaItem>();
+  const add = (items: RawMediaItem[], backfill = false) => {
+    for (const i of items) if (!seen.has(i.externalId)) seen.set(i.externalId, backfill ? { ...i, backfill: true } : i);
+  };
   try {
-    const html = await fetchText(`https://t.me/s/${encodeURIComponent(channel)}`);
-    base.items = parseTelegramPreview(html, channel, now).map((i) => ({ ...i, official }));
-    if (base.items[0]) base.name = base.items[0].sourceName;
-    else if (!html.includes('tgme_widget_message')) base.error = 'Kanal topilmadi yoki yopiq';
+    const html = await fetchText(url);
+    const first = parseTelegramPreview(html, channel, now);
+    add(first);
+    if (!first.length && !html.includes('tgme_widget_message')) base.error = 'Kanal topilmadi yoki yopiq';
+    let before = minPostId(html);
+    for (let p = 1; p < (depth.pages ?? 1) && before; p++) {
+      const olderHtml = await fetchText(`${url}?before=${before}`);
+      const next = minPostId(olderHtml);
+      if (!next || next >= before) break;
+      add(parseTelegramPreview(olderHtml, channel, now), true);
+      before = next;
+    }
+    for (const q of depth.queries ?? []) {
+      try {
+        add(parseTelegramPreview(await fetchText(`${url}?q=${encodeURIComponent(q)}`), channel, now), true);
+      } catch {
+        /* one failed search must not drop the channel */
+      }
+    }
   } catch (err) {
     base.error = errorText(err);
   }
+  base.items = [...seen.values()].map((i) => ({ ...i, official, localChannel: depth.local === true }));
+  if (base.items[0]) base.name = base.items[0].sourceName;
   return base;
 }
 
@@ -135,8 +177,126 @@ export async function collectGovUz(authority: GovAuthority, now: Date): Promise<
   return base;
 }
 
+interface YtRenderer {
+  videoId?: string;
+  title?: { runs?: { text?: string }[] };
+  ownerText?: { runs?: { text?: string; navigationEndpoint?: { browseEndpoint?: { browseId?: string } } }[] };
+  publishedTimeText?: { simpleText?: string };
+  viewCountText?: { simpleText?: string };
+  detailedMetadataSnippets?: { snippetText?: { runs?: { text?: string }[] } }[];
+  descriptionSnippet?: { runs?: { text?: string }[] };
+  thumbnail?: { thumbnails?: { url?: string }[] };
+}
+
+const runs = (r?: { runs?: { text?: string }[] }) => (r?.runs ?? []).map((x) => x.text ?? '').join('');
+
+const AGO_UNITS: [RegExp, number][] = [
+  [/^(mo|months?)$/i, 2.592e9],
+  [/^(y|yrs?|years?)$/i, 3.1536e10],
+  [/^(w|wks?|weeks?)$/i, 6.048e8],
+  [/^(d|days?)$/i, 8.64e7],
+  [/^(h|hrs?|hours?)$/i, 3.6e6],
+  [/^(m|mins?|minutes?)$/i, 6e4],
+  [/^(s|secs?|seconds?)$/i, 1e3],
+];
+
+/**
+ * "10 hours ago" / "Streamed 2 days ago" / "3y ago" / "5mo ago" → Date
+ * (approximate by design). Unknown format → null: an undated video is
+ * dropped rather than shown as today's news.
+ */
+export function parseRelativeAgo(s: string | undefined, now: Date): Date | null {
+  const m = /(\d+)\s*([a-z]+)\s+ago/i.exec(s ?? '');
+  if (!m) return null;
+  const unit = AGO_UNITS.find(([re]) => re.test(m[2]))?.[1];
+  return unit ? new Date(now.getTime() - Number(m[1]) * unit) : null;
+}
+
+/** Video renderers out of a YouTube results page's `ytInitialData`. */
+export function parseYoutubeResults(html: string): YtRenderer[] {
+  const m = /var ytInitialData = (\{[\s\S]*?\});<\/script>/.exec(html);
+  if (!m) return [];
+  let data: unknown;
+  try {
+    data = JSON.parse(m[1]);
+  } catch {
+    return [];
+  }
+  const out: YtRenderer[] = [];
+  const walk = (o: unknown): void => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === 'object') {
+      const rec = o as Record<string, unknown>;
+      if (rec.videoRenderer) out.push(rec.videoRenderer as YtRenderer);
+      Object.values(rec).forEach(walk);
+    }
+  };
+  walk(data);
+  return out;
+}
+
+/**
+ * Keyless YouTube search (the public results page, newest first) for each
+ * district spelling — finds district videos from ANY channel, not only the
+ * ones we follow. With YOUTUBE_API_KEY the Data API search runs as well.
+ */
+export async function collectYoutubeWebSearch(queries: string[], now: Date): Promise<SourceRunResult> {
+  const base: SourceRunResult = { key: 'youtube-web', name: 'YouTube qidiruv (kalitsiz)', platform: 'youtube', items: [] };
+  if (!queries.length) return { ...base, skipped: "So'rovlar bo'sh" };
+  const seen = new Map<string, RawMediaItem>();
+  const errors: string[] = [];
+  for (const q of queries) {
+    try {
+      const html = await fetchText(
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&sp=CAI%253D&hl=en&gl=UZ`,
+        20_000,
+        { 'Accept-Language': 'en-US,en;q=0.9' },
+      );
+      for (const v of parseYoutubeResults(html)) {
+        if (!v.videoId || seen.has(v.videoId)) continue;
+        const title = runs(v.title);
+        if (!title) continue;
+        const owner = v.ownerText?.runs?.[0];
+        const snippet = runs(v.detailedMetadataSnippets?.[0]?.snippetText) || runs(v.descriptionSnippet);
+        const thumbs = v.thumbnail?.thumbnails ?? [];
+        const publishedAt = parseRelativeAgo(v.publishedTimeText?.simpleText, now);
+        if (!publishedAt) continue;
+        seen.set(v.videoId, {
+          source: 'youtube',
+          sourceName: owner?.text || 'YouTube',
+          platform: 'youtube',
+          externalId: v.videoId,
+          url: `https://www.youtube.com/watch?v=${v.videoId}`,
+          title,
+          text: snippet,
+          imageUrl: thumbs[thumbs.length - 1]?.url?.split('?')[0] || `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`,
+          author: owner?.text,
+          views: parseCompactViews(v.viewCountText?.simpleText),
+          publishedAt,
+          viaSearch: true,
+          backfill: true,
+        });
+      }
+    } catch (err) {
+      errors.push(`«${q}»: ${errorText(err)}`);
+    }
+  }
+  base.items = [...seen.values()];
+  if (errors.length === queries.length) base.error = errors[0];
+  return base;
+}
+
+function parseCompactViews(s?: string): number | undefined {
+  const n = parseInt((s ?? '').replace(/[^\d]/g, ''), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 /** Public channel RSS (no key): https://www.youtube.com/feeds/videos.xml?channel_id=UC... */
-export async function collectYoutubeChannel(channelId: string, now: Date): Promise<SourceRunResult> {
+export async function collectYoutubeChannel(
+  channelId: string,
+  now: Date,
+  role: { official?: boolean; own?: boolean } = {},
+): Promise<SourceRunResult> {
   const base: SourceRunResult = { key: `yt:${channelId}`, name: 'YouTube kanal', platform: 'youtube', items: [] };
   try {
     const xml = await fetchText(`https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`);
@@ -155,6 +315,8 @@ export async function collectYoutubeChannel(channelId: string, now: Date): Promi
         author: e.author,
         views: e.views,
         publishedAt: parseFeedDate(e.published, now),
+        official: role.official === true || role.own === true,
+        alwaysRelevant: role.own === true,
       }),
     );
   } catch (err) {

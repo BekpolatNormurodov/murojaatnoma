@@ -163,13 +163,30 @@ function SettingsForm({
             <FeedList feeds={draft.rssFeeds} onChange={(v) => set('rssFeeds', v)} disabled={!canEdit} />
           </Section>
           <Section icon={<PLATFORM_META.telegram.Icon size={16} />} color={PLATFORM_META.telegram.color} title="Telegram kanallar" note="Kalit kerak emas — ochiq kanallar t.me/s orqali o'qiladi">
-            <TagInput value={draft.telegramChannels} onChange={(v) => set('telegramChannels', v)} disabled={!canEdit} prefix="@" placeholder="kanal nomi yoki t.me havola" />
+            <Field label="OAV kanallari" hint="Har 15 daqiqada oxirgi postlar; har 3 soatda tarix va kanal ichidagi qidiruv.">
+              <TagInput value={draft.telegramChannels} onChange={(v) => set('telegramChannels', v)} disabled={!canEdit} prefix="@" placeholder="kanal nomi yoki t.me havola" />
+            </Field>
+            <Field label="Tuman kanallari" hint="Tumanga bag'ishlangan kanallar — kalit so'z bo'lmasa ham hamma postlari olinadi (reklama tashlanadi).">
+              <TagInput value={draft.localTelegramChannels} onChange={(v) => set('localTelegramChannels', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Kanallar ichida qidiriladigan yozilishlar" hint="Har kanal nomni turlicha yozadi (Ulug‘bek / Ulugʻbek / Ulugbek / Улуғбек) — har biri alohida qidiriladi.">
+              <TagInput value={draft.telegramSearchQueries} onChange={(v) => set('telegramSearchQueries', v)} disabled={!canEdit} tone="amber" />
+            </Field>
           </Section>
           <Section icon={<PLATFORM_META.youtube.Icon size={16} />} color={PLATFORM_META.youtube.color} title="YouTube">
             <Field label="Kanallar (ID: UC...)" hint="Kalitsiz ishlaydi — kanalning ochiq RSS'i o'qiladi.">
               <TagInput value={draft.youtubeChannels} onChange={(v) => set('youtubeChannels', v)} disabled={!canEdit} placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" />
             </Field>
-            <Field label="Qidiruv so'rovi" hint={'YOUTUBE_API_KEY bilan butun YouTube bo‘yicha qidiradi. «|» = YOKI.'}>
+            <Field label="Tuman hokimligi kanali" hint="Har bir videosi tumanga oid deb olinadi.">
+              <TagInput value={draft.ownYoutubeChannels} onChange={(v) => set('ownYoutubeChannels', v)} disabled={!canEdit} placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" />
+            </Field>
+            <Field label="Rasmiy kanallar" hint="Shahar hokimligi, Prezident press-xizmati, IIBB ... — «Rasmiy» belgisi bilan.">
+              <TagInput value={draft.officialYoutubeChannels} onChange={(v) => set('officialYoutubeChannels', v)} disabled={!canEdit} placeholder="UCxxxxxxxxxxxxxxxxxxxxxx" />
+            </Field>
+            <Field label="Kalitsiz qidiruv" hint="Har 30 daqiqada butun YouTube'da eng yangi videolar qidiriladi — kalit kerak emas.">
+              <TagInput value={draft.youtubeSearchQueries} onChange={(v) => set('youtubeSearchQueries', v)} disabled={!canEdit} tone="amber" />
+            </Field>
+            <Field label="Qidiruv so'rovi (API)" hint={'YOUTUBE_API_KEY bilan qo‘shimcha qidiruv. «|» = YOKI.'}>
               <TextInput value={draft.youtubeQuery} onChange={(v) => set('youtubeQuery', v)} disabled={!canEdit} />
             </Field>
           </Section>

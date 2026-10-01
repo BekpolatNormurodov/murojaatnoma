@@ -184,6 +184,18 @@ export class UpdateMediaSettingsDto {
   @WordList()
   officialTelegramChannels?: string[];
 
+  @ApiPropertyOptional({ type: [String] })
+  @WordList()
+  localTelegramChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @WordList()
+  telegramSearchQueries?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @WordList()
+  youtubeSearchQueries?: string[];
+
   @ApiPropertyOptional({ type: [GovAuthorityDto] })
   @IsOptional()
   @IsArray()
@@ -205,6 +217,20 @@ export class UpdateMediaSettingsDto {
   @ArrayMaxSize(100)
   @Matches(/^UC[\w-]{22}$/, { each: true, message: 'YouTube kanal ID UC... (24 belgi) bo‘lishi kerak' })
   youtubeChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @Matches(/^UC[\w-]{22}$/, { each: true, message: 'YouTube kanal ID UC... (24 belgi) bo‘lishi kerak' })
+  officialYoutubeChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @Matches(/^UC[\w-]{22}$/, { each: true, message: 'YouTube kanal ID UC... (24 belgi) bo‘lishi kerak' })
+  ownYoutubeChannels?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

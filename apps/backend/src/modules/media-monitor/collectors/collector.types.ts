@@ -24,6 +24,10 @@ export interface RawMediaItem {
   official?: boolean;
   /** The district's own channel — relevant without a keyword match. */
   alwaysRelevant?: boolean;
+  /** A district-local media channel (e.g. @mirzo_ulugbek): shown even without a keyword. */
+  localChannel?: boolean;
+  /** Found by a history search (Telegram ?q=, YouTube search) — may be older than a feed item. */
+  backfill?: boolean;
 }
 
 /** One collector run's outcome, shown on the "Manbalar" panel. */
