@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -68,6 +69,15 @@ export class CheckInDto {
   @Min(0)
   @Max(5000)
   accuracy?: number;
+
+  @ApiPropertyOptional({
+    example: 'https://murojaatnoma.uz/uploads/1730-scan.jpg',
+    description: 'Face frame of this scan, uploaded first via POST /uploads (ours only)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  photoUrl?: string;
 }
 
 /** `POST /attendance/precheck` — position only, nothing is recorded. */

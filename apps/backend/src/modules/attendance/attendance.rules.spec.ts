@@ -72,6 +72,7 @@ function build(opts: {
       lateGraceMinutes: 0,
       workDays: opts.workDays ?? [0, 1, 2, 3, 4, 5, 6],
     },
+    uploads: { publicBaseUrl: 'https://murojaatnoma.uz' },
   };
   const zones = {
     locate: jest.fn().mockResolvedValue({ insideDistrict: true, district: null, mahalla: opts.mahalla ?? null }),
@@ -190,11 +191,25 @@ describe('attendance rules', () => {
 
   it('a check-in stores where it was accepted', async () => {
     const { service, created } = build({ employees: [employee('ali')] });
-    await service.checkIn('ali', { latitude: OFFICE.lat, longitude: OFFICE.lng, embedding: [1, 0] });
-    expect(created[0]).toMatchObject({ isValid: true, place: 'office' });
+    await service.checkIn('ali', {
+      latitude: OFFICE.lat,
+      longitude: OFFICE.lng,
+      embedding: [1, 0],
+      photoUrl: 'https://murojaatnoma.uz/uploads/scan-1.jpg',
+    });
+    expect(created[0]).toMatchObject({
+      isValid: true,
+      place: 'office',
+      photoUrl: 'https://murojaatnoma.uz/uploads/scan-1.jpg',
+    });
 
-    await service.checkIn('ali', { latitude: 41.3111, longitude: 69.3402, embedding: [1, 0] });
-    expect(created[1]).toMatchObject({ isValid: false, place: null });
+    await service.checkIn('ali', {
+      latitude: 41.3111,
+      longitude: 69.3402,
+      embedding: [1, 0],
+      photoUrl: 'https://elsewhere.example/me.jpg', // not ours → not kept
+    });
+    expect(created[1]).toMatchObject({ isValid: false, place: null, photoUrl: null });
     expect(String(created[1].reason)).toMatch(/m from office, outside 200m geofence/);
   });
 });

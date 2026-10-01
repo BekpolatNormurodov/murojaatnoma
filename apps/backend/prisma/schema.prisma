@@ -203,6 +203,8 @@ model AttendanceRecord {
   // radius) or 'zone' (inside their assigned mahalla). null = rejected /
   // recorded before this field existed.
   place       String?
+  // The face frame of this scan (our /uploads), so "kim keldi" is provable.
+  photoUrl    String?
   recordedAt  DateTime       @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
@@ -273,6 +275,17 @@ model CitizenNotification {
 
   @@index([phone, isRead])
   @@map("citizen_notifications")
+}
+
+/// The citizen's face, uploaded once at face enrollment (keyed by phone).
+/// Every murojaat they file is stamped with it — "shu yuz yozgan".
+model CitizenFace {
+  phone     String   @id
+  photoUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("citizen_faces")
 }
 
 model ApplicationMessage {

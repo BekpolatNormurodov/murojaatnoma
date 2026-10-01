@@ -83,6 +83,37 @@ export class ApplicationsController {
     return this.applicationsService.stats();
   }
 
+  // Declared before `:id` so "face" is not taken for an application id.
+  @ApiBearerAuth()
+  @AllowCitizen()
+  @Get('face')
+  @ApiOperation({ summary: "The citizen's face on file (null until enrolled)" })
+  myFace(@CurrentUser() user: AuthenticatedUser): Promise<{ photoUrl: string | null }> {
+    return this.applicationsService.citizenFace(user);
+  }
+
+  @ApiBearerAuth()
+  @AllowCitizen()
+  @Post('face')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({
+    summary:
+      "Store the citizen's face (taken at face enrollment). Every murojaat they file is " +
+      'stamped with it, so staff see who wrote it.',
+  })
+  saveFace(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ photoUrl: string }> {
+    if (!file || !file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Rasm fayli kerak (file)');
+    }
+    const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
+    return this.applicationsService.saveCitizenFace(user, `${publicBaseUrl}/uploads/${file.filename}`);
+  }
+
   @ApiBearerAuth()
   @AllowCitizen()
   @Get(':id')

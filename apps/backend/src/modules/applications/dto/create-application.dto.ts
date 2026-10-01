@@ -77,7 +77,11 @@ export class CreateApplicationDto {
   @MaxLength(80)
   category?: string;
 
-  @ApiPropertyOptional({ description: 'Selfie taken when filing (uploaded first, URL here)' })
+  @ApiPropertyOptional({
+    description:
+      "The citizen's enrolled face (from POST /applications/face). Kept only when it is " +
+      'the face on file for applicantPhone — a murojaat cannot borrow someone else\'s face.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

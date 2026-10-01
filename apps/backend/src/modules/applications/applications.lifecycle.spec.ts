@@ -45,6 +45,9 @@ function build(row: Record<string, unknown> | null = app(), opts: { staffMessage
     },
     notification: { create: jest.fn().mockResolvedValue({}) },
     employee: { findUnique: jest.fn().mockResolvedValue({ fullName: 'Gulnora Yusupova' }) },
+    citizenFace: {
+      findUnique: jest.fn().mockResolvedValue({ phone: '+998901234567', photoUrl: 'https://x/uploads/face-1.jpg' }),
+    },
   };
   (prisma as Record<string, unknown>).$transaction = (fn: (tx: unknown) => unknown) => fn(prisma);
   const notify = { admin: jest.fn(), citizen: jest.fn(), employee: jest.fn() };
@@ -73,6 +76,22 @@ describe('murojaat lifecycle rules', () => {
     await flush();
     expect(notify.admin).toHaveBeenCalledWith(expect.objectContaining({ title: 'Yangi shikoyat' }));
     expect(notify.citizen).toHaveBeenCalledWith('+998901234567', 'Shikoyatingiz qabul qilindi', expect.stringContaining('3 kun'), 'new1');
+  });
+
+  it("stamps the murojaat with the citizen's own enrolled face only", async () => {
+    const base = {
+      applicantFullName: 'Aliyeva Nodira',
+      applicantPhone: '+998901234567',
+      subject: '[ARIZA|Kommunal] Chiroq',
+      description: 'Ko‘cha chirog‘i yonmayapti',
+    };
+    const own = build();
+    await own.service.create({ ...base, applicantPhotoUrl: 'https://x/uploads/face-1.jpg' });
+    expect(own.writes.find((w) => w.op === 'create')!.data.applicantPhotoUrl).toBe('https://x/uploads/face-1.jpg');
+
+    const borrowed = build();
+    await borrowed.service.create({ ...base, applicantPhotoUrl: 'https://x/uploads/someone-else.jpg' });
+    expect(borrowed.writes.find((w) => w.op === 'create')!.data.applicantPhotoUrl).toBeNull();
   });
 
   it('cannot move to IN_PROGRESS without an assignee', async () => {

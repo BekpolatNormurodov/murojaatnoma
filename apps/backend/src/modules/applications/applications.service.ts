@@ -145,7 +145,44 @@ export class ApplicationsService implements OnModuleInit {
     }
   }
 
+  /** The face on file for the calling citizen. */
+  async citizenFace(user: AuthenticatedUser): Promise<{ photoUrl: string | null }> {
+    const phone = this.citizenPhoneOf(user);
+    const face = await this.prisma.citizenFace.findUnique({ where: { phone } });
+    return { photoUrl: face?.photoUrl ?? null };
+  }
+
+  /** Saves (or replaces) the calling citizen's face — set at face enrollment. */
+  async saveCitizenFace(user: AuthenticatedUser, photoUrl: string): Promise<{ photoUrl: string }> {
+    const phone = this.citizenPhoneOf(user);
+    await this.prisma.citizenFace.upsert({
+      where: { phone },
+      create: { phone, photoUrl },
+      update: { photoUrl },
+    });
+    return { photoUrl };
+  }
+
+  private citizenPhoneOf(user: AuthenticatedUser): string {
+    if (user?.role !== 'CITIZEN' || !user.phone) {
+      throw new ForbiddenException('Faqat fuqaro uchun');
+    }
+    return user.phone;
+  }
+
+  /**
+   * POST /applications is public, so the phone in the body is unproven. A
+   * face URL is kept only when it is exactly the face that phone's owner
+   * enrolled (set through their own token) — anything else is dropped.
+   */
+  private async provenFace(phone: string, photoUrl?: string): Promise<string | null> {
+    if (!photoUrl) return null;
+    const face = await this.prisma.citizenFace.findUnique({ where: { phone } });
+    return face && face.photoUrl === photoUrl ? face.photoUrl : null;
+  }
+
   async create(dto: CreateApplicationDto): Promise<Application> {
+    const applicantPhotoUrl = await this.provenFace(dto.applicantPhone, dto.applicantPhotoUrl);
     const priority = dto.priority ?? Priority.medium;
     const kind = dto.kind ?? kindOf(dto.subject);
     const category = dto.category?.trim() || categoryOf(dto.subject) || null;
@@ -153,7 +190,7 @@ export class ApplicationsService implements OnModuleInit {
     const dueAt = new Date(Date.now() + hours * 3_600_000);
     const application = await this.prisma.$transaction(async (tx) => {
       const row = await tx.application.create({
-        data: { ...dto, kind, category, priority, dueAt },
+        data: { ...dto, kind, category, priority, dueAt, applicantPhotoUrl },
       });
 
       await tx.applicationEvent.create({

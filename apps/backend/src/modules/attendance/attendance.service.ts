@@ -9,6 +9,7 @@ import { AttendanceRecord, AttendanceType, LeaveRequest, LeaveStatus } from '@pr
 import { AppConfig } from '../../common/config/configuration';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { bestMatchScore } from '../../common/utils/face-match.util';
+import { ownUploadUrl } from '../../common/utils/upload-url.util';
 import { CheckInDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import {
@@ -107,6 +108,8 @@ export interface TodayCheckIn {
   faceScore: number;
   /** Metres from the office point when the scan was made. */
   distanceM: number;
+  /** Face frame of the accepted scan (null for older scans / upload failed). */
+  photoUrl: string | null;
 }
 
 export interface TodayCheckOut {
@@ -114,6 +117,7 @@ export interface TodayCheckOut {
   insideGeofence: boolean;
   faceScore: number;
   distanceM: number;
+  photoUrl: string | null;
 }
 
 /** A scan the server rejected (face below threshold and/or outside the geofence). */
@@ -123,6 +127,8 @@ export interface TodayFailedScan {
   reason: string | null;
   faceScore: number;
   distanceM: number;
+  /** Who actually stood in front of the camera on the rejected scan. */
+  photoUrl: string | null;
 }
 
 /** The employee's latest live-location report (today's board only). */
@@ -199,6 +205,7 @@ export interface MeWeekCheckIn {
   time: Date;
   isLate: boolean;
   lateMinutes: number;
+  photoUrl: string | null;
 }
 
 export interface MeDayEntry {
@@ -541,6 +548,7 @@ export class AttendanceService {
           distanceM: Math.round(
             distanceInMeters(record.latitude, record.longitude, wp.officeLat, wp.officeLng),
           ),
+          photoUrl: record.photoUrl ?? null,
         }));
 
       const live: TodayLiveLocation | null =
@@ -661,7 +669,12 @@ export class AttendanceService {
         date: key,
         status,
         checkIn: checkIn
-          ? { time: checkIn.time, isLate: checkIn.isLate, lateMinutes: checkIn.lateMinutes }
+          ? {
+              time: checkIn.time,
+              isLate: checkIn.isLate,
+              lateMinutes: checkIn.lateMinutes,
+              photoUrl: checkIn.photoUrl,
+            }
           : null,
         checkOut,
         hoursWorked,
@@ -719,6 +732,7 @@ export class AttendanceService {
           insideGeofence: atWork(checkInRecord, checkInDistance),
           faceScore: checkInRecord.faceScore,
           distanceM: checkInDistance,
+          photoUrl: checkInRecord.photoUrl ?? null,
         }
       : null;
 
@@ -729,6 +743,7 @@ export class AttendanceService {
           insideGeofence: atWork(checkOutRecord, checkOutDistance),
           faceScore: checkOutRecord.faceScore,
           distanceM: checkOutDistance,
+          photoUrl: checkOutRecord.photoUrl ?? null,
         }
       : null;
 
@@ -860,6 +875,10 @@ export class AttendanceService {
         isLate,
         lateMinutes,
         place: where.place,
+        photoUrl: ownUploadUrl(
+          dto.photoUrl,
+          this.configService.get('uploads', { infer: true })?.publicBaseUrl ?? '',
+        ),
         recordedAt,
       },
     });
