@@ -63,11 +63,14 @@ const _routes = <(String, String)>[
 ];
 
 /// Device profiles: name, logical size, text scale.
-const _devices = <(String, Size, double)>[
-  ('360', Size(360, 780), 1),
-  ('390', Size(390, 844), 1),
-  ('360_text130', Size(360, 780), 1.3),
-];
+final _devices = Platform.environment['SHOT_TALL'] == '1'
+    // Whole scrollable page in one image (long screens like Home).
+    ? <(String, Size, double)>[('390_tall', const Size(390, 2600), 1)]
+    : <(String, Size, double)>[
+        ('360', const Size(360, 780), 1),
+        ('390', const Size(390, 844), 1),
+        ('360_text130', const Size(360, 780), 1.3),
+      ];
 
 void main() {
   if (_shotDir == null || _interDir == null) {

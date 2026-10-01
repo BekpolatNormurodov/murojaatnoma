@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:io';
 
 import 'package:app_core/app_core.dart';
@@ -8,8 +10,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
-import 'package:worker_app/features/attendance/presentation/widgets/mock_dashboard.dart';
 import 'package:worker_app/features/attendance/presentation/widgets/today_status_card.dart';
+import 'package:worker_app/features/dashboard/dashboard_cards.dart';
+import 'package:worker_app/features/dashboard/my_dashboard.dart';
+import 'package:worker_app/features/dashboard/my_dashboard_cubit.dart';
+import 'package:worker_app/injection.dart';
 import 'package:worker_app/features/attendance/presentation/widgets/weekly_mini_chart.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
@@ -34,6 +39,30 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool _checkingGeofence = false;
+
+  /// Real ko'rsatkichlar (`GET /me/dashboard`) — ilgari bosh sahifa MOCK
+  /// sonlarni ("3 yangi murojaat", "5 o'qilmagan") real rejimda ham
+  /// ko'rsatardi.
+  late final MyDashboardCubit _dashboard;
+  StreamSubscription<void>? _reconnectSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _dashboard = MyDashboardCubit(getIt<DioClient>());
+    unawaited(_dashboard.load());
+    // Internet qaytishi bilan ko'rsatkichlarni yangilaymiz.
+    _reconnectSub = NetworkStatus.instance.onReconnect.listen(
+      (_) => unawaited(_dashboard.load()),
+    );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_reconnectSub?.cancel());
+    unawaited(_dashboard.close());
+    super.dispose();
+  }
 
   /// Haftalik tahlil (`WeeklyMiniChart` + `_QuickStats`) bo'limining
   /// o'rnini belgilaydi — "Bo'limlar" to'ridagi "Tahlil" kartasi bosilganda
@@ -155,7 +184,10 @@ class _HomePageState extends State<HomePage> {
             : 20.0;
 
         return RefreshIndicator(
-          onRefresh: () => context.read<AttendanceCubit>().load(),
+          onRefresh: () => Future.wait([
+            context.read<AttendanceCubit>().load(),
+            _dashboard.load(),
+          ]),
           child: ListView(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
@@ -195,6 +227,23 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 24),
               const _QuickActions(),
               const SizedBox(height: 24),
+              // Shaxsiy analitika — haqiqiy ma'lumot (davomat %, reyting,
+              // 30 kun, murojaat KPI, oylik/premya).
+              BlocBuilder<MyDashboardCubit, MyDashboardState>(
+                bloc: _dashboard,
+                builder: (context, dash) {
+                  final data = dash.data;
+                  if (data == null) return const SizedBox.shrink();
+                  return Column(
+                    children: [
+                      PerformanceCard(data: data.attendance),
+                      const SizedBox(height: 16),
+                      MurojaatKpiCard(data: data.murojaat, money: data.money),
+                      const SizedBox(height: 24),
+                    ],
+                  ).animate().fadeIn(duration: 300.ms);
+                },
+              ),
               if (isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
@@ -219,11 +268,24 @@ class _HomePageState extends State<HomePage> {
               // (`ListView`), shuning uchun bu qo'shimcha tarkib pastda
               // bo'lishi normal — foydalanuvchi shunchaki pastga suradi.
               const SizedBox(height: 24),
-              _TodayOverviewStrip(today: today),
-              const SizedBox(height: 24),
-              _DashboardSections(onAnalyticsTap: _scrollToAnalytics),
-              const SizedBox(height: 24),
-              const _RecentActivitySection(),
+              BlocBuilder<MyDashboardCubit, MyDashboardState>(
+                bloc: _dashboard,
+                builder: (context, dash) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _TodayOverviewStrip(today: today, dash: dash.data),
+                    const SizedBox(height: 24),
+                    _DashboardSections(
+                      onAnalyticsTap: _scrollToAnalytics,
+                      dash: dash.data,
+                    ),
+                    if (dash.data?.recent.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 24),
+                      _RecentActivitySection(items: dash.data!.recent),
+                    ],
+                  ],
+                ),
+              ),
             ],
           ),
         );
@@ -599,15 +661,16 @@ class _StatCard extends StatelessWidget {
 }
 
 /// Bosh sahifadagi "Bugungi ko'rinish" — bugungi murojaat/chat/majlis
-/// (MOCK, qarang: `mock_dashboard.dart`) sonlari va (bugungi yozuv mavjud
+/// (haqiqiy `/me/dashboard`) sonlari va (bugungi yozuv mavjud
 /// bo'lsa) joriy geofence holati. Gorizontal skroll ichida (`ListView`,
 /// `scrollDirection: horizontal`) — shu tufayli ekran torligida yoki katta
 /// tizim shrift o'lchamida ham HECH QACHON gorizontal overflow bo'lmaydi
 /// (torlik holida chip'lar shunchaki skroll qilinadi, "toshib ketmaydi").
 class _TodayOverviewStrip extends StatelessWidget {
-  const _TodayOverviewStrip({required this.today});
+  const _TodayOverviewStrip({required this.today, required this.dash});
 
   final AttendanceDay? today;
+  final MyDashboard? dash;
 
   @override
   Widget build(BuildContext context) {
@@ -618,19 +681,19 @@ class _TodayOverviewStrip extends StatelessWidget {
     final chips = <Widget>[
       _OverviewChip(
         icon: AppIcons.requests,
-        value: '${MockDashboardData.newRequestsCount}',
+        value: '${dash?.murojaat.open ?? 0}',
         label: l10n.homeStripNewRequests,
         tint: AppColors.primary,
       ),
       _OverviewChip(
         icon: AppIcons.chat,
-        value: '${MockDashboardData.unreadChatCount}',
+        value: '${dash?.today.unreadChat ?? 0}',
         label: l10n.homeStripUnreadChat,
         tint: AppColors.info,
       ),
       _OverviewChip(
         icon: AppIcons.video,
-        value: '${MockDashboardData.meetingsTodayCount}',
+        value: '${dash?.today.meetings ?? 0}',
         label: l10n.homeStripMeetingsToday,
         tint: AppColors.accent,
       ),
@@ -760,9 +823,10 @@ class _OverviewChip extends StatelessWidget {
 /// (masalan "Xarita") kartalar bir xil qatorda bo'lganda balandligi bir xil
 /// bo'lishi uchun (aks holda badge'siz kartalar pastroq/notekis ko'rinardi).
 class _DashboardSections extends StatelessWidget {
-  const _DashboardSections({required this.onAnalyticsTap});
+  const _DashboardSections({required this.onAnalyticsTap, required this.dash});
 
   final VoidCallback onAnalyticsTap;
+  final MyDashboard? dash;
 
   @override
   Widget build(BuildContext context) {
@@ -787,7 +851,7 @@ class _DashboardSections extends StatelessWidget {
                   label: l10n.requests,
                   reserveBadgeSlot: true,
                   badgeText: l10n.homeNewRequestsBadge(
-                    MockDashboardData.newRequestsCount,
+                    dash?.murojaat.open ?? 0,
                   ),
                   onTap: () => context.go('/requests'),
                 ),
@@ -799,7 +863,7 @@ class _DashboardSections extends StatelessWidget {
                   label: l10n.chat,
                   reserveBadgeSlot: true,
                   badgeText: l10n.homeUnreadChatBadge(
-                    MockDashboardData.unreadChatCount,
+                    dash?.today.unreadChat ?? 0,
                   ),
                   onTap: () => context.go('/chat'),
                 ),
@@ -835,7 +899,7 @@ class _DashboardSections extends StatelessWidget {
                   label: l10n.meetingsPageTitle,
                   reserveBadgeSlot: true,
                   badgeText: l10n.homeMeetingsTodayBadge(
-                    MockDashboardData.meetingsTodayCount,
+                    dash?.today.meetings ?? 0,
                   ),
                   onTap: () => context.push('/meetings'),
                 ),
@@ -862,10 +926,13 @@ class _DashboardSections extends StatelessWidget {
 }
 
 /// Bosh sahifadagi "So'nggi faoliyat" — 3 ta MOCK yozuv (qarang:
-/// `MockDashboardData.recentActivity`), bosh sahifaga jonlanish beradi.
+/// `/me/dashboard.recent` — haqiqiy bildirishnomalar), bosh sahifaga jonlanish beradi.
 /// Sof taqdimot qatlami — hech qanday feature moduliga bog'liq emas.
 class _RecentActivitySection extends StatelessWidget {
-  const _RecentActivitySection();
+  const _RecentActivitySection({required this.items});
+
+  /// Haqiqiy so'nggi bildirishnomalar (`/me/dashboard.recent`).
+  final List<ActivityItem> items;
 
   @override
   Widget build(BuildContext context) {
@@ -873,7 +940,6 @@ class _RecentActivitySection extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final softColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final line = isDark ? AppColors.darkLine : AppColors.line;
-    const items = MockDashboardData.recentActivity;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -904,36 +970,33 @@ class _RecentActivitySection extends StatelessWidget {
 class _ActivityRow extends StatelessWidget {
   const _ActivityRow({required this.item});
 
-  final MockActivityItem item;
+  final ActivityItem item;
+
+  static String _ago(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'hozir';
+    if (d.inMinutes < 60) return '${d.inMinutes} daq';
+    if (d.inHours < 24) return '${d.inHours} soat';
+    return '${d.inDays} kun';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
 
-    final (icon, title, color) = switch (item.kind) {
-      MockActivityKind.request => (
-        AppIcons.requests,
-        l10n.homeActivityNewRequest,
-        AppColors.primary,
-      ),
-      MockActivityKind.message => (
-        AppIcons.chat,
-        l10n.homeActivityNewMessage,
-        AppColors.info,
-      ),
-      MockActivityKind.meeting => (
-        AppIcons.video,
-        l10n.homeActivityMeetingStarting,
-        AppColors.accent,
-      ),
+    final (icon, color) = switch (item.type) {
+      'APPLICATION' => (AppIcons.requests, AppColors.primary),
+      'ATTENDANCE' => (AppIcons.calendar, AppColors.success),
+      'LOCATION' => (AppIcons.location, AppColors.warning),
+      _ => (AppIcons.notification, AppColors.info),
     };
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 36,
@@ -947,19 +1010,33 @@ class _ActivityRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              title,
-              style: AppTextStyles.body.copyWith(color: ink),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: AppTextStyles.body.copyWith(
+                    color: ink,
+                    fontWeight: item.isRead ? FontWeight.w400 : FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (item.body.isNotEmpty)
+                  Text(
+                    item.body,
+                    style: AppTextStyles.caption.copyWith(color: mutedColor),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
           Text(
-            item.time,
+            _ago(item.createdAt),
             style: AppTextStyles.caption.copyWith(color: mutedColor),
             maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
