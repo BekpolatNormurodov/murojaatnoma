@@ -1,24 +1,17 @@
 import 'package:user_app/features/notifications/domain/entities/notification_item.dart';
 
-/// Fuqaro ilovasidagi bildirishnomalar uchun masofaviy ma'lumot manbai
-/// SHARTNOMASI ("seam") — `NotificationsCubit` shu abstraksiyaga bog'liq,
-/// aniq implementatsiyaga EMAS.
-///
-/// Hozircha yagona implementatsiya — [NotificationsMockDataSource] —
-/// chunki fuqaroga qaratilgan (citizen-facing) `/notifications` backend
-/// endpointi hali YO'Q (backenddagi `/notifications` hozircha faqat
-/// xodim/admin uchun). Bu abstraksiya ATAYLAB, backend tayyor bo'lishidan
-/// OLDIN kiritilgan: haqiqiy endpoint qo'shilganda shu shartnomaga mos
-/// `NotificationsApiImpl` yozib, `NotificationsCubit`ning standart
-/// argumentini (`dataSource ?? NotificationsMockDataSource()`) shunga
-/// almashtirish YETARLI — chaqiruvchi kod (sahifa, DI ro'yxati) o'zgarmaydi.
-/// `features/requests`dagi `CitizenRequestsRemoteDataSource`
-/// (Mock/Api juftligi) bilan BIR XIL naqsh.
-// ignore: one_member_abstracts
+/// Fuqaro bildirishnomalari manbai SHARTNOMASI — `NotificationsCubit` shu
+/// abstraksiyaga bog'liq. Ishlab chiqarishda `NotificationsApiDataSource`
+/// (`/notifications/citizen*`), testlarda [NotificationsMockDataSource].
 abstract class NotificationsDataSource {
-  /// Ro'yxatni (eng yangisi birinchi bo'lishi shart emas — chaqiruvchi
-  /// o'zi saralaydi) qaytaradi.
+  /// Ro'yxat (chaqiruvchi o'zi saralaydi).
   Future<List<NotificationItem>> fetch();
+
+  /// Bittasini serverda o'qilgan deb belgilaydi.
+  Future<void> markRead(String id);
+
+  /// Hammasini serverda o'qilgan deb belgilaydi.
+  Future<void> markAllRead();
 }
 
 /// MOCK implementatsiya — hozircha haqiqiy backend yo'q (mock-first,
@@ -28,6 +21,12 @@ abstract class NotificationsDataSource {
 /// shartnomasiga ko'ra bildirishnoma MATNI (chrome emas) MOCK ma'lumot
 /// qatlamining bir qismi.
 class NotificationsMockDataSource implements NotificationsDataSource {
+  @override
+  Future<void> markRead(String id) async {}
+
+  @override
+  Future<void> markAllRead() async {}
+
   /// Ro'yxatni (server kechikishini taqlid qilib) qaytaradi — eng
   /// yangisi birinchi. O'qilgan/o'qilmagan aralash, bir nechta turdagi
   /// yozuvlarni o'z ichiga oladi.

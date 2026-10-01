@@ -14,12 +14,23 @@ enum NotificationType {
 
   /// Kommunal xizmat/servis bo'yicha eslatma (masalan qarzdorlik).
   serviceReminder,
+
+  /// Murojaat qabul qilindi (ro'yxatga olindi, muddat belgilandi).
+  requestReceived,
+
+  /// Murojaatga mas'ul xodim biriktirildi.
+  requestAssigned,
+
+  /// Murojaat hal qilindi.
+  requestResolved,
+
+  /// Murojaat rad etildi (sababi bilan).
+  requestRejected,
 }
 
 /// Bitta bildirishnoma yozuvi — ro'yxat sahifasida (`NotificationsPage`)
-/// ko'rsatiladi. MOCK manbadan (`NotificationsMockDataSource`) keladi —
-/// `title`/`body` shu tufayli ATAYLAB oddiy `String` (l10n emas, qarang:
-/// data qatlami hujjati).
+/// ko'rsatiladi. Server (`GET /notifications/citizen`) matnni tayyor
+/// yuboradi — `title`/`body` shu tufayli oddiy `String` (l10n emas).
 class NotificationItem extends Equatable {
   const NotificationItem({
     required this.id,
@@ -28,6 +39,7 @@ class NotificationItem extends Equatable {
     required this.body,
     required this.createdAt,
     this.read = false,
+    this.applicationId,
   });
 
   /// Keshdan (`SharedPreferences`/JSON) o'qiladi — `CacheService.getJsonList`
@@ -41,13 +53,14 @@ class NotificationItem extends Equatable {
       body: json['body'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       read: json['read'] as bool? ?? false,
+      applicationId: json['application_id'] as String?,
     );
   }
 
   /// `CacheService` kaliti — `NotificationsCubit` cache-then-network
   /// naqshi uchun (oxirgi ko'rsatilgan ro'yxat, o'qilgan-belgilar bilan
   /// birga, ilova qayta ochilganda darhol ko'rsatiladi).
-  static const cacheKey = 'cache_notifications_v1';
+  static const cacheKey = 'cache_notifications_v2';
 
   final String id;
   final NotificationType type;
@@ -56,6 +69,9 @@ class NotificationItem extends Equatable {
   final DateTime createdAt;
   final bool read;
 
+  /// Bog'liq murojaat — bo'lsa "Murojaatni ochish" tugmasi ko'rsatiladi.
+  final String? applicationId;
+
   NotificationItem copyWith({bool? read}) => NotificationItem(
     id: id,
     type: type,
@@ -63,10 +79,19 @@ class NotificationItem extends Equatable {
     body: body,
     createdAt: createdAt,
     read: read ?? this.read,
+    applicationId: applicationId,
   );
 
   @override
-  List<Object?> get props => [id, type, title, body, createdAt, read];
+  List<Object?> get props => [
+    id,
+    type,
+    title,
+    body,
+    createdAt,
+    read,
+    applicationId,
+  ];
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -75,5 +100,6 @@ class NotificationItem extends Equatable {
     'body': body,
     'created_at': createdAt.toIso8601String(),
     'read': read,
+    'application_id': applicationId,
   };
 }

@@ -28,6 +28,8 @@ import 'package:user_app/features/news/data/repositories/news_repository_impl.da
 import 'package:user_app/features/news/domain/repositories/news_repository.dart';
 import 'package:user_app/features/news/domain/usecases/get_news.dart';
 import 'package:user_app/features/news/presentation/bloc/news_cubit.dart';
+import 'package:user_app/features/notifications/data/datasources/notifications_api_data_source.dart';
+import 'package:user_app/features/notifications/data/datasources/notifications_mock_data_source.dart';
 import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:user_app/features/payments/data/datasources/payments_remote_data_source.dart';
 import 'package:user_app/features/payments/data/repositories/payments_repository_impl.dart';
@@ -324,9 +326,14 @@ Future<void> configureDependencies() async {
     // uchun FACTORY: bo'lim widget daraxtiga har kirganda YANGI instansiya
     // (`PayCubit`/`SubmitRequestCubit` bilan bir xil naqsh).
     ..registerFactory<NewsCubit>(() => NewsCubit(getNews: getIt<GetNews>()))
-    // ---- Bildirishnomalar/Notifications (mock-first ro'yxat) ----
+    // ---- Bildirishnomalar — haqiqiy `/notifications/citizen` ----
     // `HomeCubit` bilan bir xil naqsh: LAZY SINGLETON (factory EMAS) —
     // bosh sahifadagi qo'ng'iroq belgisi VA `/notifications` sahifasi
     // XUDDI SHU instansiyani (va uning unread-sonini) ko'rishi kerak.
-    ..registerLazySingleton<NotificationsCubit>(NotificationsCubit.new);
+    ..registerLazySingleton<NotificationsDataSource>(
+      () => NotificationsApiDataSource(getIt<DioClient>()),
+    )
+    ..registerLazySingleton<NotificationsCubit>(
+      () => NotificationsCubit(dataSource: getIt<NotificationsDataSource>()),
+    );
 }

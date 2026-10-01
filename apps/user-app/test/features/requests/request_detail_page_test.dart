@@ -63,9 +63,19 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.text("Ko'rib chiqilmoqda"), findsOneWidget);
-    expect(find.text('01.10, 09:25'), findsOneWidget); // step time
-    expect(find.text('Gulnora Yusupova'), findsOneWidget); // assignee row
+    // Same five stops as the worker app and the web.
+    for (final step in [
+      'Qabul qilindi',
+      'Biriktirildi',
+      'Jarayonda',
+      'Hal qilindi',
+      'Baholandi',
+    ]) {
+      expect(find.text(step), findsWidgets, reason: step);
+    }
+    expect(find.text('01.10, 09:25'), findsNWidgets(2)); // assigned + work
+    expect(find.text("Mas'ul: Gulnora Yusupova"), findsOneWidget);
+    expect(find.text('Muddat: 06.10, 07:25'), findsOneWidget);
     expect(find.text("Yalang'och MFY"), findsOneWidget);
     expect(find.text('Murojaat tarixi'), findsOneWidget);
     expect(find.text("Mas'ul xodim: Gulnora Yusupova"), findsOneWidget);

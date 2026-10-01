@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:app_core/app_core.dart';
@@ -212,8 +213,23 @@ class _FaceAvatar extends StatelessWidget {
 /// `NotificationsCubit` ilova ildizida LAZY SINGLETON sifatida
 /// ta'minlangan (qarang: `app.dart`), shuning uchun bu yerda
 /// `context.watch` orqali holatni kuzatish yetarli.
-class _NotificationBell extends StatelessWidget {
+class _NotificationBell extends StatefulWidget {
   const _NotificationBell();
+
+  @override
+  State<_NotificationBell> createState() => _NotificationBellState();
+}
+
+class _NotificationBellState extends State<_NotificationBell> {
+  @override
+  void initState() {
+    super.initState();
+    // Login'dan keyin birinchi marta shu yerda yuklanadi; keyin har daqiqada
+    // fonda yangilanadi (fuqaroda socket yo'q).
+    final cubit = context.read<NotificationsCubit>();
+    unawaited(cubit.load(silent: cubit.state is! NotificationsLoading));
+    cubit.startAutoRefresh();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -224,25 +240,54 @@ class _NotificationBell extends StatelessWidget {
     final line = isDark ? AppColors.darkLine : AppColors.line;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
 
-    return GestureDetector(
-      onTap: () => context.push('/notifications'),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-              border: Border.all(color: line),
+    return Semantics(
+      button: true,
+      label: unread > 0
+          ? 'Bildirishnomalar, $unread ta yangi'
+          : 'Bildirishnomalar',
+      child: GestureDetector(
+        onTap: () => context.push('/notifications'),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(AppRadii.sm),
+                border: Border.all(color: line),
+              ),
+              child: Icon(AppIcons.notification, size: 20, color: ink),
             ),
-            child: Icon(AppIcons.notification, size: 20, color: ink),
-          ),
-          if (unread > 0)
-            const Positioned(top: -2, right: -2, child: AppBadge(dot: true)),
-        ],
+            if (unread > 0)
+              Positioned(
+                top: -5,
+                right: -5,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 18),
+                  height: 18,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: surface, width: 2),
+                  ),
+                  child: Text(
+                    unread > 9 ? '9+' : '$unread',
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 10,
+                      height: 1,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

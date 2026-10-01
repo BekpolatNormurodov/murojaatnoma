@@ -15,20 +15,10 @@ class NotificationTile extends StatelessWidget {
   final NotificationItem item;
   final VoidCallback onTap;
 
-  (IconData, Color) _meta(NotificationType type) => switch (type) {
-    NotificationType.paymentSuccess => (AppIcons.tick, AppColors.success),
-    NotificationType.paymentFailed => (AppIcons.close, AppColors.danger),
-    NotificationType.requestAnswered => (
-      AppIcons.requestsBold,
-      AppColors.primary,
-    ),
-    NotificationType.serviceReminder => (AppIcons.receipt, AppColors.warning),
-  };
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final (icon, color) = _meta(item.type);
+    final (icon, color) = notificationMeta(item.type);
     final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final line = isDark ? AppColors.darkLine : AppColors.line;
     final unreadTint = isDark
@@ -49,16 +39,7 @@ class NotificationTile extends StatelessWidget {
         subtitle: item.body,
         titleMaxLines: 2,
         onTap: onTap,
-        leading: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppRadii.sm),
-          ),
-          child: Icon(icon, size: 20, color: color),
-        ),
+        leading: NotificationIconBox(icon: icon, color: color),
         trailing: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -76,6 +57,43 @@ class NotificationTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Turga mos ikonka va rang (ro'yxat va batafsil oynada bir xil).
+(IconData, Color) notificationMeta(NotificationType type) => switch (type) {
+  NotificationType.paymentSuccess => (AppIcons.tick, AppColors.success),
+  NotificationType.paymentFailed => (AppIcons.close, AppColors.danger),
+  NotificationType.requestAnswered => (AppIcons.chatBold, AppColors.primary),
+  NotificationType.serviceReminder => (AppIcons.receipt, AppColors.warning),
+  NotificationType.requestReceived => (AppIcons.requestsBold, AppColors.info),
+  NotificationType.requestAssigned => (AppIcons.profileBold, AppColors.info),
+  NotificationType.requestResolved => (AppIcons.tick, AppColors.success),
+  NotificationType.requestRejected => (AppIcons.close, AppColors.danger),
+};
+
+class NotificationIconBox extends StatelessWidget {
+  const NotificationIconBox({
+    required this.icon,
+    required this.color,
+    this.size = 44,
+    super.key,
+  });
+
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+    ),
+    child: Icon(icon, size: size * 0.45, color: color),
+  );
 }
 
 /// Berilgan vaqtni joriy vaqtga nisbatan qisqa matnga aylantiradi (masalan

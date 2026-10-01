@@ -18,7 +18,8 @@ class UserApp extends StatelessWidget {
         BlocProvider(create: (_) => getIt<ThemeCubit>()..load()),
         BlocProvider(create: (_) => getIt<LocaleCubit>()..load()),
         BlocProvider(create: (_) => getIt<AuthCubit>()),
-        BlocProvider(create: (_) => getIt<NotificationsCubit>()..load()),
+        // Yuklash bosh sahifadagi qo'ng'iroqdan (login'dan keyin) boshlanadi.
+        BlocProvider(create: (_) => getIt<NotificationsCubit>()),
       ],
       child: Builder(
         builder: (context) {

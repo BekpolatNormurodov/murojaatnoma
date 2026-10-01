@@ -123,11 +123,7 @@ class _DetailContent extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 24),
-          AppCard(
-            padding: const EdgeInsets.fromLTRB(8, 16, 8, 14),
-            child: _StatusTimeline(request: request),
-          ),
-          const SizedBox(height: 12),
+          AppCard(child: _StatusTimeline(request: request)),
           _ProgressInfo(request: request),
           const SizedBox(height: 20),
           _SectionTitle(l10n.requestDescriptionTitle),
@@ -501,25 +497,9 @@ class _SectionTitle extends StatelessWidget {
 String _t(BuildContext context, String uz, String ru) =>
     Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
 
-/// "12.09, 14:05".
-String _stamp(String iso) {
-  final d = DateTime.tryParse(iso)?.toLocal();
-  if (d == null) return '—';
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(d.day)}.${two(d.month)}, ${two(d.hour)}:${two(d.minute)}';
-}
-
-class _Step {
-  const _Step(this.label, this.at, {required this.done, this.danger = false});
-  final String label;
-  final String? at;
-  final bool done;
-  final bool danger;
-}
-
-/// Murojaat yo'li: Yuborildi → Ko'rib chiqilmoqda → Hal qilindi →
-/// Baholandi (rad etilsa: Yuborildi → Rad etildi). Har bosqich ostida
-/// sodir bo'lgan vaqti — hokimiyat tomonidagi tarixdan.
+/// Murojaat yo'li — xodim ilovasi va web bilan BIR XIL bosqichlar
+/// (umumiy `murojaatSteps`): Qabul qilindi → Biriktirildi → Jarayonda →
+/// Hal qilindi → Baholandi (rad etilsa … → Rad etildi), vaqt va izohi bilan.
 class _StatusTimeline extends StatelessWidget {
   const _StatusTimeline({required this.request});
 
@@ -528,165 +508,38 @@ class _StatusTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = request;
-    String? firstAt(bool Function(RequestHistoryEvent) test) {
-      for (final e in r.history) {
-        if (test(e)) return e.createdAt;
-      }
-      return null;
-    }
-
-    String? lastAt(bool Function(RequestHistoryEvent) test) {
-      for (final e in r.history.reversed) {
-        if (test(e)) return e.createdAt;
-      }
-      return null;
-    }
-
-    final rejected = r.status == RequestStatus.yopildi;
-    final working = r.status != RequestStatus.yuborilgan;
-    final resolved = r.status == RequestStatus.javobBerildi;
-    final steps = rejected
-        ? [
-            _Step(
-              _t(context, 'Yuborildi', 'Отправлено'),
-              r.createdAt,
-              done: true,
+    return AppVerticalStepper(
+      steps: murojaatSteps(
+        ru: Localizations.localeOf(context).languageCode == 'ru',
+        forCitizen: true,
+        status: _statusToApiName(r.status),
+        createdAt: r.createdAt,
+        events: [
+          for (final e in r.history)
+            (
+              type: e.type,
+              toStatus: e.toStatus,
+              at: e.createdAt,
+              note: e.note,
+              who: e.employeeName,
             ),
-            _Step(
-              _t(context, 'Rad etildi', 'Отклонено'),
-              lastAt((e) => e.toStatus == 'REJECTED'),
-              done: true,
-              danger: true,
-            ),
-          ]
-        : [
-            _Step(
-              _t(context, 'Yuborildi', 'Отправлено'),
-              r.createdAt,
-              done: true,
-            ),
-            _Step(
-              _t(context, "Ko'rib chiqilmoqda", 'В работе'),
-              firstAt(
-                (e) => e.type == 'ASSIGNED' || e.toStatus == 'IN_PROGRESS',
-              ),
-              done: working,
-            ),
-            _Step(
-              _t(context, 'Hal qilindi', 'Решено'),
-              r.resolvedAt ?? lastAt((e) => e.toStatus == 'RESOLVED'),
-              done: resolved,
-            ),
-            _Step(
-              _t(context, 'Baholandi', 'Оценено'),
-              lastAt((e) => e.type == 'RATED'),
-              done: r.rating != null,
-            ),
-          ];
-    var current = 0;
-    for (var i = 0; i < steps.length; i++) {
-      if (steps[i].done) current = i;
-    }
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final line = isDark ? AppColors.darkLine : AppColors.line;
-    final ink = isDark ? AppColors.darkInk : AppColors.ink;
-    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
-    Color colorOf(int i) => !steps[i].done
-        ? line
-        : steps[i].danger
-        ? AppColors.danger
-        : AppColors.primary;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < steps.length; i++)
-          Expanded(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 22,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: i == 0
-                            ? const SizedBox.shrink()
-                            : Container(height: 2, color: colorOf(i)),
-                      ),
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: steps[i].done
-                              ? colorOf(i)
-                              : Colors.transparent,
-                          border: Border.all(color: colorOf(i), width: 2),
-                          boxShadow: i == current
-                              ? [
-                                  BoxShadow(
-                                    color: colorOf(i).withValues(alpha: 0.25),
-                                    spreadRadius: 4,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: steps[i].done
-                            ? Icon(
-                                steps[i].danger
-                                    ? AppIcons.close
-                                    : AppIcons.tick,
-                                size: 13,
-                                color: Colors.white,
-                              )
-                            : null,
-                      ),
-                      Expanded(
-                        child: i == steps.length - 1
-                            ? const SizedBox.shrink()
-                            : Container(height: 2, color: colorOf(i + 1)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Text(
-                    steps[i].label,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: 11,
-                      height: 1.15,
-                      color: steps[i].done ? ink : inkMuted,
-                      fontWeight: i == current
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  steps[i].done && steps[i].at != null
-                      ? _stamp(steps[i].at!)
-                      : '—',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.caption.copyWith(
-                    fontSize: 10,
-                    color: inkMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
+        ],
+        assigneeName: r.assigneeName,
+        resolvedAt: r.resolvedAt,
+        dueAt: r.dueAt,
+        rating: r.rating,
+        reopenCount: r.reopenCount,
+      ),
     );
   }
 }
+
+String _statusToApiName(RequestStatus s) => switch (s) {
+  RequestStatus.yuborilgan => 'NEW',
+  RequestStatus.korilmoqda => 'IN_PROGRESS',
+  RequestStatus.javobBerildi => 'RESOLVED',
+  RequestStatus.yopildi => 'REJECTED',
+};
 
 /// Mas'ul xodim, hal qilish muddati va manzil — fuqaro murojaati qayerda
 /// ekanini aniq bilsin.
@@ -702,16 +555,8 @@ class _ProgressInfo extends StatelessWidget {
         r.status == RequestStatus.yuborilgan ||
         r.status == RequestStatus.korilmoqda;
     final due = r.dueAt == null ? null : DateTime.tryParse(r.dueAt!)?.toLocal();
-    final rows = <Widget>[
-      AppListTile(
-        title:
-            r.assigneeName ??
-            _t(context, 'Hali biriktirilmagan', 'Ещё не назначен'),
-        subtitle: _t(context, "Mas'ul xodim", 'Ответственный'),
-        leadingIcon: AppIcons.profile,
-        showChevron: false,
-      ),
-    ];
+    // Mas'ul xodim stepperda ko'rinadi — bu yerda muddat va manzil.
+    final rows = <Widget>[];
     if (due != null && open) {
       final left = due.difference(DateTime.now());
       final overdue = left.isNegative;
@@ -749,9 +594,13 @@ class _ProgressInfo extends StatelessWidget {
         ),
       );
     }
-    return AppCard(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(children: rows),
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(children: rows),
+      ),
     );
   }
 }

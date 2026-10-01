@@ -264,10 +264,18 @@ CitizenRequest _requestFromApplicationJson(
   List<dynamic> events = const [],
 }) {
   final decoded = _decodeSubject(json['subject'] as String? ?? '');
+  final category = (json['category'] as String?)?.trim();
   return CitizenRequest(
     id: json['id'] as String? ?? '',
-    kind: decoded.kind,
-    category: decoded.category,
+    // Server endi turini o'zi saqlaydi; eski yozuvlar uchun mavzu prefiksi.
+    kind: switch (json['kind']) {
+      'SHIKOYAT' => RequestKind.shikoyat,
+      'ARIZA' => RequestKind.ariza,
+      _ => decoded.kind,
+    },
+    category: category == null || category.isEmpty
+        ? decoded.category
+        : category,
     title: decoded.title,
     body: json['description'] as String? ?? '',
     status: _statusFromApi(json['status'] as String?),
@@ -282,6 +290,7 @@ CitizenRequest _requestFromApplicationJson(
     address: json['address'] as String?,
     dueAt: json['dueAt'] as String?,
     resolvedAt: json['resolvedAt'] as String?,
+    reopenCount: (json['reopenCount'] as num?)?.toInt() ?? 0,
     history: [
       for (final raw in events)
         if (raw is Map<String, dynamic> && raw['createdAt'] is String)

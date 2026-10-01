@@ -142,6 +142,7 @@ class CitizenRequest extends Equatable {
     this.dueAt,
     this.resolvedAt,
     this.history = const [],
+    this.reopenCount = 0,
   });
 
   factory CitizenRequest.fromJson(Map<String, dynamic> json) {
@@ -171,6 +172,7 @@ class CitizenRequest extends Equatable {
       history: (json['history'] as List<dynamic>? ?? const [])
           .map((e) => RequestHistoryEvent.fromJson(e as Map<String, dynamic>))
           .toList(),
+      reopenCount: (json['reopen_count'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -213,6 +215,9 @@ class CitizenRequest extends Equatable {
   /// Murojaat yo'li: kim, qachon qabul qildi / biriktirildi / hal qildi.
   final List<RequestHistoryEvent> history;
 
+  /// Fuqaro "hal bo'lmadi" deb necha marta qayta ochgan (ko'pi bilan 2).
+  final int reopenCount;
+
   /// So'nggi biriktirilgan mas'ul xodim (tarixdan).
   String? get assigneeName {
     for (final e in history.reversed) {
@@ -240,6 +245,7 @@ class CitizenRequest extends Equatable {
     dueAt,
     resolvedAt,
     history,
+    reopenCount,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -260,5 +266,6 @@ class CitizenRequest extends Equatable {
     'due_at': dueAt,
     'resolved_at': resolvedAt,
     'history': history.map((h) => h.toJson()).toList(),
+    'reopen_count': reopenCount,
   };
 }

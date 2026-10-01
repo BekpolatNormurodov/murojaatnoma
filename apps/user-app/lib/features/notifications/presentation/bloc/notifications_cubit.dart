@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_core/app_core.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:user_app/core/cache/cache_service.dart';
@@ -10,35 +11,31 @@ import 'package:user_app/injection.dart';
 
 part 'notifications_state.dart';
 
-/// "Bildirishnomalar" ro'yxat sahifasini boshqaruvchi Cubit.
+/// "Bildirishnomalar" — bosh sahifadagi qo'ng'iroq belgisi (unread-son) va
+/// `/notifications` sahifasi XUDDI SHU LAZY SINGLETON instansiyani ko'radi.
 ///
-/// `HomeCubit` bilan bir xil naqsh: LAZY SINGLETON sifatida ro'yxatdan
-/// o'tkaziladi (qarang: `injection.dart`) — shu tufayli bosh sahifadagi
-/// qo'ng'iroq belgisi (unread-son) VA `/notifications` sahifasi XUDDI SHU
-/// instansiyani ko'radi, hech qanday qo'shimcha sinxronlash shart emas.
+/// **Cache-then-network**: [load] avval keshdagi oxirgi ro'yxatni darhol
+/// ko'rsatadi, so'ng serverdan (`/notifications/citizen`) yangisini oladi.
+/// Fuqaroda socket yo'q — shu tufayli [startAutoRefresh] ilova ochiq
+/// turganda har daqiqada ro'yxatni fonda yangilaydi (≤100 yozuv).
 ///
-/// **Cache-then-network**: [load] avval `CacheService`dagi oxirgi
-/// ro'yxatni (masalan avvalgi seansdagi o'qilgan/o'qilmagan belgilar bilan)
-/// DARHOL ko'rsatadi (skeleton'siz), so'ng (mock) manbadan yangisini
-/// so'raydi va natijani/keshni yangilaydi.
-///
-/// Hech qachon uncaught tashlamaydi — muvaffaqiyatsizlik har doim
-/// [NotificationsError] holatiga aylanadi (kesh bo'sh bo'lsa).
+/// Hech qachon uncaught tashlamaydi — kesh bo'sh bo'lsa xato
+/// [NotificationsError] holatiga aylanadi.
 class NotificationsCubit extends Cubit<NotificationsState> {
   NotificationsCubit({NotificationsDataSource? dataSource, CacheService? cache})
-    : _dataSource = dataSource ?? NotificationsMockDataSource(),
+    : _dataSource =
+          dataSource ??
+          (getIt.isRegistered<NotificationsDataSource>()
+              ? getIt<NotificationsDataSource>()
+              : NotificationsMockDataSource()),
       _cache =
           cache ??
           (getIt.isRegistered<CacheService>() ? getIt<CacheService>() : null),
       super(const NotificationsLoading());
 
-  // `NotificationsDataSource` — QATIY MANBAGA EMAS, ABSTRAKSIYAGA bog'liq
-  // (qarang: `notifications_mock_data_source.dart`dagi shartnoma hujjati)
-  // — real backend tayyor bo'lganda standart qiymatni
-  // (`?? NotificationsMockDataSource()`) almashtirish yetarli, bu klass
-  // o'zi o'zgarmaydi.
   final NotificationsDataSource _dataSource;
   final CacheService? _cache;
+  Timer? _poll;
   static const _logger = AppLogger();
 
   /// Joriy o'qilmagan bildirishnomalar soni — holatdan qat'i nazar
@@ -50,52 +47,70 @@ class NotificationsCubit extends Cubit<NotificationsState> {
         : 0;
   }
 
-  Future<void> load() async {
-    final cached = _cache?.getJsonList<NotificationItem>(
-      NotificationItem.cacheKey,
-      NotificationItem.fromJson,
-    );
-    if (cached != null && cached.isNotEmpty) {
-      emit(NotificationsLoaded(cached));
-    } else {
-      emit(const NotificationsLoading());
+  /// [silent] — ekrandagi ro'yxatni skeleton/keshga qaytarmasdan, fonda
+  /// yangilaydi (bosh sahifa ochilganda, avto-yangilashda); xatoda joriy
+  /// holat saqlanadi.
+  Future<void> load({bool silent = false}) async {
+    List<NotificationItem>? cached;
+    if (!silent) {
+      cached = _cache?.getJsonList<NotificationItem>(
+        NotificationItem.cacheKey,
+        NotificationItem.fromJson,
+      );
+      if (cached != null && cached.isNotEmpty) {
+        emit(NotificationsLoaded(cached));
+      } else {
+        emit(const NotificationsLoading());
+      }
     }
 
     try {
       final items = await _dataSource.fetch();
       final sorted = [...items]
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      unawaited(
-        _cache?.setJson(
-          NotificationItem.cacheKey,
-          sorted.map((n) => n.toJson()).toList(),
-        ),
-      );
+      _persist(sorted);
+      if (isClosed) return;
       emit(
         sorted.isEmpty
             ? const NotificationsEmpty()
             : NotificationsLoaded(sorted),
       );
     } on Object catch (e) {
-      if (cached != null && cached.isNotEmpty) {
-        _logger.logError(e, null, reason: 'NotificationsCubit.load');
-      } else {
-        emit(NotificationsError('Kutilmagan xatolik: $e'));
+      _logger.logError(e, null, reason: 'NotificationsCubit.load');
+      if (silent || isClosed) return;
+      if (cached == null || cached.isEmpty) {
+        emit(
+          NotificationsError(
+            e is ServerException ? e.message : "Ma'lumotni yuklab bo'lmadi",
+          ),
+        );
       }
     }
   }
 
-  /// Bitta yozuvni o'qilgan deb belgilaydi (masalan ro'yxatda ustiga
-  /// bosilganda). `Loaded` bo'lmasa jim hech narsa qilmaydi.
+  /// Har daqiqada (ilova ochiq turganda) yangi bildirishnoma bor-yo'qligini
+  /// tekshiradi. Bir necha marta chaqirilsa ham bitta taymer.
+  void startAutoRefresh({Duration every = const Duration(minutes: 1)}) {
+    _poll ??= Timer.periodic(every, (_) => load(silent: true));
+  }
+
+  /// Bitta yozuvni o'qilgan deb belgilaydi — darhol ekranda, keyin serverda.
   void markRead(String id) {
     final current = state;
     if (current is! NotificationsLoaded) return;
+    final target = current.items.where((n) => n.id == id).firstOrNull;
+    if (target == null || target.read) return;
     final updated = [
       for (final item in current.items)
         if (item.id == id) item.copyWith(read: true) else item,
     ];
     _persist(updated);
     emit(NotificationsLoaded(updated));
+    unawaited(
+      _dataSource.markRead(id).catchError((Object e) {
+        _logger.logError(e, null, reason: 'NotificationsCubit.markRead');
+      }),
+    );
   }
 
   /// Barcha yozuvlarni o'qilgan deb belgilaydi (app bar'dagi harakat).
@@ -107,11 +122,13 @@ class NotificationsCubit extends Cubit<NotificationsState> {
     ];
     _persist(updated);
     emit(NotificationsLoaded(updated));
+    unawaited(
+      _dataSource.markAllRead().catchError((Object e) {
+        _logger.logError(e, null, reason: 'NotificationsCubit.markAllRead');
+      }),
+    );
   }
 
-  /// Joriy ro'yxatni (o'qilgan-belgilar bilan) keshga yozadi — shu tufayli
-  /// ilova qayta ochilganda [load] darhol so'nggi o'qilgan-holatni
-  /// ko'rsatadi, keyin fon-tarmoq javobi bilan tasdiqlanadi/yangilanadi.
   void _persist(List<NotificationItem> items) {
     unawaited(
       _cache?.setJson(
@@ -119,5 +136,11 @@ class NotificationsCubit extends Cubit<NotificationsState> {
         items.map((n) => n.toJson()).toList(),
       ),
     );
+  }
+
+  @override
+  Future<void> close() {
+    _poll?.cancel();
+    return super.close();
   }
 }

@@ -30,3 +30,4 @@ export 'src/widgets/camera_cover_box.dart';
 export 'src/widgets/empty_state.dart';
 export 'src/widgets/face_scan_message.dart';
 export 'src/widgets/face_scan_overlay.dart';
+export 'src/widgets/murojaat_stepper.dart';

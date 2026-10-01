@@ -208,6 +208,8 @@ class Application extends Equatable {
     this.ratingComment,
     this.messages = const [],
     this.history = const [],
+    this.reopenCount = 0,
+    this.citizenPhotoUrl,
   });
 
   factory Application.fromJson(Map<String, dynamic> json) {
@@ -247,6 +249,8 @@ class Application extends Equatable {
             (e) => ApplicationHistoryEvent.fromJson(e as Map<String, dynamic>),
           )
           .toList(),
+      reopenCount: (json['reopen_count'] as num?)?.toInt() ?? 0,
+      citizenPhotoUrl: json['citizen_photo_url'] as String?,
     );
   }
 
@@ -296,6 +300,12 @@ class Application extends Equatable {
   /// Holatlar tarixi (eski → yangi).
   final List<ApplicationHistoryEvent> history;
 
+  /// Fuqaro "hal bo'lmadi" deb necha marta qayta ochgan.
+  final int reopenCount;
+
+  /// Murojaat yuborilgan paytda fuqaroning selfi surati (kim yozgani).
+  final String? citizenPhotoUrl;
+
   bool get hasLocation => latitude != null && longitude != null;
 
   @override
@@ -323,6 +333,8 @@ class Application extends Equatable {
     ratingComment,
     messages,
     history,
+    reopenCount,
+    citizenPhotoUrl,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -349,5 +361,7 @@ class Application extends Equatable {
     'rating_comment': ratingComment,
     'messages': messages.map((m) => m.toJson()).toList(),
     'history': history.map((h) => h.toJson()).toList(),
+    'reopen_count': reopenCount,
+    'citizen_photo_url': citizenPhotoUrl,
   };
 }

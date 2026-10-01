@@ -318,17 +318,9 @@ class _SectionTitle extends StatelessWidget {
 
 /* ───────────────────────── Jarayon bosqichlari ───────────────────────── */
 
-class _Step {
-  const _Step(this.label, this.at, {required this.done, this.danger = false});
-  final String label;
-  final String? at;
-  final bool done;
-  final bool danger;
-}
-
-/// Qabul qilindi → Jarayonda → Hal qilindi → Baholandi (rad etilsa:
-/// Qabul qilindi → Rad etildi), har bosqich ostida sodir bo'lgan vaqti
-/// (backend `ApplicationEvent` tarixidan).
+/// Murojaat yo'li — fuqaro ilovasi va web bilan BIR XIL bosqichlar
+/// (umumiy `murojaatSteps`): Qabul qilindi → Biriktirildi → Jarayonda →
+/// Hal qilindi → Baholandi (rad etilsa … → Rad etildi), vaqt va izohi bilan.
 class _StatusTimeline extends StatelessWidget {
   const _StatusTimeline({required this.application});
 
@@ -337,173 +329,35 @@ class _StatusTimeline extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = application;
-    String? firstAt(bool Function(ApplicationHistoryEvent) test) {
-      for (final e in a.history) {
-        if (test(e)) return e.createdAt;
-      }
-      return null;
-    }
-
-    String? lastAt(bool Function(ApplicationHistoryEvent) test) {
-      for (final e in a.history.reversed) {
-        if (test(e)) return e.createdAt;
-      }
-      return null;
-    }
-
-    final working = a.status != ApplicationStatus.yangi;
-    final resolved =
-        a.status == ApplicationStatus.javobBerildi ||
-        a.status == ApplicationStatus.yopildi;
-    final steps = a.status == ApplicationStatus.rad
-        ? [
-            _Step(
-              _t(context, 'Qabul qilindi', 'Принято'),
-              a.createdAt,
-              done: true,
+    return AppVerticalStepper(
+      steps: murojaatSteps(
+        ru: Localizations.localeOf(context).languageCode == 'ru',
+        status: switch (a.status) {
+          ApplicationStatus.yangi => 'NEW',
+          ApplicationStatus.jarayonda => 'IN_PROGRESS',
+          ApplicationStatus.javobBerildi ||
+          ApplicationStatus.yopildi => 'RESOLVED',
+          ApplicationStatus.rad => 'REJECTED',
+        },
+        createdAt: a.createdAt,
+        events: [
+          for (final e in a.history)
+            (
+              type: e.type,
+              toStatus: e.toStatus,
+              at: e.createdAt,
+              note: e.note,
+              who: e.toEmployeeName ?? e.actorName,
             ),
-            _Step(
-              _t(context, 'Rad etildi', 'Отклонено'),
-              lastAt((e) => e.toStatus == 'REJECTED'),
-              done: true,
-              danger: true,
-            ),
-          ]
-        : [
-            _Step(
-              _t(context, 'Qabul qilindi', 'Принято'),
-              a.createdAt,
-              done: true,
-            ),
-            _Step(
-              _t(context, 'Jarayonda', 'В работе'),
-              firstAt(
-                (e) => e.toStatus == 'IN_PROGRESS' || e.type == 'ASSIGNED',
-              ),
-              done: working,
-            ),
-            _Step(
-              _t(context, 'Hal qilindi', 'Решено'),
-              a.resolvedAt ?? lastAt((e) => e.toStatus == 'RESOLVED'),
-              done: resolved,
-            ),
-            _Step(
-              _t(context, 'Baholandi', 'Оценено'),
-              lastAt((e) => e.type == 'RATED'),
-              done: a.rating != null || a.status == ApplicationStatus.yopildi,
-            ),
-          ];
-    var current = 0;
-    for (var i = 0; i < steps.length; i++) {
-      if (steps[i].done) current = i;
-    }
-
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final line = isDark ? AppColors.darkLine : AppColors.line;
-    final ink = isDark ? AppColors.darkInk : AppColors.ink;
-    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
-    Color colorOf(int i) => !steps[i].done
-        ? line
-        : steps[i].danger
-        ? AppColors.danger
-        : AppColors.primary;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < steps.length; i++)
-          Expanded(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 22,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: i == 0
-                            ? const SizedBox.shrink()
-                            : Container(height: 2, color: colorOf(i)),
-                      ),
-                      Container(
-                        width: 22,
-                        height: 22,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: steps[i].done
-                              ? colorOf(i)
-                              : Colors.transparent,
-                          border: Border.all(color: colorOf(i), width: 2),
-                          boxShadow: i == current && steps[i].done
-                              ? [
-                                  BoxShadow(
-                                    color: colorOf(i).withValues(alpha: 0.25),
-                                    spreadRadius: 4,
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: steps[i].done
-                            ? Icon(
-                                steps[i].danger
-                                    ? AppIcons.close
-                                    : AppIcons.tick,
-                                size: 13,
-                                color: Colors.white,
-                              )
-                            : null,
-                      ),
-                      Expanded(
-                        child: i == steps.length - 1
-                            ? const SizedBox.shrink()
-                            : Container(height: 2, color: colorOf(i + 1)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Text(
-                    steps[i].label,
-                    maxLines: 2,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: 11.5,
-                      height: 1.2,
-                      color: steps[i].done ? ink : inkMuted,
-                      fontWeight: i == current
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  steps[i].done && steps[i].at != null
-                      ? _shortStamp(steps[i].at!)
-                      : '—',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.caption.copyWith(
-                    fontSize: 10.5,
-                    color: inkMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
+        ],
+        assigned: a.assignedToMe,
+        resolvedAt: a.resolvedAt,
+        dueAt: a.deadline,
+        rating: a.rating,
+        reopenCount: a.reopenCount,
+      ),
     );
   }
-}
-
-/// "12.09, 14:05" — bosqich ostidagi ixcham vaqt.
-String _shortStamp(String iso) {
-  final d = DateTime.tryParse(iso)?.toLocal();
-  if (d == null) return '—';
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(d.day)}.${two(d.month)}, ${two(d.hour)}:${two(d.minute)}';
 }
 
 /* ───────────────────────── SLA ───────────────────────── */
@@ -638,7 +492,25 @@ class _CitizenCard extends StatelessWidget {
         children: [
           AppListTile(
             title: a.citizenName,
-            subtitle: a.citizenPhone,
+            subtitle: a.citizenPhotoUrl == null
+                ? a.citizenPhone
+                : '${a.citizenPhone} · '
+                      '${_t(context, 'selfi bilan', 'с селфи')}',
+            // Murojaat yuborilgan paytdagi selfi — kim yozganini ko'rish uchun;
+            // bosilsa to'liq o'lchamda ochiladi.
+            leading: a.citizenPhotoUrl == null
+                ? null
+                : GestureDetector(
+                    onTap: () => _showPhoto(
+                      context,
+                      a.citizenPhotoUrl!,
+                      a.citizenName,
+                    ),
+                    child: AppAvatar(
+                      name: a.citizenName,
+                      photoUrl: a.citizenPhotoUrl,
+                    ),
+                  ),
             leadingIcon: AppIcons.profile,
             showChevron: false,
             trailing: IconButton(
@@ -675,6 +547,48 @@ class _CitizenCard extends StatelessWidget {
       ),
     );
   }
+}
+
+void _showPhoto(BuildContext context, String url, String name) {
+  showDialog<void>(
+    context: context,
+    builder: (ctx) => Dialog(
+      clipBehavior: Clip.antiAlias,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AspectRatio(
+            aspectRatio: 3 / 4,
+            child: InteractiveViewer(
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) =>
+                    const Center(child: Icon(AppIcons.imageIcon, size: 40)),
+              ),
+            ),
+          ),
+          ListTile(
+            title: Text(name, style: AppTextStyles.bodyStrong),
+            subtitle: Text(
+              _t(
+                ctx,
+                'Murojaat yuborilgan paytdagi selfi',
+                'Селфи при отправке',
+              ),
+            ),
+            trailing: IconButton(
+              tooltip: _t(ctx, 'Yopish', 'Закрыть'),
+              onPressed: () => Navigator.of(ctx).pop(),
+              icon: const Icon(AppIcons.close),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /* ───────────────────────── Baho ───────────────────────── */
@@ -919,7 +833,7 @@ class _Bubble extends StatelessWidget {
                 Align(
                   alignment: Alignment.centerRight,
                   child: Text(
-                    _shortStamp(message.createdAt),
+                    murojaatStamp(message.createdAt) ?? '—',
                     style: AppTextStyles.caption.copyWith(
                       fontSize: 10.5,
                       color: inkMuted,

@@ -486,7 +486,9 @@ Map<String, dynamic> _adaptApplicationJson(
     'response': response,
     'citizen_name': json['applicantFullName'],
     'citizen_phone': json['applicantPhone'],
-    'is_complaint': m?.group(1) == 'SHIKOYAT',
+    'is_complaint': json['kind'] == null
+        ? m?.group(1) == 'SHIKOYAT'
+        : json['kind'] == 'SHIKOYAT',
     'address': json['address'] ?? json['district'],
     'lat': json['lat'],
     'lng': json['lng'],
@@ -495,6 +497,8 @@ Map<String, dynamic> _adaptApplicationJson(
     'rating_comment': json['ratingComment'],
     'messages': messages,
     'history': history,
+    'reopen_count': json['reopenCount'],
+    'citizen_photo_url': _absoluteUrl(json['applicantPhotoUrl'] as String?),
   };
 }
 
@@ -602,4 +606,14 @@ String? _statusToApi(ApplicationStatus status) {
     case ApplicationStatus.yopildi:
       return null;
   }
+}
+
+/// `/uploads/…` → `https://murojaatnoma.uz/uploads/…` (rasm yuklash uchun).
+String? _absoluteUrl(String? path) {
+  if (path == null || path.trim().isEmpty) return null;
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  final uri = Uri.parse(AppConfig.apiBaseUrl);
+  final origin =
+      '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+  return path.startsWith('/') ? '$origin$path' : '$origin/$path';
 }
