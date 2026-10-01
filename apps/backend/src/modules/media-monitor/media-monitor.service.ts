@@ -41,7 +41,7 @@ import {
   digestByRules,
   digestWithClaude,
 } from './media-analyzer';
-import { DEFAULT_MEDIA_SETTINGS, MediaSettings, cleanHandle, mergeSettings } from './media-settings';
+import { DEFAULT_MEDIA_SETTINGS, MediaSettings, SOURCES_VERSION, cleanHandle, mergeSettings, upgradeSources } from './media-settings';
 import { fingerprintOf, matchKeywords, relevanceFromMatch, truncate } from './media-text.util';
 
 /** Emitted after every run that stored something; RealtimeGateway pushes it to admins. */
@@ -149,7 +149,17 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
   async getSettings(): Promise<MediaSettings> {
     const row = await this.prisma.mediaSetting.findUnique({ where: { key: SETTINGS_KEY } });
-    const s = mergeSettings((row?.value as Partial<MediaSettings> | undefined) ?? null);
+    let s = mergeSettings((row?.value as Partial<MediaSettings> | undefined) ?? null);
+    if (!row) s = { ...s, sourcesVersion: SOURCES_VERSION };
+    const upgraded = row ? upgradeSources(s) : null;
+    if (upgraded) {
+      s = upgraded;
+      await this.prisma.mediaSetting.update({
+        where: { key: SETTINGS_KEY },
+        data: { value: s as unknown as Prisma.InputJsonValue },
+      });
+      this.logger.log(`media settings: added new default sources (v${SOURCES_VERSION})`);
+    }
     this.aiSwitch = s.aiEnabled;
     return s;
   }
@@ -189,7 +199,8 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         if (!/^[A-Za-z0-9._]{1,30}$/.test(a)) throw new BadRequestException(`Instagram akkaunt nomi noto'g'ri: ${a}`);
       }
     }
-    const next = mergeSettings({ ...current, ...stripUndefined(dto) });
+    // Saved from a form that showed the current defaults → nothing left to upgrade.
+    const next = { ...mergeSettings({ ...current, ...stripUndefined(dto) }), sourcesVersion: SOURCES_VERSION };
     if (next.keywords.length === 0) throw new BadRequestException("Kamida bitta asosiy kalit so'z kerak");
     await this.prisma.mediaSetting.upsert({
       where: { key: SETTINGS_KEY },
@@ -302,7 +313,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       return r;
     });
 
-    const results = await mapLimit(tasks, 6);
+    const results = await mapLimit(tasks, 8);
     // Forget sources that were removed from the settings.
     const live = new Set(results.map((r) => r.key).concat('youtube-search'));
     for (const k of [...this.health.keys()]) if (!live.has(k)) this.health.delete(k);

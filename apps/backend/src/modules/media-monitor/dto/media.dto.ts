@@ -153,7 +153,7 @@ export class GovAuthorityDto {
 
 /** Optional list of short phrases (keywords, channels, hashtags). */
 const WordList = () =>
-  applyDecorators(IsOptional(), IsArray(), ArrayMaxSize(50), IsString({ each: true }), MaxLength(100, { each: true }));
+  applyDecorators(IsOptional(), IsArray(), ArrayMaxSize(150), IsString({ each: true }), MaxLength(100, { each: true }));
 
 export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String] })
@@ -171,7 +171,7 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [MediaFeedDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(40)
+  @ArrayMaxSize(150)
   @ValidateNested({ each: true })
   @Type(() => MediaFeedDto)
   rssFeeds?: MediaFeedDto[];
@@ -187,7 +187,7 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [GovAuthorityDto] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(30)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => GovAuthorityDto)
   govAuthorities?: GovAuthorityDto[];
@@ -195,14 +195,14 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String], example: ['gov.uz', 'president.uz'] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(30)
+  @ArrayMaxSize(60)
   @Matches(/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}\/?$/i, { each: true, message: 'Domen: masalan gov.uz' })
   googleNewsSites?: string[];
 
   @ApiPropertyOptional({ type: [String] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(30)
+  @ArrayMaxSize(100)
   @Matches(/^UC[\w-]{22}$/, { each: true, message: 'YouTube kanal ID UC... (24 belgi) bo‘lishi kerak' })
   youtubeChannels?: string[];
 
@@ -233,6 +233,15 @@ export class UpdateMediaSettingsDto {
   @Min(0)
   @Max(100)
   minRelevance?: number;
+
+  /** Sent back by the web form as-is; the server always stores the current version. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  sourcesVersion?: number;
 
   @ApiPropertyOptional({ description: "AI tahlil (Claude) — ANTHROPIC_API_KEY bo'lsa ishlaydi" })
   @IsOptional()

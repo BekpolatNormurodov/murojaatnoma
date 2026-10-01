@@ -282,3 +282,20 @@ describe('official Google results', () => {
     expect(isPortalPage('ЛИЧНЫЕ ПРИЁМЫ — ОСНОВА ДЛЯ РЕШЕНИЯ ПРОБЛЕМ')).toBe(false);
   });
 });
+
+describe('default-source upgrade', () => {
+  it('adds new default sources to an old saved config once, keeping custom ones', async () => {
+    const { upgradeSources, mergeSettings: merge, SOURCES_VERSION } = await import('./media-settings');
+    const old = merge({ rssFeeds: [{ key: 'mine', name: 'Mine', url: 'https://example.uz/rss', enabled: true }], telegramChannels: ['mychannel'], keywords: ['x'] });
+    expect(old.sourcesVersion).toBe(1);
+    const up = upgradeSources(old)!;
+    expect(up.sourcesVersion).toBe(SOURCES_VERSION);
+    expect(up.rssFeeds[0].key).toBe('mine');
+    expect(up.rssFeeds.some((f) => f.key === 'kunuz')).toBe(true);
+    expect(up.telegramChannels).toContain('mychannel');
+    expect(up.telegramChannels).toContain('mirzo_ulugbek');
+    expect(up.govAuthorities.some((a) => a.slug === 'iiv')).toBe(true);
+    expect(up.keywords).toEqual(['x']);
+    expect(upgradeSources(up)).toBeNull();
+  });
+});

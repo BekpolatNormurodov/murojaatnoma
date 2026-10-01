@@ -47,7 +47,12 @@ export interface MediaSettings {
   minRelevance: number;
   /** "AI tahlil" switch — Claude scoring/xulosa (needs ANTHROPIC_API_KEY). Off ⇒ rule engine. */
   aiEnabled: boolean;
+  /** Which default source set a saved config already contains (see upgradeSources). */
+  sourcesVersion: number;
 }
+
+/** Bump when default sources are added; saved configs then receive the new ones once. */
+export const SOURCES_VERSION = 2;
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   keywords: [
@@ -85,8 +90,44 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     { key: 'review', name: 'Review.uz', url: 'https://review.uz/rss', enabled: true },
     { key: 'uzdaily', name: 'UzDaily', url: 'https://uzdaily.uz/uz/rss', enabled: true },
     { key: 'hook', name: 'Hook.report', url: 'https://hook.report/feed', enabled: true },
+    // Added 2026-10-01 — each verified FROM THE SERVER: live, fresh, not a duplicate of another feed.
+    { key: 'uza-oz', name: 'UzA (кирилл)', url: 'https://uza.uz/oz/rss', enabled: true, official: true },
+    { key: 'uza-en', name: 'UzA (en)', url: 'https://uza.uz/en/rss', enabled: true, official: true },
+    { key: 'lex-uz', name: 'Lex.uz — qonunchilik', url: 'https://lex.uz/uz/rss', enabled: true, official: true },
+    { key: 'lex-ru', name: 'Lex.uz (ru)', url: 'https://lex.uz/ru/rss', enabled: true, official: true },
+    { key: 'uznews-uz', name: 'UzNews (кирилл)', url: 'https://uznews.uz/uz/rss', enabled: true },
+    { key: 'xabar-ru', name: 'Xabar.uz (ru)', url: 'https://xabar.uz/ru/rss', enabled: true },
+    { key: 'nuz-uz', name: 'Nuz.uz (uz)', url: 'https://nuz.uz/uz/rss', enabled: true },
+    { key: 'uzdaily-ru', name: 'UzDaily (ru)', url: 'https://uzdaily.uz/ru/rss', enabled: true },
+    { key: 'uzdaily-en', name: 'UzDaily (en)', url: 'https://uzdaily.uz/en/rss', enabled: true },
+    { key: 'anhor', name: 'Anhor.uz', url: 'https://anhor.uz/feed', enabled: true },
+    { key: 'anhor-uz', name: 'Anhor.uz (uz)', url: 'https://anhor.uz/uz/feed', enabled: true },
+    { key: 'kursiv', name: 'Kursiv Uzbekistan', url: 'https://uz.kursiv.media/uz/rss/', enabled: true },
+    { key: 'kursiv-ru', name: 'Kursiv (ru)', url: 'https://uz.kursiv.media/ru/rss', enabled: true },
+    { key: 'review-uz', name: 'Review.uz (uz)', url: 'https://review.uz/uz/feed', enabled: true },
+    { key: 'review-oz', name: 'Review.uz (кирилл)', url: 'https://review.uz/oz/rss', enabled: true },
+    { key: 'batafsil', name: 'Batafsil.uz', url: 'https://batafsil.uz/rss', enabled: true },
+    { key: 'kapital', name: 'Kapital.uz', url: 'https://kapital.uz/rss', enabled: true },
+    { key: 'tribuna', name: 'Tribuna.uz', url: 'https://tribuna.uz/rss.xml', enabled: true },
+    { key: 'upl', name: 'Upl.uz', url: 'https://upl.uz/rss.xml', enabled: true },
+    { key: 'nova24', name: 'Nova24', url: 'https://nova24.uz/rss', enabled: true },
+    { key: 'pressa', name: 'Pressa.uz', url: 'https://pressa.uz/uz/rss', enabled: true },
+    { key: 'vesti', name: 'Vesti.uz', url: 'https://vesti.uz/rss.xml', enabled: true },
+    { key: 'sputnik-ru', name: 'Sputnik Узбекистан', url: 'https://uz.sputniknews.ru/export/rss2/archive/index.xml', enabled: true },
+    { key: 'sputnik-uz', name: 'Sputnik (кирилл)', url: 'https://sputniknews.uz/export/rss2/archive/index.xml', enabled: true },
+    { key: 'sputnik-oz', name: "Sputnik O'zbekiston", url: 'https://oz.sputniknews.uz/export/rss2/archive/index.xml', enabled: true },
+    { key: 'mytashkent', name: 'MyTashkent', url: 'https://mytashkent.uz/rss', enabled: true },
+    { key: 'gazeta-oz', name: 'Gazeta.uz (lotin)', url: 'https://www.gazeta.uz/oz/rss/', enabled: true },
+    { key: 'spot-oz', name: 'Spot.uz (lotin)', url: 'https://www.spot.uz/oz/rss/', enabled: true },
   ],
-  telegramChannels: ['kunuzofficial', 'daryo', 'gazetauz', 'uznews', 'qalampir', 'spotuz', 'aniquz', 'zaminuz'],
+  telegramChannels: [
+    'kunuzofficial', 'daryo', 'gazetauz', 'uznews', 'qalampir', 'spotuz', 'aniquz', 'zaminuz',
+    // Added 2026-10-01 (active, verified from the server). mirzo_ulugbek = local
+    // district news channel (not the hokimlik); toshkent24/toshkentliklar = city.
+    'mirzo_ulugbek', 'toshkent24', 'toshkentliklar', 'kunuzru', 'kun_uz', 'podrobno', 'repostuz',
+    'pressauz', 'darakchi', 'uzreport_uz', 'sputnikuzbekistan', 'bbcuzbek', 'milliytv', 'nova24uz',
+    'vestiuz', 'anhoruz', 'hook_report', 'kursivuz', 'reviewuz', 'terabaytuz', 'xushnudbek',
+  ],
   // Verified 2026-10-01 (official names, active): President's press secretary,
   // UzA, O'zbekiston 24, Qonunchilik palatasi, Senat, Toshkent shahar hokimligi
   // matbuot xizmati, Bosh prokuratura.
@@ -98,8 +139,30 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     'senatuz',
     'poytaxt_uz',
     'prokuratura_uz',
+    'iivuz',
+    'uzedu',
   ],
-  govAuthorities: [{ slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true }],
+  govAuthorities: [
+    { slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true },
+    // Ministries / agencies with live news on gov.uz (verified 2026-10-01) — keyword-filtered.
+    { slug: 'iiv', name: 'Ichki ishlar vazirligi', own: false },
+    { slug: 'fvv', name: 'Favqulodda vaziyatlar vazirligi', own: false },
+    { slug: 'ssv', name: "Sog'liqni saqlash vazirligi", own: false },
+    { slug: 'uzedu', name: "Maktabgacha va maktab ta'limi vazirligi", own: false },
+    { slug: 'mc', name: "Qurilish va uy-joy kommunal xo'jaligi vazirligi", own: false },
+    { slug: 'eco', name: 'Ekologiya va iqlim agentligi', own: false },
+    { slug: 'minenergy', name: 'Energetika vazirligi', own: false },
+    { slug: 'mintrans', name: 'Transport vazirligi', own: false },
+    { slug: 'uzavtoyul', name: "Avtomobil yo'llari qo'mitasi", own: false },
+    { slug: 'kadastr', name: 'Kadastr agentligi', own: false },
+    { slug: 'digital', name: 'Raqamli texnologiyalar vazirligi', own: false },
+    { slug: 'adliya', name: 'Adliya vazirligi', own: false },
+    { slug: 'yoshlar', name: 'Yoshlar ishlari agentligi', own: false },
+    { slug: 'soliq', name: "Soliq qo'mitasi", own: false },
+    { slug: 'sport', name: 'Sport vazirligi', own: false },
+    { slug: 'madaniyat', name: 'Madaniyat vazirligi', own: false },
+    { slug: 'uzbektourism', name: "Turizm qo'mitasi", own: false },
+  ],
   googleNewsSites: ['gov.uz', 'president.uz', 'tashkent.uz', 'parliament.gov.uz', 'senat.uz', 'yuz.uz', 'xs.uz'],
   // Official channels (verified 2026-10-01): KunUZ, Daryo, Gazeta.uz (uz), Gazeta.uz (ru), UzA.
   youtubeChannels: [
@@ -108,6 +171,11 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     'UCyAZcDf6qNqgS33gBYUCdIQ',
     'UCvbxjabiN6Rmb42OguPFAdA',
     'UC8VnKuevlppw9R4p12wA31A',
+    // Added 2026-10-01 (active): Xabar.uz, Podrobno, Toshkentliklar24, O'zbekiston 24 radiosi.
+    'UCKfAFbGa0w39d4RHMCtsGCw',
+    'UCeeyfrVR6Mhm4d1O_6JEvVg',
+    'UCJ7ZRiL-zspyi0u-r9fyBaA',
+    'UCuEEUmuM5KHNmaPKnLL-P7w',
   ],
   youtubeQuery: '"Mirzo Ulug\'bek tumani"|"Мирзо-Улугбекский район"|"Mirzo Ulugbek tumani"',
   instagramHashtags: ['mirzoulugbektumani', 'mirzoulugbek'],
@@ -116,6 +184,7 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     '"Mirzo Ulug\'bek tumani" OR "Мирзо-Улугбекский район" OR "Мирзо-Улугбекском районе" OR "Mirzo Ulug\'bek hokimligi"',
   minRelevance: 50,
   aiEnabled: false,
+  sourcesVersion: SOURCES_VERSION,
 };
 
 const uniq = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
@@ -142,6 +211,30 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     googleNewsQuery: (s.googleNewsQuery ?? d.googleNewsQuery).trim(),
     minRelevance: clamp(s.minRelevance ?? d.minRelevance, 0, 100),
     aiEnabled: s.aiEnabled === true,
+    sourcesVersion: Number(s.sourcesVersion) || 1,
+  };
+}
+
+/**
+ * A config saved before new default sources existed would never see them.
+ * Union the source lists with the defaults (one time per SOURCES_VERSION);
+ * keywords and other choices stay as the hokimiyat left them.
+ */
+export function upgradeSources(s: MediaSettings): MediaSettings | null {
+  if (s.sourcesVersion >= SOURCES_VERSION) return null;
+  const d = DEFAULT_MEDIA_SETTINGS;
+  const lower = (xs: string[]) => new Set(xs.map((x) => x.toLowerCase()));
+  const tg = lower(s.telegramChannels);
+  const otg = lower(s.officialTelegramChannels);
+  return {
+    ...s,
+    rssFeeds: [...s.rssFeeds, ...d.rssFeeds.filter((f) => !s.rssFeeds.some((x) => x.key === f.key || x.url === f.url))],
+    telegramChannels: [...s.telegramChannels, ...d.telegramChannels.filter((c) => !tg.has(c.toLowerCase()) && !otg.has(c.toLowerCase()))],
+    officialTelegramChannels: [...s.officialTelegramChannels, ...d.officialTelegramChannels.filter((c) => !otg.has(c.toLowerCase()))],
+    youtubeChannels: [...s.youtubeChannels, ...d.youtubeChannels.filter((c) => !s.youtubeChannels.includes(c))],
+    govAuthorities: [...s.govAuthorities, ...d.govAuthorities.filter((a) => !s.govAuthorities.some((x) => x.slug === a.slug))],
+    googleNewsSites: [...s.googleNewsSites, ...d.googleNewsSites.filter((x) => !s.googleNewsSites.includes(x))],
+    sourcesVersion: SOURCES_VERSION,
   };
 }
 

@@ -166,6 +166,8 @@ export interface MediaSettings {
   minRelevance: number;
   /** "AI tahlil" switch (needs ANTHROPIC_API_KEY on the server). */
   aiEnabled: boolean;
+  /** Server-managed default-source version (sent back unchanged). */
+  sourcesVersion?: number;
 }
 
 export interface MediaSettingsView {
