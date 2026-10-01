@@ -8,6 +8,8 @@ export interface GovAuthority {
   name: string;
   /** The district's own hokimligi: every post is about the district (no keyword needed). */
   own: boolean;
+  /** City / region hokimligi: every post counts for that area (Toshkent shahri / viloyati filter). */
+  area?: 'city' | 'region';
 }
 
 interface GovUzNews {

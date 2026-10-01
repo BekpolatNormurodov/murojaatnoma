@@ -508,3 +508,59 @@ describe('rules v2.2 — Uzbek Cyrillic and utilities', () => {
     expect(ruleSentiment('Давно пора: в Мирзо-Улугбекском районе выдали талоны', '')).not.toBe('negative');
   });
 });
+
+describe('areas — Toshkent shahri / viloyati', () => {
+  const { scoreArea } = require('./media-area');
+  const a = (title: string, body = '') => scoreArea(title, body) as { city: number; region: number };
+
+  it('knows the capital by name, its districts and "in Tashkent"', () => {
+    expect(a('Toshkent shahrida 452 ta eskirgan lift yangilanadi').city).toBeGreaterThanOrEqual(90);
+    expect(a('В Чиланзарском районе отремонтируют дороги').city).toBeGreaterThanOrEqual(80);
+    expect(a('Yunusobod tumanida yangi maktab ochildi').city).toBeGreaterThanOrEqual(80);
+    expect(a('Poytaxtda kuchli shamol kutilmoqda').city).toBeGreaterThanOrEqual(60);
+    expect(a('Тошкентда Spark автомобили пиёдани уриб юборди').city).toBeGreaterThanOrEqual(60);
+    expect(a('Uzbekistan presidential election', 'Votes were counted in Tashkent').city).toBeGreaterThanOrEqual(50);
+  });
+
+  it('does not take the region, a dateline or the time zone for the city', () => {
+    const v = a('Toshkent viloyatida yangi sanoat zonasi tashkil etildi');
+    expect(v.region).toBeGreaterThanOrEqual(90);
+    expect(v.city).toBe(0);
+    expect(a('Ташкентская область: в Чирчике открыли завод').city).toBe(0);
+    expect(a('Prezident Xitoy rahbari bilan uchrashdi', 'Toshkent, 1-oktabr /UzA/. Muzokaralar boʻlib oʻtdi').city).toBe(0);
+    expect(a('Matchga start beriladi', 'Toshkent vaqti bilan soat 21:00 da').city).toBe(0);
+    expect(a('Toshkent tumanida suv quvuri yorildi').region).toBeGreaterThanOrEqual(90);
+  });
+
+  it('finds the region by its towns, not by a city street named after one', () => {
+    expect(a('Chirchiq shahrida yangi bog‘ ochildi').region).toBeGreaterThanOrEqual(80);
+    expect(a('Олмалиқ КМК янги цех қурди').region).toBeGreaterThanOrEqual(70);
+    expect(a('Bo‘stonliq tumanida sel xavfi').region).toBeGreaterThanOrEqual(80);
+    expect(a('Parkent bozori yonida tirbandlik').region).toBe(0);
+    expect(a('Nurafshon Ahmedova jahon chempioni bo‘ldi').region).toBe(0);
+    // A headline listing cities is not a dateline.
+    expect(a('Toshkent, Samarqand va Buxoroda kuchli shamol').city).toBeGreaterThan(0);
+  });
+
+  it('weakens a bare "Toshkent" next to another region', () => {
+    expect(a('Samarqand — Toshkent tezyurar poyezdi qatnovi koʻpaydi').city).toBeLessThan(50);
+  });
+});
+
+describe('area-aware settings', () => {
+  it('keeps the region / city role of a gov.uz page and the area channel lists', () => {
+    const m = mergeSettings({
+      govAuthorities: [{ slug: 'toshvil', name: 'Viloyat', own: false, area: 'region' }, { slug: 'iiv', name: 'IIV', own: false }],
+      cityTelegramChannels: ['@poytaxt_uz'],
+    });
+    expect(m.govAuthorities[0].area).toBe('region');
+    expect(m.govAuthorities[1].area).toBeUndefined();
+    expect(m.cityTelegramChannels).toEqual(['poytaxt_uz']);
+    expect(m.regionTelegramChannels).toEqual([]);
+  });
+
+  it('writes the area into the rules xulosa', () => {
+    expect(digestByRules([], 24, 'Toshkent viloyati').headline).toContain('Toshkent viloyati haqida');
+    expect(digestByRules([], 24).headline).toContain('tuman haqida');
+  });
+});

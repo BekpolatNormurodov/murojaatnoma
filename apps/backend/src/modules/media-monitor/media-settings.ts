@@ -36,6 +36,10 @@ export interface MediaSettings {
   officialTelegramChannels: string[];
   /** District-local channels: every post is kept (keyword or not), ads dropped. */
   localTelegramChannels: string[];
+  /** Channels about Toshkent shahri — their posts count for the city filter without a keyword. */
+  cityTelegramChannels: string[];
+  /** Channels about Toshkent viloyati — likewise for the region filter. */
+  regionTelegramChannels: string[];
   /** Spellings searched inside every Telegram channel (each channel writes the name differently). */
   telegramSearchQueries: string[];
   /** Keyless YouTube searches (newest first) — district videos from any channel. */
@@ -67,7 +71,7 @@ export interface MediaSettings {
 }
 
 /** Bump when default sources are added; saved configs then receive the new ones once. */
-export const SOURCES_VERSION = 4;
+export const SOURCES_VERSION = 5;
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   keywords: [
@@ -170,6 +174,10 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
     'eduuz',
   ],
   localTelegramChannels: ['mirzo_ulugbek'],
+  // City hokimligi press service, city news channels, the city traffic centre.
+  cityTelegramChannels: ['poytaxt_uz', 'toshkent24', 'toshkentliklar', 'tashkentskiyekuranty', 'codd_tashkent'],
+  // The region hokimligi's own channel is silent since 2019 — its gov.uz page is read instead.
+  regionTelegramChannels: [],
   // Verified 2026-10-01: kun.uz matches only "Улуғбек"/"Ulug‘bek", daryo "Ulug‘bek"/"Ulugʻbek",
   // gazeta "Ulugbek"/"Улугбек" — so every spelling is searched.
   telegramSearchQueries: ['Mirzo Ulug‘bek', 'Mirzo Ulugʻbek', 'Mirzo Ulugbek', 'Мирзо Улуғбек', 'Мирзо Улугбек', 'Мирзо-Улугбек'],
@@ -182,6 +190,8 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   ],
   govAuthorities: [
     { slug: 'mirzoulugbek', name: "Mirzo Ulug'bek tumani hokimligi", own: true },
+    // Verified 2026-10-02: live news (the city's gov.uz page stopped in 2025 — its Telegram is used).
+    { slug: 'toshvil', name: 'Toshkent viloyati hokimligi', own: false, area: 'region' },
     // Ministries / agencies with live news on gov.uz (verified 2026-10-01) — keyword-filtered.
     { slug: 'iiv', name: 'Ichki ishlar vazirligi', own: false },
     { slug: 'fvv', name: 'Favqulodda vaziyatlar vazirligi', own: false },
@@ -261,11 +271,18 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     telegramChannels: uniq((s.telegramChannels ?? d.telegramChannels).map(cleanHandle)),
     officialTelegramChannels: uniq((s.officialTelegramChannels ?? d.officialTelegramChannels).map(cleanHandle)),
     localTelegramChannels: uniq((s.localTelegramChannels ?? d.localTelegramChannels).map(cleanHandle)),
+    cityTelegramChannels: uniq((s.cityTelegramChannels ?? d.cityTelegramChannels).map(cleanHandle)),
+    regionTelegramChannels: uniq((s.regionTelegramChannels ?? d.regionTelegramChannels).map(cleanHandle)),
     telegramSearchQueries: uniq(s.telegramSearchQueries ?? d.telegramSearchQueries).slice(0, 12),
     youtubeSearchQueries: uniq(s.youtubeSearchQueries ?? d.youtubeSearchQueries).slice(0, 12),
     govAuthorities: (s.govAuthorities ?? d.govAuthorities)
       .filter((a) => a && /^[a-z0-9-]{2,60}$/.test(a.slug))
-      .map((a) => ({ slug: a.slug, name: (a.name || a.slug).trim(), own: a.own === true })),
+      .map((a) => ({
+        slug: a.slug,
+        name: (a.name || a.slug).trim(),
+        own: a.own === true,
+        ...(a.area === 'city' || a.area === 'region' ? { area: a.area } : {}),
+      })),
     googleNewsSites: uniq((s.googleNewsSites ?? d.googleNewsSites).map((x) => x.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').toLowerCase())),
     youtubeChannels: uniq(s.youtubeChannels ?? d.youtubeChannels),
     officialYoutubeChannels: uniq(s.officialYoutubeChannels ?? d.officialYoutubeChannels),
@@ -297,6 +314,8 @@ export function upgradeSources(s: MediaSettings): MediaSettings | null {
     telegramChannels: [...s.telegramChannels, ...d.telegramChannels.filter((c) => !tg.has(c.toLowerCase()) && !otg.has(c.toLowerCase()))],
     officialTelegramChannels: [...s.officialTelegramChannels, ...d.officialTelegramChannels.filter((c) => !otg.has(c.toLowerCase()))],
     localTelegramChannels: [...s.localTelegramChannels, ...d.localTelegramChannels.filter((c) => !s.localTelegramChannels.includes(c))],
+    cityTelegramChannels: [...s.cityTelegramChannels, ...d.cityTelegramChannels.filter((c) => !s.cityTelegramChannels.includes(c))],
+    regionTelegramChannels: [...s.regionTelegramChannels, ...d.regionTelegramChannels.filter((c) => !s.regionTelegramChannels.includes(c))],
     youtubeChannels: [...s.youtubeChannels, ...d.youtubeChannels.filter((c) => !s.youtubeChannels.includes(c))],
     officialYoutubeChannels: [...s.officialYoutubeChannels, ...d.officialYoutubeChannels.filter((c) => !s.officialYoutubeChannels.includes(c))],
     ownYoutubeChannels: [...s.ownYoutubeChannels, ...d.ownYoutubeChannels.filter((c) => !s.ownYoutubeChannels.includes(c))],

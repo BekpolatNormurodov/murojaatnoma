@@ -16,6 +16,10 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { MEDIA_AREAS, MediaArea } from '../media-area';
+
+export { MEDIA_AREAS };
+export type { MediaArea };
 
 export const MEDIA_PERIODS = ['24h', '7d', '30d', 'all'] as const;
 export type MediaPeriod = (typeof MEDIA_PERIODS)[number];
@@ -28,6 +32,11 @@ export class MediaOverviewQueryDto {
   @IsOptional()
   @IsIn(MEDIA_PERIODS)
   period?: MediaPeriod;
+
+  @ApiPropertyOptional({ enum: MEDIA_AREAS, default: 'district', description: "Mirzo Ulug'bek tumani / Toshkent shahri / Toshkent viloyati" })
+  @IsOptional()
+  @IsIn(MEDIA_AREAS)
+  area?: MediaArea;
 
   @ApiPropertyOptional({ description: '0..100; default — sozlamadagi minRelevance' })
   @IsOptional()
@@ -154,6 +163,11 @@ export class GovAuthorityDto {
   @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.own)
   @IsBoolean()
   own!: boolean;
+
+  @ApiPropertyOptional({ enum: ['city', 'region'], description: 'Shahar / viloyat hokimligi — hamma posti shu hududga oid' })
+  @IsOptional()
+  @IsIn(['city', 'region'])
+  area?: 'city' | 'region';
 }
 
 /** Optional list of short phrases (keywords, channels, hashtags). */
@@ -196,6 +210,14 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String] })
   @WordList()
   localTelegramChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent shahri kanallari' })
+  @WordList()
+  cityTelegramChannels?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent viloyati kanallari' })
+  @WordList()
+  regionTelegramChannels?: string[];
 
   @ApiPropertyOptional({ type: [String] })
   @WordList()

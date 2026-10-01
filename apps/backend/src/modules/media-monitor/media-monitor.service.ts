@@ -47,13 +47,17 @@ import {
 import { DEFAULT_MEDIA_SETTINGS, MediaSettings, SOURCES_VERSION, cleanHandle, mergeSettings, upgradeSources } from './media-settings';
 import { fingerprintOf, meaningfulLine, truncate } from './media-text.util';
 import { PlaceGazetteer, buildGazetteer, scoreRelevance } from './media-relevance';
+import { AREA_FIELD, AREA_NAME, MediaArea, areaRelevance, scoreArea } from './media-area';
 import { StoryCandidate, assignStories, STORY_WINDOW_MS } from './media-story';
 
 /** Emitted after every run that stored something; RealtimeGateway pushes it to admins. */
 export const MEDIA_UPDATED_EVENT = 'media.updated';
 export interface MediaUpdatedEvent {
+  /** District items (the toast counts these). */
   newItems: number;
   negativeNew: number;
+  /** New items per area filter, so an open city/region view refreshes too. */
+  areas: Record<MediaArea, number>;
   digestId: string | null;
   at: string;
 }
@@ -92,6 +96,14 @@ const TG_DEEP_EVERY_MS = 3 * 3_600_000;
 const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
 /** District-local channel posts without a keyword: visible, but below keyword hits. */
 const LOCAL_CHANNEL_RELEVANCE = 40;
+/** City / region hokimligi pages: every post is about that area. */
+const AREA_OWN_RELEVANCE = 90;
+/** City / region channels without a place name in the post: shown, below named mentions. */
+const AREA_CHANNEL_RELEVANCE = 55;
+/** City / region-only items below this are not stored (bare "Toshkent" in a long text). */
+const AREA_STORE_MIN = 45;
+/** City / region-only items are many — kept 45 days instead of 120. */
+const AREA_ONLY_KEEP_MS = 45 * 86_400_000;
 const DIGEST_MAX_AGE_MS = 3 * 3_600_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 const SETTINGS_KEY = 'config';
@@ -202,7 +214,13 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         keys.add(f.key);
       }
     }
-    for (const list of [dto.telegramChannels, dto.officialTelegramChannels, dto.localTelegramChannels]) {
+    for (const list of [
+      dto.telegramChannels,
+      dto.officialTelegramChannels,
+      dto.localTelegramChannels,
+      dto.cityTelegramChannels,
+      dto.regionTelegramChannels,
+    ]) {
       if (!list) continue;
       for (const ch of list.map(cleanHandle)) {
         if (!/^[A-Za-z0-9_]{4,64}$/.test(ch)) throw new BadRequestException(`Telegram kanal nomi noto'g'ri: ${ch}`);
@@ -235,40 +253,46 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const since = new Date(Date.now() - BACKFILL_MAX_AGE_MS);
     const gaz = await this.loadGazetteer(s);
     const rows = await this.prisma.mediaItem.findMany({
-      where: { publishedAt: { gte: since }, NOT: { analyzedBy: 'ai' } },
+      where: { publishedAt: { gte: since } },
       select: {
         id: true, source: true, platform: true, title: true, excerpt: true, relevance: true, keywords: true,
-        sentiment: true, topic: true, analyzedBy: true,
+        sentiment: true, topic: true, analyzedBy: true, official: true, cityRelevance: true, regionRelevance: true,
       },
     });
-    const own = new Set(s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`));
-    const local = new Set(s.localTelegramChannels.map((c) => `tg:${c.toLowerCase()}`));
+    const roles = sourceRoles(s);
     const updates: Prisma.PrismaPromise<unknown>[] = [];
     for (const r of rows) {
-      const viaSearch = r.source.startsWith('google') || r.platform === 'youtube';
-      const res = scoreRelevance({
-        title: r.title, body: r.excerpt ?? '', keywords: s.keywords, weakKeywords: s.weakKeywords,
-        excludes: s.excludes, gazetteer: gaz, viaSearch,
-      });
-      const relevance = own.has(r.source)
-        ? Math.max(95, res.relevance)
-        : local.has(r.source)
-          ? Math.max(LOCAL_CHANNEL_RELEVANCE, res.relevance)
-          : res.relevance;
+      // AI-scored items keep the AI's district relevance, mood and topic; only the areas are re-read.
+      const ai = r.analyzedBy === 'ai';
+      // Own YouTube channel videos share the "youtube" source key — recognise them by their score.
+      const ownVideo = r.platform === 'youtube' && r.official && r.relevance >= 95;
+      const sc = scoreItem(
+        { source: r.source, title: r.title, body: r.excerpt ?? '', viaSearch: r.source.startsWith('google') || r.platform === 'youtube', own: ownVideo },
+        s, gaz, roles, ai ? r.relevance : undefined,
+      );
       // An admin's manual mood correction ("manual") is never overwritten.
-      const sentiment = r.analyzedBy === 'manual' ? r.sentiment : ruleSentiment(r.title, r.excerpt ?? '');
-      const topic = ruleTopic(r.title, r.excerpt ?? '');
+      const sentiment = ai || r.analyzedBy === 'manual' ? r.sentiment : ruleSentiment(r.title, r.excerpt ?? '');
+      const topic = ai ? r.topic : ruleTopic(r.title, r.excerpt ?? '');
+      const keywords = ai ? r.keywords : sc.keywords;
       // Telegram headlines that were only emoji / hashtags → first real line of the text.
       const title = meaningfulLine(r.title) ? r.title : (meaningfulLine(r.excerpt ?? '')?.slice(0, 300) ?? r.title);
       if (
         title !== r.title ||
-        relevance !== r.relevance ||
-        res.keywords.join('|') !== r.keywords.join('|') ||
+        sc.relevance !== r.relevance ||
+        sc.cityRelevance !== r.cityRelevance ||
+        sc.regionRelevance !== r.regionRelevance ||
+        keywords.join('|') !== r.keywords.join('|') ||
         sentiment !== r.sentiment ||
         topic !== r.topic
       ) {
         updates.push(
-          this.prisma.mediaItem.update({ where: { id: r.id }, data: { title, relevance, keywords: res.keywords, sentiment, topic } }),
+          this.prisma.mediaItem.update({
+            where: { id: r.id },
+            data: {
+              title, relevance: sc.relevance, cityRelevance: sc.cityRelevance, regionRelevance: sc.regionRelevance,
+              keywords, sentiment, topic,
+            },
+          }),
         );
       }
     }
@@ -371,6 +395,11 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     if (created.length) await this.groupStories(now, created.map((c) => c.id));
     const relevantNew = analyzed.filter((i) => i.relevance >= settings.minRelevance);
     const negativeNew = relevantNew.filter((i) => i.sentiment === 'negative').length;
+    const areas: Record<MediaArea, number> = {
+      district: relevantNew.length,
+      city: analyzed.filter((i) => i.cityRelevance >= settings.minRelevance).length,
+      region: analyzed.filter((i) => i.regionRelevance >= settings.minRelevance).length,
+    };
 
     const digest = await this.maybeDigest(settings, relevantNew.length > 0, now);
     await this.cleanup(now);
@@ -386,10 +415,13 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     };
     this.logger.log(
       `media run (${reason}): ${results.reduce((n, r) => n + r.items.length, 0)} fetched, ${created.length} stored, ` +
-        `${relevantNew.length} relevant (${negativeNew} negative)${digest ? ', digest updated' : ''} in ${summary.durationMs} ms`,
+        `${relevantNew.length} relevant (${negativeNew} negative), city ${areas.city}, region ${areas.region}` +
+        `${digest ? ', digest updated' : ''} in ${summary.durationMs} ms`,
     );
-    if (relevantNew.length > 0 || digest) {
-      const e: MediaUpdatedEvent = { newItems: relevantNew.length, negativeNew, digestId: digest?.id ?? null, at: summary.finishedAt };
+    if (relevantNew.length > 0 || areas.city > 0 || areas.region > 0 || digest) {
+      const e: MediaUpdatedEvent = {
+        newItems: relevantNew.length, negativeNew, areas, digestId: digest?.id ?? null, at: summary.finishedAt,
+      };
       this.events.emit(MEDIA_UPDATED_EVENT, e);
     }
     return summary;
@@ -452,12 +484,13 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     gazetteer: PlaceGazetteer,
   ): Promise<(MediaItem & { _text: string })[]> {
     const minDate = now.getTime() - MAX_ITEM_AGE_MS;
+    const roles = sourceRoles(s);
     type Candidate = Prisma.MediaItemCreateManyInput & { _text: string };
     const candidates: Candidate[] = [];
     for (const r of results) {
       let matched = 0;
       for (const raw of r.items) {
-        const c = toCandidate(raw, s, minDate, gazetteer);
+        const c = toCandidate(raw, s, minDate, gazetteer, roles);
         if (!c) continue;
         matched++;
         candidates.push(c);
@@ -509,14 +542,17 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private async analyze(
     rows: (MediaItem & { _text: string })[],
     s: MediaSettings,
-  ): Promise<{ id: string; relevance: number; sentiment: MediaSentiment }[]> {
+  ): Promise<{ id: string; relevance: number; cityRelevance: number; regionRelevance: number; sentiment: MediaSentiment }[]> {
     if (!rows.length) return [];
     const claude = this.claudeFor(s);
     const results = new Map<string, ItemAnalysis>();
     const inputs = rows.map((r) => ({ id: r.id, sourceName: r.sourceName, title: r.title, text: r._text, relevance: r.relevance }));
+    const byId = new Map(rows.map((r) => [r.id, r]));
     if (claude) {
-      for (let i = 0; i < inputs.length; i += 20) {
-        const chunk = inputs.slice(i, i + 20);
+      // Claude reads district candidates only; city / region items are many and scored by rules.
+      const forAi = inputs.filter((x) => x.relevance > 0);
+      for (let i = 0; i < forAi.length; i += 20) {
+        const chunk = forAi.slice(i, i + 20);
         try {
           const out = await analyzeWithClaude(claude, chunk);
           out.forEach((v, k) => results.set(k, v));
@@ -528,27 +564,33 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     }
     for (const inp of inputs) if (!results.has(inp.id)) results.set(inp.id, analyzeByRules(inp));
 
+    const out = inputs.map((inp) => {
+      const a = results.get(inp.id)!;
+      const row = byId.get(inp.id)!;
+      // AI may lower relevance (the astronomer, a street) but not bury an
+      // item whose TITLE carries a strong district keyword.
+      const relevance = inp.relevance >= 90 ? Math.max(a.relevance, 60) : a.relevance;
+      // The city view includes the district: follow the AI's district verdict.
+      const cityRelevance =
+        a.analyzedBy === 'ai' ? Math.max(scoreArea(row.title, row._text).city, relevance) : row.cityRelevance;
+      return { id: inp.id, a, relevance, cityRelevance, regionRelevance: row.regionRelevance, sentiment: a.sentiment };
+    });
     await this.prisma.$transaction(
-      inputs.map((inp) => {
-        const a = results.get(inp.id)!;
-        return this.prisma.mediaItem.update({
-          where: { id: inp.id },
+      out.map(({ id, a, relevance, cityRelevance }) =>
+        this.prisma.mediaItem.update({
+          where: { id },
           data: {
-            // AI may lower relevance (the astronomer, a street) but not bury an
-            // item whose TITLE carries a strong district keyword.
-            relevance: inp.relevance >= 90 ? Math.max(a.relevance, 60) : a.relevance,
+            relevance,
+            cityRelevance,
             sentiment: a.sentiment,
             topic: a.topic,
             aiSummary: a.analyzedBy === 'ai' ? a.summary : null,
             analyzedBy: a.analyzedBy,
           },
-        });
-      }),
+        }),
+      ),
     );
-    return inputs.map((inp) => {
-      const a = results.get(inp.id)!;
-      return { id: inp.id, relevance: inp.relevance >= 90 ? Math.max(a.relevance, 60) : a.relevance, sentiment: a.sentiment };
-    });
+    return out.map(({ a: _a, ...rest }) => rest);
   }
 
   private async maybeDigest(s: MediaSettings, hasNew: boolean, now: Date, force = false) {
@@ -594,12 +636,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     });
   }
 
-  private async digestItems(s: MediaSettings, now: Date, hours: number): Promise<DigestInputItem[]> {
+  private async digestItems(s: MediaSettings, now: Date, hours: number, area: MediaArea = 'district'): Promise<DigestInputItem[]> {
     const rows = await this.prisma.mediaItem.findMany({
       where: {
         publishedAt: { gte: new Date(now.getTime() - hours * 3_600_000) },
-        relevance: { gte: s.minRelevance },
+        [AREA_FIELD[area]]: { gte: s.minRelevance },
         status: { not: 'hidden' },
+        // One line per story in the xulosa.
+        ...(area === 'district' ? {} : { isStoryLead: true }),
       },
       orderBy: [{ publishedAt: 'desc' }],
       take: 80,
@@ -613,8 +657,39 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       summary: r.aiSummary ?? (r.excerpt ? truncate(r.excerpt, 220) : null),
       sentiment: r.sentiment,
       topic: r.topic,
-      relevance: r.relevance,
+      relevance: areaRelevance(r, area),
     }));
+  }
+
+  /**
+   * The city / region xulosa: written by the rules on request (not stored —
+   * the stored, possibly AI-written digest is the district's).
+   */
+  private async areaDigest(s: MediaSettings, area: MediaArea, now: Date) {
+    let hours = 24;
+    let items = await this.digestItems(s, now, hours, area);
+    if (items.length < 3) {
+      hours = 72;
+      items = await this.digestItems(s, now, hours, area);
+    }
+    const r = digestByRules(items, hours, AREA_NAME[area]);
+    const n = (x: MediaSentiment) => items.filter((i) => i.sentiment === x).length;
+    return {
+      id: `area-${area}`,
+      createdAt: now,
+      periodFrom: new Date(now.getTime() - hours * 3_600_000),
+      periodTo: now,
+      itemCount: items.length,
+      positive: n('positive'),
+      neutral: n('neutral'),
+      negative: n('negative'),
+      headline: r.headline,
+      summary: r.summary,
+      topics: r.topics,
+      risks: r.risks,
+      recommendations: r.recommendations,
+      model: r.model,
+    };
   }
 
   private async cleanup(now: Date): Promise<void> {
@@ -622,6 +697,13 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     this.lastCleanupAt = now.getTime();
     await this.prisma.mediaItem.deleteMany({
       where: { publishedAt: { lt: new Date(now.getTime() - 120 * 86_400_000) }, status: { not: 'important' } },
+    });
+    await this.prisma.mediaItem.deleteMany({
+      where: {
+        publishedAt: { lt: new Date(now.getTime() - AREA_ONLY_KEEP_MS) },
+        relevance: { lt: 30 },
+        status: { not: 'important' },
+      },
     });
     await this.prisma.mediaDigest.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - 30 * 86_400_000) } } });
   }
@@ -686,12 +768,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   async overview(q: MediaOverviewQueryDto) {
     const s = await this.getSettings();
     const period = q.period ?? '24h';
+    const area: MediaArea = q.area ?? 'district';
     const min = q.minRelevance ?? s.minRelevance;
     const now = new Date();
     const hours = period === 'all' ? 720 : PERIOD_HOURS[period];
     const from = new Date(now.getTime() - hours * 3_600_000);
     const prevFrom = new Date(from.getTime() - hours * 3_600_000);
-    const base: Prisma.MediaItemWhereInput = { relevance: { gte: min }, status: { not: 'hidden' } };
+    // ≥ 1 even for "everything": a stored item with 0 for this area belongs to another one.
+    const base: Prisma.MediaItemWhereInput = { [AREA_FIELD[area]]: { gte: Math.max(1, min) }, status: { not: 'hidden' } };
 
     const [rows, prevTotal, digest, alerts, latest, topViewed] = await Promise.all([
       this.prisma.mediaItem.findMany({
@@ -702,7 +786,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         },
       }),
       this.prisma.mediaItem.count({ where: { ...base, publishedAt: { gte: prevFrom, lt: from } } }),
-      this.prisma.mediaDigest.findFirst({ orderBy: { createdAt: 'desc' } }),
+      area === 'district' ? this.prisma.mediaDigest.findFirst({ orderBy: { createdAt: 'desc' } }) : this.areaDigest(s, area, now),
       this.prisma.mediaItem.findMany({
         where: { ...base, publishedAt: { gte: from }, isStoryLead: true, OR: [{ sentiment: 'negative' }, { status: 'important' }] },
         orderBy: [{ publishedAt: 'desc' }],
@@ -764,6 +848,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 
     return {
       period,
+      area,
       minRelevance: min,
       totals,
       platforms,
@@ -775,7 +860,11 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       // "Diqqat talab qiladi", most important first (see attentionScore).
       alerts: [...alerts]
         .map((a) => ({ ...a, storySize: storySize.get(a.storyId ?? a.id) ?? 1 }))
-        .sort((x, y) => attentionScore(y, now) - attentionScore(x, now))
+        .sort(
+          (x, y) =>
+            attentionScore({ ...y, relevance: areaRelevance(y, area) }, now) -
+            attentionScore({ ...x, relevance: areaRelevance(x, area) }, now),
+        )
         .slice(0, 6),
       latest,
       topViewed,
@@ -788,8 +877,9 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     const page = q.page ?? 1;
     const limit = q.limit ?? 20;
     const period = q.period ?? '7d';
+    const area: MediaArea = q.area ?? 'district';
     const where: Prisma.MediaItemWhereInput = {
-      relevance: { gte: q.minRelevance ?? s.minRelevance },
+      [AREA_FIELD[area]]: { gte: Math.max(1, q.minRelevance ?? s.minRelevance) },
       status: q.status ? q.status : { not: 'hidden' },
     };
     if (period !== 'all') where.publishedAt = { gte: new Date(Date.now() - PERIOD_HOURS[period] * 3_600_000) };
@@ -873,11 +963,76 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
 // helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Source-level evidence: the district's own page (95), its local channels
+ * (40), city / region hokimliklar (90) and city / region channels (55).
+ */
+interface SourceRoles {
+  own: Set<string>;
+  local: Set<string>;
+  city: Map<string, number>;
+  region: Map<string, number>;
+}
+
+function sourceRoles(s: MediaSettings): SourceRoles {
+  const tg = (c: string) => `tg:${c.toLowerCase()}`;
+  const city = new Map<string, number>();
+  const region = new Map<string, number>();
+  const raise = (m: Map<string, number>, k: string, v: number) => m.set(k, Math.max(m.get(k) ?? 0, v));
+  for (const a of s.govAuthorities) {
+    if (a.area === 'city') raise(city, `gov:${a.slug}`, AREA_OWN_RELEVANCE);
+    if (a.area === 'region') raise(region, `gov:${a.slug}`, AREA_OWN_RELEVANCE);
+  }
+  s.cityTelegramChannels.forEach((c) => raise(city, tg(c), AREA_CHANNEL_RELEVANCE));
+  s.regionTelegramChannels.forEach((c) => raise(region, tg(c), AREA_CHANNEL_RELEVANCE));
+  return {
+    own: new Set(s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`)),
+    local: new Set(s.localTelegramChannels.map(tg)),
+    city,
+    region,
+  };
+}
+
+/**
+ * All three scores of one text. The city includes the district, so a
+ * district item is a city item at least as strongly. `keepRelevance` keeps an
+ * AI-given district score.
+ */
+function scoreItem(
+  x: { source: string; title: string; body: string; viaSearch?: boolean; own?: boolean; local?: boolean },
+  s: MediaSettings,
+  gazetteer: PlaceGazetteer,
+  roles: SourceRoles,
+  keepRelevance?: number,
+): { relevance: number; keywords: string[]; cityRelevance: number; regionRelevance: number } {
+  const res = scoreRelevance({
+    title: x.title, body: x.body, keywords: s.keywords, weakKeywords: s.weakKeywords,
+    excludes: s.excludes, gazetteer, viaSearch: x.viaSearch,
+  });
+  // The district's own hokimligi page is about the district by definition; a
+  // district-local channel's posts are what its residents read.
+  const relevance =
+    keepRelevance ??
+    (x.own || roles.own.has(x.source)
+      ? Math.max(95, res.relevance)
+      : x.local || roles.local.has(x.source)
+        ? Math.max(LOCAL_CHANNEL_RELEVANCE, res.relevance)
+        : res.relevance);
+  const area = scoreArea(x.title, x.body);
+  return {
+    relevance,
+    keywords: res.keywords,
+    cityRelevance: Math.max(area.city, relevance, roles.city.get(x.source) ?? 0),
+    regionRelevance: Math.max(area.region, roles.region.get(x.source) ?? 0),
+  };
+}
+
 function toCandidate(
   raw: RawMediaItem,
   s: MediaSettings,
   minDate: number,
   gazetteer: PlaceGazetteer,
+  roles: SourceRoles,
 ): (Prisma.MediaItemCreateManyInput & { _text: string }) | null {
   if (!raw.title || !raw.url || !raw.externalId) return null;
   // The district's own page posts rarely and searches reach back — keep two months of those.
@@ -886,19 +1041,14 @@ function toCandidate(
     : raw.backfill ? minDate - (BACKFILL_MAX_AGE_MS - MAX_ITEM_AGE_MS)
     : minDate;
   if (raw.publishedAt.getTime() < oldest) return null;
-  const res = scoreRelevance({
-    title: raw.title, body: raw.text, keywords: s.keywords, weakKeywords: s.weakKeywords,
-    excludes: s.excludes, gazetteer, viaSearch: raw.viaSearch,
-  });
-  // The district's own hokimligi page is about the district by definition; a
-  // district-local channel's posts are what its residents read.
-  const base = res.relevance;
-  const relevance = raw.alwaysRelevant
-    ? Math.max(95, base)
-    : raw.localChannel
-      ? Math.max(LOCAL_CHANNEL_RELEVANCE, base)
-      : base;
-  if (relevance === 0) return null;
+  const sc = scoreItem(
+    { source: raw.source, title: raw.title, body: raw.text, viaSearch: raw.viaSearch, own: raw.alwaysRelevant, local: raw.localChannel },
+    s, gazetteer, roles,
+  );
+  const { relevance } = sc;
+  // City / region history found by district searches is not needed; nor are faint mentions.
+  const areaOnly = relevance === 0;
+  if (areaOnly && (raw.backfill || Math.max(sc.cityRelevance, sc.regionRelevance) < AREA_STORE_MIN)) return null;
   return {
     source: raw.source,
     sourceName: truncate(raw.sourceName, 80),
@@ -912,8 +1062,10 @@ function toCandidate(
     views: raw.views ?? null,
     publishedAt: raw.publishedAt,
     fingerprint: fingerprintOf(raw.title),
-    keywords: res.keywords,
+    keywords: sc.keywords,
     relevance,
+    cityRelevance: sc.cityRelevance,
+    regionRelevance: sc.regionRelevance,
     official: raw.official === true,
     _text: raw.text,
   };
@@ -975,6 +1127,8 @@ function uniqueChannels(s: MediaSettings): { ch: string; official: boolean; loca
     out.set(k, { ch, official: official || !!prev?.official, local: local || !!prev?.local });
   };
   s.telegramChannels.forEach((c) => put(c, false, false));
+  s.cityTelegramChannels.forEach((c) => put(c, false, false));
+  s.regionTelegramChannels.forEach((c) => put(c, false, false));
   s.localTelegramChannels.forEach((c) => put(c, false, true));
   s.officialTelegramChannels.forEach((c) => put(c, true, false));
   return [...out.values()];

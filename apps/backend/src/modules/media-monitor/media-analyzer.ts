@@ -230,7 +230,8 @@ export function analyzeByRules(item: ItemForAnalysis): ItemAnalysis {
   };
 }
 
-export function digestByRules(items: DigestInputItem[], hours: number): DigestResult {
+/** `place` names the area in the text: "tuman", "Toshkent shahri", "Toshkent viloyati". */
+export function digestByRules(items: DigestInputItem[], hours: number, place = 'tuman'): DigestResult {
   const neg = items.filter((i) => i.sentiment === 'negative');
   const pos = items.filter((i) => i.sentiment === 'positive');
   const byTopic = new Map<string, DigestInputItem[]>();
@@ -249,8 +250,8 @@ export function digestByRules(items: DigestInputItem[], hours: number): DigestRe
   const period = hours >= 48 ? `So'nggi ${Math.round(hours / 24)} kunda` : `So'nggi ${hours} soatda`;
   if (items.length === 0) {
     return {
-      headline: `${period} tuman haqida yangi xabar topilmadi`,
-      summary: "Kuzatilayotgan saytlar, Telegram kanallar va boshqa manbalarda tumanga oid yangi material chiqmagan. Monitoring har 15 daqiqada davom etmoqda.",
+      headline: `${period} ${place} haqida yangi xabar topilmadi`,
+      summary: `Kuzatilayotgan saytlar, Telegram kanallar va boshqa manbalarda ${place}ga oid yangi material chiqmagan. Monitoring har 15 daqiqada davom etmoqda.`,
       topics: [],
       risks: [],
       recommendations: [],
@@ -258,7 +259,7 @@ export function digestByRules(items: DigestInputItem[], hours: number): DigestRe
     };
   }
   const parts = [
-    `${period} tuman haqida ${items.length} ta material chiqdi: ${pos.length} ta ijobiy, ${items.length - pos.length - neg.length} ta neytral, ${neg.length} ta salbiy.`,
+    `${period} ${place} haqida ${items.length} ta material chiqdi: ${pos.length} ta ijobiy, ${items.length - pos.length - neg.length} ta neytral, ${neg.length} ta salbiy.`,
   ];
   if (topics[0]) {
     parts.push(
