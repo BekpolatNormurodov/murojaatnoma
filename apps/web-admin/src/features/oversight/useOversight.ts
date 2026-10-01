@@ -8,6 +8,10 @@ export interface OversightRow {
   fullName: string;
   position: string;
   avatarUrl: string | null;
+  /** worker-app login (null = not provisioned). */
+  username: string | null;
+  /** Contact phone (may be an auto `+99800…` placeholder). */
+  phone: string;
   hasFace: boolean;
   attendance: {
     status: AttendanceStatus;

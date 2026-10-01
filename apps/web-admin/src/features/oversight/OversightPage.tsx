@@ -16,7 +16,6 @@ import {
   Trash,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
-import { StatCard } from '@/shared/ui/StatCard';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { PageHeader } from '@/shared/ui/PageHeader';
@@ -86,6 +85,15 @@ const FLAGS: { key: FlagFilter; label: string }[] = [
   { key: 'noface', label: 'Yuzsiz' },
 ];
 
+/** Grid spans for the 5 KPI tiles: phone 2+2+1(wide), tablet 3+2, desktop 5. */
+const KPI_SPANS = [
+  'sm:col-span-2 lg:col-span-1',
+  'sm:col-span-2 lg:col-span-1',
+  'sm:col-span-2 lg:col-span-1',
+  'sm:col-span-3 lg:col-span-1',
+  'col-span-2 sm:col-span-3 lg:col-span-1',
+];
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
 }
@@ -142,6 +150,11 @@ export function OversightPage() {
   const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
   const s = data?.summary;
+  // Distinct positions — suggestions for the Lavozim field in the form.
+  const positions = useMemo(
+    () => [...new Set(rows.map((r) => r.position).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [rows],
+  );
 
   function handleExport() {
     const cols: ExportColumn<OversightRow>[] = [
@@ -197,6 +210,13 @@ export function OversightPage() {
       <PageHeader
         title="Xodimlar boshqaruvi"
         subtitle="Har bir xodim: yuz, keldi-ketdi, ish hududi, oylik va premya — nazorat va boshqaruv"
+        action={
+          isSuperAdmin ? (
+            <Button onClick={() => setEmpModal({ open: true, row: null })} className="w-full sm:w-auto">
+              <Add size={18} /> Xodim qo'shish
+            </Button>
+          ) : undefined
+        }
       />
 
       {isError ? (
@@ -212,28 +232,27 @@ export function OversightPage() {
         </Card>
       ) : (
         <>
-          {isSuperAdmin && (
-            <div className="mb-4 flex justify-end">
-              <Button onClick={() => setEmpModal({ open: true, row: null })}>
-                <Add size={18} /> Xodim qo'shish
-              </Button>
-            </div>
-          )}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          {/* KPI — compact tiles: 2 per row on phones (the 5th spans both),
+              3 on tablets, 5 on desktop. No more 150px-tall cards on mobile. */}
+          {/* 6-col track on tablets: 3 tiles of 2 + 2 tiles of 3 = two full rows. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6 lg:grid-cols-5">
             {isLoading || !s ? (
-              Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[118px]" />)
+              Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className={cn('h-[72px]', KPI_SPANS[i])} />
+              ))
             ) : (
               <>
-                <StatCard icon={Profile2User} label="Jami xodim" value={String(s.total)} tint="#3b82f6" index={0} />
-                <StatCard icon={ScanBarcode} label="Yuz ro'yxatda" value={`${s.faceEnrolled}/${s.total}`} tint="#8b5cf6" index={1} />
-                <StatCard icon={TickCircle} label="Ish joyida" value={String(s.presentNow)} tint="#10b981" index={2} />
-                <StatCard icon={Timer1} label="Kechikkan" value={String(s.lateNow)} tint="#f59e0b" index={3} />
-                <StatCard icon={Location} label="Hududdan tashqari" value={String(s.outsideZone)} tint="#ef4444" index={4} />
+                <KpiTile icon={Profile2User} label="Jami xodim" value={String(s.total)} tint="#3b82f6" className={KPI_SPANS[0]} />
+                <KpiTile icon={ScanBarcode} label="Yuz ro'yxatda" value={`${s.faceEnrolled}/${s.total}`} tint="#8b5cf6" className={KPI_SPANS[1]} />
+                <KpiTile icon={TickCircle} label="Ish joyida" value={String(s.presentNow)} tint="#10b981" className={KPI_SPANS[2]} />
+                <KpiTile icon={Timer1} label="Kechikkan" value={String(s.lateNow)} tint="#f59e0b" className={KPI_SPANS[3]} />
+                <KpiTile icon={Location} label="Hududdan tashqari" value={String(s.outsideZone)} tint="#ef4444" className={KPI_SPANS[4]} />
               </>
             )}
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
+          {/* Quick filters — one swipeable row on phones, wrapping on wider screens. */}
+          <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
             {FLAGS.map((f) => {
               const count = f.key === 'all' ? rows.length : rows.filter((r) => matchesFlag(r, f.key)).length;
               const active = flag === f.key;
@@ -242,8 +261,9 @@ export function OversightPage() {
                 <button
                   key={f.key}
                   onClick={() => setFlag(f.key)}
+                  aria-pressed={active}
                   className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
+                    'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12.5px] font-medium transition-colors',
                     active
                       ? 'border-primary-300 bg-primary-50 text-primary-700'
                       : 'border-line bg-surface text-ink-soft hover:bg-surface-2',
@@ -263,8 +283,8 @@ export function OversightPage() {
             })}
           </div>
 
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
+          <div className="mt-4 grid grid-cols-[1fr_auto] gap-3 sm:flex sm:items-center">
+            <div className="relative col-span-2 sm:flex-1">
               <Profile2User size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
               <input
                 value={query}
@@ -273,21 +293,21 @@ export function OversightPage() {
                 className="h-11 w-full rounded-xl border border-line bg-surface pl-11 pr-4 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-primary-300"
               />
             </div>
-            <MonthPicker value={monthValue} onChange={setMonthValue} className="sm:w-52" />
+            <MonthPicker value={monthValue} onChange={setMonthValue} className="min-w-0 sm:w-52" />
             <Button variant="secondary" onClick={handleExport} disabled={isLoading || filtered.length === 0} title="Excel'ga chiqarish">
               <DocumentDownload size={17} /> Excel
             </Button>
           </div>
 
           <Card className="mt-5 overflow-hidden">
-            <div className="flex items-center justify-between px-5 pt-5">
+            <div className="flex items-center justify-between px-4 pt-4 sm:px-5 sm:pt-5">
               <h3 className="flex items-center gap-2 text-[15px] font-semibold text-ink">
                 <ShieldTick size={18} variant="Bulk" className="text-primary-600" /> Xodimlar ro'yxati
                 {isFetching && <RotateRight size={14} className="animate-spin text-ink-muted" />}
               </h3>
               <span className="text-xs text-ink-muted">{filtered.length} ta</span>
             </div>
-            <div className="mt-3 px-4 pb-2">
+            <div className="mt-3 px-3 pb-2 sm:px-4">
               {isLoading ? (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[142px]" />)}
@@ -329,6 +349,7 @@ export function OversightPage() {
       <EmployeeFormModal
         open={empModal.open}
         row={empModal.row}
+        positions={positions}
         year={year}
         month={month}
         onClose={() => setEmpModal({ open: false, row: null })}
@@ -358,7 +379,12 @@ export function OversightPage() {
         loading={del.isPending}
       />
       {toast && (
-        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-ink px-4 py-2.5 text-sm font-medium text-white shadow-pop">
+        // z-[70]: above modals (z-50) — a toast fired while a modal is still
+        // closing used to render underneath its backdrop.
+        <div
+          role="status"
+          className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[70] mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-medium text-white shadow-pop"
+        >
           {toast}
         </div>
       )}
@@ -383,27 +409,32 @@ function OversightCard({
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4 transition-shadow hover:shadow-card">
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-3.5 transition-shadow hover:shadow-card sm:p-4">
       {/* Avatar + ism (bosilsa — o'ng drawer) + amallar */}
       <div className="flex items-start gap-3">
         <button
           onClick={onDetail}
           title="Batafsil — davr bo'yicha soat, kechikish va statistika"
-          className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+          className="group flex min-w-0 flex-1 items-start gap-3 text-left"
         >
           <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={44} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 font-semibold text-ink">
-              <span className="truncate">{row.fullName}</span>
-              <Eye size={13} className="shrink-0 text-ink-muted opacity-0 transition-opacity group-hover:opacity-100" />
+          <div className="min-w-0 pt-0.5">
+            {/* Full name on up to 2 lines — never "Akmal Kari…" */}
+            <div className="line-clamp-2 break-words text-[14.5px] font-semibold leading-snug text-ink group-hover:text-primary-700">
+              {row.fullName}
             </div>
-            <div className="truncate text-[12px] text-ink-muted">{row.position}</div>
+            <div className="mt-0.5 truncate text-[12px] text-ink-muted">
+              {row.position}
+              {row.username && <span className="text-ink-muted/80"> · @{row.username}</span>}
+            </div>
           </div>
         </button>
-        <div className="flex shrink-0 items-center gap-1">
-          {onEdit && <RowAction icon={Edit2} label="Tahrirlash" onClick={onEdit} />}
-          {onDelete && <RowAction icon={Trash} label="O'chirish" onClick={onDelete} danger />}
-        </div>
+        {(onEdit || onDelete) && (
+          <div className="-mr-1 -mt-1 flex shrink-0 items-center">
+            {onEdit && <RowAction icon={Edit2} label="Tahrirlash" onClick={onEdit} />}
+            {onDelete && <RowAction icon={Trash} label="O'chirish" onClick={onDelete} danger />}
+          </div>
+        )}
       </div>
 
       {/* Yuz + davomat holati */}
@@ -417,44 +448,74 @@ function OversightCard({
             <CloseCircle size={13} variant="Bulk" /> Yuzsiz
           </span>
         )}
-        <Badge tone={att.tone} dot>{att.label}</Badge>
+        <Badge tone={att.tone} dot>
+          {att.label}
+          {row.attendance.checkInAt ? ` · ${hhmm(row.attendance.checkInAt)}` : ''}
+        </Badge>
       </div>
 
       {/* Hudud (biriktirish) + oylik/premya */}
-      <div className="flex items-end justify-between gap-2 border-t border-line pt-3">
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3">
         <button
           onClick={onAssign}
           title={`Hudud biriktirish${assignedCount ? ` (${assignedCount} ta mahalla)` : ' (hozircha butun tuman)'}`}
-          className="group inline-flex items-center gap-1.5"
+          className="group flex min-w-0 items-center gap-1.5 rounded-lg py-1 text-left"
         >
           {!loc.hasLocation ? (
             <span
-              className="inline-flex items-center gap-1 text-[12.5px] text-ink-muted group-hover:text-primary-600"
+              className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-muted group-hover:text-primary-600"
               title="Mobil ilova o'rnatilmagan yoki lokatsiya hali yuborilmagan"
             >
-              <Location size={14} variant="Outline" /> Lokatsiya yo'q
+              <Location size={14} variant="Outline" className="shrink-0" /> Lokatsiya yo'q
             </span>
           ) : loc.insideAssignedZone ? (
-            <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-emerald-600" title={loc.mahallaName ?? undefined}>
-              <Location size={14} variant="Bulk" /> Hududda{loc.isStale ? ' (eski)' : ''}
+            <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium text-emerald-600" title={loc.mahallaName ?? undefined}>
+              <Location size={14} variant="Bulk" className="shrink-0" /> Hududda{loc.isStale ? ' (eski)' : ''}
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-red-500" title={loc.mahallaName ?? undefined}>
-              <Location size={14} variant="Bulk" /> Tashqarida
+            <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium text-red-500" title={loc.mahallaName ?? undefined}>
+              <Location size={14} variant="Bulk" className="shrink-0" /> Tashqarida
             </span>
           )}
-          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted transition-colors group-hover:bg-primary-50 group-hover:text-primary-600">
-            {assignedCount || 'tuman'}
+          <span className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted transition-colors group-hover:bg-primary-50 group-hover:text-primary-600">
+            {assignedCount ? `${assignedCount} mahalla` : 'butun tuman'}
           </span>
         </button>
-        <div className="text-right tabular-nums">
-          <div className="font-semibold text-primary-600">
-            {row.salaryNet != null ? formatSom(row.salaryNet) : '—'}
+        <div className="shrink-0 text-right tabular-nums">
+          <div className="whitespace-nowrap text-[13.5px] font-semibold text-primary-600">
+            {row.salaryNet != null ? formatSom(row.salaryNet) : <span className="font-normal text-ink-muted">Oylik yo'q</span>}
           </div>
           {row.premyaThisMonth > 0 && (
-            <div className="text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
+            <div className="whitespace-nowrap text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Compact KPI tile: icon + value + label in one row (~72px tall). */
+function KpiTile({
+  icon: Icon,
+  label,
+  value,
+  tint,
+  className,
+}: {
+  icon: typeof Eye;
+  label: string;
+  value: string;
+  tint: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex items-center gap-3 rounded-2xl border border-line bg-surface p-3 shadow-card sm:p-4', className)}>
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `${tint}1a`, color: tint }}>
+        <Icon size={20} variant="Bulk" color={tint} />
+      </span>
+      <div className="min-w-0">
+        <div className="text-xl font-bold leading-tight tabular-nums text-ink">{value}</div>
+        <div className="truncate text-[12px] text-ink-muted">{label}</div>
       </div>
     </div>
   );
@@ -478,11 +539,11 @@ function RowAction({
       title={label}
       aria-label={label}
       className={cn(
-        'grid h-8 w-8 place-items-center rounded-lg border border-line bg-surface transition-colors',
-        danger ? 'text-ink-muted hover:border-danger/40 hover:bg-danger-soft hover:text-danger' : 'text-ink-soft hover:border-primary-200 hover:bg-primary-50 hover:text-primary-600',
+        'grid h-9 w-9 place-items-center rounded-lg text-ink-muted transition-colors',
+        danger ? 'hover:bg-danger-soft hover:text-danger' : 'hover:bg-primary-50 hover:text-primary-600',
       )}
     >
-      <Icon size={16} variant="Linear" />
+      <Icon size={17} variant="Linear" />
     </button>
   );
 }

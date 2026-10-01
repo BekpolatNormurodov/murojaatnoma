@@ -8,7 +8,8 @@ export interface EmployeeInput {
   phone?: string;
   username?: string;
   password?: string;
-  avatarUrl?: string;
+  /** null = remove the photo (edit). */
+  avatarUrl?: string | null;
   salary?: number;
   /** Which month `salary` is for (the month the page is viewing). */
   salaryYear?: number;

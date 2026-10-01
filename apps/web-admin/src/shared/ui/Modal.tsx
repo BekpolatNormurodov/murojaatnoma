@@ -39,7 +39,8 @@ export function Modal({
   return createPortal(
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        // Phones: bottom-sheet (items-end, no side gutter). ≥sm: centered card.
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -55,11 +56,14 @@ export function Modal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 12 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-            className="relative w-full overflow-hidden rounded-2xl border border-line bg-surface shadow-pop"
+            // Height-capped flex column: the header stays put and the body
+            // scrolls, so a tall form never pushes its buttons off-screen on a
+            // short viewport (phones, landscape, small laptops).
+            className="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-line bg-surface shadow-pop sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl"
             style={{ maxWidth: width }}
           >
             {(title || showClose) && (
-              <div className="flex items-start justify-between gap-4 px-6 pt-6">
+              <div className="flex shrink-0 items-start justify-between gap-4 px-5 pt-5 sm:px-6 sm:pt-6">
                 <div>
                   {title && <h2 className="text-lg font-bold text-ink">{title}</h2>}
                   {subtitle && (
@@ -69,6 +73,7 @@ export function Modal({
                 {showClose && (
                   <button
                     onClick={onClose}
+                    aria-label="Yopish"
                     className="-mr-1.5 -mt-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
                   >
                     <CloseCircle size={22} variant="Bulk" />
@@ -76,7 +81,9 @@ export function Modal({
                 )}
               </div>
             )}
-            <div className="p-6">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:p-6">
+              {children}
+            </div>
           </motion.div>
         </div>
       )}

@@ -1,6 +1,18 @@
-/** Pul birligini formatlash (so'm). */
+/**
+ * "5000000" -> "5 000 000". Deterministic, locale-free: `Intl` with "uz-UZ"
+ * silently falls back to English ("5,000,000") in browsers whose ICU lacks the
+ * uz locale, so the same amount rendered differently across pages/devices.
+ */
+function groupThousands(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  const [int, frac] = Math.abs(value).toString().split(".");
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+  return sign + grouped + (frac ? `,${frac}` : "");
+}
+
+/** Pul birligini formatlash (so'm): "5 000 000 so'm". */
 export function formatSom(value: number): string {
-  return new Intl.NumberFormat("uz-UZ").format(value) + " so'm";
+  return `${groupThousands(Math.round(value))} so'm`;
 }
 
 /** Katta summalarni qisqartirish: 1.2 mlrd / 850 mln / 12 ming so'm */
@@ -73,7 +85,7 @@ export function formatCompact(value: number): string {
 
 /** Oddiy son (ming ajratuvchi bilan). */
 export function formatNumber(value: number): string {
-  return new Intl.NumberFormat("uz-UZ").format(value);
+  return groupThousands(value);
 }
 
 /** Foiz ko'rsatkichi: +12.4% */

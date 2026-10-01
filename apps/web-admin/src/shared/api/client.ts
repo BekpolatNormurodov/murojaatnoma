@@ -13,12 +13,23 @@ export class ApiError extends Error {
   }
 }
 
+/** NestJS default (English) messages → what an operator should read. */
+const DEFAULT_MESSAGES: Record<string, string> = {
+  'Forbidden resource': "Bu amal uchun ruxsatingiz yo'q (faqat bosh administrator)",
+  Forbidden: "Bu amal uchun ruxsatingiz yo'q",
+  Unauthorized: 'Sessiya tugadi — qayta kiring',
+  'Internal server error': "Serverda xatolik yuz berdi — birozdan so'ng qayta urinib ko'ring",
+  'Too Many Requests': "Juda ko'p so'rov — bir oz kuting",
+};
+
 function parseError(status: number, data: unknown): string {
   if (data && typeof data === 'object' && 'message' in data) {
     const m = (data as { message: unknown }).message;
-    if (Array.isArray(m)) return m.join(', ');
-    if (typeof m === 'string') return m;
+    if (Array.isArray(m)) return m.map((x) => DEFAULT_MESSAGES[String(x)] ?? String(x)).join('; ');
+    if (typeof m === 'string') return DEFAULT_MESSAGES[m] ?? m;
   }
+  if (status === 403) return DEFAULT_MESSAGES.Forbidden;
+  if (status >= 500) return DEFAULT_MESSAGES['Internal server error'];
   return `Xatolik (${status})`;
 }
 

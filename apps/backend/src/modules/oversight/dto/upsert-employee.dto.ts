@@ -11,40 +11,42 @@ import { IsArray, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } fr
 export class UpsertEmployeeDto {
   @ApiProperty({ example: 'Ismoilov Xurshid' })
   @IsString()
-  @MinLength(3)
+  @MinLength(3, { message: "F.I.Sh. kamida 3 harf bo'lsin" })
   fullName!: string;
 
   @ApiProperty({ example: 'Bosh mutaxassis' })
   @IsString()
+  @MinLength(2, { message: 'Lavozimni kiriting' })
   position!: string;
 
   @ApiPropertyOptional({ example: '+998901234567', description: 'E.164; auto-placeholder if omitted on create' })
   @IsOptional()
   @IsString()
+  @Matches(/^\+998\d{9}$/, { message: "Telefon: +998 va 9 ta raqam (masalan +998901234567)" })
   phone?: string;
 
   @ApiPropertyOptional({ example: 'xurshid', description: 'worker-app login (required on create)' })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9_]+$/, { message: 'username: faqat kichik harf, raqam, _' })
+  @Matches(/^[a-z0-9_]{3,32}$/, { message: 'Username: 3–32 ta kichik lotin harf, raqam yoki _' })
   username?: string;
 
   @ApiPropertyOptional({ example: 'Parol123', description: 'worker-app password (required on create; on edit rotates it)' })
   @IsOptional()
   @IsString()
-  @MinLength(4)
+  @MinLength(6, { message: "Parol kamida 6 belgidan iborat bo'lsin" })
   password?: string;
 
   @ApiPropertyOptional({ example: 'https://murojaatnoma.uz/uploads/abc.png' })
   @IsOptional()
   @IsString()
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 
   @ApiPropertyOptional({ example: 6000000, description: "Shu oy uchun oylik (so'm)" })
   @IsOptional()
   @Type(() => Number)
-  @IsInt()
-  @Min(0)
+  @IsInt({ message: "Oylik butun son bo'lsin" })
+  @Min(0, { message: "Oylik manfiy bo'lmaydi" })
   salary?: number;
 
   @ApiPropertyOptional({ example: 2026, description: 'Oylik qaysi yil uchun (default: joriy)' })

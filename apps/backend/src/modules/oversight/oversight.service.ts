@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AttendanceType, EmployeeRole, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -17,6 +17,10 @@ export interface OversightRow {
   fullName: string;
   position: string;
   avatarUrl: string | null;
+  /** worker-app login (null = not provisioned) — shown/edited in the Nazorat form. */
+  username: string | null;
+  /** Contact phone (may be an auto-generated `+99800…` placeholder). */
+  phone: string;
   /** Has the employee enrolled a face template (worker-app biometric check-in)? */
   hasFace: boolean;
   attendance: {
@@ -132,14 +136,16 @@ export class OversightService {
   ): Promise<{ year: number; month: number; rows: OversightRow[]; summary: OversightSummary }> {
     const now = new Date();
     const period = { year: year ?? now.getFullYear(), month: month ?? now.getMonth() + 1 };
-    const [today, locs, roster, facedEmployees, monthHours, premya] = await Promise.all([
+    const [today, locs, roster, facedEmployees, monthHours, premya, accounts] = await Promise.all([
       this.attendance.today({}),
       this.locations.getLatestForAll(),
       this.salaries.monthlyRoster(period.year, period.month),
       this.prisma.faceTemplate.findMany({ distinct: ['employeeId'], select: { employeeId: true } }),
       this.monthHoursByEmployee(period.year, period.month),
       this.premyaByEmployee(period.year, period.month),
+      this.prisma.employee.findMany({ select: { id: true, username: true, phone: true } }),
     ]);
+    const accountMap = new Map(accounts.map((a) => [a.id, a]));
 
     const faceSet = new Set(facedEmployees.map((f) => f.employeeId));
     const attMap = new Map(today.roster.map((a) => [a.employeeId, a]));
@@ -155,6 +161,8 @@ export class OversightService {
         fullName: base.fullName,
         position: base.position,
         avatarUrl: base.avatarUrl,
+        username: accountMap.get(base.employeeId)?.username ?? null,
+        phone: accountMap.get(base.employeeId)?.phone ?? '',
         hasFace: faceSet.has(base.employeeId),
         attendance: {
           status: att?.status ?? 'absent',
@@ -195,7 +203,7 @@ export class OversightService {
    */
   async createEmployee(dto: UpsertEmployeeDto): Promise<{ id: string; fullName: string; username: string | null }> {
     if (!dto.username || !dto.password) {
-      throw new ConflictException('Yangi xodim uchun username va parol majburiy');
+      throw new BadRequestException('Yangi xodim uchun username va parol majburiy');
     }
     const phone = dto.phone?.trim() || (await this.nextPlaceholderPhone());
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -222,7 +230,13 @@ export class OversightService {
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
         const t = (e.meta?.target as string[] | undefined) ?? [];
-        throw new ConflictException(`Bu ${t.includes('username') ? 'username' : t.includes('phone') ? 'telefon' : 'qiymat'} band`);
+        throw new ConflictException(
+          t.includes('username')
+            ? 'Bu username band — boshqasini tanlang'
+            : t.includes('phone')
+              ? 'Bu telefon raqami boshqa xodimda bor'
+              : 'Bu qiymat band',
+        );
       }
       throw e;
     }
@@ -249,7 +263,10 @@ export class OversightService {
       await this.prisma.employee.update({ where: { id }, data });
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw new ConflictException('username yoki telefon band');
+        const t = (e.meta?.target as string[] | undefined) ?? [];
+        throw new ConflictException(
+          t.includes('username') ? 'Bu username band — boshqasini tanlang' : 'Bu telefon raqami boshqa xodimda bor',
+        );
       }
       throw e;
     }

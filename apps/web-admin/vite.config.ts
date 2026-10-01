@@ -21,6 +21,11 @@ export default defineConfig({
         target: process.env.REMOTE_API || "https://murojaatnoma.uz",
         changeOrigin: true,
         secure: true,
+        // A bare local backend (`nest start`) has no `/api` prefix — the prod
+        // nginx gateway strips it. REMOTE_API_STRIP_PREFIX=1 mimics that.
+        ...(process.env.REMOTE_API_STRIP_PREFIX
+          ? { rewrite: (p: string) => p.replace(/^\/api/, "") }
+          : {}),
       },
       "/socket.io": {
         target: process.env.REMOTE_API || "https://murojaatnoma.uz",
