@@ -592,8 +592,9 @@ export function MediaPage() {
                 digest={ov?.digest ?? null}
                 refs={ov?.digestRefs ?? []}
                 loading={overviewQ.isLoading}
-                // City / region xulosa is written live by the rules — nothing to re-write.
-                canWrite={canWrite && area === 'district'}
+                canWrite={canWrite}
+                // City / region xulosa is written live by the rules — no history, nothing to re-write.
+                live={area !== 'district'}
                 regenerating={regenerate.isPending}
                 onRegenerate={() =>
                   regenerate.mutate(undefined, {

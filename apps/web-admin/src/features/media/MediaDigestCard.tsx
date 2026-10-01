@@ -76,6 +76,7 @@ export function MediaDigestCard({
   canWrite,
   regenerating,
   onRegenerate,
+  live = false,
 }: {
   digest: MediaDigest | null;
   refs: MediaOverview['digestRefs'];
@@ -83,6 +84,8 @@ export function MediaDigestCard({
   canWrite: boolean;
   regenerating: boolean;
   onRegenerate: () => void;
+  /** City / region: computed on every open — no stored history, nothing to re-write. */
+  live?: boolean;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const isAi = !!digest && digest.model !== 'rules';
@@ -243,14 +246,20 @@ export function MediaDigestCard({
             )}
 
             <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
-              >
-                <Clock size={16} /> Oldingi xulosalar
-              </button>
-              {canWrite && (
+              {live ? (
+                <p className="inline-flex items-center gap-1.5 px-1 text-[13px] text-ink-soft">
+                  <Clock size={16} /> Har ochilganda so'nggi xabarlardan qayta hisoblanadi
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
+                >
+                  <Clock size={16} /> Oldingi xulosalar
+                </button>
+              )}
+              {canWrite && !live && (
                 <button
                   type="button"
                   onClick={onRegenerate}

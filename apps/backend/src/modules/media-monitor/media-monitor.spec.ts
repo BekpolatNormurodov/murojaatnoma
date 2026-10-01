@@ -550,9 +550,14 @@ describe('areas — Toshkent shahri / viloyati', () => {
   // Real misses from the first live run (2026-10-02).
   it('reads the headline first: lists, by-the-way mentions and ads stay out', () => {
     // A nation-wide IIV round-up listing every region.
-    const list = a('▫️ Toshkent shahri: Harakatdan to‘xtamaslik shiori ostida', 'Toshkent viloyati: 12 ta tadbir. Samarqand viloyati: 9 ta. Buxoro viloyati: 7 ta.');
-    expect(list.city).toBeGreaterThanOrEqual(90);
+    const list = a(
+      '▫️ Toshkent shahri: Harakatdan to‘xtamaslik shiori ostida',
+      'Toshkent viloyati: 12 ta tadbir. Samarqand viloyati: 9 ta. Sirdaryo viloyati: 7 ta. Jizzax viloyati: sport musobaqasi',
+    );
+    expect(list.city).toBeLessThan(50);
     expect(list.region).toBeLessThan(50);
+    // Two regions in passing still leave a city headline in.
+    expect(a('Toshkent shahrida yangi metro bekati', 'Samarqand va Buxoroda ham shunday loyihalar bor').city).toBeGreaterThanOrEqual(60);
     // Another region's story that mentions ours in passing.
     expect(a('Surxondaryoda Cobalt gaz balloniga yashirilgan opiy aniqlandi', 'Haydovchi Toshkent viloyatiga ketayotgan edi').region).toBeLessThan(50);
     // The national team played in Tashkent — sport, not city news.

@@ -140,8 +140,10 @@ export function MediaHero({
                     transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
                   />
                 )}
-                <m.Icon size={16} variant={on ? 'Bold' : 'Linear'} className="relative hidden shrink-0 sm:block" />
-                <span className="relative truncate">{m.short}</span>
+                <m.Icon size={16} variant={on ? 'Bold' : 'Linear'} className="relative shrink-0" />
+                {/* Phones: "Tuman / Shahar / Viloyat" — the full names do not fit three abreast. */}
+                <span className="relative truncate sm:hidden">{m.tiny}</span>
+                <span className="relative hidden truncate sm:inline">{m.short}</span>
               </button>
             );
           })}
@@ -234,8 +236,9 @@ export function MediaHero({
   );
 }
 
+/** Change vs the previous period — not shown on a tiny base ("+100%" from 0 or 2 says nothing). */
 function deltaPct(cur: number, prev: number): number | undefined {
-  if (prev === 0) return cur > 0 ? 100 : undefined;
+  if (prev < 5) return undefined;
   return Math.round(((cur - prev) / prev) * 100);
 }
 

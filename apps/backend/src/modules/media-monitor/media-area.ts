@@ -138,6 +138,9 @@ interface Context {
  * evidence lower, and lower still in a nation-wide list or an ad.
  */
 function finish(score: number, inTitle: boolean, c: Context): number {
+  // Three or more other regions: a nation-wide list ("Toshkent shahri: ...,
+  // Sirdaryo viloyati: ..., Jizzax viloyati: ...") — even when ours comes first.
+  if (c.elsewhere >= 3) return Math.min(score, 40);
   if (inTitle) {
     // "Samarqand — Toshkent poyezdi", "Toshkent va Farg'onada ...".
     if (c.titleElsewhere) score -= 20;

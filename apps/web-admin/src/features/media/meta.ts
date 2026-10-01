@@ -150,11 +150,12 @@ export function aiModelLabel(model: string | null | undefined): string {
 export const AREAS: MediaArea[] = ['district', 'city', 'region'];
 export const AREA_META: Record<
   MediaArea,
-  { label: string; short: string; about: string; empty: string; lowHint: string; Icon: Icon }
+  { label: string; short: string; tiny: string; about: string; empty: string; lowHint: string; Icon: Icon }
 > = {
   district: {
     label: "Mirzo Ulug'bek tumani",
     short: "Mirzo Ulug'bek",
+    tiny: 'Tuman',
     about: "Mirzo Ulug'bek tumani haqida",
     empty: "Bu davrda tuman haqida xabar yo'q",
     lowHint:
@@ -164,6 +165,7 @@ export const AREA_META: Record<
   city: {
     label: 'Toshkent shahri',
     short: 'Toshkent shahri',
+    tiny: 'Shahar',
     about: 'Toshkent shahri haqida',
     empty: "Bu davrda Toshkent shahri haqida xabar yo'q",
     lowHint: "«Toshkent» so'zi faqat o'tib ketgan xabarlarni ham ko'rsatish (masalan, poyezd yo'nalishi yoki taqqoslash)",
@@ -172,6 +174,7 @@ export const AREA_META: Record<
   region: {
     label: 'Toshkent viloyati',
     short: 'Toshkent viloyati',
+    tiny: 'Viloyat',
     about: 'Toshkent viloyati haqida',
     empty: "Bu davrda Toshkent viloyati haqida xabar yo'q",
     lowHint: "Viloyatga tegishliligi aniq bo'lmagan xabarlarni ham ko'rsatish",
