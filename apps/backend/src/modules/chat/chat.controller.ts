@@ -11,6 +11,8 @@ import {
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ChatMessage } from '@prisma/client';
 import { RequireScope } from '../../common/decorators/scope.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { ChatService } from './chat.service';
 import { ArchiveConversationDto } from './dto/archive-conversation.dto';
 import { CreateChatMessageDto } from './dto/create-chat-message.dto';
@@ -33,6 +35,51 @@ import { ChatConversationResponse } from './interfaces/chat-conversation-respons
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
+
+  // --- Employee-facing (worker-app) — self-scoped. These method-level
+  // @RequireScope('employee') decorators OVERRIDE the class-level admin lock
+  // (ScopeGuard uses getAllAndOverride). Each is bound to the caller's own id in
+  // the service, so an employee can only ever touch the group thread or their
+  // OWN admin DM (`dm-emp-<self>`) — never anyone else's conversation. ---
+
+  @Get('my/conversations')
+  @RequireScope('employee')
+  @ApiOperation({ summary: "Xodim uchun: o'z DM + Umumiy chat ro'yxati" })
+  myConversations(@CurrentUser() user: AuthenticatedUser): Promise<ChatConversationResponse[]> {
+    return this.chatService.findMyConversations(user.employeeId);
+  }
+
+  @Get('my/conversations/:id/messages')
+  @RequireScope('employee')
+  @ApiOperation({ summary: "Xodim uchun: o'z DM yoki Umumiy chat xabarlari" })
+  myMessages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Query() query: ListChatMessagesQueryDto,
+  ): Promise<ChatMessage[]> {
+    return this.chatService.findMyMessages(user.employeeId, id, query);
+  }
+
+  @Post('my/conversations/:id/messages')
+  @RequireScope('employee')
+  @ApiOperation({ summary: "Xodim uchun: o'z DM yoki Umumiy chatga xabar yuborish" })
+  sendMyMessage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CreateChatMessageDto,
+  ): Promise<ChatMessage> {
+    return this.chatService.sendMyMessage(user.employeeId, id, dto);
+  }
+
+  @Patch('my/conversations/:id/read')
+  @RequireScope('employee')
+  @ApiOperation({ summary: "Xodim uchun: suhbatni o'qilgan deb belgilash" })
+  markMyRead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    return this.chatService.markMyRead(user.employeeId, id);
+  }
 
   @Get('conversations')
   @ApiOperation({

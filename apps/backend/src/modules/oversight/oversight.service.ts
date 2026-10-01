@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
-import { AttendanceType } from '@prisma/client';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AttendanceType, EmployeeRole, Prisma } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AttendanceService, TodayAttendanceStatus } from '../attendance/attendance.service';
 import { formatLocalDate } from '../attendance/utils/date.util';
 import { LocationsService } from '../locations/locations.service';
 import { SalariesService } from '../salaries/salaries.service';
+import { UpsertEmployeeDto } from './dto/upsert-employee.dto';
+
+const REGION = 'Toshkent shahri';
+const DISTRICT = 'Mirzo Ulug‘bek';
 
 /** One employee's live oversight snapshot: face + attendance + territory + salary. */
 export interface OversightRow {
@@ -179,5 +184,95 @@ export class OversightService {
     };
 
     return { year: roster.year, month: roster.month, rows, summary };
+  }
+
+  /**
+   * Create a NEW employee (person) from the web-admin Nazorat page: worker-app
+   * login (username+password), optional photo, current-month salary, territory.
+   */
+  async createEmployee(dto: UpsertEmployeeDto): Promise<{ id: string; fullName: string; username: string | null }> {
+    if (!dto.username || !dto.password) {
+      throw new ConflictException('Yangi xodim uchun username va parol majburiy');
+    }
+    const phone = dto.phone?.trim() || (await this.nextPlaceholderPhone());
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    try {
+      const emp = await this.prisma.employee.create({
+        data: {
+          fullName: dto.fullName,
+          position: dto.position,
+          phone,
+          region: REGION,
+          district: DISTRICT,
+          role: EmployeeRole.EMPLOYEE,
+          isActive: true,
+          username: dto.username,
+          passwordHash,
+          avatarUrl: dto.avatarUrl ?? null,
+          assignedMahallaCodes: dto.assignedMahallaCodes ?? [],
+        },
+      });
+      if (dto.salary != null) {
+        await this.setSalary(emp.id, dto.salary);
+      }
+      return { id: emp.id, fullName: emp.fullName, username: emp.username };
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        const t = (e.meta?.target as string[] | undefined) ?? [];
+        throw new ConflictException(`Bu ${t.includes('username') ? 'username' : t.includes('phone') ? 'telefon' : 'qiymat'} band`);
+      }
+      throw e;
+    }
+  }
+
+  /** Edit an existing employee (name/position/photo/password/salary/territory). */
+  async updateEmployee(id: string, dto: UpsertEmployeeDto): Promise<{ id: string; fullName: string }> {
+    const existing = await this.prisma.employee.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) {
+      throw new NotFoundException('Xodim topilmadi');
+    }
+    const data: Prisma.EmployeeUncheckedUpdateInput = {
+      fullName: dto.fullName,
+      position: dto.position,
+      ...(dto.phone ? { phone: dto.phone.trim() } : {}),
+      ...(dto.username ? { username: dto.username } : {}),
+      ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
+      ...(dto.assignedMahallaCodes !== undefined ? { assignedMahallaCodes: dto.assignedMahallaCodes } : {}),
+    };
+    if (dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, 10);
+    }
+    try {
+      await this.prisma.employee.update({ where: { id }, data });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw new ConflictException('username yoki telefon band');
+      }
+      throw e;
+    }
+    if (dto.salary != null) {
+      await this.setSalary(id, dto.salary);
+    }
+    return { id, fullName: dto.fullName };
+  }
+
+  private async setSalary(employeeId: string, amount: number): Promise<void> {
+    const now = new Date();
+    await this.prisma.employeeSalary.upsert({
+      where: { employeeId_year_month: { employeeId, year: now.getFullYear(), month: now.getMonth() + 1 } },
+      update: { amount },
+      create: { employeeId, year: now.getFullYear(), month: now.getMonth() + 1, amount },
+    });
+  }
+
+  private async nextPlaceholderPhone(): Promise<string> {
+    for (let i = 1; i < 100000; i++) {
+      const phone = `+99890${String(i).padStart(7, '0')}`;
+      const exists = await this.prisma.employee.findUnique({ where: { phone }, select: { id: true } });
+      if (!exists) {
+        return phone;
+      }
+    }
+    return `+99890${Date.now() % 10000000}`;
   }
 }

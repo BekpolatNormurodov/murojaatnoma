@@ -188,4 +188,63 @@ export class ZonesService implements OnModuleInit {
       mahalla,
     };
   }
+
+  /**
+   * Is (lat,lng) inside, OR within [toleranceM] of, ANY of the given mahalla
+   * codes? Tolerance absorbs GPS jitter near a boundary: a mahalla is only
+   * ~500 m across, so a 10-30 m GPS error otherwise flips a staffer standing
+   * just inside their own mahalla to "hududdan tashqarida".
+   *
+   * Implemented by sampling the point PLUS a ring of 8 offset points at
+   * `toleranceM` and running the (tested) ray-caster on each — no new
+   * distance-to-edge geometry. If the boundary is within `toleranceM`, at
+   * least one ring point in its direction lands inside the polygon.
+   */
+  async isWithinToleranceOfMahallas(
+    lat: number,
+    lng: number,
+    codes: string[],
+    toleranceM: number,
+  ): Promise<boolean> {
+    await this.ensureLoaded();
+    if (codes.length === 0 || toleranceM <= 0) {
+      return false;
+    }
+    const codeSet = new Set(codes);
+    const zones = this.cache.filter(
+      (z) => z.kind === ZoneKind.MAHALLA && codeSet.has(z.code),
+    );
+    if (zones.length === 0) {
+      return false;
+    }
+
+    // meters → degrees (lng shrinks by cos(lat) toward the poles).
+    const latRad = (lat * Math.PI) / 180;
+    const dLat = toleranceM / 111_320;
+    const dLng = toleranceM / (111_320 * Math.max(Math.cos(latRad), 1e-6));
+    const samples: Array<[number, number]> = [[lat, lng]];
+    for (let k = 0; k < 8; k += 1) {
+      const ang = (k * Math.PI) / 4;
+      samples.push([lat + dLat * Math.cos(ang), lng + dLng * Math.sin(ang)]);
+    }
+
+    for (const z of zones) {
+      for (const [plat, plng] of samples) {
+        if (
+          withinBBox(
+            plat,
+            plng,
+            z.minLat - dLat,
+            z.minLng - dLng,
+            z.maxLat + dLat,
+            z.maxLng + dLng,
+          ) &&
+          pointInGeometry(plng, plat, z.geometry)
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 }

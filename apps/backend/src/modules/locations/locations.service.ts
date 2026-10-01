@@ -8,6 +8,16 @@ import { ZonesService } from '../zones/zones.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
 
+/**
+ * Geofence slack (m) for the "assigned mahalla" check — absorbs GPS jitter at a
+ * boundary. Mahallas are only ~500 m across, so a strict point-in-polygon marks
+ * a staffer standing just inside their own mahalla as "hududdan tashqarida"
+ * whenever GPS drifts a few metres. Tolerance = base + the fix's own accuracy
+ * (capped, so a garbage fix can't widen the zone without bound).
+ */
+const ZONE_TOLERANCE_BASE_M = 35;
+const ZONE_TOLERANCE_ACCURACY_CAP_M = 75;
+
 interface OfficeGeofence {
   lat: number;
   lng: number;
@@ -131,6 +141,30 @@ export class LocationsService {
     );
     const mahallaCode = locate.mahalla?.code ?? null;
     const insideOffice = distanceToOfficeM <= office.radiusM;
+    let insideAssignedZone = this.computeInsideAssignedZone(
+      assignedMahallaCodes,
+      mahallaCode,
+      locate.insideDistrict,
+      insideOffice,
+    );
+    // Strict point-in-polygon said "outside" — re-check with boundary
+    // tolerance (GPS jitter). Only for the assigned-mahalla case; the
+    // whole-district fallback is huge, so boundary slack there is pointless.
+    if (
+      !insideAssignedZone &&
+      !insideOffice &&
+      assignedMahallaCodes.length > 0
+    ) {
+      const toleranceM =
+        ZONE_TOLERANCE_BASE_M +
+        Math.min(dto.accuracy ?? 0, ZONE_TOLERANCE_ACCURACY_CAP_M);
+      insideAssignedZone = await this.zones.isWithinToleranceOfMahallas(
+        dto.latitude,
+        dto.longitude,
+        assignedMahallaCodes,
+        toleranceM,
+      );
+    }
     return {
       latitude: dto.latitude,
       longitude: dto.longitude,
@@ -143,12 +177,7 @@ export class LocationsService {
       mahallaName: locate.mahalla?.nameUzLat ?? null,
       insideDistrict: locate.insideDistrict,
       insideOffice,
-      insideAssignedZone: this.computeInsideAssignedZone(
-        assignedMahallaCodes,
-        mahallaCode,
-        locate.insideDistrict,
-        insideOffice,
-      ),
+      insideAssignedZone,
       distanceToOfficeM,
       recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
     };
@@ -244,6 +273,7 @@ export class LocationsService {
         lastInsideDistrict: true,
         lastInsideOffice: true,
         lastInsideAssignedZone: true,
+        assignedMahallaCodes: true,
       },
     });
     if (!e) {
@@ -259,6 +289,9 @@ export class LocationsService {
       insideDistrict: e.lastInsideDistrict,
       insideOffice: e.lastInsideOffice,
       insideAssignedZone: e.lastInsideAssignedZone,
+      // The mahalla codes this employee is assigned to patrol — the worker-app
+      // map draws THESE polygons as the "ish hududi" (not the office circle).
+      assignedMahallaCodes: e.assignedMahallaCodes,
     };
   }
 
@@ -272,6 +305,7 @@ export class LocationsService {
         id: true,
         fullName: true,
         position: true,
+        phone: true,
         avatarUrl: true,
         district: true,
         lastLat: true,
@@ -296,6 +330,7 @@ export class LocationsService {
         employeeId: e.id,
         fullName: e.fullName,
         position: e.position,
+        phone: e.phone,
         avatarUrl: e.avatarUrl,
         district: e.district,
         latitude: e.lastLat,

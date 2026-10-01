@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -65,6 +66,89 @@ export class ChatService {
       lastMessage: messages[0] ?? null,
       unreadCount: unreadByConversation.get(conversation.id) ?? 0,
     }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Employee-facing (worker-app) — self-scoped subset of the chat module.
+  // The class-level controller lock is @RequireScope('admin'); these are reached
+  // only via method-level @RequireScope('employee') routes. Every one is bound
+  // to the caller's own id so an employee can ONLY ever touch their own admin DM
+  // (`dm-emp-<self>`) or the shared group thread — never another employee's or a
+  // citizen's conversation. This is the deferred "broaden to employee" step,
+  // done without re-opening the PII hole that locked the controller to admin.
+  // ---------------------------------------------------------------------------
+
+  /** The only two conversations an employee may see: the group + their own admin DM. */
+  private employeeConversationIds(employeeId: string): string[] {
+    return [GROUP_ID, `dm-emp-${employeeId}`];
+  }
+
+  /** Throw unless `conversationId` is the group or this employee's own DM. */
+  private assertEmployeeAccess(conversationId: string, employeeId: string): void {
+    if (!this.employeeConversationIds(employeeId).includes(conversationId)) {
+      throw new ForbiddenException('Bu suhbatga ruxsat yo‘q');
+    }
+  }
+
+  /**
+   * Employee inbox: ONLY the group thread + the caller's own admin DM, each with
+   * its last message and a reader-relative unread count (messages NOT sent by
+   * this employee). Missing conversations (admin never messaged them) are simply
+   * absent — nothing is auto-created.
+   */
+  async findMyConversations(employeeId: string): Promise<ChatConversationResponse[]> {
+    const ids = this.employeeConversationIds(employeeId);
+    const [conversations, unreadRows] = await Promise.all([
+      this.prisma.chatConversation.findMany({
+        where: { archived: false, id: { in: ids } },
+        include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      }),
+      this.prisma.chatMessage.groupBy({
+        by: ['conversationId'],
+        where: {
+          conversationId: { in: ids },
+          senderId: { not: employeeId },
+          status: { not: ChatMsgStatus.read },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const unreadByConversation = new Map(
+      unreadRows.map((row) => [row.conversationId, row._count._all]),
+    );
+
+    return conversations.map(({ messages, ...conversation }) => ({
+      ...conversation,
+      lastMessage: messages[0] ?? null,
+      unreadCount: unreadByConversation.get(conversation.id) ?? 0,
+    }));
+  }
+
+  /** Employee reads history of the group or their own DM. */
+  findMyMessages(
+    employeeId: string,
+    conversationId: string,
+    query: ListChatMessagesQueryDto,
+  ): Promise<ChatMessage[]> {
+    this.assertEmployeeAccess(conversationId, employeeId);
+    return this.findMessages(conversationId, query);
+  }
+
+  /** Employee posts to the group or their own DM; senderId is forced server-side. */
+  sendMyMessage(
+    employeeId: string,
+    conversationId: string,
+    dto: CreateChatMessageDto,
+  ): Promise<ChatMessage> {
+    this.assertEmployeeAccess(conversationId, employeeId);
+    return this.sendMessage(conversationId, { ...dto, senderId: employeeId });
+  }
+
+  /** Employee marks the group or their own DM read (their own perspective). */
+  markMyRead(employeeId: string, conversationId: string): Promise<{ ok: true }> {
+    this.assertEmployeeAccess(conversationId, employeeId);
+    return this.markRead(conversationId, employeeId);
   }
 
   /** Chronological (ascending) page of messages, newest `limit` before the `before` cursor. */

@@ -162,6 +162,32 @@ describe('ZonesService', () => {
     });
   });
 
+  describe('isWithinToleranceOfMahallas', () => {
+    it('returns true for a point clearly inside an assigned mahalla', async () => {
+      expect(await service.isWithinToleranceOfMahallas(41.31, 69.34, ['MA'], 30)).toBe(true);
+    });
+
+    it('returns false for a point far from every assigned mahalla', async () => {
+      // Inside the district but nowhere near MA/MB.
+      expect(await service.isWithinToleranceOfMahallas(41.6, 69.6, ['MA', 'MB'], 50)).toBe(false);
+    });
+
+    it('counts a point just OUTSIDE the boundary as inside when within tolerance', async () => {
+      // ~22 m south of MA's south edge (lat 41.3); 50 m tolerance reaches it.
+      expect(await service.isWithinToleranceOfMahallas(41.2998, 69.34, ['MA'], 50)).toBe(true);
+    });
+
+    it('still reports outside when the boundary is beyond the tolerance', async () => {
+      // Same point, but 10 m tolerance does not reach the ~22 m-away edge.
+      expect(await service.isWithinToleranceOfMahallas(41.2998, 69.34, ['MA'], 10)).toBe(false);
+    });
+
+    it('returns false for empty codes or non-positive tolerance', async () => {
+      expect(await service.isWithinToleranceOfMahallas(41.31, 69.34, [], 50)).toBe(false);
+      expect(await service.isWithinToleranceOfMahallas(41.31, 69.34, ['MA'], 0)).toBe(false);
+    });
+  });
+
   describe('reload / ensureLoaded', () => {
     it('caches zones so locate does not re-query on every call', async () => {
       // reload() already ran in beforeEach (1 call). ensureLoaded is a no-op now.

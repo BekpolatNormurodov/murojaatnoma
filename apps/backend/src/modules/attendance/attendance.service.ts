@@ -26,6 +26,7 @@ export interface EmployeeDailySummary {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
   firstCheckIn: Date | null;
   lastCheckOut: Date | null;
   validScans: number;
@@ -42,6 +43,7 @@ export interface ReportAbsentee {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
 }
 
 export interface AttendanceReport {
@@ -70,6 +72,7 @@ export interface EmployeeTodayEntry {
   employeeId: string;
   fullName: string;
   position: string;
+  avatarUrl: string | null;
   department: string | null;
   checkIn: TodayCheckIn | null;
   checkOut: TodayCheckOut | null;
@@ -250,6 +253,7 @@ export class AttendanceService {
         employeeId: employee.id,
         fullName: employee.fullName,
         position: employee.position,
+        avatarUrl: employee.avatarUrl ?? null,
         department: employee.department?.name ?? null,
         checkIn,
         checkOut,
@@ -548,7 +552,7 @@ export class AttendanceService {
           isActive: true,
           ...(employeeId ? { id: employeeId } : {}),
         },
-        select: { id: true, fullName: true, position: true },
+        select: { id: true, fullName: true, position: true, avatarUrl: true },
       }),
     ]);
 
@@ -564,6 +568,7 @@ export class AttendanceService {
           employeeId: record.employeeId,
           fullName: emp?.fullName ?? '',
           position: emp?.position ?? '',
+          avatarUrl: emp?.avatarUrl ?? null,
           firstCheckIn: null,
           lastCheckOut: null,
           validScans: 0,
@@ -605,6 +610,7 @@ export class AttendanceService {
         employeeId: employee.id,
         fullName: employee.fullName,
         position: employee.position,
+        avatarUrl: employee.avatarUrl ?? null,
       }));
 
     return {
