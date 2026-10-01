@@ -192,6 +192,10 @@ model AttendanceRecord {
   reason      String?
   isLate      Boolean        @default(false)
   lateMinutes Int            @default(0)
+  // Where the scan was accepted: 'office' (within the employee's office
+  // radius) or 'zone' (inside their assigned mahalla). null = rejected /
+  // recorded before this field existed.
+  place       String?
   recordedAt  DateTime       @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)

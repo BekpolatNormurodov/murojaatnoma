@@ -33,6 +33,21 @@ export interface ZoneRef {
   nameRu: string | null;
 }
 
+/**
+ * Geofence slack (m) for "inside an assigned mahalla" checks — absorbs GPS
+ * jitter at a boundary. Mahallas are only ~500 m across, so a strict
+ * point-in-polygon marks someone standing just inside their own mahalla as
+ * outside whenever GPS drifts a few metres. Tolerance = base + the fix's own
+ * accuracy (capped, so a garbage fix can't widen the zone without bound).
+ * Shared by live tracking and attendance so both apply the same rule.
+ */
+export const ZONE_TOLERANCE_BASE_M = 35;
+export const ZONE_TOLERANCE_ACCURACY_CAP_M = 75;
+
+export function zoneToleranceM(accuracy?: number | null): number {
+  return ZONE_TOLERANCE_BASE_M + Math.min(accuracy ?? 0, ZONE_TOLERANCE_ACCURACY_CAP_M);
+}
+
 export interface LocateResult {
   insideDistrict: boolean;
   district: ZoneRef | null;

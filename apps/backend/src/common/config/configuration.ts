@@ -55,6 +55,8 @@ export interface AppConfig {
     startTime: string;
     endTime: string;
     lateGraceMinutes: number;
+    /** Working weekdays, JS numbering (0 = Sunday … 6 = Saturday). */
+    workDays: number[];
   };
   admin: {
     seedUsername: string;
@@ -146,6 +148,11 @@ export default (): AppConfig => ({
       process.env.LATE_GRACE_MINUTES ?? `${LATE_GRACE_MINUTES}`,
       10,
     ),
+    // e.g. WORK_DAYS=1,2,3,4,5,6 for a six-day week. Default Mon–Fri.
+    workDays: (process.env.WORK_DAYS ?? '1,2,3,4,5')
+      .split(',')
+      .map((d) => parseInt(d.trim(), 10))
+      .filter((d) => d >= 0 && d <= 6),
   },
   admin: {
     seedUsername: process.env.ADMIN_USERNAME ?? 'admin',

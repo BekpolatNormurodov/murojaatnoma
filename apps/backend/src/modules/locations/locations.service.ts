@@ -4,19 +4,10 @@ import { LocationSource, Prisma } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { distanceInMeters } from '../../common/geo/geo.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { ZonesService } from '../zones/zones.service';
+import { ZonesService, zoneToleranceM } from '../zones/zones.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
 
-/**
- * Geofence slack (m) for the "assigned mahalla" check — absorbs GPS jitter at a
- * boundary. Mahallas are only ~500 m across, so a strict point-in-polygon marks
- * a staffer standing just inside their own mahalla as "hududdan tashqarida"
- * whenever GPS drifts a few metres. Tolerance = base + the fix's own accuracy
- * (capped, so a garbage fix can't widen the zone without bound).
- */
-const ZONE_TOLERANCE_BASE_M = 35;
-const ZONE_TOLERANCE_ACCURACY_CAP_M = 75;
 
 /** A pause this long between two fixes is a break in the route (GPS off / app closed). */
 export const TRACK_GAP_MS = 15 * 60_000;
@@ -180,9 +171,7 @@ export class LocationsService {
       !insideOffice &&
       assignedMahallaCodes.length > 0
     ) {
-      const toleranceM =
-        ZONE_TOLERANCE_BASE_M +
-        Math.min(dto.accuracy ?? 0, ZONE_TOLERANCE_ACCURACY_CAP_M);
+      const toleranceM = zoneToleranceM(dto.accuracy);
       insideAssignedZone = await this.zones.isWithinToleranceOfMahallas(
         dto.latitude,
         dto.longitude,

@@ -43,18 +43,23 @@ function scan(employeeId: string, type: AttendanceType, time: Date, over: Record
   };
 }
 
-function build(employees: unknown[], records: unknown[]) {
+function build(employees: unknown[], records: unknown[], leaves: unknown[] = []) {
   const prisma = {
     employee: { findMany: jest.fn().mockResolvedValue(employees) },
     attendanceRecord: { findMany: jest.fn().mockResolvedValue(records) },
+    leaveRequest: { findMany: jest.fn().mockResolvedValue(leaves) },
   };
   const cfg: Record<string, unknown> = {
     attendance: { geofenceRadiusM: 200, officeLatitude: OFFICE.lat, officeLongitude: OFFICE.lng },
     location: { staleMinutes: 15 },
-    work: { startTime: '09:00', endTime: '18:00' },
+    work: { startTime: '09:00', endTime: '18:00', workDays: [0, 1, 2, 3, 4, 5, 6] },
   };
   const config = { get: jest.fn((key: string) => cfg[key]) };
-  return new AttendanceService(prisma as never, config as never);
+  const zones = {
+    locate: jest.fn().mockResolvedValue({ insideDistrict: true, district: null, mahalla: null }),
+    isWithinToleranceOfMahallas: jest.fn().mockResolvedValue(false),
+  };
+  return new AttendanceService(prisma as never, config as never, zones as never);
 }
 
 describe('AttendanceService.today (davomat board)', () => {

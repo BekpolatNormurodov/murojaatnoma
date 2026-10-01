@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AttendanceRecord, AttendanceType } from '@prisma/client';
+import { AttendanceRecord, AttendanceType, LeaveRequest, LeaveStatus } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { bestMatchScore } from '../../common/utils/face-match.util';
@@ -19,6 +19,7 @@ import {
 } from './dto/attendance-report-query.dto';
 import { VerifyFaceDto } from './dto/verify-face.dto';
 import { VerifyFaceResultDto } from './dto/verify-face-result.dto';
+import { ZonesService, zoneToleranceM } from '../zones/zones.service';
 import { distanceInMeters } from './utils/geo.util';
 import { dayRange, formatLocalDate, minutesAfter, parseTimeOnDate } from './utils/date.util';
 
@@ -55,7 +56,47 @@ export interface AttendanceReport {
   absentees: ReportAbsentee[];
 }
 
-export type TodayAttendanceStatus = 'present' | 'late' | 'absent' | 'left';
+/**
+ * present/late = in, still working · left = checked out · absent = a working
+ * day with no check-in · leave = approved whole-day leave (ta'til) ·
+ * dayoff = not a working day (WORK_DAYS) and nobody is expected.
+ */
+export type TodayAttendanceStatus = 'present' | 'late' | 'absent' | 'left' | 'leave' | 'dayoff';
+
+/** Where a scan may be accepted for one employee. */
+export interface Workplace {
+  officeLat: number;
+  officeLng: number;
+  radiusM: number;
+  /** Assigned mahalla codes — standing inside one counts as "at work" too. */
+  zones: string[];
+}
+
+/** Result of checking a position against an employee's workplace. */
+export interface PlaceCheck {
+  place: 'office' | 'zone' | null;
+  distanceM: number;
+  mahallaName: string | null;
+}
+
+/** Approved leave as it applies to one day. */
+export interface TodayLeave {
+  type: 'days' | 'hours';
+  reason: string;
+  /** Hours-type: the permitted window (local HH:mm). */
+  from?: string;
+  to?: string;
+}
+
+/** `POST /attendance/precheck` — can I check in/out from here, and why not. */
+export interface PrecheckResult extends PlaceCheck {
+  allowed: boolean;
+  radiusM: number;
+  officeLat: number;
+  officeLng: number;
+  zonesCount: number;
+  message: string;
+}
 
 export interface TodayCheckIn {
   time: Date;
@@ -109,6 +150,10 @@ export interface EmployeeTodayEntry {
   earlyLeaveMinutes: number;
   failedScans: TodayFailedScan[];
   live: TodayLiveLocation | null;
+  /** Approved leave touching this day (whole day, or an excused window). */
+  leave: TodayLeave | null;
+  /** Lateness / early leave was covered by an approved hours-leave. */
+  excused: boolean;
 }
 
 export interface TodayAttendanceSummary {
@@ -129,6 +174,7 @@ export interface TodayAttendanceSummary {
   earlyLeave: number;
   /** Employees with at least one rejected scan today. */
   withFailedScans: number;
+  onLeave: number;
 }
 
 export interface TodayAttendance {
@@ -137,6 +183,8 @@ export interface TodayAttendance {
   summary: TodayAttendanceSummary;
   workStartTime: string;
   workEndTime: string;
+  /** false on a non-working day (WORK_DAYS) — nobody counts as absent. */
+  isWorkday: boolean;
 }
 
 /** A single day's pairing result, shared by `today()` and `me()`. */
@@ -174,6 +222,11 @@ export interface EmployeeMeAttendance {
   fullName: string;
   department: string | null;
   workStartTime: string;
+  workEndTime: string;
+  /** false on a non-working day — the app shows "Dam olish kuni". */
+  isWorkday: boolean;
+  /** Where check-in counts: office point + radius, and how many mahallas are assigned. */
+  workplace: { officeLat: number; officeLng: number; radiusM: number; zonesCount: number };
   today: MeDayEntry;
   week: MeWeekEntry[];
 }
@@ -183,7 +236,178 @@ export class AttendanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService<AppConfig, true>,
+    private readonly zones: ZonesService,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // Workplace rules — ONE source of truth for "may this scan count?"
+  // ---------------------------------------------------------------------------
+
+  /** The employee's own office (falls back to the global one) + assigned mahallas. */
+  workplaceOf(emp: {
+    officeLat: number | null;
+    officeLng: number | null;
+    officeRadiusM: number | null;
+    assignedMahallaCodes: string[];
+  }): Workplace {
+    const g = this.configService.get('attendance', { infer: true });
+    return {
+      officeLat: emp.officeLat ?? g.officeLatitude,
+      officeLng: emp.officeLng ?? g.officeLongitude,
+      radiusM: emp.officeRadiusM ?? g.geofenceRadiusM,
+      zones: emp.assignedMahallaCodes ?? [],
+    };
+  }
+
+  /**
+   * Office radius first; otherwise inside one of the assigned mahallas
+   * (with the same GPS tolerance live tracking uses). Field staff who work in
+   * their mahalla can check in there; office staff only at the office.
+   */
+  async placeOf(
+    wp: Workplace,
+    lat: number,
+    lng: number,
+    accuracy?: number | null,
+  ): Promise<PlaceCheck> {
+    const distanceM = Math.round(distanceInMeters(lat, lng, wp.officeLat, wp.officeLng));
+    if (distanceM <= wp.radiusM) return { place: 'office', distanceM, mahallaName: null };
+    if (wp.zones.length === 0) return { place: null, distanceM, mahallaName: null };
+    const located = await this.zones.locate(lat, lng);
+    const code = located.mahalla?.code ?? null;
+    const mahallaName = located.mahalla?.nameUzLat ?? null;
+    if (code && wp.zones.includes(code)) return { place: 'zone', distanceM, mahallaName };
+    const near = await this.zones.isWithinToleranceOfMahallas(
+      lat,
+      lng,
+      wp.zones,
+      zoneToleranceM(accuracy),
+    );
+    return { place: near ? 'zone' : null, distanceM, mahallaName };
+  }
+
+  /**
+   * Before the face scan: would a check-in/out from here be accepted? The
+   * app shows the answer (and the distance) instead of guessing with
+   * hard-coded coordinates.
+   */
+  async precheck(
+    employeeId: string,
+    pos: { latitude: number; longitude: number; accuracy?: number },
+  ): Promise<PrecheckResult> {
+    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) {
+      throw new NotFoundException(`Employee ${employeeId} not found`);
+    }
+    const wp = this.workplaceOf(employee);
+    const check = await this.placeOf(wp, pos.latitude, pos.longitude, pos.accuracy);
+    const far = check.distanceM >= 1000
+      ? `${(check.distanceM / 1000).toFixed(1)} km`
+      : `${check.distanceM} m`;
+    const message =
+      check.place === 'office'
+        ? 'Ish joyidasiz — belgilash mumkin'
+        : check.place === 'zone'
+          ? `Biriktirilgan mahallangizdasiz${check.mahallaName ? ` (${check.mahallaName})` : ''}`
+          : wp.zones.length > 0
+            ? `Ofisdan ${far} uzoqdasiz va biriktirilgan mahallangizda emassiz`
+            : `Ish joyingizdan ${far} uzoqdasiz (ruxsat etilgan radius ${wp.radiusM} m)`;
+    return {
+      ...check,
+      allowed: check.place !== null,
+      radiusM: wp.radiusM,
+      officeLat: wp.officeLat,
+      officeLng: wp.officeLng,
+      zonesCount: wp.zones.length,
+      message,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calendar rules — working days and approved leave
+  // ---------------------------------------------------------------------------
+
+  isWorkday(day: Date): boolean {
+    return this.configService.get('work', { infer: true }).workDays.includes(day.getDay());
+  }
+
+  /** Approved leave that may touch [from, to] (days-leave may start up to ~2 months earlier). */
+  private approvedLeaves(from: Date, to: Date, employeeId?: string): Promise<LeaveRequest[]> {
+    const earliest = new Date(from.getTime() - 62 * 86_400_000);
+    return this.prisma.leaveRequest.findMany({
+      where: {
+        status: LeaveStatus.approved,
+        startDate: { gte: earliest, lte: to },
+        ...(employeeId ? { employeeId } : {}),
+      },
+    });
+  }
+
+  /**
+   * What approved leave means for one employee on one local day: a whole day
+   * off (days-type covering it), and/or an excused window (hours-type on it).
+   */
+  private leaveOn(
+    leaves: LeaveRequest[],
+    employeeId: string,
+    day: Date,
+    workStart: string,
+  ): { wholeDay: LeaveRequest | null; window: { start: Date; end: Date; leave: LeaveRequest } | null } {
+    const key = formatLocalDate(day);
+    let wholeDay: LeaveRequest | null = null;
+    let window: { start: Date; end: Date; leave: LeaveRequest } | null = null;
+    for (const l of leaves) {
+      if (l.employeeId !== employeeId) continue;
+      if (l.type === 'days') {
+        const first = dayRange(l.startDate).from;
+        const last = new Date(first);
+        last.setDate(last.getDate() + Math.max(1, l.amount) - 1);
+        const k1 = formatLocalDate(first);
+        const k2 = formatLocalDate(last);
+        if (key >= k1 && key <= k2) wholeDay = l;
+      } else if (formatLocalDate(l.startDate) === key) {
+        const start = parseTimeOnDate(day, l.startTime ?? workStart);
+        window = { start, end: new Date(start.getTime() + Math.max(1, l.amount) * 3_600_000), leave: l };
+      }
+    }
+    return { wholeDay, window };
+  }
+
+  /**
+   * Applies working days and leave to a raw day entry: no check-in on a
+   * leave day is "leave", on a non-working day "dayoff"; lateness inside a
+   * permitted window is excused.
+   */
+  private applyCalendar(
+    entry: DayAttendanceEntry,
+    ctx: {
+      isWorkday: boolean;
+      leave: ReturnType<AttendanceService['leaveOn']>;
+    },
+  ): DayAttendanceEntry & { leave: TodayLeave | null; excused: boolean } {
+    let { status, checkIn } = entry;
+    let excused = false;
+    const win = ctx.leave.window;
+    if (checkIn?.isLate && win && checkIn.time.getTime() <= win.end.getTime()) {
+      checkIn = { ...checkIn, isLate: false, lateMinutes: 0 };
+      excused = true;
+      if (status === 'late') status = 'present';
+    }
+    if (!entry.checkIn) {
+      status = ctx.leave.wholeDay ? 'leave' : ctx.isWorkday ? 'absent' : 'dayoff';
+    }
+    const l = ctx.leave.wholeDay ?? win?.leave ?? null;
+    const hhmm = (d: Date) =>
+      `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const leave: TodayLeave | null = l
+      ? {
+          type: l.type === 'days' ? 'days' : 'hours',
+          reason: l.reason,
+          ...(win && l === win.leave ? { from: hhmm(win.start), to: hhmm(win.end) } : {}),
+        }
+      : null;
+    return { ...entry, status, checkIn, leave, excused };
+  }
 
   checkIn(employeeId: string, dto: CheckInDto): Promise<AttendanceRecord> {
     return this.recordScan(AttendanceType.CHECK_IN, employeeId, dto);
@@ -269,11 +493,8 @@ export class AttendanceService {
         orderBy: { recordedAt: 'asc' },
       }),
     ]);
-
-    const { geofenceRadiusM, officeLatitude, officeLongitude } = this.configService.get(
-      'attendance',
-      { infer: true },
-    );
+    const leaves = await this.approvedLeaves(from, to);
+    const isWorkday = this.isWorkday(from);
 
     const recordsByEmployee = new Map<string, AttendanceRecord[]>();
     for (const record of records) {
@@ -292,19 +513,23 @@ export class AttendanceService {
 
     const roster: EmployeeTodayEntry[] = employees.map((employee) => {
       const empRecords = recordsByEmployee.get(employee.id) ?? [];
-      const { status, checkIn, checkOut, hoursWorked } = this.buildDayEntry(
-        empRecords,
-        geofenceRadiusM,
-        officeLatitude,
-        officeLongitude,
-      );
+      const wp = this.workplaceOf(employee);
+      const leaveDay = this.leaveOn(leaves, employee.id, from, employee.workStartTime);
+      const { status, checkIn, checkOut, hoursWorked, leave, excused: lateExcused } =
+        this.applyCalendar(this.buildDayEntry(empRecords, wp), { isWorkday, leave: leaveDay });
 
-      const earlyLeaveMinutes = checkOut
+      const rawEarly = checkOut
         ? Math.max(
             0,
             minutesAfter(checkOut.time, parseTimeOnDate(checkOut.time, employee.workEndTime)),
           )
         : 0;
+      // Leaving inside a permitted hours-window is not "early".
+      const earlyExcused =
+        rawEarly > 0 &&
+        !!leaveDay.window &&
+        checkOut!.time.getTime() >= leaveDay.window.start.getTime();
+      const earlyLeaveMinutes = earlyExcused ? 0 : rawEarly;
 
       const failedScans: TodayFailedScan[] = empRecords
         .filter((record) => !record.isValid)
@@ -314,7 +539,7 @@ export class AttendanceService {
           reason: record.reason,
           faceScore: record.faceScore,
           distanceM: Math.round(
-            distanceInMeters(record.latitude, record.longitude, officeLatitude, officeLongitude),
+            distanceInMeters(record.latitude, record.longitude, wp.officeLat, wp.officeLng),
           ),
         }));
 
@@ -344,6 +569,8 @@ export class AttendanceService {
         earlyLeaveMinutes,
         failedScans,
         live,
+        leave,
+        excused: lateExcused || earlyExcused,
       };
     });
 
@@ -360,6 +587,7 @@ export class AttendanceService {
       onTime: count((entry) => entry.checkIn !== null && !entry.checkIn.isLate),
       earlyLeave: count((entry) => entry.earlyLeaveMinutes > 0),
       withFailedScans: count((entry) => entry.failedScans.length > 0),
+      onLeave: count((entry) => entry.status === 'leave'),
     };
 
     const work = this.configService.get('work', { infer: true });
@@ -369,6 +597,7 @@ export class AttendanceService {
       summary,
       workStartTime: work.startTime,
       workEndTime: work.endTime,
+      isWorkday,
     };
   }
 
@@ -394,10 +623,19 @@ export class AttendanceService {
     const { from } = dayRange(weekStart);
     const { to } = dayRange(today);
 
-    const records = await this.prisma.attendanceRecord.findMany({
-      where: { employeeId, recordedAt: { gte: from, lte: to } },
-      orderBy: { recordedAt: 'asc' },
-    });
+    const [records, leaves] = await Promise.all([
+      this.prisma.attendanceRecord.findMany({
+        where: { employeeId, recordedAt: { gte: from, lte: to } },
+        orderBy: { recordedAt: 'asc' },
+      }),
+      this.approvedLeaves(from, to, employeeId),
+    ]);
+    const wp = this.workplaceOf(employee);
+    const dayEntry = (day: Date, dayRecords: AttendanceRecord[]) =>
+      this.applyCalendar(this.buildDayEntry(dayRecords, wp), {
+        isWorkday: this.isWorkday(day),
+        leave: this.leaveOn(leaves, employeeId, day, employee.workStartTime),
+      });
 
     const recordsByDay = new Map<string, AttendanceRecord[]>();
     for (const record of records) {
@@ -410,11 +648,6 @@ export class AttendanceService {
       }
     }
 
-    const { geofenceRadiusM, officeLatitude, officeLongitude } = this.configService.get(
-      'attendance',
-      { infer: true },
-    );
-
     const week: MeWeekEntry[] = [];
     for (let offset = 6; offset >= 0; offset -= 1) {
       const day = new Date(today);
@@ -422,12 +655,7 @@ export class AttendanceService {
       const key = formatLocalDate(day);
       const dayRecords = recordsByDay.get(key) ?? [];
 
-      const { status, checkIn, checkOut, hoursWorked } = this.buildDayEntry(
-        dayRecords,
-        geofenceRadiusM,
-        officeLatitude,
-        officeLongitude,
-      );
+      const { status, checkIn, checkOut, hoursWorked } = dayEntry(day, dayRecords);
 
       week.push({
         date: key,
@@ -441,18 +669,21 @@ export class AttendanceService {
     }
 
     const todayKey = formatLocalDate(today);
-    const todayDayEntry = this.buildDayEntry(
-      recordsByDay.get(todayKey) ?? [],
-      geofenceRadiusM,
-      officeLatitude,
-      officeLongitude,
-    );
+    const todayDayEntry = dayEntry(today, recordsByDay.get(todayKey) ?? []);
 
     return {
       employeeId: employee.id,
       fullName: employee.fullName,
       department: employee.department?.name ?? null,
       workStartTime: employee.workStartTime,
+      workEndTime: employee.workEndTime,
+      isWorkday: this.isWorkday(today),
+      workplace: {
+        officeLat: wp.officeLat,
+        officeLng: wp.officeLng,
+        radiusM: wp.radiusM,
+        zonesCount: wp.zones.length,
+      },
       today: { date: todayKey, ...todayDayEntry },
       week,
     };
@@ -464,12 +695,7 @@ export class AttendanceService {
    * scoped to that one day, sorted ascending by `recordedAt` (shared by
    * `today()`'s per-employee roster and `me()`'s per-day week view).
    */
-  private buildDayEntry(
-    dayRecords: AttendanceRecord[],
-    geofenceRadiusM: number,
-    officeLatitude: number,
-    officeLongitude: number,
-  ): DayAttendanceEntry {
+  private buildDayEntry(dayRecords: AttendanceRecord[], wp: Workplace): DayAttendanceEntry {
     const checkInRecord = dayRecords.find(
       (record) => record.type === AttendanceType.CHECK_IN && record.isValid,
     );
@@ -478,9 +704,11 @@ export class AttendanceService {
       .find((record) => record.type === AttendanceType.CHECK_OUT && record.isValid);
 
     const distanceOf = (record: AttendanceRecord) =>
-      Math.round(
-        distanceInMeters(record.latitude, record.longitude, officeLatitude, officeLongitude),
-      );
+      Math.round(distanceInMeters(record.latitude, record.longitude, wp.officeLat, wp.officeLng));
+    // An accepted scan was at the office or in an assigned mahalla (`place`);
+    // older rows without it fall back to the office radius.
+    const atWork = (record: AttendanceRecord, distance: number) =>
+      record.place != null || distance <= wp.radiusM;
 
     const checkInDistance = checkInRecord ? distanceOf(checkInRecord) : 0;
     const checkIn: TodayCheckIn | null = checkInRecord
@@ -488,7 +716,7 @@ export class AttendanceService {
           time: checkInRecord.recordedAt,
           isLate: checkInRecord.isLate,
           lateMinutes: checkInRecord.lateMinutes,
-          insideGeofence: checkInDistance <= geofenceRadiusM,
+          insideGeofence: atWork(checkInRecord, checkInDistance),
           faceScore: checkInRecord.faceScore,
           distanceM: checkInDistance,
         }
@@ -498,7 +726,7 @@ export class AttendanceService {
     const checkOut: TodayCheckOut | null = checkOutRecord
       ? {
           time: checkOutRecord.recordedAt,
-          insideGeofence: checkOutDistance <= geofenceRadiusM,
+          insideGeofence: atWork(checkOutRecord, checkOutDistance),
           faceScore: checkOutRecord.faceScore,
           distanceM: checkOutDistance,
         }
@@ -563,16 +791,10 @@ export class AttendanceService {
       }
     }
 
-    const { faceMatchThreshold, geofenceRadiusM, officeLatitude, officeLongitude } =
-      this.configService.get('attendance', { infer: true });
-
-    const distance = distanceInMeters(
-      dto.latitude,
-      dto.longitude,
-      officeLatitude,
-      officeLongitude,
-    );
-    const locationOk = distance <= geofenceRadiusM;
+    const { faceMatchThreshold } = this.configService.get('attendance', { infer: true });
+    const wp = this.workplaceOf(employee);
+    const where = await this.placeOf(wp, dto.latitude, dto.longitude, dto.accuracy);
+    const locationOk = where.place !== null;
 
     const reasons: string[] = [];
     let faceScore: number;
@@ -610,7 +832,8 @@ export class AttendanceService {
     }
     if (!locationOk) {
       reasons.push(
-        `${distance.toFixed(0)}m from office, outside ${geofenceRadiusM}m geofence`,
+        `${where.distanceM}m from office, outside ${wp.radiusM}m geofence` +
+          (wp.zones.length > 0 ? ' and not in an assigned mahalla' : ''),
       );
     }
 
@@ -636,6 +859,7 @@ export class AttendanceService {
         reason: reasons.length > 0 ? reasons.join('; ') : null,
         isLate,
         lateMinutes,
+        place: where.place,
         recordedAt,
       },
     });

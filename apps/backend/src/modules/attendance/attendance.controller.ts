@@ -8,9 +8,10 @@ import {
   AttendanceReport,
   AttendanceService,
   EmployeeMeAttendance,
+  PrecheckResult,
   TodayAttendance,
 } from './attendance.service';
-import { CheckInDto } from './dto/check-in.dto';
+import { CheckInDto, PrecheckDto } from './dto/check-in.dto';
 import { CheckOutDto } from './dto/check-out.dto';
 import {
   DailyReportQueryDto,
@@ -52,6 +53,18 @@ export class AttendanceController {
       this.resolveEmployeeId(user, dto.employeeId),
       dto,
     );
+  }
+
+  @Post('precheck')
+  @ApiOperation({
+    summary:
+      'Would a check-in/out from this position be accepted? (office radius or an assigned mahalla) — records nothing',
+  })
+  precheck(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: PrecheckDto,
+  ): Promise<PrecheckResult> {
+    return this.attendanceService.precheck(this.resolveEmployeeId(user), dto);
   }
 
   @Post('verify-face')

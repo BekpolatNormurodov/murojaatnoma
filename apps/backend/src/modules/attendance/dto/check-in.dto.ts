@@ -58,4 +58,32 @@ export class CheckInDto {
   @ApiProperty({ example: 69.240562 })
   @IsLongitude()
   longitude!: number;
+
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'GPS accuracy (m) — widens the assigned-mahalla tolerance a little',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5000)
+  accuracy?: number;
+}
+
+/** `POST /attendance/precheck` — position only, nothing is recorded. */
+export class PrecheckDto {
+  @ApiProperty({ example: 41.311081 })
+  @IsLatitude()
+  latitude!: number;
+
+  @ApiProperty({ example: 69.240562 })
+  @IsLongitude()
+  longitude!: number;
+
+  @ApiPropertyOptional({ example: 12 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5000)
+  accuracy?: number;
 }
