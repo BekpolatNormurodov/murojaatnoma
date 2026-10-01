@@ -20,7 +20,7 @@ import {
   RotateRight,
   SearchNormal1,
 } from 'iconsax-react';
-import { fetchZonesGeoJson, type ZoneProps } from '@/shared/api/zones';
+import { fetchZonesGeoJson, type ZoneCollection, type ZoneProps } from '@/shared/api/zones';
 import {
   fetchLiveLocations,
   fetchLocationAlerts,
@@ -30,6 +30,7 @@ import {
   type TrackPoint,
 } from '@/shared/api/locations';
 import { cn } from '@/shared/lib/cn';
+import { Skeleton, SkeletonRow } from '@/shared/ui/Skeleton';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer';
 import {
   agoShort,
@@ -131,6 +132,24 @@ function FlyTo({
       map.flyTo(pos, Math.max(map.getZoom(), 15), { duration: 0.8 });
     }
   }, [pos, flyKey, map]);
+  return null;
+}
+
+/**
+ * Frames the district's mahallas once they load (the district polygon also
+ * has a far-off exclave, which made the default view mostly empty fields).
+ */
+function FitHome({ mahallas }: { mahallas: ZoneCollection | undefined }) {
+  const map = useMap();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current || !mahallas?.features.length) return;
+    const b = L.geoJSON(mahallas).getBounds();
+    if (b.isValid()) {
+      map.fitBounds(b, { padding: [16, 16] });
+      done.current = true;
+    }
+  }, [mahallas, map]);
   return null;
 }
 
@@ -353,10 +372,16 @@ export function MapPage() {
             </div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Stat label={t.total} value={stats?.totalActive ?? '—'} tone="ink" />
-            <Stat label={t.reporting} value={stats?.reportingNow ?? '—'} tone="blue" />
-            <Stat label={t.inOffice} value={stats?.insideOffice ?? '—'} tone="green" />
-            <Stat label={t.stale} value={stats?.stale ?? '—'} tone="red" />
+            {stats ? (
+              <>
+                <Stat label={t.total} value={stats.totalActive} tone="ink" />
+                <Stat label={t.reporting} value={stats.reportingNow} tone="blue" />
+                <Stat label={t.inOffice} value={stats.insideOffice} tone="green" />
+                <Stat label={t.stale} value={stats.stale} tone="red" />
+              </>
+            ) : (
+              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[52px]" />)
+            )}
           </div>
         </div>
 
@@ -429,7 +454,9 @@ export function MapPage() {
 
         {/* Employee list */}
         <div className="mt-2 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-          {filtered.length === 0 &&
+          {locationsQ.isLoading &&
+            Array.from({ length: 7 }).map((_, i) => <SkeletonRow key={i} />)}
+          {!locationsQ.isLoading && filtered.length === 0 &&
             (locationsQ.isError && locations.length === 0 ? (
               // Xatoni "hech kim joylashuv yubormagan"dan ajratamiz: bo'sh
               // ro'yxat aslida yuklash muvaffaqiyatsizligi bo'lishi mumkin.
@@ -612,6 +639,7 @@ export function MapPage() {
 
           {markers}
 
+          <FitHome mahallas={mahallaQ.data} />
           <FlyTo pos={selectedPos} flyKey={selectedId} />
           <FlyToTarget target={flyTarget} />
         </MapContainer>
