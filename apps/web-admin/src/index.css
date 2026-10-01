@@ -116,6 +116,51 @@
 }
 
 /* ============================================================
+   Skeleton shimmer — barcha yuklanish plashkalari.
+   Sahifalar `animate-pulse … bg-surface-2` yozadi; surface-2 (#f9fafb)
+   oq karta ustida deyarli ko'rinmasdi va "miltillash" arzon ko'rinardi.
+   Endi o'sha bloklar (va yangi `.skeleton`) ko'rinadigan asos + yurib
+   o'tuvchi yaltiroq chiziq bilan chiziladi. Layer'siz CSS — Tailwind
+   utility'laridan ustun turadi.
+   ============================================================ */
+:root {
+  --skeleton-base: #edf1f6;
+  --skeleton-shine: rgba(255, 255, 255, 0.85);
+}
+.dark {
+  --skeleton-base: #1e293b;
+  --skeleton-shine: rgba(255, 255, 255, 0.07);
+}
+.skeleton,
+.animate-pulse.bg-surface-2 {
+  background-color: var(--skeleton-base);
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--skeleton-shine) 50%,
+    transparent 80%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 160% 0;
+  }
+  100% {
+    background-position: -60% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .animate-pulse.bg-surface-2 {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* ============================================================
    Tungi rejim (Dark mode) — semantik tokenlarni qayta belgilash
    ============================================================ */
 .dark {

@@ -8,7 +8,7 @@ import { api } from '@/shared/api/client';
  */
 export interface RequestEvent {
   id: string;
-  type: 'CREATED' | 'STATUS_CHANGED' | 'ASSIGNED' | 'MESSAGE';
+  type: 'CREATED' | 'STATUS_CHANGED' | 'ASSIGNED' | 'MESSAGE' | 'RATED' | 'REOPENED';
   fromStatus: string | null;
   toStatus: string | null;
   note: string | null;

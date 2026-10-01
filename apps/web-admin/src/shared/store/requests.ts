@@ -22,6 +22,11 @@ interface RequestsState {
   error: string | null;
   /** Murojaatlar ro'yxatini GET /requests orqali (qayta) yuklaydi. */
   hydrate: () => Promise<void>;
+  /**
+   * Bitta murojaatni (masalan, dashboard/xaritadan `?id=` havola bilan
+   * ochilganda) ro'yxatda bo'lmasa GET /requests/:id orqali olib qo'shadi.
+   */
+  ensure: (id: string) => Promise<CitizenRequest | null>;
   /** Yangi murojaat qo'shish (id avtomatik beriladi). */
   add: (r: Omit<CitizenRequest, "id">) => Promise<void>;
   /** Murojaatga xodim biriktirish. Yangi murojaat avtomatik "Jarayonda" ga o'tadi. */
@@ -42,16 +47,43 @@ export const useRequests = create<RequestsState>((set, get) => ({
   hydrate: async () => {
     set({ loading: true, error: null });
     try {
-      // Admin jadvalidagi qidiruv/filtr/saralash klient tomonda ishlaydi
-      // (mock davridagi kabi), shuning uchun ruxsat etilgan maksimal
-      // `limit=100` bilan bitta so'rovda to'liq ro'yxatni olamiz.
-      const res = await api.get<Paginated<CitizenRequest>>("/requests?limit=100");
-      set({ requests: res.data, loading: false });
+      // Admin jadvalidagi qidiruv/filtr/saralash klient tomonda ishlaydi,
+      // shuning uchun BUTUN ro'yxat kerak. Backend sahifasi maksimal 100 ta —
+      // ilgari faqat birinchi 100 tasi olinardi va qolganlari jimgina
+      // ko'rinmay qolardi. Endi qolgan sahifalarni parallel olamiz.
+      const PAGE = 100;
+      const MAX_PAGES = 30;
+      const first = await api.get<Paginated<CitizenRequest>>(`/requests?limit=${PAGE}&page=1`);
+      const pages = Math.min(MAX_PAGES, Math.ceil(first.total / PAGE));
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
+          api.get<Paginated<CitizenRequest>>(`/requests?limit=${PAGE}&page=${i + 2}`),
+        ),
+      );
+      const seen = new Set<string>();
+      const all = [first, ...rest]
+        .flatMap((p) => p.data)
+        .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+      set({ requests: all, loading: false });
     } catch (err) {
       set({
         loading: false,
         error: err instanceof Error ? err.message : "Murojaatlarni yuklab bo'lmadi",
       });
+    }
+  },
+
+  ensure: async (id) => {
+    const have = get().requests.find((r) => r.id === id);
+    if (have) return have;
+    try {
+      const one = await api.get<CitizenRequest>(`/requests/${encodeURIComponent(id)}`);
+      set((s) =>
+        s.requests.some((r) => r.id === one.id) ? s : { requests: [one, ...s.requests] },
+      );
+      return one;
+    } catch {
+      return null;
     }
   },
 

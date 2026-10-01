@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   SearchNormal1,
@@ -128,8 +128,28 @@ export function RequestsPage() {
   const [dateRange, setDateRange] = useState<DateRangeKey>('all');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // `?id=` — dashboard/xarita/bildirishnomadan to'g'ridan-to'g'ri ochish.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedId, setSelectedIdState] = useState<string | null>(() => searchParams.get('id'));
   const selected = requests.find((r) => r.id === selectedId) ?? null;
+  const ensureRequest = useRequests((s) => s.ensure);
+  const setSelectedId = (id: string | null) => {
+    setSelectedIdState(id);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (id) next.set('id', id);
+        else next.delete('id');
+        return next;
+      },
+      { replace: true },
+    );
+  };
+  // Havola bilan kelgan murojaat birinchi sahifada bo'lmasa — alohida olamiz.
+  useEffect(() => {
+    if (selectedId && !selected && !loading) void ensureRequest(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, loading]);
   const addRequest = useRequests((s) => s.add);
   const [addOpen, setAddOpen] = useState(false);
   const navigate = useNavigate();
@@ -185,7 +205,7 @@ export function RequestsPage() {
     const list = items.filter(({ r, dl }) => {
       const matchesTab = tab === 'all' || r.status === tab;
       // Kirill/lotin farqisiz qidiruv.
-      const matchesQuery = matchesSearch(query, r.title, r.region, r.citizenName);
+      const matchesQuery = matchesSearch(query, r.title, r.region, r.address, r.citizenName);
 
       let matchesDeadline = true;
       if (deadlineFilter === 'open') matchesDeadline = isOpen(r);
@@ -509,8 +529,10 @@ export function RequestsPage() {
 
                 <div className="mt-3 space-y-1.5 text-[13px] text-ink-soft">
                   <div className="flex items-center gap-2">
-                    <Location size={15} className="text-ink-muted" />
-                    {r.region}
+                    <Location size={15} className="shrink-0 text-ink-muted" />
+                    <span className="truncate">
+                      {r.source === 'citizen' && r.address ? r.address : r.region}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <Calendar size={15} className="text-ink-muted" />

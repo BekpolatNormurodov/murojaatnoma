@@ -59,6 +59,16 @@ export function formatDate(iso: string): string {
   return `${d.getDate()} ${UZ_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+/** Sana + vaqt: 12 Iyn 2026, 14:05 */
+export function formatDateTime(iso: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${formatDate(iso)}, ${hh}:${mm}`;
+}
+
 /** Nisbiy vaqt: "3 kun oldin" */
 export function timeAgo(iso: string): string {
   const at = new Date(iso).getTime();

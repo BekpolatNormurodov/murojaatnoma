@@ -142,6 +142,8 @@ export interface CitizenRequest {
   assignedEmployee?: { id: string; fullName: string; avatarUrl: string | null } | null;
   /** Fuqaro bahosiga izoh. */
   ratingComment?: string | null;
+  /** lat/lng haqiqiy (fuqaro joylashuvni yuborgan) — aks holda xaritada ko'rsatilmaydi. */
+  hasCoords?: boolean;
 }
 
 /* ------------------------------------------------------------

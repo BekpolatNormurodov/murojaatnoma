@@ -19,6 +19,28 @@ export type TrackWindow = 'today' | '1h' | '3h';
  */
 export const OFFICE_CENTER: [number, number] = [41.3111, 69.3402];
 
+/** Escape text for Leaflet tooltips/popups, which render strings as HTML. */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Mirzo Ulug'bek district centroid (WGS84), Leaflet [lat, lng]. */
+export const DISTRICT_CENTER: [number, number] = [41.3354, 69.3737];
+
+/**
+ * Yandex Maps raster tiles — Uzbek (Latin) street/place labels and the most
+ * detailed mahalla-level coverage of Tashkent. `scale=2` on HiDPI.
+ * EPSG:3395 — every map using it MUST set `crs={L.CRS.EPSG3395}`, otherwise
+ * overlays are drawn ~20 km off at Tashkent's latitude.
+ */
+export const YANDEX_TILE_URL = `https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=${
+  typeof window !== 'undefined' && window.devicePixelRatio > 1 ? 2 : 1
+}&lang=uz_UZ`;
+
 /** Status → marker/legend color. */
 export const STATUS_COLORS: Record<StatusKey, string> = {
   office: '#10b981',

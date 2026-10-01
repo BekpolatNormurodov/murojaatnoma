@@ -33,6 +33,7 @@ import { cn } from '@/shared/lib/cn';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer';
 import {
   agoShort,
+  DISTRICT_CENTER,
   FILTER_ORDER,
   initials,
   isOnline,
@@ -50,19 +51,8 @@ import {
   type Lang,
   type StatusKey,
   type TrackWindow,
+  YANDEX_TILE_URL,
 } from './mapShared';
-
-// Mirzo Ulug'bek district centroid (WGS84) — [lat, lng] for Leaflet.
-/**
- * Yandex Maps raster tiles — Uzbek (Latin) street/place labels and the most
- * detailed mahalla-level coverage of Tashkent. (Replaces CARTO, whose free
- * basemaps now render an "API KEY REQUIRED" watermark.) `scale=2` on HiDPI.
- */
-const YANDEX_TILE_URL = `https://core-renderer-tiles.maps.yandex.net/tiles?l=map&x={x}&y={y}&z={z}&scale=${
-  typeof window !== 'undefined' && window.devicePixelRatio > 1 ? 2 : 1
-}&lang=uz_UZ`;
-
-const DISTRICT_CENTER: [number, number] = [41.3354, 69.3737];
 
 type MahallaFilter = { code: string; name: string };
 type FlyTarget = { pos: [number, number]; nonce: number };

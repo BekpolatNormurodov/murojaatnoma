@@ -19,6 +19,7 @@ import {
   Buildings2,
   Sms,
   Trash,
+  RotateLeft,
 } from 'iconsax-react';
 import { useNavigate } from 'react-router-dom';
 import { Drawer } from '@/shared/ui/Drawer';
@@ -43,7 +44,7 @@ import type {
   Worker,
   WorkerStatus,
 } from '@/shared/data/types';
-import { formatSom, formatDate } from '@/shared/lib/format';
+import { formatSom, formatDate, formatDateTime } from '@/shared/lib/format';
 import { matchesSearch } from '@/shared/lib/translit';
 import { cn } from '@/shared/lib/cn';
 import { usePermissions } from '@/shared/lib/permissions';
@@ -52,6 +53,8 @@ import { pushRequestToast } from './toastStore';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
 import { useRequestAttachments, type Attachment } from './useRequestAttachments';
 import { useRequestEvents, type RequestEvent } from './useRequestEvents';
+import { LocationMiniMap, RequestProgress, RequestThread } from './RequestLifecycle';
+import { SkeletonLines } from '@/shared/ui/Skeleton';
 
 /** Bitta biriktirilgan faylni turiga qarab chizadi: rasm inline, video <video>,
  *  ovoz <audio>, boshqasi — yuklab olish havolasi. */
@@ -124,6 +127,10 @@ function eventMeta(e: RequestEvent) {
       };
     case 'MESSAGE':
       return { Icon: Sms, color: '#6366f1', label: 'Izoh qo\'shildi' };
+    case 'RATED':
+      return { Icon: Star1, color: '#f59e0b', label: e.note ? `Fuqaro baholadi: ${e.note}` : 'Fuqaro baholadi' };
+    case 'REOPENED':
+      return { Icon: RotateLeft, color: '#ef4444', label: 'Fuqaro qayta ochdi' };
     default:
       return { Icon: TickCircle, color: '#94a3b8', label: 'Hodisa' };
   }
@@ -147,14 +154,14 @@ function RequestTimeline({ events }: { events: RequestEvent[] }) {
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-[13px] font-medium leading-snug text-ink">{label}</p>
-              {e.type === 'MESSAGE' && e.note && (
+              {e.type !== 'RATED' && e.note && (
                 <p className="mt-1 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[12px] leading-relaxed text-ink-soft">
                   {e.note}
                 </p>
               )}
               <p className="mt-0.5 text-[11px] text-ink-muted">
                 {e.actorName ? `${e.actorName} · ` : ''}
-                {formatDate(e.createdAt)}
+                {formatDateTime(e.createdAt)}
               </p>
             </div>
           </div>
@@ -237,8 +244,12 @@ export function RequestDetail({
     ? deputyList.find((d) => d.categories.includes(r.category)) ?? null
     : null;
   // Mobil ilovadan / fuqaro tomonidan yuklangan media (rasm/video/ovoz/hujjat).
-  const { data: attachments } = useRequestAttachments(r?.id ?? null);
-  const { data: events } = useRequestEvents(r?.id ?? null);
+  // Faqat fuqaro murojaatlari (Application) uchun — eski 'R-…' yozuvlarda bu
+  // endpointlar yo'q va 404 qaytaradi.
+  const isCitizen = r?.source === 'citizen';
+  const appId = r && isCitizen ? r.id : null;
+  const { data: attachments } = useRequestAttachments(appId);
+  const { data: events, isLoading: eventsLoading } = useRequestEvents(appId);
   const dl = r ? getDeadline(r, t) : null;
   const meta = dl ? urgencyMeta(dl.urgency, t) : null;
   const assignWorker = useRequests((s) => s.assignWorker);
@@ -328,10 +339,23 @@ export function RequestDetail({
               <Badge tone={STATUS_META[r.status].tone} dot>
                 {STATUS_META[r.status].label}
               </Badge>
+              {isCitizen && (
+                <span
+                  className={cn(
+                    'rounded-lg px-2 py-1 text-[11px] font-semibold',
+                    r.kind === 'shikoyat' ? 'bg-danger-soft text-red-700' : 'bg-info-soft text-accent-700',
+                  )}
+                >
+                  {r.kind === 'shikoyat' ? 'Shikoyat' : 'Ariza'} · fuqaro ilovasi
+                </span>
+              )}
             </div>
             <h3 className="mt-3 text-lg font-bold text-ink">{r.title}</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-ink-soft">{r.description}</p>
           </div>
+
+          {/* Jarayon bosqichlari */}
+          <RequestProgress request={r} events={events} />
 
           {/* Muddat / SLA */}
           {dl && (
@@ -478,10 +502,17 @@ export function RequestDetail({
             <p className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
               <Location size={16} variant="Bulk" className="text-ink-muted" /> {t('common.address')}
             </p>
-            <p className="text-[13px] text-ink-soft">{r.address}</p>
-            <p className="mt-1 text-[12px] text-ink-muted">
-              {r.region} · {r.lat.toFixed(4)}, {r.lng.toFixed(4)}
-            </p>
+            <p className="text-[13px] text-ink-soft">{r.address || '—'}</p>
+            {r.hasCoords !== false ? (
+              <>
+                <p className="mt-1 text-[12px] text-ink-muted">
+                  {r.region} · {r.lat.toFixed(5)}, {r.lng.toFixed(5)}
+                </p>
+                <LocationMiniMap lat={r.lat} lng={r.lng} />
+              </>
+            ) : (
+              <p className="mt-1 text-[12px] text-ink-muted">Fuqaro joylashuvni yubormagan</p>
+            )}
           </div>
 
           {/* Meta */}
@@ -489,13 +520,13 @@ export function RequestDetail({
             <InfoRow
               icon={<Calendar size={15} variant="Bulk" className="text-ink-muted" />}
               label={t('common.receivedDate')}
-              value={formatDate(r.createdAt)}
+              value={formatDateTime(r.createdAt)}
             />
             {r.resolvedAt && (
               <InfoRow
                 icon={<TickCircle size={15} variant="Bulk" className="text-primary-500" />}
                 label={t('common.resolved')}
-                value={formatDate(r.resolvedAt)}
+                value={formatDateTime(r.resolvedAt)}
               />
             )}
             {r.responseHours != null && (
@@ -505,17 +536,26 @@ export function RequestDetail({
                 value={`${r.responseHours} ${t('requests.detail.hoursSuffix')}`}
               />
             )}
-            <InfoRow
-              icon={<MoneyRecive size={15} variant="Bulk" className="text-accent-500" />}
-              label={t('requests.detail.cost')}
-              value={r.cost > 0 ? formatSom(r.cost) : '—'}
-            />
-            {r.feedback != null && (
+            {!isCitizen && (
               <InfoRow
-                icon={<Star1 size={15} variant="Bulk" className="text-amber-400" />}
-                label={t('requests.detail.citizenRating')}
-                value={<Stars value={r.feedback} />}
+                icon={<MoneyRecive size={15} variant="Bulk" className="text-accent-500" />}
+                label={t('requests.detail.cost')}
+                value={r.cost > 0 ? formatSom(r.cost) : '—'}
               />
+            )}
+            {r.feedback != null && (
+              <div className="py-2.5">
+                <InfoRow
+                  icon={<Star1 size={15} variant="Bulk" className="text-amber-400" />}
+                  label={t('requests.detail.citizenRating')}
+                  value={<Stars value={r.feedback} />}
+                />
+                {r.ratingComment && (
+                  <p className="-mt-1 rounded-xl bg-surface-2 px-3 py-2 text-[12.5px] italic text-ink-soft">
+                    “{r.ratingComment}”
+                  </p>
+                )}
+              </div>
             )}
           </div>
 
@@ -623,6 +663,9 @@ export function RequestDetail({
             )}
           </div>
 
+          {/* Fuqaro ↔ xodim yozishmasi (faqat fuqaro ilovasidan kelganlar) */}
+          {isCitizen && <RequestThread requestId={r.id} canWrite={canWrite} />}
+
           {/* Holatni o'zgartirish — faqat yozish huquqi bor rollar uchun */}
           {canWrite && (
             <div className="rounded-2xl border border-line bg-surface p-4">
@@ -651,12 +694,12 @@ export function RequestDetail({
           )}
 
           {/* Harakatlar tarixi (audit) — murojaat hayotiy sikli */}
-          {events && events.length > 0 && (
+          {isCitizen && (eventsLoading || (events && events.length > 0)) && (
             <div className="rounded-2xl border border-line bg-surface p-4">
               <p className="mb-3 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
                 <Clock size={16} variant="Bulk" className="text-ink-muted" /> Harakatlar tarixi
               </p>
-              <RequestTimeline events={events} />
+              {eventsLoading ? <SkeletonLines lines={4} /> : <RequestTimeline events={events!} />}
             </div>
           )}
 
