@@ -10,6 +10,7 @@ import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
@@ -31,6 +32,10 @@ Future<void> bootstrap() async {
   // Server sessiyani rad etsa (refresh 401) — login ekraniga qaytaramiz
   // (aks holda har ekranda "sessiya tugagan" xatolari chiqib turardi).
   AuthInterceptor.sessionExpired.listen((_) => getIt<AuthCubit>().reset());
+  // Oldingi seansda yuborilmay qolgan chat xabarlarini yuboramiz.
+  if (!AppConfig.useMock && getIt<AuthCubit>().state.isAuthenticated) {
+    unawaited(getIt<ChatOutbox>().flush());
+  }
   _initRealtime();
   runApp(const WorkerApp());
 }

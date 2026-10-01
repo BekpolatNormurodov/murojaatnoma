@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/domain/usecases/get_messages.dart';
 import 'package:worker_app/features/chat/domain/usecases/send_message.dart';
@@ -43,7 +44,9 @@ class ConversationCubit extends Cubit<ConversationState> {
     required RealtimeSocketService socket,
     required UploadsService uploads,
     required AuthCubit authCubit,
-  }) : _getMessages = getMessages,
+    ChatOutbox? outbox,
+  }) : _outbox = outbox,
+       _getMessages = getMessages,
        _sendMessage = sendMessage,
        _socket = socket,
        _uploads = uploads,
@@ -55,6 +58,10 @@ class ConversationCubit extends Cubit<ConversationState> {
   final RealtimeSocketService _socket;
   final UploadsService _uploads;
   final AuthCubit _authCubit;
+
+  /// Real rejimda yuborish shu orqali (sekin internetda xabar yo'qolmaydi).
+  final ChatOutbox? _outbox;
+  StreamSubscription<OutboxResult>? _outboxSub;
 
   /// So'nggi [open] bilan chaqirilgan suhbat ID — [retry]/[send] shu ID'ni
   /// ishlatadi.
@@ -84,12 +91,28 @@ class ConversationCubit extends Cubit<ConversationState> {
     emit(const ConversationLoading());
     try {
       final result = await _getMessages(GetMessagesParams(conversationId));
-      result.fold((failure) => emit(ConversationError(failure.message)), (
-        messages,
-      ) {
-        emit(ConversationLoaded(_sorted(messages)));
-        _attachSocket(conversationId);
-      });
+      final loaded = result.fold<List<Message>?>((failure) {
+        emit(ConversationError(failure.message));
+        return null;
+      }, (messages) => messages);
+      if (loaded == null) return;
+      // Avval yuborilmay qolgan (outbox) xabarlar — "xato" holatida ko'rinadi
+      // va darhol bir marta qayta yuboriladi.
+      final pending = await _outbox?.pendingFor(conversationId) ?? const [];
+      emit(
+        ConversationLoaded(
+          _sorted([
+            ...loaded,
+            for (final p in pending)
+              p.toMessage(myId: _myId, status: MessageStatus.xato),
+          ]),
+        ),
+      );
+      _attachSocket(conversationId);
+      _attachOutbox(conversationId);
+      for (final p in pending) {
+        unawaited(retryFailed(p.localId));
+      }
     } on Object catch (e) {
       emit(ConversationError('Kutilmagan xatolik: $e'));
     }
@@ -118,7 +141,9 @@ class ConversationCubit extends Cubit<ConversationState> {
       return 'Suhbat hali yuklanmagan';
     }
 
-    final localId = 'LOCAL-${_localIdSeq++}';
+    // Ilova qayta ishga tushganda ham noyob (outbox diskda saqlanadi).
+    final localId =
+        'LOCAL-${DateTime.now().microsecondsSinceEpoch}-${_localIdSeq++}';
     final optimistic = Message(
       id: localId,
       conversationId: conversationId,
@@ -133,6 +158,30 @@ class ConversationCubit extends Cubit<ConversationState> {
       status: MessageStatus.yuborilmoqda,
     );
     emit(current.copyWith(messages: [...current.messages, optimistic]));
+
+    final outbox = _outbox;
+    if (outbox != null && !AppConfig.useMock) {
+      // REST (Retry + Idempotency-Key) — socket faqat QABUL uchun. Socket
+      // uzilganda `emit` jim yutilardi va xabar abadiy "yuborilmoqda" qolardi;
+      // REST xatosida esa xabar o'chib ketardi. Endi outbox'da saqlanadi.
+      _pendingLocalIds.add(localId);
+      final r = await outbox.deliver(
+        OutboxItem(
+          localId: localId,
+          conversationId: conversationId,
+          type: type,
+          createdAt: optimistic.createdAt,
+          text: text,
+          attachment: attachment,
+          stickerId: stickerId,
+        ),
+      );
+      return r.sent != null
+          ? null
+          : (NetworkStatus.instance.isOffline
+                ? "Internet yo'q — xabar internet qaytganda yuboriladi"
+                : r.error);
+    }
 
     // Mock/oflayn: eski usecase yo'li (o'zgarishsiz saqlanadi).
     if (!_useSocket) {
@@ -160,6 +209,61 @@ class ConversationCubit extends Cubit<ConversationState> {
   /// Suhbatdoshga "yozmoqda" signalini yuboradi (`chat:typing`) — faqat
   /// jonli rejimda. Yozish panelidagi matn bo'sh↔to'la o'zgarganda
   /// chaqiriladi.
+  /// "Xato" xabarni qayta yuborish (bosilganda yoki ekran ochilganda).
+  Future<void> retryFailed(String localId) async {
+    final outbox = _outbox;
+    final current = state;
+    if (outbox == null || current is! ConversationLoaded) return;
+    final item = (await outbox.pendingFor(
+      _conversationId ?? '',
+    )).where((i) => i.localId == localId).firstOrNull;
+    if (item == null) return;
+    _setStatus(localId, MessageStatus.yuborilmoqda);
+    _pendingLocalIds.add(localId);
+    await outbox.deliver(item);
+  }
+
+  void _attachOutbox(String conversationId) {
+    unawaited(_outboxSub?.cancel());
+    _outboxSub = _outbox?.results.listen((r) {
+      if (r.item.conversationId != conversationId) return;
+      if (r.sent != null) {
+        _replaceLocal(r.item.localId, r.sent!);
+      } else if (r.error != null) {
+        _pendingLocalIds.remove(r.item.localId);
+        _setStatus(r.item.localId, MessageStatus.xato);
+      }
+    });
+  }
+
+  void _setStatus(String localId, MessageStatus status) {
+    final current = state;
+    if (current is! ConversationLoaded) return;
+    emit(
+      current.copyWith(
+        messages: [
+          for (final m in current.messages)
+            if (m.id == localId) _withStatus(m, status) else m,
+        ],
+      ),
+    );
+  }
+
+  static Message _withStatus(Message m, MessageStatus status) => Message(
+    id: m.id,
+    conversationId: m.conversationId,
+    senderId: m.senderId,
+    senderName: m.senderName,
+    isMine: m.isMine,
+    type: m.type,
+    text: m.text,
+    attachment: m.attachment,
+    stickerId: m.stickerId,
+    call: m.call,
+    createdAt: m.createdAt,
+    status: status,
+  );
+
   void notifyTyping({required bool isTyping}) {
     final id = _conversationId;
     if (id == null || !_useSocket) return;
@@ -460,8 +564,20 @@ class ConversationCubit extends Cubit<ConversationState> {
   }
 
   void _replaceLocal(String localId, Message real) {
+    _pendingLocalIds.remove(localId);
     final current = state;
     if (current is ConversationLoaded) {
+      // Socket aks-sadosi REST javobidan OLDIN kelib, xabarni allaqachon
+      // qo'shgan bo'lsa — lokal nusxani shunchaki olib tashlaymiz (aks holda
+      // xabar ikki marta ko'rinardi).
+      if (current.messages.any((m) => m.id == real.id)) {
+        emit(
+          current.copyWith(
+            messages: current.messages.where((m) => m.id != localId).toList(),
+          ),
+        );
+        return;
+      }
       emit(
         current.copyWith(
           messages: [
@@ -475,6 +591,7 @@ class ConversationCubit extends Cubit<ConversationState> {
 
   @override
   Future<void> close() {
+    unawaited(_outboxSub?.cancel());
     _teardownSocket();
     return super.close();
   }

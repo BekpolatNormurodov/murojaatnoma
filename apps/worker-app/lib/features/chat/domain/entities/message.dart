@@ -42,7 +42,9 @@ class CallInfo extends Equatable {
 }
 
 /// Xabarning yetkazilish holati.
-enum MessageStatus { yuborilmoqda, yuborildi, yetkazildi, oqildi }
+/// `xato` — yuborilmadi (internet yo'q); outbox'da turibdi, avtomatik qayta
+/// yuboriladi yoki bosib qayta yuborish mumkin.
+enum MessageStatus { yuborilmoqda, yuborildi, yetkazildi, oqildi, xato }
 
 /// Xabarga biriktirilgan media/fayl (rasm/fayl/ovozli/doiraviy video).
 class ChatAttachment extends Equatable {

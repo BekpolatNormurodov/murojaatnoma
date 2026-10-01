@@ -75,8 +75,18 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     setState(() => _busy = true);
     try {
       final picked = isVideo
-          ? await _picker.pickVideo(source: source)
-          : await _picker.pickImage(source: source);
+          // Video: 2 daqiqa chegarasi (sekin internetda yuklab bo'ladigan
+          // hajm). Rasm: 1600 px / 75% (~300 KB) — isbot uchun yetarli.
+          ? await _picker.pickVideo(
+              source: source,
+              maxDuration: const Duration(minutes: 2),
+            )
+          : await _picker.pickImage(
+              source: source,
+              imageQuality: 75,
+              maxWidth: 1600,
+              maxHeight: 1600,
+            );
       if (picked == null) return;
 
       final length = await picked.length();

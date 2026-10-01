@@ -216,7 +216,14 @@ class _MessageComposerState extends State<MessageComposer> {
 
     setState(() => _busy = true);
     try {
-      final picked = await _picker.pickImage(source: source, imageQuality: 85);
+      // 1600 px / 75% — ~300 KB instead of a 3-8 MB camera original
+      // (minutes on a weak 3G link); still sharp on any phone screen.
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
       if (picked == null) return;
       final length = await picked.length();
       widget.onSendAttachment(

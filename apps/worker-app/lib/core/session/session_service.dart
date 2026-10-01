@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:app_core/app_core.dart';
 import 'package:worker_app/core/notifications/fcm_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/face/data/datasources/face_local_data_source.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
@@ -30,6 +32,9 @@ class SessionService {
     await _safe(AuthInterceptor.endSession(getIt<DioClient>().dio), seconds: 6);
     await _safe(getIt<AuthRepository>().logout());
     await _safe(getIt<FaceLocalDataSource>().clear());
+    // Yuborilmagan chat xabarlari keyingi foydalanuvchi nomidan ketmasin.
+    final prefs = await SharedPreferences.getInstance();
+    await _safe(prefs.remove(ChatOutbox.storageKey).then((_) {}));
   }
 
   static Future<void> _safe(Future<void> f, {int seconds = 3}) async {

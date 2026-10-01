@@ -70,7 +70,13 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
 
     setState(() => _busy = true);
     try {
-      final picked = await _picker.pickImage(source: source);
+      // 1600 px / 75% (~300 KB) — fuqaro sekin internetda ham yubora oladi.
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
       if (picked == null) return;
 
       final length = await picked.length();

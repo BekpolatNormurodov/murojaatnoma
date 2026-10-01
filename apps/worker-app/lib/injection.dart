@@ -34,6 +34,7 @@ import 'package:worker_app/features/chat/data/repositories/chat_repository_impl.
 import 'package:worker_app/features/chat/domain/repositories/chat_repository.dart';
 import 'package:worker_app/features/chat/domain/usecases/get_conversations.dart';
 import 'package:worker_app/features/chat/domain/usecases/get_messages.dart';
+import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/chat/domain/usecases/send_message.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
@@ -381,7 +382,13 @@ Future<void> configureDependencies() async {
         socket: getIt<RealtimeSocketService>(),
         uploads: getIt<UploadsService>(),
         authCubit: getIt<AuthCubit>(),
+        outbox: getIt<ChatOutbox>(),
       ),
+    )
+    // Yuborilmagan chat xabarlari navbati — ilova bo'yi bitta (internet
+    // qaytganda chat ekrani yopiq bo'lsa ham yuboradi).
+    ..registerLazySingleton<ChatOutbox>(
+      () => ChatOutbox(getIt<SendMessage>(), getIt<UploadsService>()),
     )
     // ---- Qo'ng'iroqlar/Calls (1:1 WebRTC ovozli/video — admin<->xodim) ----
     // Signalizatsiya `RealtimeSocketService` (call:*), media `flutter_webrtc`.

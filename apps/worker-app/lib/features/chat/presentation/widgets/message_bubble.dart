@@ -283,6 +283,14 @@ class _StatusTicks extends StatelessWidget {
         return Icon(Icons.done_all, size: 15, color: color);
       case MessageStatus.oqildi:
         return Icon(Icons.done_all, size: 15, color: readColor);
+      case MessageStatus.xato:
+        // Yuborilmadi — outbox'da; internet qaytsa o'zi ketadi, bosib ham
+        // qayta yuborish mumkin (qarang: ConversationPage).
+        return const Icon(
+          Icons.error_outline_rounded,
+          size: 15,
+          color: Color(0xFFFCA5A5),
+        );
     }
   }
 }

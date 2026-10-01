@@ -398,11 +398,45 @@ class _MessagesList extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (showDate) _DateSeparator(iso: message.createdAt),
-            MessageBubble(
-              message: message,
-              showSenderName: showSenderName,
-              firstInGroup: newSender,
-            ),
+            if (message.status == MessageStatus.xato)
+              // Yuborilmagan xabar — bosilsa qayta yuboriladi (internet
+              // qaytganda baribir o'zi ketadi).
+              Semantics(
+                button: true,
+                label: 'Yuborilmadi. Qayta yuborish',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => unawaited(
+                    context.read<ConversationCubit>().retryFailed(message.id),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      MessageBubble(
+                        message: message,
+                        showSenderName: showSenderName,
+                        firstInGroup: newSender,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2, right: 4),
+                        child: Text(
+                          'Yuborilmadi · qayta yuborish uchun bosing',
+                          style: AppTextStyles.caption.copyWith(
+                            color: AppColors.danger,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              MessageBubble(
+                message: message,
+                showSenderName: showSenderName,
+                firstInGroup: newSender,
+              ),
           ],
         );
       },
