@@ -55,6 +55,8 @@ import 'package:worker_app/features/suggestions/presentation/bloc/suggestions_cu
 import 'package:worker_app/features/suggestions/presentation/pages/submit_suggestion_page.dart';
 import 'package:worker_app/features/suggestions/presentation/pages/suggestions_page.dart';
 import 'package:worker_app/injection.dart';
+import 'package:worker_app/features/attendance/presentation/pages/my_attendance_page.dart';
+import 'package:worker_app/features/profile/presentation/pages/personal_info_page.dart';
 
 /// Ilovaning to'liq routeri (Vazifa 18).
 ///
@@ -350,6 +352,16 @@ class AppRouter {
         GoRoute(
           path: '/schedule',
           builder: (context, _) => const WorkSchedulePage(),
+        ),
+        // Profil → "Mening davomatim" (kalendar + skan rasmlari) va
+        // "Shaxsiy ma'lumotlar" — shell'dan tashqarida, `/schedule` kabi.
+        GoRoute(
+          path: '/my-attendance',
+          builder: (context, _) => const MyAttendancePage(),
+        ),
+        GoRoute(
+          path: '/profile/info',
+          builder: (context, _) => const PersonalInfoPage(),
         ),
         // `/leave-request` — bosh sahifadagi va profil sahifasidagi
         // "Javob so'rash" kirish nuqtalaridan PUSH qilinadigan to'liq

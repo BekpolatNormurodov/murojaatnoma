@@ -8,6 +8,7 @@ import {
   AttendanceReport,
   AttendanceService,
   EmployeeMeAttendance,
+  MeWeekEntry,
   PrecheckResult,
   TodayAttendance,
 } from './attendance.service';
@@ -91,6 +92,20 @@ export class AttendanceController {
   })
   me(@CurrentUser() user: AuthenticatedUser): Promise<EmployeeMeAttendance> {
     return this.attendanceService.me(user.employeeId);
+  }
+
+  @Get('me/history')
+  @ApiOperation({
+    summary:
+      "The employee's own day-by-day attendance (newest first, ?days=1..92, default 60) " +
+      'with the face-scan photos — worker-app "Mening davomatim"',
+  })
+  myHistory(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('days') days?: string,
+  ): Promise<MeWeekEntry[]> {
+    const n = Number(days);
+    return this.attendanceService.history(user.employeeId, Number.isFinite(n) && n > 0 ? n : 60);
   }
 
   @Get('today')

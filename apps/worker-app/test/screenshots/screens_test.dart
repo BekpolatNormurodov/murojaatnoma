@@ -53,6 +53,8 @@ const _routes = <(String, String)>[
   ('/suggestions', 'suggestions'),
   ('/suggestions/create', 'suggestion_create'),
   ('/schedule', 'schedule'),
+  ('/my-attendance', 'my_attendance'),
+  ('/profile/info', 'personal_info'),
   ('/leave-request', 'leave_request'),
   ('/premya-request', 'premya_request'),
   ('/requests/ARZ-1001', 'request_detail'),

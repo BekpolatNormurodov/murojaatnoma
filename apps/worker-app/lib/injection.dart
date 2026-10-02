@@ -9,6 +9,7 @@ import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
+import 'package:worker_app/features/attendance/data/attendance_history.dart';
 import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
 import 'package:worker_app/features/attendance/data/scan_photo_uploader.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
@@ -276,6 +277,12 @@ Future<void> configureDependencies() async {
     )
     // Chatdagi odamning ochiq profil kartasi (ism, lavozim, bo'lim, rasm).
     ..registerLazySingleton<ChatPeople>(() => ApiChatPeople(getIt<DioClient>()))
+    // "Mening davomatim" — kunlik tarix (skan rasmlari bilan).
+    ..registerLazySingleton<AttendanceHistorySource>(
+      () => AppConfig.useMock
+          ? MockAttendanceHistory()
+          : ApiAttendanceHistory(getIt<DioClient>()),
+    )
     ..registerLazySingleton<GetMyAttendance>(
       () => GetMyAttendance(getIt<AttendanceRepository>()),
     )

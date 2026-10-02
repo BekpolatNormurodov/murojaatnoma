@@ -19,6 +19,9 @@ class MyAttendance extends Equatable {
     required this.workStartTime,
     required this.today,
     required this.week,
+    this.workEndTime = '',
+    this.zonesCount = 0,
+    this.officeRadiusM,
   });
 
   factory MyAttendance.fromJson(Map<String, dynamic> json) {
@@ -28,6 +31,14 @@ class MyAttendance extends Equatable {
       fullName: json['fullName'] as String? ?? '',
       department: json['department'] as String? ?? '',
       workStartTime: json['workStartTime'] as String? ?? '',
+      workEndTime: json['workEndTime'] as String? ?? '',
+      zonesCount:
+          ((json['workplace'] as Map<String, dynamic>?)?['zonesCount'] as num?)
+              ?.toInt() ??
+          0,
+      officeRadiusM:
+          ((json['workplace'] as Map<String, dynamic>?)?['radiusM'] as num?)
+              ?.toInt(),
       today: dayFromMyAttendanceJson(
         json['today'] as Map<String, dynamic>? ?? const {},
       ),
@@ -57,6 +68,15 @@ class MyAttendance extends Equatable {
   /// bo'yicha o'suvchi).
   final List<AttendanceDay> week;
 
+  /// Masalan `'18:00'` — ish tugash vaqti (bo'sh = noma'lum).
+  final String workEndTime;
+
+  /// Biriktirilgan mahallalar soni (0 = butun tuman / faqat ofis).
+  final int zonesCount;
+
+  /// Ofis radiusi (metr) — keldi-ketdi qayerdan qabul qilinadi.
+  final int? officeRadiusM;
+
   @override
   List<Object?> get props => [
     employeeId,
@@ -65,6 +85,9 @@ class MyAttendance extends Equatable {
     workStartTime,
     today,
     week,
+    workEndTime,
+    zonesCount,
+    officeRadiusM,
   ];
 }
 

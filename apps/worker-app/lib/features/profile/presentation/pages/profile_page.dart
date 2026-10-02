@@ -9,11 +9,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
-import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
 import 'package:worker_app/core/session/session_service.dart';
+import 'package:worker_app/features/attendance/data/attendance_history.dart';
 import 'package:worker_app/injection.dart';
 
 /// "Profil" tabi — sozlamalar ekrani: profil sarlavhasi (avatar/ism/lavozim/
@@ -120,6 +120,10 @@ class ProfilePage extends StatelessWidget {
                     .animate()
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: -0.06, end: 0),
+                const SizedBox(height: 12),
+                const _MonthStatsRow()
+                    .animate(delay: 40.ms)
+                    .fadeIn(duration: 300.ms),
                 const SizedBox(height: 24),
                 // Til + Mavzu — bitta ixcham kartada (avval 2 ta katta bo'sh
                 // karta edi, sahifa siyrak ko'rinardi).
@@ -175,70 +179,94 @@ class ProfilePage extends StatelessWidget {
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: 0.06, end: 0),
                 const SizedBox(height: 24),
-                _SectionTitle(l10n.profileWorkInfoTitle),
+                _SectionTitle(_t(context, 'Mening ishim', 'Моя работа')),
                 const SizedBox(height: 8),
-                AppCard(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 4,
-                        horizontal: 8,
-                      ),
-                      child: Column(
-                        children: [
-                          AppListTile(
-                            title: l10n.profileWorkingHoursLabel,
-                            leadingIcon: AppIcons.timer,
-                            // Belgilangan smena soatlari (`/schedule`dagi
-                            // haftalik jadval bilan bir xil "09:00–18:00")
-                            // — yalang'och "—" o'rniga aniq qiymat.
-                            trailing: _TrailingValue(l10n.workScheduleHours),
-                            onTap: () => context.push('/schedule'),
+                _MenuCard(
+                      items: [
+                        _MenuItem(
+                          _t(context, 'Mening davomatim', 'Моя посещаемость'),
+                          AppIcons.calendar,
+                          () => context.push('/my-attendance'),
+                          hint: _t(
+                            context,
+                            'Kalendar va skan rasmlari',
+                            'Календарь и фото',
                           ),
-                          const Divider(height: 1),
-                          // "Oyliklarim" — xodimning o'z oylik maosh tarixi
-                          // (`GET /salaries/me`). Yorliq hozircha uz (l10n
-                          // `app_core`da, bu yerdan tashqarida) — `HomePage`
-                          // dagi "Ishdan chiqish" bilan bir xil naqsh.
-                          AppListTile(
-                            title: 'Oyliklarim',
-                            leadingIcon: AppIcons.wallet,
-                            onTap: () => context.push('/salaries'),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.profileDepartmentLabel,
-                            leadingIcon: AppIcons.building,
-                            trailing: _TrailingValue(
-                              _departmentValue(session),
-                            ),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.leaveRequestTileLabel,
-                            leadingIcon: AppIcons.calendar,
-                            onTap: () => context.push('/leave-request'),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.premyaRequestTileLabel,
-                            leadingIcon: AppIcons.medal,
-                            onTap: () => context.push('/premya-request'),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.profileNewsTileLabel,
-                            leadingIcon: AppIcons.notification,
-                            onTap: () => context.push('/news'),
-                          ),
-                          const Divider(height: 1),
-                          AppListTile(
-                            title: l10n.profileDocumentsTileLabel,
-                            leadingIcon: IconsaxPlusLinear.document_text,
-                            onTap: () => context.push('/documents'),
-                          ),
-                        ],
-                      ),
+                          accent: true,
+                        ),
+                        _MenuItem(
+                          l10n.profileWorkingHoursLabel,
+                          AppIcons.timer,
+                          () => context.push('/schedule'),
+                          trailing: l10n.workScheduleHours,
+                        ),
+                        _MenuItem(
+                          'Oyliklarim',
+                          AppIcons.wallet,
+                          () => context.push('/salaries'),
+                        ),
+                        _MenuItem(
+                          _t(context, 'Ballarim', 'Мои баллы'),
+                          AppIcons.medal,
+                          () => context.push('/points'),
+                        ),
+                      ],
+                    )
+                    .animate(delay: 100.ms)
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.06, end: 0),
+                const SizedBox(height: 20),
+                _SectionTitle(_t(context, "So'rovlar", 'Заявки')),
+                const SizedBox(height: 8),
+                _MenuCard(
+                      items: [
+                        _MenuItem(
+                          l10n.leaveRequestTileLabel,
+                          AppIcons.calendar,
+                          () => context.push('/leave-request'),
+                        ),
+                        _MenuItem(
+                          l10n.premyaRequestTileLabel,
+                          AppIcons.gift,
+                          () => context.push('/premya-request'),
+                        ),
+                        _MenuItem(
+                          _t(context, 'Takliflar', 'Предложения'),
+                          AppIcons.lampOn,
+                          () => context.push('/suggestions'),
+                        ),
+                      ],
                     )
                     .animate(delay: 140.ms)
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.06, end: 0),
+                const SizedBox(height: 20),
+                _SectionTitle(_t(context, "Ma'lumotlar", 'Информация')),
+                const SizedBox(height: 8),
+                _MenuCard(
+                      items: [
+                        _MenuItem(
+                          _t(context, "Shaxsiy ma'lumotlar", 'Личные данные'),
+                          AppIcons.profile,
+                          () => context.push('/profile/info'),
+                          trailing:
+                              _departmentValue(session) == _emptyPlaceholder
+                              ? null
+                              : _departmentValue(session),
+                        ),
+                        _MenuItem(
+                          l10n.profileNewsTileLabel,
+                          AppIcons.notification,
+                          () => context.push('/news'),
+                        ),
+                        _MenuItem(
+                          l10n.profileDocumentsTileLabel,
+                          IconsaxPlusLinear.document_text,
+                          () => context.push('/documents'),
+                        ),
+                      ],
+                    )
+                    .animate(delay: 160.ms)
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: 0.06, end: 0),
                 const SizedBox(height: 24),
@@ -466,5 +494,197 @@ Future<_EnrollInfo> _loadEnrollInfo() async {
     return _EnrollInfo(enrolledAt: enrolledAt, photoPath: photoPath);
   } on Object {
     return const _EnrollInfo();
+  }
+}
+
+String _t(BuildContext context, String uz, String ru) =>
+    Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
+
+class _MenuItem {
+  const _MenuItem(
+    this.title,
+    this.icon,
+    this.onTap, {
+    this.trailing,
+    this.hint,
+    this.accent = false,
+  });
+
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? trailing;
+  final String? hint;
+
+  /// Yangi/asosiy bo'lim — ikonkasi rangli fon bilan ajratiladi.
+  final bool accent;
+}
+
+/// Guruhlangan menyu kartasi — har qatorda rangli ikonka, nom, ixtiyoriy
+/// izoh/qiymat va o'q.
+class _MenuCard extends StatelessWidget {
+  const _MenuCard({required this.items});
+
+  final List<_MenuItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const Divider(height: 1, indent: 60),
+            InkWell(
+              onTap: items[i].onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: items[i].accent
+                            ? AppColors.primary
+                            : AppColors.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        items[i].icon,
+                        size: 19,
+                        color: items[i].accent
+                            ? Colors.white
+                            : AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(items[i].title, style: AppTextStyles.bodyStrong),
+                          if (items[i].hint != null)
+                            Text(
+                              items[i].hint!,
+                              style: AppTextStyles.caption.copyWith(
+                                color: inkMuted,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (items[i].trailing != null)
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 120),
+                        child: Text(
+                          items[i].trailing!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: AppTextStyles.caption.copyWith(
+                            color: inkMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(width: 4),
+                    Icon(AppIcons.arrowRight, size: 18, color: inkMuted),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Bu oy: kelgan kunlar, kechikishlar, soat — bosilsa "Mening davomatim".
+class _MonthStatsRow extends StatefulWidget {
+  const _MonthStatsRow();
+
+  @override
+  State<_MonthStatsRow> createState() => _MonthStatsRowState();
+}
+
+class _MonthStatsRowState extends State<_MonthStatsRow> {
+  List<AttendanceHistoryDay>? _days;
+
+  @override
+  void initState() {
+    super.initState();
+    if (getIt.isRegistered<AttendanceHistorySource>()) {
+      getIt<AttendanceHistorySource>()
+          .load(days: 31)
+          .then((d) {
+            if (mounted) setState(() => _days = d);
+          })
+          .catchError((Object _) {});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final month = (_days ?? const <AttendanceHistoryDay>[]).where(
+      (d) => d.date.month == now.month && d.date.year == now.year,
+    );
+    final came = month.where((d) => d.came).length;
+    final late = month.where((d) => d.isLate).length;
+    final hours = month.fold<double>(0, (s, d) => s + (d.hours ?? 0));
+    final loading = _days == null;
+    Widget tile(String value, String label, Color color) => Expanded(
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              loading ? '—' : value,
+              style: AppTextStyles.h3.copyWith(color: color),
+            ),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.caption,
+            ),
+          ],
+        ),
+      ),
+    );
+    return Semantics(
+      button: true,
+      label: _t(context, 'Bu oygi davomat', 'Посещаемость за месяц'),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => context.push('/my-attendance'),
+        child: Row(
+          children: [
+            tile('$came', _t(context, 'kun keldi', 'дней'), AppColors.success),
+            const SizedBox(width: 8),
+            tile(
+              '$late',
+              _t(context, 'kechikish', 'опозданий'),
+              AppColors.warning,
+            ),
+            const SizedBox(width: 8),
+            tile(
+              hours.toStringAsFixed(0),
+              _t(context, 'soat (bu oy)', 'часов'),
+              AppColors.info,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

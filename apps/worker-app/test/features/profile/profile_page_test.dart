@@ -176,8 +176,10 @@ void main() {
       // Region (viloyat/shahar) endi ATAYLAB ko'rsatilmaydi (loyiha faqat
       // Mirzo Ulug'bek uchun) — tuman ko'rsatiladi.
       expect(find.textContaining('Toshkent shahri'), findsNothing);
-      expect(find.textContaining("Mirzo Ulug'bek"), findsWidgets);
-      expect(find.textContaining('W-1042'), findsOneWidget);
+      // Xom xodim ID (UUID) ataylab ko'rsatilmaydi.
+      expect(find.textContaining('W-1042'), findsNothing);
+      // Sarlavha ostida bu oy ko'rsatkichlari (bosilsa "Mening davomatim").
+      expect(find.text('kun keldi'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -231,18 +233,19 @@ void main() {
       await pumpProfilePage(tester);
 
       expect(find.text('09:00–18:00'), findsOneWidget);
-      expect(find.text('4.8'), findsOneWidget);
+      // Yangi ichki sahifa — kalendar va skan rasmlari.
+      expect(find.text('Mening davomatim'), findsOneWidget);
       // "Ilova haqida" kartasi sahifaning quyi qismida — dastlabki
       // build/cache extentidan tashqarida, shuning uchun ko'ringuncha
       // pastga suriladi (`ListView` uzun bo'lgani uchun bu qism darhol
       // qurilmagan bo'lishi mumkin).
-      await tester.scrollUntilVisible(find.text('v1.0.0'), 300);
+      await tester.scrollUntilVisible(find.text('v1.0.8'), 300);
       // Skroll paytida yangi qurilgan kartalarning kirish
       // animatsiyalari (`flutter_animate` `delay`li fadeIn) ishga
       // tushadi — test tugashidan oldin ularning tugashini kutamiz,
       // aks holda "Timer is still pending" xatosi chiqadi.
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('v1.0.0'), findsOneWidget);
+      expect(find.text('v1.0.8'), findsOneWidget);
     });
 
     testWidgets(
