@@ -56,19 +56,24 @@ import { useRequestAttachments, type Attachment } from './useRequestAttachments'
 import { useRequestEvents, type RequestEvent } from './useRequestEvents';
 import { LocationMiniMap, RequestProgress, RequestThread } from './RequestLifecycle';
 import { SkeletonLines } from '@/shared/ui/Skeleton';
+import { PhotoLightbox, SmartImage } from '@/shared/ui/SmartImage';
 
 /** Bitta biriktirilgan faylni turiga qarab chizadi: rasm inline, video <video>,
  *  ovoz <audio>, boshqasi — yuklab olish havolasi. */
-function AttachmentItem({ a }: { a: Attachment }) {
+function AttachmentItem({ a, onOpen }: { a: Attachment; onOpen?: () => void }) {
   const mime = a.mimeType ?? '';
   const isImage = a.type === 'PHOTO' || mime.startsWith('image/');
   const isVideo = mime.startsWith('video/');
   const isAudio = mime.startsWith('audio/');
   if (isImage) {
     return (
-      <a href={a.url} target="_blank" rel="noreferrer" className="block max-h-56 overflow-hidden rounded-xl border border-line bg-surface-2">
-        <img src={a.url} alt={a.fileName ?? ''} className="h-full w-full object-cover" loading="lazy" />
-      </a>
+      <SmartImage
+        src={a.url}
+        alt={a.fileName ?? ''}
+        onClick={onOpen}
+        fallbackLabel={`${a.fileName ?? 'Rasm'} — ochilmadi`}
+        className="h-44 rounded-xl border border-line bg-surface-2"
+      />
     );
   }
   if (isVideo) {
@@ -250,6 +255,9 @@ export function RequestDetail({
   const isCitizen = r?.source === 'citizen';
   const appId = r && isCitizen ? r.id : null;
   const { data: attachments } = useRequestAttachments(appId);
+  // Rasm allaqachon "Biriktirilgan rasmlar"da bo'lsa — fayllarda takrorlanmaydi.
+  const otherAttachments = (attachments ?? []).filter((a) => !(r?.photos ?? []).includes(a.url));
+  const [lightbox, setLightbox] = useState<number | null>(null);
   const { data: events, isLoading: eventsLoading } = useRequestEvents(appId);
   const dl = r ? getDeadline(r, t) : null;
   const meta = dl ? urgencyMeta(dl.urgency, t) : null;
@@ -480,25 +488,29 @@ export function RequestDetail({
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {r.photos.map((src, i) => (
-                  <div key={i} className="aspect-square overflow-hidden rounded-xl border border-line bg-surface-2">
-                    <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
-                  </div>
+                  <SmartImage
+                    key={i}
+                    src={src}
+                    onClick={() => setLightbox(i)}
+                    className="aspect-square rounded-xl border border-line bg-surface-2"
+                  />
                 ))}
               </div>
+              <PhotoLightbox photos={r.photos} index={lightbox} onClose={() => setLightbox(null)} onIndex={setLightbox} />
             </div>
           )}
 
           {/* Biriktirilgan fayllar (video/ovoz/hujjat) — mobil ilovadan yoki
               fuqaro tomonidan yuklangan media. Oddiy rasmlar yuqorida
               (r.photos); bu yerda Attachment yozuvlari (video/ovoz/fayl). */}
-          {attachments && attachments.length > 0 && (
+          {otherAttachments.length > 0 && (
             <div>
               <p className="mb-2 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
                 <DocumentText size={16} variant="Bulk" className="text-ink-muted" /> Biriktirilgan fayllar
               </p>
               <div className="space-y-2">
-                {attachments.map((a) => (
-                  <AttachmentItem key={a.id} a={a} />
+                {otherAttachments.map((a) => (
+                  <AttachmentItem key={a.id} a={a} onOpen={() => window.open(a.url, '_blank', 'noopener')} />
                 ))}
               </div>
             </div>

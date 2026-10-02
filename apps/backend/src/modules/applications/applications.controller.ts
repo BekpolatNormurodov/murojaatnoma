@@ -15,6 +15,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Application, ApplicationMessage, Attachment, AttachmentType, EmployeeRole } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
+import { optimizeImageUpload } from '../../common/media/image-optimizer';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AllowCitizen } from '../../common/decorators/allow-citizen.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -103,13 +104,14 @@ export class ApplicationsController {
       "Store the citizen's face (taken at face enrollment). Every murojaat they file is " +
       'stamped with it, so staff see who wrote it.',
   })
-  saveFace(
+  async saveFace(
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ photoUrl: string }> {
     if (!file || !file.mimetype.startsWith('image/')) {
       throw new BadRequestException('Rasm fayli kerak (file)');
     }
+    await optimizeImageUpload(file.path, file.mimetype);
     const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
     return this.applicationsService.saveCitizenFace(user, `${publicBaseUrl}/uploads/${file.filename}`);
   }
@@ -280,6 +282,7 @@ export class ApplicationsController {
       throw new BadRequestException('file is required');
     }
 
+    const optimized = await optimizeImageUpload(file.path, file.mimetype);
     const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
     const type = inferAttachmentType(file.mimetype);
     const url = `${publicBaseUrl}/uploads/${file.filename}`;
@@ -289,7 +292,7 @@ export class ApplicationsController {
       url,
       fileName: file.originalname,
       mimeType: file.mimetype,
-      sizeBytes: file.size,
+      sizeBytes: optimized ?? file.size,
     }, user);
   }
 }

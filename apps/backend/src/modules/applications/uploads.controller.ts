@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppConfig } from '../../common/config/configuration';
+import { optimizeImageUpload } from '../../common/media/image-optimizer';
 
 /** Shape returned to a client after a successful upload. */
 export interface UploadedMediaResult {
@@ -66,13 +67,15 @@ export class UploadsController {
       'Upload a media file (multipart, field "file", ≤25MB, image/video/audio) and get a durable public URL. ' +
       'Chat attachment flow: upload here → then emit chat:send with the returned url + kind.',
   })
-  upload(
+  async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body('durationSec') durationSec?: string,
-  ): UploadedMediaResult {
+  ): Promise<UploadedMediaResult> {
     if (!file) {
       throw new BadRequestException('file is required');
     }
+    // Photos: scaled to ≤1600 px + a WebP twin the gateway serves to browsers.
+    const optimized = await optimizeImageUpload(file.path, file.mimetype);
 
     const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
     const parsedDuration = durationSec !== undefined ? Number(durationSec) : undefined;
@@ -80,7 +83,7 @@ export class UploadsController {
     return {
       url: `${publicBaseUrl}/uploads/${file.filename}`,
       fileName: file.originalname,
-      fileSize: file.size,
+      fileSize: optimized ?? file.size,
       mimeType: file.mimetype,
       ...(parsedDuration !== undefined && Number.isFinite(parsedDuration)
         ? { durationSec: parsedDuration }

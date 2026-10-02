@@ -21,6 +21,7 @@ import { CreateComplaintMessageDto } from './dto/create-complaint-message.dto';
 import { CreateComplaintResponseDto } from './dto/create-complaint-response.dto';
 import { ListComplaintsQueryDto } from './dto/list-complaints-query.dto';
 import { UpdateComplaintDto } from './dto/update-complaint.dto';
+import { optimizeImageUpload } from '../../common/media/image-optimizer';
 
 // NOTE: all routes are @Public() for now — auth-gating (JWT + roles) is a
 // later step once the web-admin login flow is wired up.
@@ -75,11 +76,15 @@ export class ComplaintsController {
       "Shikoyatga media xabar qo'shish (multipart). Field \"text\" (ixtiyoriy) + \"file\" " +
       '(ixtiyoriy, max 25MB, image/video/audio) + "authorName" (ixtiyoriy, default "Administrator").',
   })
-  addMessage(
+  async addMessage(
     @Param('id') id: string,
     @Body() dto: CreateComplaintMessageDto,
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<ComplaintMessage> {
+    if (file) {
+      const optimized = await optimizeImageUpload(file.path, file.mimetype);
+      if (optimized != null) file.size = optimized;
+    }
     return this.complaintsService.addMessage(id, {
       text: dto.text,
       authorName: dto.authorName,

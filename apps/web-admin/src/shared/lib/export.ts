@@ -2,7 +2,11 @@
    Eksport / chop etish / yuklab olish yordamchilari
    Excel — SheetJS (real .xlsx: Numbers ham, Excel ham to'g'ri ochadi).
    ============================================================ */
-import * as XLSX from 'xlsx';
+// SheetJS (~290 KB) faqat "Excel" bosilganda yuklanadi — export'ni import
+// qilgan sahifalar (Xodimlar, Davomat, Oyliklar…) endi uni oldindan olmaydi.
+type XlsxLib = typeof import('xlsx');
+let xlsxPromise: Promise<XlsxLib> | null = null;
+const loadXlsx = () => (xlsxPromise ??= import('xlsx'));
 
 /** Faylni brauzer orqali yuklab olish (Blob). */
 export function downloadBlob(blob: Blob, filename: string) {
@@ -92,7 +96,12 @@ export interface SheetSpec<T> {
 }
 
 /** Ustunlar + qatorlardan SheetJS worksheet (sarlavha + jami qatori bilan). */
-function buildSheet<T>(columns: ExportColumn<T>[], rows: T[], opts: { title?: string; subtitle?: string } = {}) {
+function buildSheet<T>(
+  XLSX: XlsxLib,
+  columns: ExportColumn<T>[],
+  rows: T[],
+  opts: { title?: string; subtitle?: string } = {},
+) {
   const aoa: (string | number)[][] = [];
   if (opts.title) aoa.push([opts.title]);
   if (opts.subtitle) aoa.push([opts.subtitle]);
@@ -114,23 +123,25 @@ const cleanSheetName = (s: string) => (s || "Sheet").replace(/[\\/?*[\]:]/g, " "
  * Massivni REAL Excel (.xlsx) sifatida yuklab olish (SheetJS) — Numbers ham,
  * Excel ham to'g'ri ochadi (eski HTML-`.xls` hiylasidan farqli).
  */
-export function exportToExcel<T>(
+export async function exportToExcel<T>(
   filename: string,
   columns: ExportColumn<T>[],
   rows: T[],
   opts: { title?: string; sheet?: string; subtitle?: string } = {},
 ) {
+  const XLSX = await loadXlsx();
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, buildSheet(columns, rows, opts), cleanSheetName(opts.sheet ?? "Hisobot"));
+  XLSX.utils.book_append_sheet(wb, buildSheet(XLSX, columns, rows, opts), cleanSheetName(opts.sheet ?? "Hisobot"));
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }
 
 /** Ko'p varaqli (2-3 tab) Excel workbook — har varaq alohida ustun/qatorlar. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function exportWorkbook(filename: string, sheets: SheetSpec<any>[]) {
+export async function exportWorkbook(filename: string, sheets: SheetSpec<any>[]) {
+  const XLSX = await loadXlsx();
   const wb = XLSX.utils.book_new();
   for (const s of sheets) {
-    XLSX.utils.book_append_sheet(wb, buildSheet(s.columns, s.rows, s.opts ?? {}), cleanSheetName(s.name));
+    XLSX.utils.book_append_sheet(wb, buildSheet(XLSX, s.columns, s.rows, s.opts ?? {}), cleanSheetName(s.name));
   }
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }

@@ -79,6 +79,9 @@ export function Avatar({
           src={src}
           alt={name}
           loading="lazy"
+          decoding="async"
+          width={size}
+          height={size}
           onError={() => setFailed(true)}
           className={cn(
             'h-full w-full rounded-full object-cover',

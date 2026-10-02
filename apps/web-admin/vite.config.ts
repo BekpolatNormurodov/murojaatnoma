@@ -6,6 +6,22 @@ import path from "node:path";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Kutubxonalar alohida, barqaror chunk'larda — har deploydan keyin
+        // brauzer ularni keshdan oladi, faqat ilova kodi qayta yuklanadi.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom)[\\/]/.test(id)) return 'vendor-react';
+          if (id.includes('@tanstack')) return 'vendor-query';
+          if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'vendor-motion';
+          if (id.includes('socket.io') || id.includes('engine.io')) return 'vendor-socket';
+          return undefined;
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
