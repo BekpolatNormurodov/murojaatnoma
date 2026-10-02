@@ -15,8 +15,6 @@ import {
   Add,
   CloseCircle,
   RotateRight,
-  RowVertical,
-  TaskSquare,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -25,7 +23,6 @@ import { Button } from '@/shared/ui/Button';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { RequestDetail } from './RequestDetail';
-import { ControlBoard } from './ControlBoard';
 import { PersonProfileModal, type PersonRef } from '@/shared/ui/PersonProfileModal';
 import { AddRequestModal } from './RequestModals';
 import { RequestToastStack } from './RequestToasts';
@@ -153,18 +150,6 @@ export function RequestsPage({ kind }: { kind?: 'ariza' | 'shikoyat' } = {}) {
     setSeenUrlId(urlId);
     if (urlId) setSelectedIdState(urlId);
   }
-  // Ro'yxat yoki Nazorat (muddatlar taxtasi) — bitta sahifa, URL'da ?view=control.
-  const view: 'list' | 'control' = searchParams.get('view') === 'control' ? 'control' : 'list';
-  const setView = (v: 'list' | 'control') =>
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        if (v === 'control') next.set('view', 'control');
-        else next.delete('view');
-        return next;
-      },
-      { replace: true },
-    );
   const selected = requests.find((r) => r.id === selectedId) ?? null;
   const ensureRequest = useRequests((s) => s.ensure);
   const setSelectedId = (id: string | null) => {
@@ -322,37 +307,14 @@ export function RequestsPage({ kind }: { kind?: 'ariza' | 'shikoyat' } = {}) {
             : t('requests.subtitle')
         }
         action={
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex h-11 rounded-xl border border-line bg-surface-2 p-1" role="tablist" aria-label="Ko‘rinish">
-              {(
-                [
-                  ['list', 'Ro‘yxat', RowVertical],
-                  ['control', t('nav.control'), TaskSquare],
-                ] as const
-              ).map(([v, label, Icon]) => (
-                <button
-                  key={v}
-                  role="tab"
-                  aria-selected={view === v}
-                  onClick={() => setView(v)}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-colors',
-                    view === v ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
-                  )}
-                >
-                  <Icon size={16} variant={view === v ? 'Bulk' : 'Linear'} /> {label}
-                </button>
-              ))}
-            </div>
-            {view === 'list' && (
-              <button
-                onClick={() => setSortKey((s) => (s === 'urgency' ? 'newest' : 'urgency'))}
-                className="flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink-soft transition-colors hover:border-primary-200"
-              >
-                <Sort size={18} />
-                {sortKey === 'urgency' ? t('requests.sort.byDeadline') : t('requests.sort.byDate')}
-              </button>
-            )}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setSortKey((s) => (s === 'urgency' ? 'newest' : 'urgency'))}
+              className="flex h-11 items-center gap-2 rounded-xl border border-line bg-surface px-4 text-sm font-medium text-ink-soft transition-colors hover:border-primary-200"
+            >
+              <Sort size={18} />
+              {sortKey === 'urgency' ? t('requests.sort.byDeadline') : t('requests.sort.byDate')}
+            </button>
             {canWrite && (
               <button
                 onClick={() => setAddOpen(true)}
@@ -407,15 +369,6 @@ export function RequestsPage({ kind }: { kind?: 'ariza' | 'shikoyat' } = {}) {
             ))}
           </div>
         </div>
-      ) : view === 'control' ? (
-        <>
-          {!kind && (
-            <div className="mb-4">
-              <KindSwitch value={kindFilter} onChange={setKindFilter} />
-            </div>
-          )}
-          <ControlBoard kind={kind ?? kindFilter} now={now} onOpen={setSelectedId} />
-        </>
       ) : (
         <>
           {/* KPI — muddat holati (bosib filtrlanadi) */}
