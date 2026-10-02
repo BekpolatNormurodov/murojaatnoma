@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Paperclip, Gallery, Microphone2, VideoCircle, Send2, Trash, InfoCircle } from 'iconsax-react';
 import { usePrefersReducedMotion } from './useChat';
@@ -20,6 +20,17 @@ function voiceExt(mime: string): string {
   if (mime.includes('mp4') || mime.includes('m4a') || mime.includes('aac')) return 'm4a';
   if (mime.includes('ogg')) return 'ogg';
   return 'webm';
+}
+
+/**
+ * Yuklanadigan fayl turi — parametrlarsiz ("video/webm;codecs=vp9,opus" →
+ * "video/webm"). Vergulli codecs ro'yxati multipart sarlavhasini buzar,
+ * server faylni "text/plain" deb rad etardi — dumaloq video umuman
+ * yuborilmasdi.
+ */
+function baseMime(mime: string, fallback: string): string {
+  const base = mime.split(';')[0].trim();
+  return base || fallback;
 }
 
 /** Video xabar uchun MediaRecorder qo'llab-quvvatlaydigan eng mos mimeType'ni tanlaydi. */
@@ -95,18 +106,19 @@ export function ChatComposer({
     return () => window.clearInterval(iv);
   }, [recording]);
 
-  // Video-note preview'ini ulash. <video> elementi faqat videoRecording=true
-  // bo'lganda render bo'ladi, shuning uchun stream'ni getUserMedia paytida
-  // emas (o'shanda ref hali null), element mount bo'lgach — bu effekt orqali
-  // ulaymiz. Aks holda doira qora qolardi.
-  useEffect(() => {
-    const el = videoPreviewRef.current;
+  // Video-note preview'ini ulash — CALLBACK ref orqali: panel
+  // `AnimatePresence mode="wait"` ichida, ya'ni oldingi panel yopilgach
+  // (~0.2s KEYIN) mount bo'ladi. Avvalgi `useEffect([videoRecording])` o'sha
+  // paytda hali null ref'ni ko'rib, stream'ni hech qachon ulamasdi — doira
+  // qora qolardi. Callback ref element paydo bo'lgan zahoti ulaydi.
+  const attachPreview = useCallback((el: HTMLVideoElement | null) => {
+    videoPreviewRef.current = el;
     const stream = videoStreamRef.current;
-    if (videoRecording && el && stream) {
+    if (el && stream && el.srcObject !== stream) {
       el.srcObject = stream;
       void el.play().catch(() => {});
     }
-  }, [videoRecording]);
+  }, []);
 
   // Unmount — mikrofon/kamerani o'chirish
   useEffect(
@@ -182,7 +194,7 @@ export function ChatComposer({
         stopStream();
         if (cancelledRef.current) return;
         const mime = rec.mimeType || 'audio/webm';
-        const blob = new Blob(chunksRef.current, { type: mime });
+        const blob = new Blob(chunksRef.current, { type: baseMime(mime, 'audio/webm') });
         // Ovozli xabarni ham serverga yuklaymiz (durable URL) — aks holda u
         // faqat yuboruvchining brauzerida eshitilardi.
         setUploading(true);
@@ -240,7 +252,7 @@ export function ChatComposer({
         stopVideoStream();
         if (videoCancelledRef.current) return;
         const blobMime = rec.mimeType || mime || 'video/webm';
-        const blob = new Blob(videoChunksRef.current, { type: blobMime });
+        const blob = new Blob(videoChunksRef.current, { type: baseMime(blobMime, 'video/webm') });
         // Video-note'ni ham serverga yuklaymiz (durable URL) — aks holda u
         // faqat yuboruvchining brauzerida ko'rinardi.
         setUploading(true);
@@ -259,8 +271,20 @@ export function ChatComposer({
       setSeconds(0);
       rec.start();
       setVideoRecording(true);
-    } catch {
-      /* kamera/mikrofon ruxsati berilmadi */
+      // Panel allaqachon ochiq bo'lsa (qayta yozish) — darhol ulaymiz.
+      attachPreview(videoPreviewRef.current);
+    } catch (e) {
+      // Avval jim edi — tugma bosilib, hech narsa ochilmasdi.
+      const name = e instanceof DOMException ? e.name : '';
+      setUploadError(
+        name === 'NotAllowedError' || name === 'SecurityError'
+          ? 'Kamera/mikrofonga ruxsat berilmagan — brauzer manzil satridagi 🔒 belgisidan ruxsat bering.'
+          : name === 'NotFoundError' || name === 'OverconstrainedError'
+            ? 'Kamera topilmadi — qurilmaga kamera ulanganini tekshiring.'
+            : name === 'NotReadableError'
+              ? 'Kamera boshqa dasturda band (Zoom, Teams…) — uni yopib qayta urinib ko‘ring.'
+              : 'Kamerani ochib bo‘lmadi.',
+      );
     }
   };
 
@@ -340,7 +364,7 @@ export function ChatComposer({
               />
               <div className="absolute inset-1.5 overflow-hidden rounded-full bg-black">
                 <video
-                  ref={videoPreviewRef}
+                  ref={attachPreview}
                   autoPlay
                   muted
                   playsInline
