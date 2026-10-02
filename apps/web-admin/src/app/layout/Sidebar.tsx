@@ -15,7 +15,6 @@ import {
   SecurityUser,
   Speaker,
   Danger,
-  TaskSquare,
   Calendar,
   Messages2,
   Mobile,
@@ -56,7 +55,6 @@ const SECTIONS: NavSection[] = [
       { to: '/', labelKey: 'nav.dashboard', icon: Element3, feature: 'dashboard' },
       { to: '/requests', labelKey: 'nav.requests', icon: MessageQuestion, feature: 'requests' },
       { to: '/complaints', labelKey: 'nav.complaints', icon: Danger, feature: 'complaints' },
-      { to: '/requests/control', labelKey: 'nav.control', icon: TaskSquare, feature: 'requests' },
       { to: '/meetings', labelKey: 'nav.meetings', icon: Calendar, feature: 'meetings' },
       { to: '/chat', labelKey: 'nav.chat', icon: Messages2, feature: 'chat' },
       { to: '/map', labelKey: 'nav.map', icon: Map1, feature: 'map' },
@@ -170,8 +168,7 @@ export function SidebarContent({
               <NavLink
                 key={item.to}
                 to={item.to}
-                // '/requests' must not light up on '/requests/control'.
-                end={item.to === '/' || item.to === '/requests'}
+                end={item.to === '/'}
                 onClick={onNavigate}
                 title={collapsed ? t(item.labelKey) : undefined}
                 className={({ isActive }) =>

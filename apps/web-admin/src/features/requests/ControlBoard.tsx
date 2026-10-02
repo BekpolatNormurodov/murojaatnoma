@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Danger,
   RotateLeft,
@@ -9,14 +9,12 @@ import {
 } from 'iconsax-react';
 import { Card, CardHeader } from '@/shared/ui/Card';
 import { Avatar } from '@/shared/ui/Avatar';
-import { PageHeader } from '@/shared/ui/PageHeader';
 import { Skeleton } from '@/shared/ui/Skeleton';
 import { cn } from '@/shared/lib/cn';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useRequests } from '@/shared/store/requests';
 import type { CitizenRequest } from '@/shared/data/types';
 import { getDeadline, isOpen, type DeadlineInfo } from './deadline';
-import { RequestDetail } from './RequestDetail';
 
 type Lane = 'unassigned' | 'working' | 'overdue' | 'reopened' | 'rating';
 
@@ -41,24 +39,22 @@ function laneOf(r: CitizenRequest, dl: DeadlineInfo): Lane | null {
 }
 
 /**
- * Nazorat — the deadline board for murojaat AND shikoyat: who has what, how
- * long is left, what is late. One glance answers "where is it stuck?".
+ * Nazorat ko'rinishi — Murojaatlar sahifasi ichida ("Ro'yxat | Nazorat"),
+ * alohida sahifa emas. Murojaat va shikoyat muddati: kimda, qancha qoldi,
+ * qayerda to'xtab qoldi. Karta bosilsa sahifaning o'z tafsiloti ochiladi.
  */
-export function ControlBoardPage() {
+export function ControlBoard({
+  kind,
+  now,
+  onOpen,
+}: {
+  kind: 'all' | 'ariza' | 'shikoyat';
+  now: number;
+  onOpen: (id: string) => void;
+}) {
   const { t } = useI18n();
   const all = useRequests((s) => s.requests);
   const loading = useRequests((s) => s.loading);
-  const hydrate = useRequests((s) => s.hydrate);
-  const [kind, setKind] = useState<'all' | 'ariza' | 'shikoyat'>('all');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (useRequests.getState().requests.length === 0 && !useRequests.getState().loading) void hydrate();
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const rows = useMemo(
     () =>
@@ -118,40 +114,10 @@ export function ControlBoardPage() {
       .sort((a, b) => b.overdue - a.overdue || b.open - a.open);
   }, [rows]);
 
-  const selected = all.find((r) => r.id === selectedId) ?? null;
   const openTotal = rows.filter(({ r }) => isOpen(r)).length;
 
   return (
     <div>
-      <PageHeader
-        title={t('nav.control')}
-        subtitle="Murojaat va shikoyatlar muddati — kimda, qancha qoldi, qayerda to‘xtab qoldi"
-        action={
-          <div className="flex rounded-xl border border-line bg-surface-2 p-0.5" role="tablist" aria-label="Turi">
-            {(
-              [
-                ['all', 'Hammasi'],
-                ['ariza', 'Ariza'],
-                ['shikoyat', 'Shikoyat'],
-              ] as const
-            ).map(([k, label]) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={kind === k}
-                onClick={() => setKind(k)}
-                className={cn(
-                  'rounded-[10px] px-3 py-1.5 text-[12.5px] font-medium transition-colors',
-                  kind === k ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        }
-      />
-
       {/* Summary strip */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Summary label="Ochiq" value={openTotal} color="#0f172a" />
@@ -187,7 +153,7 @@ export function ControlBoardPage() {
                         <p className="px-2 py-10 text-center text-[12.5px] text-ink-muted">Bo‘sh — hammasi joyida</p>
                       )
                     : lanes[l.key].map(({ r, dl }) => (
-                        <BoardCard key={r.id} r={r} dl={dl} lane={l.key} onOpen={() => setSelectedId(r.id)} />
+                        <BoardCard key={r.id} r={r} dl={dl} lane={l.key} onOpen={() => onOpen(r.id)} />
                       ))}
               </div>
             </section>
@@ -242,8 +208,6 @@ export function ControlBoardPage() {
           </div>
         )}
       </Card>
-
-      <RequestDetail request={selected} onClose={() => setSelectedId(null)} />
     </div>
   );
 }
