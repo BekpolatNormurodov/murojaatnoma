@@ -236,6 +236,21 @@ describe('instagram collector', () => {
     expect(own.items[0]).toMatchObject({ official: true, alwaysRelevant: true });
   });
 
+  it('works with a never-expiring Page token: finds the IG account via /me', async () => {
+    const urls: string[] = [];
+    global.fetch = jest.fn(async (url: string | URL | Request) => {
+      const u = decodeURIComponent(String(url));
+      urls.push(u);
+      if (u.includes('/me/accounts')) return json({ error: { message: '(#100) Tried accessing nonexisting field (accounts) on node type (Page)', code: 100 } }, 400);
+      if (u.includes('/me?fields=instagram_business_account')) return json({ instagram_business_account: { id: '1784PAGE' }, id: 'p1' });
+      return json({ business_discovery: { username: 'kun.uz', media: { data: [post('m1', 'x')] } } });
+    }) as typeof fetch;
+    const { collectInstagram } = await import('./collectors/collectors');
+    const run = await collectInstagram(cfg('page-token'), { instagramHashtags: [] }, [{ handle: 'kun.uz', official: false, own: false }], new Map(), new Date());
+    expect(urls.some((u) => u.includes('/1784PAGE?fields='))).toBe(true);
+    expect(run.results.find((r) => r.key === 'ig:kun.uz')!.items).toHaveLength(1);
+  });
+
   it('says plainly when an account is personal, and goes on with the rest', async () => {
     global.fetch = jest.fn(async (url: string | URL | Request) => {
       const u = decodeURIComponent(String(url));

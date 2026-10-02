@@ -417,16 +417,30 @@ interface IgMedia {
 const discoveredIgIds = new Map<string, string>();
 
 /**
- * INSTAGRAM_BUSINESS_ID is optional: with a Facebook-login token the IG
- * business account is the one linked to the user's Facebook Page.
+ * INSTAGRAM_BUSINESS_ID is optional: the IG business account is the one
+ * linked to the token's Facebook Page. A user token lists its Pages
+ * (/me/accounts); a Page token — the one that never expires — is the Page (/me).
  */
 async function discoverIgBusinessId(graph: string, token: string): Promise<string | undefined> {
   const cached = discoveredIgIds.get(token);
   if (cached) return cached;
-  const r = await fetchJson<{ data?: { instagram_business_account?: { id?: string } }[] }>(
-    `${graph}/me/accounts?fields=instagram_business_account&limit=50&access_token=${encodeURIComponent(token)}`,
-  );
-  const id = r.data?.find((p) => p.instagram_business_account?.id)?.instagram_business_account?.id;
+  const tok = encodeURIComponent(token);
+  let id: string | undefined;
+  try {
+    const r = await fetchJson<{ data?: { instagram_business_account?: { id?: string } }[] }>(
+      `${graph}/me/accounts?fields=instagram_business_account&limit=50&access_token=${tok}`,
+    );
+    id = r.data?.find((p) => p.instagram_business_account?.id)?.instagram_business_account?.id;
+  } catch (err) {
+    // A Page token has no /me/accounts — fall through to /me.
+    if (err instanceof ApiError && err.code === 190) throw err;
+  }
+  if (!id) {
+    const page = await fetchJson<{ instagram_business_account?: { id?: string } }>(
+      `${graph}/me?fields=instagram_business_account&access_token=${tok}`,
+    ).catch(() => undefined);
+    id = page?.instagram_business_account?.id;
+  }
   if (id) discoveredIgIds.set(token, id);
   return id;
 }
