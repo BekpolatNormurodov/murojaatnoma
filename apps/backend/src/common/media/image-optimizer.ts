@@ -51,7 +51,9 @@ export async function optimizeImageUpload(path: string, mimetype: string): Promi
       }
     }
     if (meta.format !== 'webp') {
-      await fs.writeFile(`${path}.webp`, await base().webp({ quality: 78 }).toBuffer());
+      const webp = await base().webp({ quality: 78 }).toBuffer();
+      // A tiny flat PNG can come out bigger as WebP — then the original wins.
+      if (webp.length < size) await fs.writeFile(`${path}.webp`, webp);
     }
     return size;
   } catch (e) {
