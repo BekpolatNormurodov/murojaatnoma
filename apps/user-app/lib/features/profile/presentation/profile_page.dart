@@ -13,6 +13,9 @@ import 'package:user_app/features/auth/domain/repositories/auth_repository.dart'
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
 import 'package:user_app/features/face/domain/repositories/face_repository.dart';
+import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
+import 'package:user_app/features/requests/domain/repositories/citizen_requests_repository.dart';
 import 'package:user_app/injection.dart';
 
 /// "Profil" tabi — fuqaro ma'lumotlari (avatar/ism/telefon) va sozlamalar
@@ -33,7 +36,15 @@ class ProfilePage extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           children: [
             _ProfileHeader(session: session),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
+            const _MyRequestsStats(),
+            const SizedBox(height: 22),
+            _GroupLabel(_t(context, 'Xizmatlar', 'Сервисы')),
+            const SizedBox(height: 8),
+            const _ServicesCard(),
+            const SizedBox(height: 22),
+            _GroupLabel(_t(context, 'Sozlamalar', 'Настройки')),
+            const SizedBox(height: 8),
             const _SettingsCard(),
             const SizedBox(height: 20),
             const _LogoutButton(),
@@ -221,17 +232,14 @@ class _SettingsCard extends StatelessWidget {
               AppListTile(
                 title: l10n.profilePinLabel,
                 leadingIcon: AppIcons.lock,
-                onTap: () => AppAlert.info(context, l10n.comingSoonMessage),
+                // Ro'yxatdan to'liq o'tgan fuqaro uchun `/pin/set` ochiq
+                // (redirect siyosati ataylab ruxsat beradi) — yangi PIN.
+                onTap: () => context.push('/pin/set'),
               ),
               AppListTile(
                 title: l10n.profileHelpLabel,
                 leadingIcon: AppIcons.info,
-                onTap: () => AppAlert.info(context, l10n.comingSoonMessage),
-              ),
-              AppListTile(
-                title: l10n.profileReportsLabel,
-                leadingIcon: IconsaxPlusLinear.chart_2,
-                onTap: () => context.push('/reports'),
+                onTap: () => _showHelp(context),
               ),
             ],
           ),
@@ -293,4 +301,224 @@ class _LogoutButton extends StatelessWidget {
         .fadeIn(duration: 300.ms)
         .slideY(begin: 0.06, end: 0);
   }
+}
+
+String _t(BuildContext context, String uz, String ru) =>
+    Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
+
+class _GroupLabel extends StatelessWidget {
+  const _GroupLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Text(
+      label,
+      style: AppTextStyles.label.copyWith(
+        color: isDark ? AppColors.darkInkSoft : AppColors.inkSoft,
+      ),
+    );
+  }
+}
+
+/// Murojaatlarim xulosasi — jami, ko'rib chiqilmoqda, hal qilingan; bosilsa
+/// "Murojaatlarim" tabiga o'tadi.
+class _MyRequestsStats extends StatefulWidget {
+  const _MyRequestsStats();
+
+  @override
+  State<_MyRequestsStats> createState() => _MyRequestsStatsState();
+}
+
+class _MyRequestsStatsState extends State<_MyRequestsStats> {
+  List<CitizenRequest>? _items;
+
+  @override
+  void initState() {
+    super.initState();
+    if (getIt.isRegistered<CitizenRequestsRepository>()) {
+      getIt<CitizenRequestsRepository>().list().then((r) {
+        if (mounted) r.fold((_) {}, (items) => setState(() => _items = items));
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _items;
+    final total = items?.length ?? 0;
+    final working = items
+            ?.where(
+              (r) =>
+                  r.status == RequestStatus.yuborilgan ||
+                  r.status == RequestStatus.korilmoqda,
+            )
+            .length ??
+        0;
+    final resolved =
+        items?.where((r) => r.status == RequestStatus.javobBerildi).length ?? 0;
+    Widget tile(String value, String label, Color color) => Expanded(
+      child: Column(
+        children: [
+          Text(
+            items == null ? '—' : value,
+            style: AppTextStyles.h2.copyWith(color: color),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.caption,
+          ),
+        ],
+      ),
+    );
+    return AppCard(
+      onTap: () => context.go('/applications'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                _t(context, 'Murojaatlarim', 'Мои обращения'),
+                style: AppTextStyles.bodyStrong,
+              ),
+              const Spacer(),
+              const Icon(AppIcons.arrowRight, size: 18),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              tile('$total', _t(context, 'jami', 'всего'), AppColors.info),
+              tile('$working', _t(context, "ko'rilmoqda", 'в работе'), AppColors.warning),
+              tile('$resolved', _t(context, 'hal qilingan', 'решено'), AppColors.success),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Xizmatlar: murojaatlar, bildirishnomalar, to'lovlar tarixi, hisobotlar.
+class _ServicesCard extends StatelessWidget {
+  const _ServicesCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    // Ilova ildizidagi singleton (provider'siz testlarda — badgesiz).
+    final notifications = getIt.isRegistered<NotificationsCubit>()
+        ? getIt<NotificationsCubit>()
+        : null;
+    return AppCard(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Column(
+        children: [
+          AppListTile(
+            title: _t(context, 'Murojaatlarim', 'Мои обращения'),
+            leadingIcon: AppIcons.requests,
+            onTap: () => context.go('/applications'),
+          ),
+          if (notifications == null)
+            AppListTile(
+              title: _t(context, 'Bildirishnomalar', 'Уведомления'),
+              leadingIcon: AppIcons.notification,
+              onTap: () => context.push('/notifications'),
+            )
+          else
+            BlocBuilder<NotificationsCubit, NotificationsState>(
+              bloc: notifications,
+              builder: (context, _) {
+                final unread = notifications.unreadCount;
+                return AppListTile(
+                  title: _t(context, 'Bildirishnomalar', 'Уведомления'),
+                  leadingIcon: AppIcons.notification,
+                  trailing: unread > 0 ? AppBadge(label: '$unread') : null,
+                  onTap: () => context.push('/notifications'),
+                );
+              },
+            ),
+          AppListTile(
+            title: _t(context, "To'lovlar tarixi", 'История платежей'),
+            leadingIcon: AppIcons.receipt,
+            onTap: () => context.push('/payments-history'),
+          ),
+          AppListTile(
+            title: l10n.profileReportsLabel,
+            leadingIcon: IconsaxPlusLinear.chart_2,
+            onTap: () => context.push('/reports'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Yordam — murojaat qoidalari qisqacha (tizimdagi haqiqiy qoidalar).
+void _showHelp(BuildContext context) {
+  final isDark = Theme.of(context).brightness == Brightness.dark;
+  final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+  final faq = <(String, String)>[
+    (
+      _t(context, "Murojaat qancha vaqtda ko'rib chiqiladi?", 'За какой срок рассматривают?'),
+      _t(
+        context,
+        "Ariza — odatda 5 kun ichida, shikoyat — 3 kun ichida (shoshilinchlari tezroq). "
+            "Muddat o'tsa, murojaat rahbariyat nazoratiga o'tadi.",
+        'Заявление — обычно до 5 дней, жалоба — до 3 дней (срочные быстрее). '
+            'Если срок истёк, обращение переходит под контроль руководства.',
+      ),
+    ),
+    (
+      _t(context, "Natijadan norozi bo'lsam-chi?", 'Если я не согласен с результатом?'),
+      _t(
+        context,
+        "Hal qilingan murojaatni 7 kun ichida «Hal bo'lmadi» deb qayta ochishingiz mumkin "
+            '(2 martagacha) — u yana mas\'ul xodimga qaytadi.',
+        'Решённое обращение можно открыть повторно в течение 7 дней '
+            '(до 2 раз) — оно вернётся ответственному.',
+      ),
+    ),
+    (
+      _t(context, 'Yuzim nima uchun kerak?', 'Зачем нужно фото лица?'),
+      _t(
+        context,
+        'Murojaatni aynan siz yozganingizni tasdiqlaydi — boshqa birov '
+            'sizning nomingizdan yoza olmaydi.',
+        'Подтверждает, что обращение написали именно вы.',
+      ),
+    ),
+    (
+      _t(context, "Holatini qayerdan bilaman?", 'Где узнать статус?'),
+      _t(
+        context,
+        'Murojaat sahifasidagi bosqichlarda va «Bildirishnomalar»da: qabul '
+            'qilindi, biriktirildi, javob yozildi, hal qilindi.',
+        'В этапах на странице обращения и в «Уведомлениях».',
+      ),
+    ),
+  ];
+  showAppSheet<void>(
+    context: context,
+    title: _t(context, 'Yordam', 'Помощь'),
+    scrollable: true,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final (q, a) in faq) ...[
+          Text(q, style: AppTextStyles.bodyStrong),
+          const SizedBox(height: 4),
+          Text(a, style: AppTextStyles.body.copyWith(color: inkSoft, height: 1.45)),
+          const SizedBox(height: 16),
+        ],
+      ],
+    ),
+  );
 }

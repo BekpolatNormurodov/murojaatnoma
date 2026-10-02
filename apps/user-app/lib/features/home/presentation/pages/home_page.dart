@@ -468,11 +468,15 @@ class _QuickAction extends StatelessWidget {
             child: Icon(icon, color: color, size: 19),
           ),
           const SizedBox(height: 10),
-          Text(
-            label,
-            style: AppTextStyles.bodyStrong,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+          // Katakcha balandligi qat'iy (aspect ratio) — katta shriftda ham
+          // sig'ishi uchun nom qolgan joyga moslashadi.
+          Flexible(
+            child: Text(
+              label,
+              style: AppTextStyles.bodyStrong,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

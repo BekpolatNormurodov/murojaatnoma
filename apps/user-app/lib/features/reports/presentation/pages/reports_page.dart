@@ -72,53 +72,57 @@ class _ReportsContent extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Row(
-            // Ikkala karta baland-pastligidan qat'i nazar bir xil
-            // balandlikda bo'lib, ustki/ostki qirralari tekis tursin
-            // (masalan biror yorliq/qiymat ikki qatorga o'tsa ham).
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _StatCard(
-                  icon: AppIcons.receipt,
-                  color: AppColors.primary,
-                  label: l10n.reportsPaymentsCountLabel,
-                  value: '${summary.paymentsCount}',
+          IntrinsicHeight(
+            child: Row(
+              // Ikkala karta baland-pastligidan qat'i nazar bir xil
+              // balandlikda bo'lib, ustki/ostki qirralari tekis tursin
+              // (masalan biror yorliq/qiymat ikki qatorga o'tsa ham).
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: AppIcons.receipt,
+                    color: AppColors.primary,
+                    label: l10n.reportsPaymentsCountLabel,
+                    value: '${summary.paymentsCount}',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatCard(
-                  icon: AppIcons.moneyReceive,
-                  color: AppColors.accent,
-                  label: l10n.reportsPaymentsAmountLabel,
-                  value: formatSom(summary.paymentsTotalAmount),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _StatCard(
+                    icon: AppIcons.moneyReceive,
+                    color: AppColors.accent,
+                    label: l10n.reportsPaymentsAmountLabel,
+                    value: formatSom(summary.paymentsTotalAmount),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _StatCard(
-                  icon: AppIcons.documentUpload,
-                  color: AppColors.accentDark,
-                  label: l10n.reportsAppealsCountLabel,
-                  value: '$arizaCount',
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: AppIcons.documentUpload,
+                    color: AppColors.accentDark,
+                    label: l10n.reportsAppealsCountLabel,
+                    value: '$arizaCount',
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _StatCard(
-                  icon: IconsaxPlusLinear.warning_2,
-                  color: AppColors.warning,
-                  label: l10n.reportsComplaintsCountLabel,
-                  value: '$shikoyatCount',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _StatCard(
+                    icon: IconsaxPlusLinear.warning_2,
+                    color: AppColors.warning,
+                    label: l10n.reportsComplaintsCountLabel,
+                    value: '$shikoyatCount',
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           Text(l10n.reportsByStatusTitle, style: AppTextStyles.h3),

@@ -81,20 +81,25 @@ class AppBadge extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 20),
       height: 20,
       padding: const EdgeInsets.symmetric(horizontal: 6),
-      alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        text,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppTextStyles.caption.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-          height: 1,
+      // `widthFactor: 1` — matn kengligida qoladi. Container'ning o'z
+      // `alignment`i kenglik cheklangan joyda (Wrap, ListTile trailing)
+      // badgeni butun qatorga cho'zib yuborardi.
+      child: Align(
+        widthFactor: 1,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTextStyles.caption.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 11,
+            height: 1,
+          ),
         ),
       ),
     );

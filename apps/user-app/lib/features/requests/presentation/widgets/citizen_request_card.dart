@@ -40,6 +40,10 @@ class CitizenRequestCard extends StatelessWidget {
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final kindColor = RequestKindMeta.color(request.kind);
 
+    final stage = _stage(request);
+    final rejected = request.status == RequestStatus.yopildi;
+    final assignee = request.assigneeName;
+
     return AppCard(
       onTap: onTap,
       child: Column(
@@ -49,8 +53,8 @@ class CitizenRequestCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: kindColor.withValues(alpha: 0.12),
@@ -58,24 +62,29 @@ class CitizenRequestCard extends StatelessWidget {
                 ),
                 child: Icon(
                   RequestKindMeta.icon(request.kind),
-                  size: 19,
+                  size: 20,
                   color: kindColor,
                 ),
               ),
               const SizedBox(width: 12),
+              // Sarlavha butun kenglikda (holat chipi pastga ko'chdi) —
+              // avval chip sarlavhani "Oilaviy holat haqida ma'lum…" qilib
+              // kesardi.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       request.title,
-                      style: AppTextStyles.bodyStrong,
+                      style: AppTextStyles.bodyStrong.copyWith(height: 1.3),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      request.category,
+                      assignee == null
+                          ? request.category
+                          : '${request.category} · ${_t(context, "Mas'ul", 'Отв.')}: $assignee',
                       style: AppTextStyles.caption.copyWith(color: inkSoft),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -83,24 +92,49 @@ class CitizenRequestCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 10),
-              // `Flexible` MAJBURIY: chip `Expanded(title)`dan keyingi
-              // kengligi cheklanmagan birodar (sibling) bo'lsa, uzun
-              // holat yorlig'i sarlavhani siqib qo'yishi mumkin edi —
-              // `loose` moslashuv sarlavhaga ustuvorlik beradi.
-              Flexible(child: RequestStatusChip(status: request.status)),
             ],
           ),
           const SizedBox(height: 12),
+          // Murojaat yo'li — 5 bosqich (rad etilsa qizil).
           Row(
             children: [
-              AppBadge(
-                label: RequestKindMeta.label(l10n, request.kind),
-                variant: request.kind == RequestKind.ariza
-                    ? AppBadgeVariant.info
-                    : AppBadgeVariant.warning,
+              for (var i = 0; i < 5; i++) ...[
+                if (i > 0) const SizedBox(width: 4),
+                Expanded(
+                  child: Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: i < stage
+                          ? (rejected ? AppColors.danger : AppColors.primary)
+                          : (isDark ? AppColors.darkLine : AppColors.line),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              // Tor ekran / katta shriftda chip keyingi qatorga o'tadi —
+              // hech qachon siqilib, chetdan chiqmaydi.
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    AppBadge(
+                      label: RequestKindMeta.label(l10n, request.kind),
+                      variant: request.kind == RequestKind.ariza
+                          ? AppBadgeVariant.info
+                          : AppBadgeVariant.warning,
+                    ),
+                    RequestStatusChip(status: request.status),
+                  ],
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Icon(AppIcons.calendar, size: 14, color: inkMuted),
               const SizedBox(width: 4),
               Text(
@@ -114,3 +148,19 @@ class CitizenRequestCard extends StatelessWidget {
     );
   }
 }
+
+
+/// Stepper bilan bir xil bosqichlar: 1 qabul · 2 biriktirildi · 3 jarayonda ·
+/// 4 hal qilindi · 5 baholandi (rad etilsa — o'sha joygacha qizil).
+int _stage(CitizenRequest r) {
+  final assigned = r.assigneeName != null;
+  return switch (r.status) {
+    RequestStatus.yuborilgan => assigned ? 2 : 1,
+    RequestStatus.korilmoqda => 3,
+    RequestStatus.javobBerildi => r.rating != null ? 5 : 4,
+    RequestStatus.yopildi => assigned ? 3 : 2,
+  };
+}
+
+String _t(BuildContext context, String uz, String ru) =>
+    Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
