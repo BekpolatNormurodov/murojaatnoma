@@ -7,6 +7,7 @@ import { cn } from '@/shared/lib/cn';
 import { foldSearch } from '@/shared/lib/translit';
 import { useCreateEmployee, useUpdateEmployee, uploadPhoto, type EmployeeInput } from './useEmployeeMutations';
 import type { OversightRow } from './useOversight';
+import { useDepartments, useEmployeeProfile } from './useEmployeeProfile';
 
 /** "500000" -> "500 000" for the salary input. */
 function group(d: string) {
@@ -46,6 +47,12 @@ function generatePassword(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
 }
 
+/** What the form needs of an employee — a list row or the profile page both fit. */
+export type EmployeeFormRow = Pick<
+  OversightRow,
+  'employeeId' | 'fullName' | 'position' | 'phone' | 'username' | 'avatarUrl' | 'salaryBase'
+>;
+
 /**
  * Add / edit an employee (person) straight from Nazorat: photo, name, position,
  * worker-app login (username/password), phone and this month's BASE salary.
@@ -60,7 +67,7 @@ export function EmployeeFormModal({
   onClose,
   onDone,
 }: {
-  row: OversightRow | null;
+  row: EmployeeFormRow | null;
   open: boolean;
   /** The month Nazorat is showing — the salary field reads/writes THIS month. */
   year: number;
@@ -89,6 +96,23 @@ export function EmployeeFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
+  // Bo'lim va ish tartibi — tahrirda profildan to'ldiriladi.
+  const [department, setDepartment] = useState('');
+  const [workStart, setWorkStart] = useState('09:00');
+  const [workEnd, setWorkEnd] = useState('18:00');
+  const [initialWork, setInitialWork] = useState({ department: '', start: '09:00', end: '18:00' });
+  const departments = useDepartments();
+  const profile = useEmployeeProfile(open && row ? row.employeeId : undefined);
+  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
+  const prof = profile.data;
+  if (open && prof && prof.employeeId === row?.employeeId && prefilledFor !== prof.employeeId) {
+    setPrefilledFor(prof.employeeId);
+    const init = { department: prof.department ?? '', start: prof.workStartTime, end: prof.workEndTime };
+    setInitialWork(init);
+    setDepartment(init.department);
+    setWorkStart(init.start);
+    setWorkEnd(init.end);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -107,6 +131,13 @@ export function EmployeeFormModal({
     setTried(false);
     setSaving(false);
     setUploading(false);
+    if (!row) {
+      setDepartment('');
+      setWorkStart('09:00');
+      setWorkEnd('18:00');
+      setInitialWork({ department: '', start: '09:00', end: '18:00' });
+    }
+    setPrefilledFor(null);
   }, [open, row]);
 
   // Create: keep suggesting a login from the name until the admin edits it.
@@ -119,7 +150,8 @@ export function EmployeeFormModal({
   const userOk = editing && !username ? true : /^[a-z0-9_]{3,32}$/.test(username);
   const passOk = editing && !password ? true : password.length >= 6;
   const phoneOk = phone.length === 0 || phone.length === 9;
-  const valid = nameOk && posOk && userOk && passOk && phoneOk;
+  const hoursOk = /^\d{2}:\d{2}$/.test(workStart) && /^\d{2}:\d{2}$/.test(workEnd) && workStart < workEnd;
+  const valid = nameOk && posOk && userOk && passOk && phoneOk && hoursOk;
 
   async function pickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -158,6 +190,9 @@ export function EmployeeFormModal({
       ...(username && username !== (row?.username ?? '') ? { username } : {}),
       ...(password ? { password } : {}),
       ...(avatarUrl !== (row?.avatarUrl ?? null) ? { avatarUrl } : {}),
+      ...(department.trim() !== initialWork.department ? { department: department.trim() } : {}),
+      ...(workStart !== initialWork.start ? { workStartTime: workStart } : {}),
+      ...(workEnd !== initialWork.end ? { workEndTime: workEnd } : {}),
       // Only touch EmployeeSalary when the amount actually changed.
       ...(salaryNum != null && salaryNum !== (row?.salaryBase ?? null)
         ? { salary: salaryNum, salaryYear: year, salaryMonth: month }
@@ -240,6 +275,44 @@ export function EmployeeFormModal({
                   className="h-full min-w-0 flex-1 bg-transparent pr-4 text-sm tabular-nums text-ink outline-none placeholder:text-ink-muted"
                 />
               </div>
+            </Field>
+          </div>
+        </Section>
+
+        <Section title="Bo'lim va ish tartibi">
+          <Field id={fid('dept')} label="Bo'lim" hint="Ro'yxatdan tanlang yoki yangisini yozing">
+            <Inp
+              id={fid('dept')}
+              value={department}
+              onChange={setDepartment}
+              placeholder="Obodonlashtirish bo'limi"
+              list={fid('dept-list')}
+              autoComplete="off"
+            />
+            <datalist id={fid('dept-list')}>
+              {(departments.data ?? []).map((d) => (
+                <option key={d.id} value={d.name} />
+              ))}
+            </datalist>
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field id={fid('start')} label="Ish boshlanishi" error={tried && !hoursOk ? 'Boshlanish tugashdan oldin' : undefined}>
+              <input
+                id={fid('start')}
+                type="time"
+                value={workStart}
+                onChange={(e) => setWorkStart(e.target.value)}
+                className={cn('h-11 w-full rounded-xl border bg-surface-2 px-4 text-sm tabular-nums text-ink outline-none focus:bg-surface', tried && !hoursOk ? 'border-danger' : 'border-line focus:border-primary-300')}
+              />
+            </Field>
+            <Field id={fid('end')} label="Ish tugashi" hint="Kechikish shu bo'yicha">
+              <input
+                id={fid('end')}
+                type="time"
+                value={workEnd}
+                onChange={(e) => setWorkEnd(e.target.value)}
+                className={cn('h-11 w-full rounded-xl border bg-surface-2 px-4 text-sm tabular-nums text-ink outline-none focus:bg-surface', tried && !hoursOk ? 'border-danger' : 'border-line focus:border-primary-300')}
+              />
             </Field>
           </div>
         </Section>

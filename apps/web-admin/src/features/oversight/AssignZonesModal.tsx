@@ -13,7 +13,13 @@ import type { OversightRow } from './useOversight';
  * Nazorat jadvalida "Tashqarida" deb ko'rsatiladi. Hech biri tanlanmasa —
  * butun tuman hisoblanadi.
  */
-export function AssignZonesModal({ row, onClose }: { row: OversightRow | null; onClose: () => void }) {
+export function AssignZonesModal({
+  row,
+  onClose,
+}: {
+  row: Pick<OversightRow, 'employeeId' | 'fullName' | 'assignedMahallaCodes'> | null;
+  onClose: () => void;
+}) {
   const { data: mahallas, isLoading } = useMahallas();
   const assign = useAssignZones();
 

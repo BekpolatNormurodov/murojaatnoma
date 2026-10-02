@@ -1,6 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsArray, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 /**
  * Admin create/edit of an employee (person) straight from the web-admin Nazorat
@@ -70,4 +82,73 @@ export class UpsertEmployeeDto {
   @IsArray()
   @IsString({ each: true })
   assignedMahallaCodes?: string[];
+
+  @ApiPropertyOptional({ example: 'Obodonlashtirish bo‘limi', description: "Bo'lim nomi (yo'q bo'lsa yaratiladi; bo'sh = bo'limsiz)" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  department?: string;
+
+  @ApiPropertyOptional({ example: '09:00' })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Ish boshlanishi HH:MM (masalan 09:00)' })
+  workStartTime?: string;
+
+  @ApiPropertyOptional({ example: '18:00' })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Ish tugashi HH:MM (masalan 18:00)' })
+  workEndTime?: string;
+
+  @ApiPropertyOptional({ example: 41.311081, description: "Shaxsiy ofis nuqtasi (bo'sh = umumiy ofis)" })
+  @IsOptional()
+  @IsLatitude()
+  officeLat?: number | null;
+
+  @ApiPropertyOptional({ example: 69.240562 })
+  @IsOptional()
+  @IsLongitude()
+  officeLng?: number | null;
+
+  @ApiPropertyOptional({ example: 200 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(30)
+  @Max(5000)
+  officeRadiusM?: number | null;
+}
+
+/** Ishdan bo'shatish (arxivga) — sabab ixtiyoriy, lekin tavsiya etiladi. */
+export class ArchiveEmployeeDto {
+  @ApiPropertyOptional({ example: "O'z xohishi bilan ishdan bo'shadi" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string;
+}
+
+/** Xodim profilidagi murojaatlar filtri. */
+export class EmployeeMurojaatQueryDto {
+  @ApiPropertyOptional({ enum: ['all', 'assigned', 'answered', 'resolved'] })
+  @IsOptional()
+  @Matches(/^(all|assigned|answered|resolved)$/)
+  scope?: 'all' | 'assigned' | 'answered' | 'resolved';
+
+  @ApiPropertyOptional({ enum: ['NEW', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'] })
+  @IsOptional()
+  @Matches(/^(NEW|IN_PROGRESS|RESOLVED|REJECTED)$/)
+  status?: string;
+
+  @ApiPropertyOptional({ enum: ['ARIZA', 'SHIKOYAT'] })
+  @IsOptional()
+  @Matches(/^(ARIZA|SHIKOYAT)$/)
+  kind?: string;
+
+  @ApiPropertyOptional({ example: 30, description: 'Oxirgi N kun (bo‘sh = hammasi)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(3650)
+  days?: number;
 }

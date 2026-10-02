@@ -703,6 +703,65 @@ export class AttendanceService {
   }
 
   /**
+   * One employee's day-by-day attendance for the last [days] days, newest
+   * first — the web-admin employee profile ("Davomat" tab). Same pairing and
+   * calendar rules (leave, day off) as `me()`, scan photos included.
+   */
+  async history(employeeId: string, days = 30): Promise<MeWeekEntry[]> {
+    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!employee) {
+      throw new NotFoundException(`Employee ${employeeId} not found`);
+    }
+    const span = Math.min(Math.max(days, 1), 92);
+    const today = new Date();
+    const start = new Date(today);
+    start.setDate(start.getDate() - (span - 1));
+    const { from } = dayRange(start);
+    const { to } = dayRange(today);
+    const [records, leaves] = await Promise.all([
+      this.prisma.attendanceRecord.findMany({
+        where: { employeeId, recordedAt: { gte: from, lte: to } },
+        orderBy: { recordedAt: 'asc' },
+      }),
+      this.approvedLeaves(from, to, employeeId),
+    ]);
+    const wp = this.workplaceOf(employee);
+    const byDay = new Map<string, AttendanceRecord[]>();
+    for (const record of records) {
+      const key = formatLocalDate(record.recordedAt);
+      byDay.set(key, [...(byDay.get(key) ?? []), record]);
+    }
+    const out: MeWeekEntry[] = [];
+    for (let offset = 0; offset < span; offset += 1) {
+      const day = new Date(today);
+      day.setDate(day.getDate() - offset);
+      const key = formatLocalDate(day);
+      const { status, checkIn, checkOut, hoursWorked } = this.applyCalendar(
+        this.buildDayEntry(byDay.get(key) ?? [], wp),
+        {
+          isWorkday: this.isWorkday(day),
+          leave: this.leaveOn(leaves, employeeId, day, employee.workStartTime),
+        },
+      );
+      out.push({
+        date: key,
+        status,
+        checkIn: checkIn
+          ? {
+              time: checkIn.time,
+              isLate: checkIn.isLate,
+              lateMinutes: checkIn.lateMinutes,
+              photoUrl: checkIn.photoUrl,
+            }
+          : null,
+        checkOut,
+        hoursWorked,
+      });
+    }
+    return out;
+  }
+
+  /**
    * Pairs one employee's CHECK_IN/CHECK_OUT records for a single local day
    * into a status + hours-worked summary. `dayRecords` must already be
    * scoped to that one day, sorted ascending by `recordedAt` (shared by

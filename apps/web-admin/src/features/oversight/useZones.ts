@@ -28,6 +28,7 @@ export function useAssignZones() {
       api.patch(`/employees/${employeeId}`, { assignedMahallaCodes: mahallaCodes }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['oversight'] });
+      void qc.invalidateQueries({ queryKey: ['employee-profile'] });
     },
   });
 }

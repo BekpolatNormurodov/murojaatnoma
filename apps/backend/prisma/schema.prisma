@@ -113,6 +113,10 @@ model Employee {
   district      String
   role          EmployeeRole @default(EMPLOYEE)
   isActive      Boolean      @default(true)
+  // Ishdan bo'shatilgan (arxiv): isActive=false + qachon/nega. Ma'lumoti
+  // (davomat, murojaatlar, oylik) saqlanadi; "Tiklash" bilan qaytadi.
+  archivedAt    DateTime?
+  archiveReason String?
   avatarUrl     String?
   email         String?      @unique
   // Employee login credentials (worker-app): employees sign in with

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Add,
   CloseCircle,
@@ -14,6 +15,9 @@ import {
   TickCircle,
   Timer1,
   Trash,
+  UserRemove,
+  ArchiveBook,
+  Refresh2,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -31,8 +35,9 @@ import { usePermissions } from '@/shared/lib/permissions';
 import { useOversight, type OversightRow } from './useOversight';
 import { AssignZonesModal } from './AssignZonesModal';
 import { EmployeeFormModal } from './EmployeeFormModal';
-import { EmployeeStatsDrawer } from './EmployeeStatsDrawer';
-import { useDeleteEmployee } from './useEmployeeMutations';
+import { ArchiveEmployeeDialog } from './ArchiveEmployeeDialog';
+import { usePurgeEmployee, useRestoreEmployee } from './useEmployeeMutations';
+import { useArchivedEmployees, type ArchivedEmployee } from './useEmployeeProfile';
 
 const MONTH_NAMES = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -111,21 +116,38 @@ export function OversightPage() {
   const PAGE_SIZE = 12;
   const [assigning, setAssigning] = useState<OversightRow | null>(null);
   const [empModal, setEmpModal] = useState<{ open: boolean; row: OversightRow | null }>({ open: false, row: null });
-  const [detail, setDetail] = useState<OversightRow | null>(null);
-  const [deleting, setDeleting] = useState<OversightRow | null>(null);
+  const [archiving, setArchiving] = useState<{ id: string; fullName: string } | null>(null);
+  const [purging, setPurging] = useState<ArchivedEmployee | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const { isSuperAdmin } = usePermissions();
-  const del = useDeleteEmployee();
+  const { isSuperAdmin, canWrite } = usePermissions();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Faol xodimlar yoki arxiv (ishdan bo'shatilganlar) — ?view=archive.
+  const view: 'active' | 'archive' = searchParams.get('view') === 'archive' ? 'archive' : 'active';
+  const archivedQuery = useArchivedEmployees();
+  const archivedRows = archivedQuery.data ?? [];
+  const purge = usePurgeEmployee();
+  const restore = useRestoreEmployee();
+  const openProfile = (id: string) => navigate(`/oversight/${encodeURIComponent(id)}`);
 
-  async function confirmDelete() {
-    if (!deleting) return;
-    const name = deleting.fullName;
+  async function confirmPurge() {
+    if (!purging) return;
+    const name = purging.fullName;
     try {
-      await del.mutateAsync(deleting.employeeId);
-      setToast(`${name} o'chirildi`);
-      setDeleting(null);
+      await purge.mutateAsync(purging.employeeId);
+      setToast(`${name} butunlay o'chirildi`);
+      setPurging(null);
     } catch (err) {
       setToast(err instanceof Error ? err.message : "O'chirib bo'lmadi");
+    }
+  }
+
+  async function doRestore(a: ArchivedEmployee) {
+    try {
+      await restore.mutateAsync(a.employeeId);
+      setToast(`${a.fullName} qayta ishga tiklandi`);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Tiklab bo'lmadi");
     }
   }
 
@@ -211,7 +233,7 @@ export function OversightPage() {
         title="Xodimlar boshqaruvi"
         subtitle="Har bir xodim: yuz, keldi-ketdi, ish hududi, oylik va premya — nazorat va boshqaruv"
         action={
-          isSuperAdmin ? (
+          canWrite ? (
             <Button onClick={() => setEmpModal({ open: true, row: null })} className="w-full sm:w-auto">
               <Add size={18} /> Xodim qo'shish
             </Button>
@@ -219,7 +241,57 @@ export function OversightPage() {
         }
       />
 
-      {isError ? (
+      {/* Faol | Arxiv */}
+      <div className="mb-5 inline-flex rounded-xl border border-line bg-surface-2 p-1" role="tablist" aria-label="Xodimlar">
+        {(
+          [
+            ['active', 'Faol xodimlar', data?.summary.total],
+            ['archive', 'Arxiv', archivedRows.length],
+          ] as const
+        ).map(([v, label, count]) => (
+          <button
+            key={v}
+            role="tab"
+            aria-selected={view === v}
+            onClick={() =>
+              setSearchParams(
+                (prev) => {
+                  const next = new URLSearchParams(prev);
+                  if (v === 'archive') next.set('view', 'archive');
+                  else next.delete('view');
+                  return next;
+                },
+                { replace: true },
+              )
+            }
+            className={cn(
+              'flex items-center gap-2 rounded-[10px] px-3.5 py-2 text-[13px] font-medium transition-colors',
+              view === v ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+            )}
+          >
+            {v === 'archive' ? <ArchiveBook size={16} variant={view === v ? 'Bulk' : 'Linear'} /> : <Profile2User size={16} variant={view === v ? 'Bulk' : 'Linear'} />}
+            {label}
+            {count != null && (
+              <span className="rounded-full bg-surface-2 px-1.5 text-[11px] tabular-nums text-ink-muted">{count}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {view === 'archive' ? (
+        <ArchiveList
+          rows={archivedRows}
+          loading={archivedQuery.isLoading}
+          canWrite={canWrite}
+          canPurge={isSuperAdmin}
+          restoringId={restore.isPending ? restore.variables : undefined}
+          onOpen={(a) => openProfile(a.employeeId)}
+          onRestore={doRestore}
+          onPurge={setPurging}
+        />
+      ) : null}
+
+      {view === 'archive' ? null : isError ? (
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
@@ -324,9 +396,9 @@ export function OversightPage() {
                       key={r.employeeId}
                       row={r}
                       onAssign={() => setAssigning(r)}
-                      onDetail={() => setDetail(r)}
-                      onEdit={isSuperAdmin ? () => setEmpModal({ open: true, row: r }) : undefined}
-                      onDelete={isSuperAdmin ? () => setDeleting(r) : undefined}
+                      onDetail={() => openProfile(r.employeeId)}
+                      onEdit={canWrite ? () => setEmpModal({ open: true, row: r }) : undefined}
+                      onDelete={canWrite ? () => setArchiving({ id: r.employeeId, fullName: r.fullName }) : undefined}
                     />
                   ))}
                 </div>
@@ -355,28 +427,26 @@ export function OversightPage() {
         onClose={() => setEmpModal({ open: false, row: null })}
         onDone={(msg) => setToast(msg)}
       />
-      <EmployeeStatsDrawer
-        employeeId={detail?.employeeId ?? null}
-        fullName={detail?.fullName}
-        position={detail?.position}
-        avatarUrl={detail?.avatarUrl}
-        onClose={() => setDetail(null)}
+      <ArchiveEmployeeDialog
+        employee={archiving}
+        onClose={() => setArchiving(null)}
+        onDone={(msg) => setToast(msg)}
       />
       <ConfirmDialog
-        open={!!deleting}
-        onClose={() => (del.isPending ? undefined : setDeleting(null))}
-        onConfirm={confirmDelete}
+        open={!!purging}
+        onClose={() => (purge.isPending ? undefined : setPurging(null))}
+        onConfirm={confirmPurge}
         tone="danger"
         icon={Trash}
-        title="Xodimni o'chirish"
+        title="Butunlay o'chirish"
         message={
           <>
-            <span className="font-semibold text-ink">{deleting?.fullName}</span> butunlay o'chiriladi —
-            davomat, lokatsiya va oylik tarixi bilan birga. Bu amalni ortga qaytarib bo'lmaydi.
+            <span className="font-semibold text-ink">{purging?.fullName}</span> davomat, lokatsiya va yuz
+            ma'lumotlari bilan birga o'chiriladi. Murojaatlari qoladi (mas'ulsiz). Bu amalni ortga qaytarib bo'lmaydi.
           </>
         }
-        confirmLabel="O'chirish"
-        loading={del.isPending}
+        confirmLabel="Butunlay o'chirish"
+        loading={purge.isPending}
       />
       {toast && (
         // z-[70]: above modals (z-50) — a toast fired while a modal is still
@@ -414,7 +484,7 @@ function OversightCard({
       <div className="flex items-start gap-3">
         <button
           onClick={onDetail}
-          title="Batafsil — davr bo'yicha soat, kechikish va statistika"
+          title="Profil — davomat, murojaatlar, oylik"
           className="group flex min-w-0 flex-1 items-start gap-3 text-left"
         >
           <Avatar name={row.fullName} src={row.avatarUrl ?? undefined} size={44} />
@@ -432,7 +502,7 @@ function OversightCard({
         {(onEdit || onDelete) && (
           <div className="-mr-1 -mt-1 flex shrink-0 items-center">
             {onEdit && <RowAction icon={Edit2} label="Tahrirlash" onClick={onEdit} />}
-            {onDelete && <RowAction icon={Trash} label="O'chirish" onClick={onDelete} danger />}
+            {onDelete && <RowAction icon={UserRemove} label="Ishdan bo'shatish" onClick={onDelete} danger />}
           </div>
         )}
       </div>
@@ -545,5 +615,87 @@ function RowAction({
     >
       <Icon size={17} variant="Linear" />
     </button>
+  );
+}
+
+/** Ishdan bo'shatilganlar: kim, qachon, nega — tiklash yoki butunlay o'chirish. */
+function ArchiveList({
+  rows,
+  loading,
+  canWrite,
+  canPurge,
+  restoringId,
+  onOpen,
+  onRestore,
+  onPurge,
+}: {
+  rows: ArchivedEmployee[];
+  loading: boolean;
+  canWrite: boolean;
+  canPurge: boolean;
+  restoringId?: string;
+  onOpen: (a: ArchivedEmployee) => void;
+  onRestore: (a: ArchivedEmployee) => void;
+  onPurge: (a: ArchivedEmployee) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-[120px]" />
+        ))}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return (
+      <Card className="flex flex-col items-center gap-2 p-14 text-center">
+        <ArchiveBook size={40} variant="Bulk" className="text-ink-muted" />
+        <p className="font-semibold text-ink">Arxiv bo'sh</p>
+        <p className="max-w-sm text-sm text-ink-muted">
+          Ishdan bo'shatilgan xodimlar shu yerda saqlanadi — tarixi o'chmaydi, istalgan vaqtda qayta tiklash mumkin.
+        </p>
+      </Card>
+    );
+  }
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {rows.map((a) => (
+        <div key={a.employeeId} className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-4">
+          <button onClick={() => onOpen(a)} className="group flex min-w-0 items-start gap-3 text-left">
+            <span className="grayscale">
+              <Avatar name={a.fullName} src={a.avatarUrl ?? undefined} size={44} />
+            </span>
+            <span className="min-w-0">
+              <span className="line-clamp-2 text-[14.5px] font-semibold text-ink group-hover:text-primary-700">{a.fullName}</span>
+              <span className="mt-0.5 block truncate text-[12px] text-ink-muted">
+                {a.position}
+                {a.department ? ` · ${a.department}` : ''}
+              </span>
+            </span>
+          </button>
+          <div className="rounded-xl bg-surface-2 px-3 py-2 text-[12px] text-ink-soft">
+            <span className="font-medium text-ink">{new Date(a.archivedAt).toLocaleDateString('uz-UZ')}</span> da ishdan
+            bo'shatilgan
+            {a.archiveReason && <span className="mt-0.5 block text-ink-muted">Sabab: {a.archiveReason}</span>}
+          </div>
+          {(canWrite || canPurge) && (
+            <div className="mt-auto flex gap-2">
+              {canWrite && (
+                <Button variant="secondary" className="flex-1" onClick={() => onRestore(a)} disabled={restoringId === a.employeeId}>
+                  {restoringId === a.employeeId ? <RotateRight size={16} className="animate-spin" /> : <Refresh2 size={16} />}
+                  Tiklash
+                </Button>
+              )}
+              {canPurge && (
+                <Button variant="ghost" onClick={() => onPurge(a)} aria-label={`${a.fullName} — butunlay o'chirish`} title="Butunlay o'chirish">
+                  <Trash size={16} className="text-danger" />
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
