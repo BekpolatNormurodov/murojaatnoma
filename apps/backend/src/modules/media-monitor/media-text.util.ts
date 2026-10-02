@@ -53,7 +53,7 @@ export interface KeywordMatch {
  */
 export function stripHandles(s: string): string {
   return s
-    .replace(/(?:https?:\/\/)?(?:t\.me|telegram\.me|instagram\.com|youtube\.com\/@)\/?[^\s)]*/gi, ' ')
+    .replace(/(?:https?:\/\/)?(?:t\.me|telegram\.me|instagram\.com|(?:www\.|m\.)?facebook\.com|fb\.com|youtube\.com\/@)\/?[^\s)]*/gi, ' ')
     .replace(/(^|[^\w])@[A-Za-z][\w.]{2,}/g, '$1 ');
 }
 

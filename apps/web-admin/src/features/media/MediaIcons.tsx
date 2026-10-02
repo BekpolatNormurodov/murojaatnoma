@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Global, Instagram, Youtube } from 'iconsax-react';
+import { Facebook, Global, Instagram, Youtube } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
 import type { MediaItem } from './api';
 import { PLATFORM_META, outletDomain } from './meta';
@@ -20,6 +20,9 @@ export function WebIcon({ size = 18, className }: IconProps) {
 }
 export function YoutubeIcon({ size = 18, className }: IconProps) {
   return <Youtube size={size} variant="Bold" className={className} color="currentColor" />;
+}
+export function FacebookIcon({ size = 18, className }: IconProps) {
+  return <Facebook size={size} variant="Bold" className={className} color="currentColor" />;
 }
 export function InstagramIcon({ size = 18, className }: IconProps) {
   return <Instagram size={size} variant="Bold" className={className} color="currentColor" />;

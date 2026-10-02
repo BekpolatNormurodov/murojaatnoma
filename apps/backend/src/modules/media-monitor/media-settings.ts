@@ -68,6 +68,12 @@ export interface MediaSettings {
   cityInstagramAccounts: string[];
   /** Toshkent viloyati hokimligi / region accounts — every post counts for the region filter. */
   regionInstagramAccounts: string[];
+  /** Public Facebook Pages (Graph API, needs Meta's Page Public Content Access) — same roles as Instagram. */
+  facebookPages: string[];
+  officialFacebookPages: string[];
+  ownFacebookPages: string[];
+  cityFacebookPages: string[];
+  regionFacebookPages: string[];
   /** Google News search query (covers every outlet Google indexes). */
   googleNewsQuery: string;
   /** Items below this relevance are kept but hidden from the default view. */
@@ -79,7 +85,7 @@ export interface MediaSettings {
 }
 
 /** Bump when default sources are added; saved configs then receive the new ones once. */
-export const SOURCES_VERSION = 6;
+export const SOURCES_VERSION = 7;
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   keywords: [
@@ -271,6 +277,19 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   ownInstagramAccounts: ['m.ulugbekhokimiyat'],
   cityInstagramAccounts: ['toshshaharhokimlik'],
   regionInstagramAccounts: ['toshvilhokimlik'],
+  // Facebook Pages as each outlet / agency links them from its own site or gov.uz page (2026-10-02).
+  facebookPages: [
+    'kunuznews', 'daryouz.rasmiy', 'gazetauzb', 'PodrobnoUzbekistan', 'Repost.uz', 'nova24uz', 'novostiuzbekistana',
+    'uznews.uz', 'spotuz', 'xabar.uz', 'zaminuz', 'anhor.uz', 'UzDaily.uz', 'UzReport',
+  ],
+  officialFacebookPages: [
+    'Mirziyoyev', 'uzauz', 'iiv.uz', 'FVV.Uzbekiston', 'Toshkenthokimligi', 'toshvilhokimiyat', 'minstroyuz',
+    'energetikavazirligi', 'ecogovuz', 'kadastr.uz', 'Soliqpressa', 'yoshlaragentligirasmiy', 'ssvuz', 'uzedu1',
+    'xalqsuzi.uz', 'yuz.uzNews',
+  ],
+  ownFacebookPages: ['Hokimiyat.MirzoUlugbek'],
+  cityFacebookPages: ['Toshkenthokimligi'],
+  regionFacebookPages: ['toshvilhokimiyat'],
   googleNewsQuery:
     '"Mirzo Ulug\'bek tumani" OR "Мирзо-Улугбекский район" OR "Мирзо-Улугбекском районе" OR "Mirzo Ulug\'bek hokimligi"',
   minRelevance: 50,
@@ -316,6 +335,11 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     ownInstagramAccounts: uniq((s.ownInstagramAccounts ?? d.ownInstagramAccounts).map(cleanHandle)),
     cityInstagramAccounts: uniq((s.cityInstagramAccounts ?? d.cityInstagramAccounts).map(cleanHandle)),
     regionInstagramAccounts: uniq((s.regionInstagramAccounts ?? d.regionInstagramAccounts).map(cleanHandle)),
+    facebookPages: uniq((s.facebookPages ?? d.facebookPages).map(cleanHandle)),
+    officialFacebookPages: uniq((s.officialFacebookPages ?? d.officialFacebookPages).map(cleanHandle)),
+    ownFacebookPages: uniq((s.ownFacebookPages ?? d.ownFacebookPages).map(cleanHandle)),
+    cityFacebookPages: uniq((s.cityFacebookPages ?? d.cityFacebookPages).map(cleanHandle)),
+    regionFacebookPages: uniq((s.regionFacebookPages ?? d.regionFacebookPages).map(cleanHandle)),
     googleNewsQuery: (s.googleNewsQuery ?? d.googleNewsQuery).trim(),
     minRelevance: clamp(s.minRelevance ?? d.minRelevance, 0, 100),
     aiEnabled: s.aiEnabled === true,
@@ -353,6 +377,11 @@ export function upgradeSources(s: MediaSettings): MediaSettings | null {
     ownInstagramAccounts: addNew(s.ownInstagramAccounts, d.ownInstagramAccounts),
     cityInstagramAccounts: addNew(s.cityInstagramAccounts, d.cityInstagramAccounts),
     regionInstagramAccounts: addNew(s.regionInstagramAccounts, d.regionInstagramAccounts),
+    facebookPages: addNew(s.facebookPages, d.facebookPages),
+    officialFacebookPages: addNew(s.officialFacebookPages, d.officialFacebookPages),
+    ownFacebookPages: addNew(s.ownFacebookPages, d.ownFacebookPages),
+    cityFacebookPages: addNew(s.cityFacebookPages, d.cityFacebookPages),
+    regionFacebookPages: addNew(s.regionFacebookPages, d.regionFacebookPages),
     sourcesVersion: SOURCES_VERSION,
   };
 }
@@ -370,7 +399,7 @@ export function cleanHandle(h: string): string {
   return h
     .trim()
     .replace(/^https?:\/\//i, '')
-    .replace(/^(www\.)?(t\.me|telegram\.me|instagram\.com)\/(s\/)?/i, '')
+    .replace(/^(www\.|m\.)?(t\.me|telegram\.me|instagram\.com|facebook\.com|fb\.com)\/(s\/)?/i, '')
     .replace(/^@/, '')
     .replace(/[/?#].*$/, '');
 }

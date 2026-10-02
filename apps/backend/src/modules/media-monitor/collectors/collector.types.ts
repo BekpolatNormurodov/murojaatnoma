@@ -1,4 +1,4 @@
-export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram';
+export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram' | 'facebook';
 
 /** One post/article as a collector found it, before keyword matching. */
 export interface RawMediaItem {

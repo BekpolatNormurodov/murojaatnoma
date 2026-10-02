@@ -1,6 +1,6 @@
 import { Buildings2, EmojiHappy, EmojiNormal, EmojiSad, Location, Map1, type Icon } from 'iconsax-react';
 import type { MediaArea, MediaItem, MediaPlatform, MediaSentiment } from './api';
-import { InstagramIcon, TelegramIcon, WebIcon, YoutubeIcon } from './MediaIcons';
+import { FacebookIcon, InstagramIcon, TelegramIcon, WebIcon, YoutubeIcon } from './MediaIcons';
 
 interface PlatformMeta {
   label: string;
@@ -16,9 +16,10 @@ export const PLATFORM_META: Record<MediaPlatform, PlatformMeta> = {
   telegram: { label: 'Telegram', color: '#229ED9', tile: 'bg-sky-50 text-[#229ED9] dark:bg-sky-500/15', Icon: TelegramIcon },
   youtube: { label: 'YouTube', color: '#FF0033', tile: 'bg-red-50 text-[#FF0033] dark:bg-red-500/15', Icon: YoutubeIcon },
   instagram: { label: 'Instagram', color: '#E1306C', tile: 'bg-pink-50 text-[#E1306C] dark:bg-pink-500/15', Icon: InstagramIcon },
+  facebook: { label: 'Facebook', color: '#1877F2', tile: 'bg-blue-50 text-[#1877F2] dark:bg-blue-500/15', Icon: FacebookIcon },
 };
 
-export const PLATFORMS: MediaPlatform[] = ['web', 'telegram', 'youtube', 'instagram'];
+export const PLATFORMS: MediaPlatform[] = ['web', 'telegram', 'youtube', 'instagram', 'facebook'];
 
 export const SENTIMENT_META: Record<
   MediaSentiment,

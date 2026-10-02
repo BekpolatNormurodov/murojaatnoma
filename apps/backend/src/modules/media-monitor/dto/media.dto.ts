@@ -23,7 +23,7 @@ export type { MediaArea };
 
 export const MEDIA_PERIODS = ['24h', '7d', '30d', 'all'] as const;
 export type MediaPeriod = (typeof MEDIA_PERIODS)[number];
-export const MEDIA_PLATFORMS = ['web', 'telegram', 'youtube', 'instagram'] as const;
+export const MEDIA_PLATFORMS = ['web', 'telegram', 'youtube', 'instagram', 'facebook'] as const;
 export const MEDIA_SENTIMENTS = ['positive', 'neutral', 'negative'] as const;
 export const MEDIA_STATUSES = ['new', 'seen', 'important', 'hidden'] as const;
 
@@ -292,6 +292,26 @@ export class UpdateMediaSettingsDto {
   @ApiPropertyOptional({ type: [String], description: 'Toshkent viloyati hokimligi akkauntlari' })
   @WordList()
   regionInstagramAccounts?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'OAV Facebook sahifalari' })
+  @WordList()
+  facebookPages?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Davlat idoralari Facebook sahifalari («Rasmiy»)' })
+  @WordList()
+  officialFacebookPages?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Tuman hokimligi Facebook sahifasi' })
+  @WordList()
+  ownFacebookPages?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent shahri hokimligi sahifalari' })
+  @WordList()
+  cityFacebookPages?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent viloyati hokimligi sahifalari' })
+  @WordList()
+  regionFacebookPages?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

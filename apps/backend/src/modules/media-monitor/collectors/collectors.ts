@@ -610,3 +610,121 @@ export async function collectInstagram(
   await Promise.all(Array.from({ length: Math.min(4, list.length) }, worker));
   return { results, pause: !!stop };
 }
+
+interface FbPost {
+  id: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+  full_picture?: string;
+}
+
+/** Graph API "this app may not read Pages it does not manage" — Page Public Content Access is missing. */
+const FB_NO_ACCESS = new Set([10, 200]);
+const FB_NO_ACCESS_PAUSE_MS = 24 * 3_600_000;
+const FB_RATE_PAUSE_MS = 3_600_000;
+
+export interface FacebookRun {
+  results: SourceRunResult[];
+  /** > 0: rest this long (missing permission, rate limit, dead token). */
+  pauseMs: number;
+}
+
+function fbItem(p: FbPost, source: string, sourceName: string, now: Date, role: Partial<IgAccount>): RawMediaItem | null {
+  const text = (p.message ?? '').trim();
+  if (!text) return null; // photo-only posts: nothing to match or show
+  const firstLine = meaningfulLine(text) ?? text.split('\n').find((l) => l.trim()) ?? '';
+  return {
+    source,
+    sourceName,
+    platform: 'facebook',
+    externalId: p.id,
+    url: p.permalink_url ?? `https://www.facebook.com/${p.id}`,
+    title: firstLine.slice(0, 160) || 'Facebook post',
+    text,
+    imageUrl: p.full_picture,
+    author: sourceName,
+    publishedAt: parseFeedDate(p.created_time, now),
+    official: role.official === true || role.own === true,
+    alwaysRelevant: role.own === true,
+  };
+}
+
+/**
+ * Public Facebook Pages via the Graph API (`/{page}?fields=name,posts{...}`,
+ * one call per Page), with the same Meta token as Instagram. Reading Pages the
+ * token does not manage needs Meta's "Page Public Content Access" (App
+ * Review): until it is granted the first call says so, nothing else is sent,
+ * and the caller waits a day before asking again.
+ */
+export async function collectFacebook(
+  cfg: { token: string; version: string },
+  pages: IgAccount[],
+  now: Date,
+): Promise<FacebookRun> {
+  const row = (key: string, name: string): SourceRunResult => ({ key, name, platform: 'facebook', items: [] });
+  if (!cfg.token) return { results: [{ ...row('facebook', 'Facebook'), skipped: 'Meta tokeni kiritilmagan (INSTAGRAM_ACCESS_TOKEN)' }], pauseMs: 0 };
+  const list = pages.slice(0, 40);
+  if (!list.length) return { results: [], pauseMs: 0 };
+  const g = `https://graph.facebook.com/${cfg.version}`;
+  const tok = encodeURIComponent(cfg.token);
+  const results: SourceRunResult[] = [];
+  let stop: string | undefined;
+  let pauseMs = 0;
+
+  const readPage = async (a: IgAccount): Promise<SourceRunResult> => {
+    const key = `fb:${a.handle.toLowerCase()}`;
+    const r = row(key, a.handle);
+    try {
+      const fields = 'name,username,posts.limit(10){id,message,created_time,permalink_url,full_picture}';
+      const res = await fetchJson<{ name?: string; username?: string; posts?: { data?: FbPost[] } }>(
+        `${g}/${encodeURIComponent(a.handle)}?fields=${encodeURIComponent(fields)}&access_token=${tok}`,
+      );
+      const name = res.name || a.handle;
+      r.name = name;
+      for (const p of res.posts?.data ?? []) {
+        const it = fbItem(p, key, name, now, a);
+        if (it) r.items.push(it);
+      }
+    } catch (err) {
+      if (err instanceof ApiError && FB_NO_ACCESS.has(err.code ?? -1)) {
+        stop = 'access';
+      } else if (err instanceof ApiError && (err.code === 190 || IG_RATE_CODES.has(err.code ?? -1))) {
+        stop = igErrorText(err);
+        pauseMs = FB_RATE_PAUSE_MS;
+      }
+      r.error =
+        err instanceof ApiError && err.code === 100
+          ? "Sahifa topilmadi yoki ochiq emas (manzil o'zgargan bo'lishi mumkin)"
+          : igErrorText(err);
+    }
+    return r;
+  };
+
+  // The first Page tells whether the app may read Pages at all.
+  const first = await readPage(list[0]);
+  if (stop === 'access') {
+    return {
+      results: [{
+        ...row('facebook', 'Facebook sahifalari'),
+        skipped: `Meta «Page Public Content Access» ruxsati kerak (App Review) — ${list.length} ta sahifa tayyor, ruxsat berilishi bilan o'qiladi`,
+      }],
+      pauseMs: FB_NO_ACCESS_PAUSE_MS,
+    };
+  }
+  results.push(first);
+  let next = 1;
+  const worker = async () => {
+    while (next < list.length) {
+      const a = list[next++];
+      if (stop) {
+        results.push({ ...row(`fb:${a.handle.toLowerCase()}`, a.handle), skipped: stop === 'access' ? 'Ruxsat yo‘q' : stop });
+        continue;
+      }
+      results.push(await readPage(a));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, list.length - 1) }, worker));
+  if (stop === 'access') pauseMs = FB_NO_ACCESS_PAUSE_MS;
+  return { results, pauseMs };
+}

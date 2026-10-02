@@ -13,7 +13,7 @@ import { MediaItem, MediaSentiment, Prisma } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MediaPlatform, RawMediaItem, SourceRunResult } from './collectors/collector.types';
-import type { IgAccount } from './collectors/collectors';
+import { collectFacebook, type IgAccount } from './collectors/collectors';
 import {
   collectGoogleNews,
   collectGoogleNewsOfficial,
@@ -97,6 +97,8 @@ const TG_DEEP_EVERY_MS = 3 * 3_600_000;
 const IG_EVERY_MS = 30 * 60_000;
 /** After a rate limit or a dead token Instagram rests this long. */
 const IG_PAUSE_MS = 60 * 60_000;
+/** Facebook Pages: ~30 Graph API calls, every 30 min like Instagram. */
+const FB_EVERY_MS = 30 * 60_000;
 /** History found by search (Telegram ?q=, YouTube search) — older posts still matter. */
 const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
 /** District-local channel posts without a keyword: visible, but below keyword hits. */
@@ -136,6 +138,11 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private igPausedUntil = 0;
   /** Health rows of the last Instagram pass — kept while the next one is not due. */
   private lastIgKeys: string[] = [];
+  private lastFbAt = 0;
+  private fbPausedUntil = 0;
+  private lastFbKeys: string[] = [];
+  /** True once Meta lets the app read Pages (Page Public Content Access). */
+  private fbReadable = false;
   private rescoredOnce = false;
   private gazetteer: { at: number; key: string; value: PlaceGazetteer } | null = null;
   private lastCleanupAt = 0;
@@ -212,6 +219,8 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         aiModel: c.anthropicApiKey ? c.aiModel : null,
         youtube: !!c.youtubeApiKey,
         instagram: !!c.instagramAccessToken,
+        // "Connected" only when Meta actually lets us read Pages.
+        facebook: !!c.instagramAccessToken && this.fbReadable,
       },
     };
   }
@@ -244,9 +253,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       dto.ownInstagramAccounts,
       dto.cityInstagramAccounts,
       dto.regionInstagramAccounts,
+      dto.facebookPages,
+      dto.officialFacebookPages,
+      dto.ownFacebookPages,
+      dto.cityFacebookPages,
+      dto.regionFacebookPages,
     ]) {
       for (const a of (list ?? []).map(cleanHandle)) {
-        if (!/^[A-Za-z0-9._]{1,30}$/.test(a)) throw new BadRequestException(`Instagram akkaunt nomi noto'g'ri: ${a}`);
+        if (!/^[A-Za-z0-9._-]{1,60}$/.test(a)) throw new BadRequestException(`Akkaunt / sahifa nomi noto'g'ri: ${a}`);
       }
     }
     // Saved from a form that showed the current defaults → nothing left to upgrade.
@@ -474,10 +488,12 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     } else if (!c.youtubeApiKey) {
       this.recordHealth({ key: 'youtube-search', name: 'YouTube qidiruv', platform: 'youtube', items: [], skipped: 'YOUTUBE_API_KEY kiritilmagan — faqat kanallar RSS' }, 0, now);
     }
-    const [fetched, ig] = await Promise.all([mapLimit(tasks, 8), this.collectIg(s, now)]);
-    const results = fetched.concat(ig);
+    const [fetched, ig, fb] = await Promise.all([mapLimit(tasks, 8), this.collectIg(s, now), this.collectFb(s, now)]);
+    const results = fetched.concat(ig, fb);
     // Forget sources that were removed from the settings.
-    const live = new Set(results.map((r) => r.key).concat('youtube-search', 'youtube-web', ...this.lastIgKeys));
+    const live = new Set(
+      results.map((r) => r.key).concat('youtube-search', 'youtube-web', ...this.lastIgKeys, ...this.lastFbKeys),
+    );
     for (const k of [...this.health.keys()]) if (!live.has(k)) this.health.delete(k);
     return results;
   }
@@ -503,6 +519,23 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     if (ids.size !== before) await this.saveHashtagIds(ids);
     if (run.pause) this.igPausedUntil = t + IG_PAUSE_MS;
     this.lastIgKeys = run.results.map((r) => r.key);
+    return run.results;
+  }
+
+  /**
+   * Facebook Pages with the same Meta token, every 30 min. Without Meta's
+   * Page Public Content Access the first call says so and the pass rests a day.
+   */
+  private async collectFb(s: MediaSettings, now: Date): Promise<SourceRunResult[]> {
+    const c = this.cfg;
+    const t = now.getTime();
+    if (c.instagramAccessToken && (t - this.lastFbAt < FB_EVERY_MS - 30_000 || t < this.fbPausedUntil)) return [];
+    this.lastFbAt = t;
+    const run = await collectFacebook({ token: c.instagramAccessToken, version: c.instagramGraphVersion }, uniqueFacebook(s), now);
+    if (run.pauseMs) this.fbPausedUntil = t + run.pauseMs;
+    this.lastFbKeys = run.results.map((r) => r.key);
+    // A single summary row = no token or no permission; per-Page rows = readable.
+    if (run.results.length) this.fbReadable = !run.results.some((r) => r.key === 'facebook');
     return run.results;
   }
 
@@ -854,7 +887,7 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
       official: 0,
       previous: prevTotal,
     };
-    const platforms: Record<string, number> = { web: 0, telegram: 0, youtube: 0, instagram: 0 };
+    const platforms: Record<string, number> = { web: 0, telegram: 0, youtube: 0, instagram: 0, facebook: 0 };
     const sources = new Map<string, { source: string; sourceName: string; platform: string; count: number; negative: number }>();
     const topics = new Map<string, { topic: string; count: number; negative: number; positive: number }>();
     for (const r of rows) {
@@ -1019,10 +1052,14 @@ function sourceRoles(s: MediaSettings): SourceRoles {
   const ig = (a: string) => `ig:${a.toLowerCase()}`;
   s.cityInstagramAccounts.forEach((a) => raise(city, ig(a), AREA_OWN_RELEVANCE));
   s.regionInstagramAccounts.forEach((a) => raise(region, ig(a), AREA_OWN_RELEVANCE));
+  const fb = (a: string) => `fb:${a.toLowerCase()}`;
+  s.cityFacebookPages.forEach((a) => raise(city, fb(a), AREA_OWN_RELEVANCE));
+  s.regionFacebookPages.forEach((a) => raise(region, fb(a), AREA_OWN_RELEVANCE));
   return {
     own: new Set([
       ...s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`),
       ...s.ownInstagramAccounts.map(ig),
+      ...s.ownFacebookPages.map(fb),
     ]),
     local: new Set(s.localTelegramChannels.map(tg)),
     city,
@@ -1155,21 +1192,29 @@ function uniqueYoutube(s: MediaSettings): { id: string; official: boolean; own: 
   return [...out.values()];
 }
 
-/** Each Instagram account once, with its strongest role (own > official > media). */
-function uniqueInstagram(s: MediaSettings): IgAccount[] {
+/**
+ * Each social account once, with its strongest role (own > official > media).
+ * Own and official first, so the hokimliklar are read even if the list is cut at 40.
+ */
+function uniqueSocial(own: string[], city: string[], region: string[], official: string[], media: string[]): IgAccount[] {
   const out = new Map<string, IgAccount>();
-  const put = (handle: string, official: boolean, own: boolean) => {
+  const put = (handle: string, isOfficial: boolean, isOwn: boolean) => {
     const k = handle.toLowerCase();
     const prev = out.get(k);
-    out.set(k, { handle, official: official || !!prev?.official, own: own || !!prev?.own });
+    out.set(k, { handle, official: isOfficial || !!prev?.official, own: isOwn || !!prev?.own });
   };
-  // Own and official first, so the hokimliklar are read even if the list is cut at 40.
-  s.ownInstagramAccounts.forEach((a) => put(a, true, true));
-  s.cityInstagramAccounts.forEach((a) => put(a, true, false));
-  s.regionInstagramAccounts.forEach((a) => put(a, true, false));
-  s.officialInstagramAccounts.forEach((a) => put(a, true, false));
-  s.instagramAccounts.forEach((a) => put(a, false, false));
+  own.forEach((a) => put(a, true, true));
+  [...city, ...region, ...official].forEach((a) => put(a, true, false));
+  media.forEach((a) => put(a, false, false));
   return [...out.values()];
+}
+
+function uniqueInstagram(s: MediaSettings): IgAccount[] {
+  return uniqueSocial(s.ownInstagramAccounts, s.cityInstagramAccounts, s.regionInstagramAccounts, s.officialInstagramAccounts, s.instagramAccounts);
+}
+
+function uniqueFacebook(s: MediaSettings): IgAccount[] {
+  return uniqueSocial(s.ownFacebookPages, s.cityFacebookPages, s.regionFacebookPages, s.officialFacebookPages, s.facebookPages);
 }
 
 /** Each Telegram handle once, with its strongest role (official > local > media). */
@@ -1194,7 +1239,7 @@ function nextQuarterHour(d: Date): Date {
 }
 
 function platformOrder(p: string): number {
-  return ['web', 'telegram', 'youtube', 'instagram'].indexOf(p);
+  return ['web', 'telegram', 'youtube', 'instagram', 'facebook'].indexOf(p);
 }
 
 /** Hourly (≤48h) or daily (Tashkent midnight) buckets, zero-filled. */

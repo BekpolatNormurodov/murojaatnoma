@@ -15,7 +15,7 @@ import { useRealtime } from '@/shared/realtime/RealtimeProvider';
  * refreshes instantly on the `media:update` socket event.
  */
 
-export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram';
+export type MediaPlatform = 'web' | 'telegram' | 'youtube' | 'instagram' | 'facebook';
 export type MediaSentiment = 'positive' | 'neutral' | 'negative';
 export type MediaStatus = 'new' | 'seen' | 'important' | 'hidden';
 export type MediaPeriod = '24h' | '7d' | '30d' | 'all';
@@ -200,6 +200,11 @@ export interface MediaSettings {
   ownInstagramAccounts: string[];
   cityInstagramAccounts: string[];
   regionInstagramAccounts: string[];
+  facebookPages: string[];
+  officialFacebookPages: string[];
+  ownFacebookPages: string[];
+  cityFacebookPages: string[];
+  regionFacebookPages: string[];
   googleNewsQuery: string;
   minRelevance: number;
   /** "AI tahlil" switch (needs ANTHROPIC_API_KEY on the server). */
@@ -211,7 +216,7 @@ export interface MediaSettings {
 export interface MediaSettingsView {
   settings: MediaSettings;
   defaults: MediaSettings;
-  integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean };
+  integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean; facebook?: boolean };
 }
 
 const PAGE = 20;

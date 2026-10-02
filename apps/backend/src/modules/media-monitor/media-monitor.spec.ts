@@ -664,3 +664,59 @@ describe('area-aware settings', () => {
     expect(digestByRules([], 24).headline).toContain('tuman haqida');
   });
 });
+
+describe('facebook pages collector', () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+  const json = (body: unknown, status = 200) =>
+    ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
+  const pages = [
+    { handle: 'Hokimiyat.MirzoUlugbek', official: true, own: true },
+    { handle: 'kunuznews', official: false, own: false },
+    { handle: 'gone.page', official: false, own: false },
+  ];
+
+  it('asks once and rests a day while Meta has not granted Page Public Content Access', async () => {
+    let calls = 0;
+    global.fetch = jest.fn(async () => {
+      calls++;
+      return json({ error: { message: "(#10) This endpoint requires the 'pages_read_engagement' permission or the 'Page Public Content Access' feature", code: 10 } }, 400);
+    }) as typeof fetch;
+    const { collectFacebook } = await import('./collectors/collectors');
+    const run = await collectFacebook({ token: 't', version: 'v24.0' }, pages, new Date());
+    expect(calls).toBe(1);
+    expect(run.pauseMs).toBe(24 * 3_600_000);
+    expect(run.results).toHaveLength(1);
+    expect(run.results[0]).toMatchObject({ key: 'facebook', platform: 'facebook' });
+    expect(run.results[0].skipped).toContain('Page Public Content Access');
+  });
+
+  it('reads each Page as its own source once access is granted', async () => {
+    global.fetch = jest.fn(async (url: string | URL | Request) => {
+      const u = decodeURIComponent(String(url));
+      if (u.includes('/gone.page?')) return json({ error: { message: 'Unsupported get request', code: 100 } }, 400);
+      if (u.includes('/Hokimiyat.MirzoUlugbek?')) {
+        return json({ name: "Mirzo Ulug'bek tumani hokimligi", posts: { data: [
+          { id: 'p1', message: '📌\nSayyor qabul o‘tkazildi', created_time: '2026-10-02T05:00:00+0000', permalink_url: 'https://facebook.com/p1' },
+          { id: 'p2', created_time: '2026-10-02T04:00:00+0000' }, // photo only — skipped
+        ] } });
+      }
+      return json({ name: 'Kun.uz', posts: { data: [{ id: 'k1', message: 'Toshkentda yomg‘ir', created_time: '2026-10-02T05:00:00+0000' }] } });
+    }) as typeof fetch;
+    const { collectFacebook } = await import('./collectors/collectors');
+    const run = await collectFacebook({ token: 't', version: 'v24.0' }, pages, new Date('2026-10-02T10:00:00Z'));
+    expect(run.pauseMs).toBe(0);
+    const own = run.results.find((r) => r.key === 'fb:hokimiyat.mirzoulugbek')!;
+    expect(own.items).toHaveLength(1);
+    expect(own.items[0]).toMatchObject({ platform: 'facebook', title: 'Sayyor qabul o‘tkazildi', official: true, alwaysRelevant: true });
+    expect(run.results.find((r) => r.key === 'fb:kunuznews')!.items[0]).toMatchObject({ url: 'https://www.facebook.com/k1', official: false });
+    expect(run.results.find((r) => r.key === 'fb:gone.page')!.error).toContain('topilmadi');
+  });
+
+  it('accepts facebook.com links as handles and ignores them as mentions', () => {
+    expect(cleanHandle('https://www.facebook.com/Toshkenthokimligi/')).toBe('Toshkenthokimligi');
+    expect(match("Batafsil: facebook.com/Hokimiyat.MirzoUlugbek").strong).toEqual([]);
+  });
+});

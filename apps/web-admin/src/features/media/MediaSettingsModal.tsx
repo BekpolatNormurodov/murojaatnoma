@@ -222,6 +222,23 @@ function SettingsForm({
               <TagInput value={draft.instagramHashtags} onChange={(v) => set('instagramHashtags', v)} disabled={!canEdit} prefix="#" />
             </Field>
           </Section>
+          <Section icon={<PLATFORM_META.facebook.Icon size={16} />} color={PLATFORM_META.facebook.color} title="Facebook sahifalari" note="O'sha Meta tokeni · Meta «Page Public Content Access» ruxsati bilan">
+            <Field label="Tuman hokimligi" hint="Har bir posti tumanga oid deb olinadi.">
+              <TagInput value={draft.ownFacebookPages ?? []} onChange={(v) => set('ownFacebookPages', v)} disabled={!canEdit} prefix="fb/" />
+            </Field>
+            <Field label="Rasmiy sahifalar" hint="Prezident, UzA, vazirliklar, hokimliklar — «Rasmiy» belgisi bilan, kalit so'z bo'yicha.">
+              <TagInput value={draft.officialFacebookPages ?? []} onChange={(v) => set('officialFacebookPages', v)} disabled={!canEdit} prefix="fb/" />
+            </Field>
+            <Field label="OAV sahifalari" hint="facebook.com/<nom> dagi nom yoki to'liq havola.">
+              <TagInput value={draft.facebookPages ?? []} onChange={(v) => set('facebookPages', v)} disabled={!canEdit} prefix="fb/" placeholder="sahifa nomi yoki facebook.com havola" />
+            </Field>
+            <Field label="Toshkent shahri hokimligi" hint="Har bir posti «Toshkent shahri» bo'limiga kiradi.">
+              <TagInput value={draft.cityFacebookPages ?? []} onChange={(v) => set('cityFacebookPages', v)} disabled={!canEdit} prefix="fb/" />
+            </Field>
+            <Field label="Toshkent viloyati hokimligi" hint="Har bir posti «Toshkent viloyati» bo'limiga kiradi.">
+              <TagInput value={draft.regionFacebookPages ?? []} onChange={(v) => set('regionFacebookPages', v)} disabled={!canEdit} prefix="fb/" />
+            </Field>
+          </Section>
           <Section icon={<SearchNormal1 size={16} />} color="#4285F4" title="Google News qidiruvi" note="Google indekslagan barcha nashrlar">
             <TextInput value={draft.googleNewsQuery} onChange={(v) => set('googleNewsQuery', v)} disabled={!canEdit} />
           </Section>
@@ -626,6 +643,20 @@ const KEY_GUIDES = [
       "Access Token Debugger → «Extend» (60 kun) yoki Business Settings → System user tokeni (muddatsiz)",
     ],
   },
+  {
+    id: 'facebook',
+    title: 'Facebook sahifalari',
+    icon: <PLATFORM_META.facebook.Icon size={18} />,
+    color: PLATFORM_META.facebook.color,
+    env: ['# Instagram bilan bir xil token — alohida kalit kerak emas'],
+    gives: "~30 ta ochiq Facebook sahifa postlari: hokimliklar, vazirliklar, OAV. Meta ruxsat bermaguncha kuniga bir marta tekshiriladi.",
+    steps: [
+      'developers.facebook.com → ilova → App Review → Permissions and Features',
+      "«Page Public Content Access» → Request (foydalanish maqsadi: hokimiyat uchun ommaviy OAV monitoringi)",
+      'Business Settings → Security Center → Business verification (tashkilot hujjatlari)',
+      "Ruxsat berilgach hech narsa o'zgartirish shart emas — keyingi o'qishda sahifalar tortiladi",
+    ],
+  },
 ] as const;
 
 function IntegrationsTab({
@@ -634,12 +665,17 @@ function IntegrationsTab({
   onAiChange,
   canEdit,
 }: {
-  integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean };
+  integrations: { ai: boolean; aiModel: string | null; youtube: boolean; instagram: boolean; facebook?: boolean };
   aiEnabled: boolean;
   onAiChange: (v: boolean) => void;
   canEdit: boolean;
 }) {
-  const connected: Record<string, boolean> = { ai: integrations.ai, youtube: integrations.youtube, instagram: integrations.instagram };
+  const connected: Record<string, boolean> = {
+    ai: integrations.ai,
+    youtube: integrations.youtube,
+    instagram: integrations.instagram,
+    facebook: !!integrations.facebook,
+  };
   const aiActive = aiEnabled && integrations.ai;
   return (
     <div className="space-y-4">
