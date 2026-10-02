@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Add, CloseCircle } from 'iconsax-react';
+import { TimePicker } from '@/shared/ui/DatePicker';
 import { Modal } from '@/shared/ui/Modal';
 import { Select } from '@/shared/ui/Select';
 import { Switch } from '@/shared/ui/Switch';
@@ -298,19 +299,9 @@ export function StaffFormModal({
               );
             })}
             <div className="ml-auto flex items-center gap-2">
-              <input
-                type="time"
-                value={scheduleStart}
-                onChange={(e) => setScheduleStart(e.target.value)}
-                className="h-10 rounded-xl border border-line bg-surface px-2 text-sm text-ink outline-none focus:border-primary-300"
-              />
+              <TimePicker value={scheduleStart} onChange={setScheduleStart} className="w-[118px]" ariaLabel="Ish boshlanishi" />
               <span className="text-ink-muted">—</span>
-              <input
-                type="time"
-                value={scheduleEnd}
-                onChange={(e) => setScheduleEnd(e.target.value)}
-                className="h-10 rounded-xl border border-line bg-surface px-2 text-sm text-ink outline-none focus:border-primary-300"
-              />
+              <TimePicker value={scheduleEnd} onChange={setScheduleEnd} className="w-[118px]" ariaLabel="Ish tugashi" />
             </div>
           </div>
         </Field>

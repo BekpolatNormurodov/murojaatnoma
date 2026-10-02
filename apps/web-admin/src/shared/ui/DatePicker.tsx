@@ -657,14 +657,18 @@ export function MonthPicker({
   );
 }
 
-// 07:00 dan 21:30 gacha 30 daqiqalik oraliqlar
-const TIME_SLOTS: string[] = [];
-for (let h = 7; h <= 21; h++) {
-  for (const m of [0, 30]) TIME_SLOTS.push(`${pad2(h)}:${pad2(m)}`);
+const DEFAULT_TIME_PRESETS = ['08:00', '08:30', '09:00', '13:00', '14:00', '17:00', '18:00'];
+
+/** Ro'yxat ichida tanlangan qatorni markazga suradi (sahifani/modalni emas). */
+function centerIn(container: HTMLElement | null, el: HTMLElement | null) {
+  if (!container || !el) return;
+  container.scrollTop = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
 }
 
 /**
- * Stillangan vaqt drop-down — native `type="time"` o'rniga.
+ * Stillangan vaqt tanlagich — native `type="time"` (brauzerning ko'k-oq
+ * ro'yxati) o'rniga. Soat va daqiqa alohida ustunlarda, tez tanlash
+ * tugmalari, katta ko'rinish; ekran chetida o'zi tekislanadi.
  * Qiymat formati: "HH:mm".
  */
 export function TimePicker({
@@ -672,78 +676,174 @@ export function TimePicker({
   onChange,
   block = false,
   className,
+  presets = DEFAULT_TIME_PRESETS,
+  minuteStep = 5,
+  placeholder = 'Vaqtni tanlang',
+  invalid = false,
+  id,
+  ariaLabel,
 }: {
   value: string;
   onChange: (value: string) => void;
   block?: boolean;
   className?: string;
+  /** Tez tanlash tugmalari ("HH:mm"). Bo'sh massiv — ko'rsatilmaydi. */
+  presets?: string[];
+  minuteStep?: number;
+  placeholder?: string;
+  invalid?: boolean;
+  id?: string;
+  ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-
-  const slots = useMemo(() => {
-    if (value && !TIME_SLOTS.includes(value)) {
-      return [...TIME_SLOTS, value].sort();
+  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open, 272);
+  const hoursRef = useRef<HTMLDivElement>(null);
+  const minutesRef = useRef<HTMLDivElement>(null);
+  // Pastda joy yetmasa (modal tagi, sahifa oxiri) — tepaga ochiladi.
+  const [openUp, setOpenUp] = useState(false);
+  const toggle = () => {
+    if (!open) {
+      const r = btnRef.current?.getBoundingClientRect();
+      setOpenUp(!!r && window.innerHeight - r.bottom < 360 && r.top > 360);
     }
-    return TIME_SLOTS;
-  }, [value]);
+    setOpen((o) => !o);
+  };
+
+  const [hh, mm] = /^\d{2}:\d{2}$/.test(value) ? value.split(':') : ['', ''];
+  // Arzon hisob — memo shart emas (React Compiler o'zi optimallashtiradi).
+  const minutes: string[] = [];
+  for (let m = 0; m < 60; m += minuteStep) minutes.push(pad2(m));
+  if (mm && !minutes.includes(mm)) minutes.push(mm);
+  minutes.sort();
+  const hours = Array.from({ length: 24 }, (_, h) => pad2(h));
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    // Ochilganda tanlangan soat/daqiqa ustun markazida ko'rinsin.
+    const t = window.setTimeout(() => {
+      centerIn(hoursRef.current, hoursRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null);
+      centerIn(minutesRef.current, minutesRef.current?.querySelector<HTMLElement>('[data-active="true"]') ?? null);
+    }, 0);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      window.clearTimeout(t);
+    };
   }, [open]);
+
+  const pick = (h: string, m: string, close: boolean) => {
+    onChange(`${h}:${m}`);
+    if (close) setOpen(false);
+  };
+
+  const cell = (active: boolean) =>
+    cn(
+      'flex h-9 w-full shrink-0 items-center justify-center rounded-lg text-[13.5px] font-semibold tabular-nums transition-colors',
+      active ? 'bg-primary-600 text-white shadow-sm' : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+    );
 
   return (
     <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
       <button
+        ref={btnRef}
+        id={id}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        aria-label={ariaLabel}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={toggle}
         className={cn(
-          'flex h-11 w-full items-center gap-2.5 rounded-xl border bg-surface px-3.5 text-sm font-medium outline-none transition-colors',
-          open ? 'border-primary-300 text-primary-700' : 'border-line text-ink-soft hover:bg-surface-2',
+          'flex h-11 w-full items-center gap-2.5 rounded-xl border bg-surface-2 px-3.5 text-sm outline-none transition-colors focus-visible:border-primary-300 focus-visible:bg-surface',
+          invalid
+            ? 'border-danger'
+            : open
+              ? 'border-primary-300 bg-surface'
+              : 'border-line hover:border-primary-200',
         )}
       >
         <Clock size={17} variant="Bulk" className={cn('shrink-0', open ? 'text-primary-500' : 'text-ink-muted')} />
-        <span className={cn('flex-1 truncate text-left', !value && 'text-ink-muted')}>
-          {value || 'Vaqtni tanlang'}
+        <span className={cn('flex-1 truncate text-left font-semibold tabular-nums', value ? 'text-ink' : 'font-normal text-ink-muted')}>
+          {value || placeholder}
         </span>
+        <ArrowLeft2
+          size={14}
+          className={cn('shrink-0 text-ink-muted transition-transform', open ? 'rotate-90' : '-rotate-90')}
+        />
       </button>
 
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            role="dialog"
+            aria-label="Vaqt tanlash"
+            initial={{ opacity: 0, y: openUp ? 6 : -6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.97 }}
+            exit={{ opacity: 0, y: openUp ? 6 : -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="absolute left-0 z-50 mt-2 max-h-60 w-full min-w-35 overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 shadow-pop"
+            className={cn(
+              'absolute z-50 w-[272px] rounded-2xl border border-line bg-surface p-3 shadow-pop',
+              openUp ? 'bottom-full mb-2' : 'top-full mt-2',
+              alignEnd ? 'right-0' : 'left-0',
+            )}
           >
-            {slots.map((s) => {
-              const active = s === value;
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  ref={(el) => {
-                    if (active && el && open) el.scrollIntoView({ block: 'center' });
-                  }}
-                  onClick={() => {
-                    onChange(s);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    'flex w-full items-center justify-center rounded-xl px-3 py-2 text-[13px] font-medium transition-colors',
-                    active
-                      ? 'bg-primary-50 text-primary-700'
-                      : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
-                  )}
-                >
-                  {s}
-                </button>
-              );
-            })}
+            <div className="flex items-baseline justify-between px-1">
+              <span className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-muted">Vaqt</span>
+              <span className="text-xl font-bold tabular-nums text-ink">{value || '--:--'}</span>
+            </div>
+
+            {presets.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {presets.map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      onChange(p);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      'rounded-lg border px-2 py-1 text-[12px] font-semibold tabular-nums transition-colors',
+                      p === value
+                        ? 'border-primary-300 bg-primary-50 text-primary-700'
+                        : 'border-line text-ink-soft hover:bg-surface-2',
+                    )}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {(
+                [
+                  ['Soat', hours, hh, hoursRef, (h: string) => pick(h, mm || '00', false)],
+                  ['Daqiqa', minutes, mm, minutesRef, (m: string) => pick(hh || '09', m, true)],
+                ] as const
+              ).map(([label, items, current, colRef, onPick]) => (
+                <div key={label}>
+                  <p className="mb-1 text-center text-[11px] font-medium text-ink-muted">{label}</p>
+                  <div
+                    ref={colRef}
+                    className="relative flex h-48 flex-col gap-0.5 overflow-y-auto overscroll-contain rounded-xl bg-surface-2/60 p-1 [scrollbar-width:thin]"
+                  >
+                    {items.map((it) => (
+                      <button
+                        key={it}
+                        type="button"
+                        data-active={it === current}
+                        onClick={() => onPick(it)}
+                        className={cell(it === current)}
+                      >
+                        {it}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

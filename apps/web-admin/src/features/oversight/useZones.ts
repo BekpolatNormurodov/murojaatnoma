@@ -11,7 +11,10 @@ export interface Mahalla {
 /** Mahalla ro'yxati (hudud biriktirish uchun) — kam o'zgaradi, uzoq keshlanadi. */
 export function useMahallas() {
   return useQuery({
-    queryKey: ['zones', 'mahalla'],
+    // ['zones','mahalla'] is the map's GeoJSON (dashboard + Jonli xarita) —
+    // sharing that key handed this list a FeatureCollection, so after the
+    // dashboard was opened "Hudud biriktirish" showed "Mahalla topilmadi".
+    queryKey: ['zones', 'mahalla', 'list'],
     queryFn: () => api.get<Mahalla[]>('/zones?kind=mahalla'),
     staleTime: 60 * 60_000,
   });

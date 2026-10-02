@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Camera, CloseCircle, Eye, EyeSlash, Magicpen, RotateRight, TickCircle, Trash } from 'iconsax-react';
+import { TimePicker } from '@/shared/ui/DatePicker';
+import { Combobox } from '@/shared/ui/Combobox';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { Avatar } from '@/shared/ui/Avatar';
@@ -255,12 +257,15 @@ export function EmployeeFormModal({
           </Field>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field id={fid('pos')} label="Lavozim" required error={tried && !posOk ? 'Lavozimni kiriting' : undefined}>
-              <Inp id={fid('pos')} value={position} onChange={setPosition} placeholder="Bosh mutaxassis" invalid={tried && !posOk} list={fid('pos-list')} />
-              <datalist id={fid('pos-list')}>
-                {positions.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
+              <Combobox
+                id={fid('pos')}
+                value={position}
+                onChange={setPosition}
+                suggestions={positions}
+                placeholder="Bosh mutaxassis"
+                invalid={tried && !posOk}
+                newLabel="Yangi lavozim"
+              />
             </Field>
             <Field id={fid('phone')} label="Telefon" hint="Ixtiyoriy" error={tried && !phoneOk ? "9 ta raqam: 90 123 45 67" : undefined}>
               <div className={cn('flex h-11 items-center rounded-xl border bg-surface-2 focus-within:bg-surface', tried && !phoneOk ? 'border-danger' : 'border-line focus-within:border-primary-300')}>
@@ -281,37 +286,34 @@ export function EmployeeFormModal({
 
         <Section title="Bo'lim va ish tartibi">
           <Field id={fid('dept')} label="Bo'lim" hint="Ro'yxatdan tanlang yoki yangisini yozing">
-            <Inp
+            <Combobox
               id={fid('dept')}
               value={department}
               onChange={setDepartment}
+              suggestions={(departments.data ?? []).map((d) => d.name)}
               placeholder="Obodonlashtirish bo'limi"
-              list={fid('dept-list')}
-              autoComplete="off"
+              newLabel="Yangi bo'lim"
             />
-            <datalist id={fid('dept-list')}>
-              {(departments.data ?? []).map((d) => (
-                <option key={d.id} value={d.name} />
-              ))}
-            </datalist>
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field id={fid('start')} label="Ish boshlanishi" error={tried && !hoursOk ? 'Boshlanish tugashdan oldin' : undefined}>
-              <input
+              <TimePicker
                 id={fid('start')}
-                type="time"
                 value={workStart}
-                onChange={(e) => setWorkStart(e.target.value)}
-                className={cn('h-11 w-full rounded-xl border bg-surface-2 px-4 text-sm tabular-nums text-ink outline-none focus:bg-surface', tried && !hoursOk ? 'border-danger' : 'border-line focus:border-primary-300')}
+                onChange={setWorkStart}
+                block
+                invalid={tried && !hoursOk}
+                presets={['08:00', '08:30', '09:00', '09:30']}
               />
             </Field>
             <Field id={fid('end')} label="Ish tugashi" hint="Kechikish shu bo'yicha">
-              <input
+              <TimePicker
                 id={fid('end')}
-                type="time"
                 value={workEnd}
-                onChange={(e) => setWorkEnd(e.target.value)}
-                className={cn('h-11 w-full rounded-xl border bg-surface-2 px-4 text-sm tabular-nums text-ink outline-none focus:bg-surface', tried && !hoursOk ? 'border-danger' : 'border-line focus:border-primary-300')}
+                onChange={setWorkEnd}
+                block
+                invalid={tried && !hoursOk}
+                presets={['17:00', '17:30', '18:00', '18:30']}
               />
             </Field>
           </div>

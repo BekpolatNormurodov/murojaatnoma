@@ -18,6 +18,7 @@ import { Drawer } from '@/shared/ui/Drawer';
 import { Badge } from '@/shared/ui/Badge';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Switch } from '@/shared/ui/Switch';
+import { TimePicker } from '@/shared/ui/DatePicker';
 import { cn } from '@/shared/lib/cn';
 import { formatDate, timeAgo } from '@/shared/lib/format';
 import { ALL_MODULES, MODULE_LABEL, ROLE_META, WEEKDAYS } from '@/shared/data/mock';
@@ -241,20 +242,20 @@ function StaffEditor({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-ink-soft">Boshlanishi</label>
-            <input
-              type="time"
+            <TimePicker
               value={schedule.start}
-              onChange={(e) => setSchedule((s) => ({ ...s, start: e.target.value }))}
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm text-ink outline-none focus:border-primary-300 focus:bg-surface"
+              onChange={(v) => setSchedule((s) => ({ ...s, start: v }))}
+              block
+              ariaLabel="Ish boshlanishi"
             />
           </div>
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-ink-soft">Tugashi</label>
-            <input
-              type="time"
+            <TimePicker
               value={schedule.end}
-              onChange={(e) => setSchedule((s) => ({ ...s, end: e.target.value }))}
-              className="h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm text-ink outline-none focus:border-primary-300 focus:bg-surface"
+              onChange={(v) => setSchedule((s) => ({ ...s, end: v }))}
+              block
+              ariaLabel="Ish tugashi"
             />
           </div>
         </div>
