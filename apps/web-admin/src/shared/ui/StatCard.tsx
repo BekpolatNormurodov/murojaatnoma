@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
+import { Area, AreaChart, ResponsiveContainer } from 'recharts';
 import { Link } from 'react-router-dom';
 import { ArrowUp, ArrowDown, type Icon as IconType } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
-import { formatDelta } from '@/shared/lib/format';
 
 export function StatCard({
   icon: Icon,
@@ -11,6 +11,8 @@ export function StatCard({
   delta,
   deltaLabel,
   invertDelta = false,
+  neutralDelta = false,
+  spark,
   hint,
   tint = '#10b981',
   index = 0,
@@ -25,6 +27,10 @@ export function StatCard({
   deltaLabel?: string;
   /** For "bad when it grows" metrics (overdue): up = red, down = green. */
   invertDelta?: boolean;
+  /** Neither good nor bad (e.g. incoming volume) — grey badge. */
+  neutralDelta?: boolean;
+  /** Mini trend (e.g. last 14 days) drawn under the value. */
+  spark?: number[];
   /** Small secondary line under the label. */
   hint?: React.ReactNode;
   tint?: string;
@@ -48,7 +54,7 @@ export function StatCard({
             title={deltaLabel ? `Oldingi ${deltaLabel}ga nisbatan` : undefined}
             className={cn(
               'inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-xs font-semibold',
-              delta === 0
+              delta === 0 || neutralDelta
                 ? 'bg-surface-2 text-ink-soft'
                 : good
                   ? 'bg-success-soft text-primary-700'
@@ -56,14 +62,34 @@ export function StatCard({
             )}
           >
             {delta !== 0 && (up ? <ArrowUp size={13} /> : <ArrowDown size={13} />)}
-            {formatDelta(Math.abs(delta))}
+            {/* The arrow carries the direction — "↓ +100%" used to read as nonsense. */}
+            {`${Math.abs(delta).toFixed(Math.abs(delta) >= 10 ? 0 : 1)}%`}
             {deltaLabel && (
               <span className="hidden font-medium opacity-70 sm:inline">· {deltaLabel}</span>
             )}
           </span>
         )}
       </div>
-      <div className="mt-4 text-2xl font-bold tracking-tight text-ink tabular-nums">{value}</div>
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div className="text-2xl font-bold tracking-tight text-ink tabular-nums">{value}</div>
+        {spark && spark.some((v) => v > 0) && (
+          <div className="h-9 w-24 shrink-0" aria-hidden>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={spark.map((v, i) => ({ i, v }))} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                <Area
+                  type="monotone"
+                  dataKey="v"
+                  stroke={tint}
+                  strokeWidth={2}
+                  fill={tint}
+                  fillOpacity={0.12}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
       <div className="mt-1 text-[13px] text-ink-muted">{label}</div>
       {hint && <div className="mt-2 text-xs text-ink-soft">{hint}</div>}
     </>

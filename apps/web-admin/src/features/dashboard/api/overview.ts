@@ -32,6 +32,21 @@ export interface OverviewMurojaat {
   resolvedPrev30: number;
   openByPriority: Record<Priority, number>;
   bySource: { citizen: number; legacy: number };
+  /** Ariza va shikoyat — jami va ochiq (eski backendda yo'q). */
+  byKind?: { ariza: { total: number; open: number }; shikoyat: { total: number; open: number } };
+  /** SLA tarkibi: muddatida / kechikib hal qilingan / muddati o'tib ochiq. */
+  sla?: { onTime: number; late: number; overdueOpen: number };
+}
+
+export interface AttendanceDayPoint {
+  date: string;
+  label: string;
+  isWorkday: boolean;
+  onTime: number;
+  late: number;
+  absent: number;
+  onLeave: number;
+  total: number;
 }
 
 export interface OverviewWorkforce {
@@ -100,6 +115,10 @@ export interface Overview {
   generatedAt: string;
   murojaat: OverviewMurojaat;
   trend: { daily: TrendPoint[]; monthly: TrendPoint[] };
+  /** Qachon yozishadi: soat 0..23 va Du..Ya (oxirgi 90 kun). */
+  activity?: { byHour: number[]; byWeekday: number[] };
+  /** Oxirgi 7 kun davomati (eski → yangi). */
+  attendanceWeek?: AttendanceDayPoint[];
   categories: { category: RequestCategory; total: number; open: number }[];
   workforce: OverviewWorkforce;
   topEmployees: EmployeeLoad[];

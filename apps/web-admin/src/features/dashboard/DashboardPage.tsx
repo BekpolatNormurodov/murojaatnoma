@@ -51,6 +51,7 @@ import {
 } from './api/overview';
 import { DashboardMap } from './DashboardMap';
 import { AttendanceBoard } from './AttendanceBoard';
+import { ActivityCard, AttendanceWeekCard, StatusMixCard } from './DashboardCharts';
 import { MediaDashboardWidget } from '@/features/media/MediaDashboardWidget';
 import { usePermissions } from '@/shared/lib/permissions';
 
@@ -149,6 +150,23 @@ export function DashboardPage() {
         <KpiRow data={data} />
       )}
 
+      {!overviewDown && (
+        <>
+          {/* Asosiy grafiklar: dinamika + holat/tur */}
+          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
+            <TrendCard data={data} className="xl:col-span-2" />
+            <StatusMixCard data={data} />
+          </div>
+
+          {/* Davomat haftasi · fuqarolar faolligi · xizmat sifati */}
+          <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+            {canSeeAttendance && <AttendanceWeekCard data={data} />}
+            <ActivityCard data={data} />
+            <QualityCard data={data} />
+          </div>
+        </>
+      )}
+
       {/* Xodimlar davomati — jonli (alohida manba: /attendance/today) */}
       {canSeeAttendance && (
         <div className="mt-5">
@@ -165,11 +183,6 @@ export function DashboardPage() {
 
       {!overviewDown && (
         <>
-          <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
-            <TrendCard data={data} className="xl:col-span-2" />
-            <QualityCard data={data} />
-          </div>
-
           <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-3">
             <Card className="xl:col-span-2">
               <CardHeader
@@ -223,6 +236,7 @@ function KpiRow({ data }: { data: Overview | undefined }) {
     );
   }
   const m = data.murojaat;
+  const last14 = data.trend.daily.slice(-14);
   return (
     <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
       <StatCard
@@ -231,7 +245,9 @@ function KpiRow({ data }: { data: Overview | undefined }) {
         value={formatNumber(m.total)}
         delta={periodDelta(m.created30, m.createdPrev30)}
         deltaLabel="30 kun"
-        hint={`So'nggi 30 kunda ${formatNumber(m.created30)} ta`}
+        neutralDelta
+        spark={last14.map((p) => p.created)}
+        hint={`So'nggi 30 kunda ${formatNumber(m.created30)} ta · oldingi 30 kunda ${formatNumber(m.createdPrev30)}`}
         tint="#3b82f6"
         index={0}
         to="/requests"
@@ -268,7 +284,8 @@ function KpiRow({ data }: { data: Overview | undefined }) {
         value={formatNumber(m.resolved)}
         delta={periodDelta(m.resolved30, m.resolvedPrev30)}
         deltaLabel="30 kun"
-        hint={`Hal qilish darajasi ${pctText(m.resolutionRate)}`}
+        spark={last14.map((p) => p.resolved)}
+        hint={`Hal qilish darajasi ${pctText(m.resolutionRate)} · rad etilgan ${formatNumber(m.rejected)}`}
         tint="#10b981"
         index={3}
         to="/requests"
@@ -280,7 +297,11 @@ function KpiRow({ data }: { data: Overview | undefined }) {
 /* ───────────────────────────── Trend ───────────────────────────── */
 
 function TrendCard({ data, className }: { data: Overview | undefined; className?: string }) {
-  const [range, setRange] = useState<'daily' | 'monthly'>('daily');
+  const [picked, setRange] = useState<'daily' | 'monthly' | null>(null);
+  const isEmpty = (ps: TrendPoint[]) => ps.every((p) => p.created === 0 && p.resolved === 0);
+  // 30 kunda murojaat bo'lmasa — bo'sh grafik o'rniga 12 oy ochiladi.
+  const range =
+    picked ?? (data && isEmpty(data.trend.daily) && !isEmpty(data.trend.monthly) ? 'monthly' : 'daily');
   const points: TrendPoint[] = useMemo(() => (data ? data.trend[range] : []), [data, range]);
   const empty = points.every((p) => p.created === 0 && p.resolved === 0);
   const totals = useMemo(
@@ -298,7 +319,7 @@ function TrendCard({ data, className }: { data: Overview | undefined; className?
             : 'Kelgan va hal qilingan murojaatlar'
         }
         action={
-          <div className="flex rounded-lg border border-line bg-surface-2 p-0.5 text-xs font-semibold">
+          <div className="flex shrink-0 rounded-lg border border-line bg-surface-2 p-0.5 text-xs font-semibold">
             {(['daily', 'monthly'] as const).map((r) => (
               <button
                 key={r}
@@ -407,9 +428,13 @@ function QualityCard({ data }: { data: Overview | undefined }) {
                 {pctText(m.slaRate)}
               </span>
             </div>
-            <Progress value={m.slaRate ?? 0} height={8} color={slaColor} />
+            {m.sla ? (
+              <SlaBar sla={m.sla} />
+            ) : (
+              <Progress value={m.slaRate ?? 0} height={8} color={slaColor} />
+            )}
             <p className="mt-1.5 text-[11px] text-ink-muted">
-              SLA: yuqori — 48 soat, o'rta — 5 kun, past — 10 kun
+              Muddat: ariza 2 / 5 / 10 kun, shikoyat 1 / 3 / 5 kun (yuqori / o'rta / past)
             </p>
           </div>
 
@@ -456,6 +481,36 @@ function QualityCard({ data }: { data: Overview | undefined }) {
         </div>
       )}
     </Card>
+  );
+}
+
+/** Muddatida · kechikib hal qilingan · muddati o'tib ochiq — bitta chiziqda. */
+function SlaBar({ sla }: { sla: { onTime: number; late: number; overdueOpen: number } }) {
+  const total = sla.onTime + sla.late + sla.overdueOpen;
+  const parts = [
+    { label: 'Muddatida', value: sla.onTime, color: '#10b981' },
+    { label: 'Kechikib hal qilingan', value: sla.late, color: '#f59e0b' },
+    { label: "Muddati o'tib ochiq", value: sla.overdueOpen, color: '#ef4444' },
+  ];
+  return (
+    <div>
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-2">
+        {total > 0 &&
+          parts.map((p) =>
+            p.value > 0 ? (
+              <div key={p.label} title={`${p.label}: ${p.value}`} style={{ width: `${(p.value / total) * 100}%`, background: p.color }} />
+            ) : null,
+          )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink-soft">
+        {parts.map((p) => (
+          <span key={p.label} className="inline-flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+            {p.label}: <b className="text-ink">{p.value}</b>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

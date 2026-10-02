@@ -29,7 +29,13 @@ function build(apps: unknown[], legacy: unknown[] = []) {
     }),
   };
   const config = { get: jest.fn().mockReturnValue({ staleMinutes: 30 }) };
-  return new OverviewService(prisma as never, zones as never, config as never);
+  const attendance = {
+    today: jest.fn().mockResolvedValue({
+      isWorkday: true,
+      summary: { checkedIn: 3, lateTotal: 1, absent: 2, onLeave: 0, total: 5 },
+    }),
+  };
+  return new OverviewService(prisma as never, zones as never, config as never, attendance as never);
 }
 
 function app(over: Record<string, unknown>) {
@@ -97,7 +103,9 @@ describe('OverviewService', () => {
       unassigned: 1,
       resolved: 2,
       resolutionRate: 50,
-      slaRate: 50, // one of two resolved closed within SLA
+      // 1 on time, 1 resolved late, 1 still open past its deadline → 1/3.
+      slaRate: 33.3,
+      sla: { onTime: 1, late: 1, overdueOpen: 1 },
       avgRating: 4,
       ratedCount: 2,
     });

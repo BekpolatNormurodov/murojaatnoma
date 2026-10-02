@@ -12,6 +12,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { categoryOf, SLA_HOURS, titleOf } from '../applications/applications.service';
 import { mapCategory } from '../requests/requests.service';
 import { ZonesService } from '../zones/zones.service';
+import { AttendanceService } from '../attendance/attendance.service';
 import {
   CategoryLoad,
   EmployeeLoad,
@@ -20,10 +21,12 @@ import {
   OverviewResponse,
   RecentMurojaat,
   TrendPoint,
+  AttendanceDayPoint,
   WorkforceKpis,
 } from './overview.types';
 
 const DAY_MS = 86_400_000;
+const WEEKDAYS_UZ = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const MONTHS_UZ = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
 const CATEGORY_ORDER: RequestCategory[] = [
   RequestCategory.kommunal,
@@ -84,11 +87,16 @@ export class OverviewService {
     private readonly prisma: PrismaService,
     private readonly zones: ZonesService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly attendance: AttendanceService,
   ) {}
 
   async overview(): Promise<OverviewResponse> {
     const now = new Date();
-    const [rows, workforce] = await Promise.all([this.loadRows(), this.workforce(now)]);
+    const [rows, workforce, attendanceWeek] = await Promise.all([
+      this.loadRows(),
+      this.workforce(now),
+      this.attendanceWeek(now),
+    ]);
     const nowMs = now.getTime();
     const overdue = (r: Row) => isOpen(r) && r.dueAt.getTime() < nowMs;
 
@@ -102,6 +110,10 @@ export class OverviewService {
     const withinSla = resolvedRows.filter(
       (r) => r.resolvedAt && r.resolvedAt.getTime() <= r.dueAt.getTime(),
     ).length;
+    // Muddati o'tib hali ochiq turganlar ham SLA buzilishi — avval ular
+    // hisobga olinmay, 14 ta kechikkan bo'lsa ham "100%" chiqardi.
+    const overdueOpen = open.filter(overdue).length;
+    const lateResolved = resolutionHours.length - withinSla;
     const rated = rows.filter((r) => r.rating != null);
     const inWindow = (d: Date | null, fromDays: number, toDays: number) =>
       !!d && d.getTime() > nowMs - fromDays * DAY_MS && d.getTime() <= nowMs - toDays * DAY_MS;
@@ -122,7 +134,7 @@ export class OverviewService {
         (r) => r.source === 'citizen' && r.status === RequestStatus.new && !r.assignee,
       ).length,
       resolutionRate: pct(resolvedRows.length, rows.length),
-      slaRate: pct(withinSla, resolutionHours.length),
+      slaRate: pct(withinSla, withinSla + lateResolved + overdueOpen),
       avgResolutionHours: resolutionHours.length
         ? round1(resolutionHours.reduce((a, b) => a + b, 0) / resolutionHours.length)
         : null,
@@ -139,7 +151,27 @@ export class OverviewService {
         citizen: rows.filter((r) => r.source === 'citizen').length,
         legacy: rows.filter((r) => r.source === 'legacy').length,
       },
+      byKind: {
+        ariza: {
+          total: rows.filter((r) => r.kind !== 'shikoyat').length,
+          open: open.filter((r) => r.kind !== 'shikoyat').length,
+        },
+        shikoyat: {
+          total: rows.filter((r) => r.kind === 'shikoyat').length,
+          open: open.filter((r) => r.kind === 'shikoyat').length,
+        },
+      },
+      sla: { onTime: withinSla, late: lateResolved, overdueOpen },
     };
+
+    // ── Activity: when do citizens write (last 90 days) ────────────────
+    const byHour = Array.from({ length: 24 }, () => 0);
+    const byWeekday = Array.from({ length: 7 }, () => 0);
+    for (const r of rows) {
+      if (r.createdAt.getTime() < nowMs - 90 * DAY_MS) continue;
+      byHour[r.createdAt.getHours()] += 1;
+      byWeekday[(r.createdAt.getDay() + 6) % 7] += 1; // Du=0 … Ya=6
+    }
 
     // ── Categories ─────────────────────────────────────────────────────
     const categories: CategoryLoad[] = CATEGORY_ORDER.map((category) => {
@@ -246,6 +278,8 @@ export class OverviewService {
       generatedAt: now.toISOString(),
       murojaat,
       trend: { daily: this.dailyTrend(rows, now), monthly: this.monthlyTrend(rows, now) },
+      activity: { byHour, byWeekday },
+      attendanceWeek,
       categories,
       workforce: workforce.kpis,
       topEmployees,
@@ -273,6 +307,7 @@ export class OverviewService {
           lng: true,
           address: true,
           district: true,
+          kind: true,
           applicantFullName: true,
           assignedEmployee: { select: { id: true, fullName: true, avatarUrl: true } },
         },
@@ -310,7 +345,7 @@ export class OverviewService {
       lat: a.lat,
       lng: a.lng,
       source: 'citizen',
-      kind: /^\[SHIKOYAT\|/.test(a.subject) ? 'shikoyat' : 'ariza',
+      kind: a.kind === 'SHIKOYAT' ? 'shikoyat' : 'ariza',
       citizenName: a.applicantFullName,
       address: a.address ?? a.district ?? '',
       assignee: a.assignedEmployee,
@@ -341,6 +376,35 @@ export class OverviewService {
       });
     }
     return out;
+  }
+
+  /**
+   * Oxirgi 7 kun davomati — har kun uchun davomat taxtasining o'zi
+   * (ta'til, dam olish kuni, kechikish qoidalari bilan bir xil).
+   */
+  private async attendanceWeek(now: Date): Promise<AttendanceDayPoint[]> {
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (6 - i));
+      return d;
+    });
+    const boards = await Promise.all(
+      days.map((d) => this.attendance.today({ date: dayKey(d) }).catch(() => null)),
+    );
+    return days.map((d, i) => {
+      const s = boards[i]?.summary;
+      const checkedIn = s?.checkedIn ?? 0;
+      const late = s?.lateTotal ?? 0;
+      return {
+        date: dayKey(d),
+        label: `${WEEKDAYS_UZ[(d.getDay() + 6) % 7]} ${d.getDate()}`,
+        isWorkday: boards[i]?.isWorkday ?? true,
+        onTime: Math.max(0, checkedIn - late),
+        late,
+        absent: s?.absent ?? 0,
+        onLeave: s?.onLeave ?? 0,
+        total: s?.total ?? 0,
+      };
+    });
   }
 
   private dailyTrend(rows: Row[], now: Date): TrendPoint[] {

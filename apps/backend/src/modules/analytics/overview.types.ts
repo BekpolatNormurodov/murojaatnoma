@@ -10,6 +10,10 @@ export interface OverviewResponse {
   generatedAt: string;
   murojaat: MurojaatKpis;
   trend: { daily: TrendPoint[]; monthly: TrendPoint[] };
+  /** Qachon yozishadi: soat (0..23) va hafta kuni (Du..Ya) — oxirgi 90 kun. */
+  activity: { byHour: number[]; byWeekday: number[] };
+  /** Oxirgi 7 kun davomati (eski → yangi), ish kunlari bo'yicha. */
+  attendanceWeek: AttendanceDayPoint[];
   categories: CategoryLoad[];
   workforce: WorkforceKpis;
   topEmployees: EmployeeLoad[];
@@ -47,6 +51,24 @@ export interface MurojaatKpis {
   /** Open murojaats by priority. */
   openByPriority: Record<Priority, number>;
   bySource: { citizen: number; legacy: number };
+  /** Ariza va shikoyat — jami va ochiq. */
+  byKind: { ariza: { total: number; open: number }; shikoyat: { total: number; open: number } };
+  /**
+   * SLA ning tarkibi: muddatida hal qilingan, kechikib hal qilingan va
+   * muddati o'tib hali ochiq. slaRate = onTime / (onTime + late + overdueOpen).
+   */
+  sla: { onTime: number; late: number; overdueOpen: number };
+}
+
+export interface AttendanceDayPoint {
+  date: string;
+  label: string;
+  isWorkday: boolean;
+  onTime: number;
+  late: number;
+  absent: number;
+  onLeave: number;
+  total: number;
 }
 
 export interface TrendPoint {
