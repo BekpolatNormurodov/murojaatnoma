@@ -202,12 +202,24 @@ function SettingsForm({
               <TextInput value={draft.youtubeQuery} onChange={(v) => set('youtubeQuery', v)} disabled={!canEdit} />
             </Field>
           </Section>
-          <Section icon={<PLATFORM_META.instagram.Icon size={16} />} color={PLATFORM_META.instagram.color} title="Instagram" note="INSTAGRAM_ACCESS_TOKEN kerak">
-            <Field label="Heshteglar">
-              <TagInput value={draft.instagramHashtags} onChange={(v) => set('instagramHashtags', v)} disabled={!canEdit} prefix="#" />
+          <Section icon={<PLATFORM_META.instagram.Icon size={16} />} color={PLATFORM_META.instagram.color} title="Instagram" note="INSTAGRAM_ACCESS_TOKEN kerak · har 30 daqiqada">
+            <Field label="Tuman hokimligi" hint="Har bir posti tumanga oid deb olinadi.">
+              <TagInput value={draft.ownInstagramAccounts ?? []} onChange={(v) => set('ownInstagramAccounts', v)} disabled={!canEdit} prefix="@" />
             </Field>
-            <Field label="Akkauntlar (biznes/creator)">
-              <TagInput value={draft.instagramAccounts} onChange={(v) => set('instagramAccounts', v)} disabled={!canEdit} prefix="@" />
+            <Field label="Rasmiy akkauntlar" hint="Prezident, UzA, vazirliklar, hokimliklar — «Rasmiy» belgisi bilan, kalit so'z bo'yicha.">
+              <TagInput value={draft.officialInstagramAccounts ?? []} onChange={(v) => set('officialInstagramAccounts', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="OAV akkauntlari" hint="Faqat professional (biznes/creator) akkauntlar o'qiladi — shaxsiy akkaunt «Holat»da xato bilan ko'rinadi.">
+              <TagInput value={draft.instagramAccounts} onChange={(v) => set('instagramAccounts', v)} disabled={!canEdit} prefix="@" placeholder="akkaunt nomi yoki instagram.com havola" />
+            </Field>
+            <Field label="Toshkent shahri hokimligi" hint="Har bir posti «Toshkent shahri» bo'limiga kiradi.">
+              <TagInput value={draft.cityInstagramAccounts ?? []} onChange={(v) => set('cityInstagramAccounts', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Toshkent viloyati hokimligi" hint="Har bir posti «Toshkent viloyati» bo'limiga kiradi.">
+              <TagInput value={draft.regionInstagramAccounts ?? []} onChange={(v) => set('regionInstagramAccounts', v)} disabled={!canEdit} prefix="@" />
+            </Field>
+            <Field label="Heshteglar" hint="Meta'ning «Instagram Public Content Access» ruxsati bo'lsa ishlaydi.">
+              <TagInput value={draft.instagramHashtags} onChange={(v) => set('instagramHashtags', v)} disabled={!canEdit} prefix="#" />
             </Field>
           </Section>
           <Section icon={<SearchNormal1 size={16} />} color="#4285F4" title="Google News qidiruvi" note="Google indekslagan barcha nashrlar">
@@ -606,12 +618,12 @@ const KEY_GUIDES = [
     icon: <PLATFORM_META.instagram.Icon size={18} />,
     color: PLATFORM_META.instagram.color,
     env: ['INSTAGRAM_ACCESS_TOKEN=EAA...', '# ixtiyoriy — tokendan avtomatik topiladi: INSTAGRAM_BUSINESS_ID=1784...'],
-    gives: 'Heshteglar va ochiq biznes akkauntlar (kun.uz, daryo.uz ...) postlari.',
+    gives: "~30 ta ochiq akkaunt postlari: tuman, shahar va viloyat hokimliklari, vazirliklar, kun.uz, daryo ... (hokimiyat akkaunti kerak emas)",
     steps: [
-      'Instagram akkauntni Business/Creator qiling va Facebook sahifaga ulang',
-      'developers.facebook.com → App yarating → Instagram Graph API',
-      'Ruxsatlar: instagram_basic, pages_read_engagement, Instagram Public Content Access',
-      'Uzoq muddatli (long-lived) token oling — biznes akkaunt ID tokendan avtomatik aniqlanadi',
+      "Istalgan Instagram akkauntni (masalan, yangi ochilgan) Professional qiling va Facebook sahifaga ulang — hokimiyatniki bo'lishi shart emas",
+      'developers.facebook.com → App yarating (Business) → Instagram mahsuloti',
+      'Graph API Explorer: instagram_basic, instagram_manage_insights, pages_show_list, pages_read_engagement, business_management',
+      "Access Token Debugger → «Extend» (60 kun) yoki Business Settings → System user tokeni (muddatsiz)",
     ],
   },
 ] as const;

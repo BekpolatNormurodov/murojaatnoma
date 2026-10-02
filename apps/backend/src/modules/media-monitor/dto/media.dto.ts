@@ -277,6 +277,22 @@ export class UpdateMediaSettingsDto {
   @WordList()
   instagramAccounts?: string[];
 
+  @ApiPropertyOptional({ type: [String], description: 'Davlat idoralari Instagram akkauntlari («Rasmiy»)' })
+  @WordList()
+  officialInstagramAccounts?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Tuman hokimligi Instagram akkaunti — har bir posti olinadi' })
+  @WordList()
+  ownInstagramAccounts?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent shahri hokimligi akkauntlari' })
+  @WordList()
+  cityInstagramAccounts?: string[];
+
+  @ApiPropertyOptional({ type: [String], description: 'Toshkent viloyati hokimligi akkauntlari' })
+  @WordList()
+  regionInstagramAccounts?: string[];
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

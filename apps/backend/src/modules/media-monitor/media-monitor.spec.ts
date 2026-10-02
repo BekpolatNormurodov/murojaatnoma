@@ -195,51 +195,102 @@ describe('instagram collector', () => {
   afterEach(() => {
     global.fetch = realFetch;
   });
-  const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+  const json = (body: unknown, status = 200) =>
+    ({ ok: status < 400, status, json: async () => body }) as unknown as Response;
+  const cfg = (token: string) => ({ token, businessId: '', version: 'v24.0' });
+  const post = (id: string, caption: string) => ({
+    id, caption, permalink: `https://instagram.com/p/${id}`, timestamp: '2026-10-01T05:00:00+0000', media_type: 'IMAGE', media_url: 'https://cdn/x.jpg',
+  });
 
-  it('finds the business account from the token when INSTAGRAM_BUSINESS_ID is empty', async () => {
+  it('finds the business account from the token and reads each account as its own source', async () => {
     const urls: string[] = [];
     global.fetch = jest.fn(async (url: string | URL | Request) => {
-      const u = String(url);
+      const u = decodeURIComponent(String(url));
       urls.push(u);
       if (u.includes('/me/accounts')) return json({ data: [{ id: 'page1' }, { id: 'page2', instagram_business_account: { id: '1784IG' } }] });
-      if (u.includes('business_discovery')) {
-        return json({
-          business_discovery: {
-            username: 'kun.uz',
-            name: 'Kun.uz',
-            media: { data: [{ id: 'm1', caption: "Mirzo Ulug'bek tumanida yangi park", permalink: 'https://instagram.com/p/1', timestamp: '2026-10-01T05:00:00+0000', media_type: 'IMAGE', media_url: 'https://cdn/x.jpg' }] },
-          },
-        });
+      if (u.includes('username(kun.uz)')) {
+        return json({ business_discovery: { username: 'kun.uz', name: 'Kun.uz', media: { data: [post('m1', "✨🔥\nMirzo Ulug'bek tumanida yangi park")] } } });
+      }
+      if (u.includes('username(m.ulugbekhokimiyat)')) {
+        return json({ business_discovery: { username: 'm.ulugbekhokimiyat', name: 'Mirzo Ulugʻbek hokimligi', media: { data: [post('m2', 'Sayyor qabul')] } } });
       }
       return json({ data: [] });
     }) as typeof fetch;
     const { collectInstagram } = await import('./collectors/collectors');
-    const r = await collectInstagram(
-      { token: 'tok-a', businessId: '', version: 'v24.0' },
-      { instagramHashtags: [], instagramAccounts: ['kun.uz'] },
+    const run = await collectInstagram(
+      cfg('tok-a'),
+      { instagramHashtags: [] },
+      [{ handle: 'kun.uz', official: false, own: false }, { handle: 'm.ulugbekhokimiyat', official: true, own: true }],
       new Map(),
       new Date('2026-10-01T10:00:00Z'),
     );
-    expect(r.error).toBeUndefined();
+    expect(run.pause).toBe(false);
     expect(urls[0]).toContain('/me/accounts');
     expect(urls[1]).toContain('/1784IG?fields=');
-    expect(r.items).toHaveLength(1);
-    expect(r.items[0]).toMatchObject({ platform: 'instagram', sourceName: 'Kun.uz', url: 'https://instagram.com/p/1' });
+    const kun = run.results.find((r) => r.key === 'ig:kun.uz')!;
+    expect(kun.error).toBeUndefined();
+    expect(kun.name).toBe('Kun.uz (@kun.uz)');
+    // Emoji-only first line skipped for the headline.
+    expect(kun.items[0]).toMatchObject({ platform: 'instagram', source: 'ig:kun.uz', title: "Mirzo Ulug'bek tumanida yangi park", official: false });
+    const own = run.results.find((r) => r.key === 'ig:m.ulugbekhokimiyat')!;
+    expect(own.items[0]).toMatchObject({ official: true, alwaysRelevant: true });
+  });
+
+  it('says plainly when an account is personal, and goes on with the rest', async () => {
+    global.fetch = jest.fn(async (url: string | URL | Request) => {
+      const u = decodeURIComponent(String(url));
+      if (u.includes('username(someone)')) return json({ error: { message: 'Invalid user id', code: 110 } }, 400);
+      return json({ business_discovery: { username: 'kun.uz', media: { data: [post('m1', 'x')] } } });
+    }) as typeof fetch;
+    const { collectInstagram } = await import('./collectors/collectors');
+    const run = await collectInstagram(
+      { token: 't', businessId: '1784IG', version: 'v24.0' },
+      { instagramHashtags: [] },
+      [{ handle: 'someone', official: false, own: false }, { handle: 'kun.uz', official: false, own: false }],
+      new Map(),
+      new Date(),
+    );
+    expect(run.results.find((r) => r.key === 'ig:someone')!.error).toContain('professional emas');
+    expect(run.results.find((r) => r.key === 'ig:kun.uz')!.items).toHaveLength(1);
+    expect(run.pause).toBe(false);
+  });
+
+  it('stops at a rate limit instead of burning the remaining calls', async () => {
+    let calls = 0;
+    global.fetch = jest.fn(async () => {
+      calls++;
+      return json({ error: { message: 'Application request limit reached', code: 4 } }, 400);
+    }) as typeof fetch;
+    const { collectInstagram } = await import('./collectors/collectors');
+    const accounts = Array.from({ length: 12 }, (_, i) => ({ handle: `acc${i}`, official: false, own: false }));
+    const run = await collectInstagram({ token: 't', businessId: '1784IG', version: 'v24.0' }, { instagramHashtags: [] }, accounts, new Map(), new Date());
+    expect(run.pause).toBe(true);
+    expect(calls).toBeLessThanOrEqual(4); // only the calls already in flight
+    expect(run.results.filter((r) => r.skipped?.includes('limiti')).length).toBeGreaterThanOrEqual(8);
   });
 
   it('explains what to do when no Page has an Instagram account linked', async () => {
     global.fetch = jest.fn(async () => json({ data: [{ id: 'page1' }] })) as typeof fetch;
     const { collectInstagram } = await import('./collectors/collectors');
-    const r = await collectInstagram({ token: 'tok-b', businessId: '', version: 'v24.0' }, { instagramHashtags: ['x'], instagramAccounts: [] }, new Map(), new Date());
-    expect(r.items).toEqual([]);
-    expect(r.error).toContain('INSTAGRAM_BUSINESS_ID');
+    const run = await collectInstagram(cfg('tok-b'), { instagramHashtags: ['x'] }, [], new Map(), new Date());
+    expect(run.results).toHaveLength(1);
+    expect(run.results[0].error).toContain('INSTAGRAM_BUSINESS_ID');
   });
 
   it('is skipped without a token', async () => {
     const { collectInstagram } = await import('./collectors/collectors');
-    const r = await collectInstagram({ token: '', businessId: '', version: 'v24.0' }, { instagramHashtags: [], instagramAccounts: [] }, new Map(), new Date());
-    expect(r.skipped).toContain('INSTAGRAM_ACCESS_TOKEN');
+    const run = await collectInstagram(cfg(''), { instagramHashtags: [] }, [], new Map(), new Date());
+    expect(run.results[0].skipped).toContain('INSTAGRAM_ACCESS_TOKEN');
+  });
+
+  it('fixes the two wrong default handles in an old saved config, once', () => {
+    const { upgradeSources } = require('./media-settings');
+    const old = { ...mergeSettings({ instagramAccounts: ['kun.uz', 'daryo.uz', 'gazeta.uz', 'my.own'] }), sourcesVersion: 5 };
+    const up = upgradeSources(old);
+    expect(up.instagramAccounts.slice(0, 4)).toEqual(['kun.uz', 'daryo.rasmiy', 'gazetauzbekistan', 'my.own']);
+    expect(up.instagramAccounts).not.toContain('daryo.uz');
+    expect(up.ownInstagramAccounts).toEqual(['m.ulugbekhokimiyat']);
+    expect(upgradeSources({ ...up })).toBeNull();
   });
 });
 

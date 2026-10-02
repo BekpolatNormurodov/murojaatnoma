@@ -13,6 +13,7 @@ import { MediaItem, MediaSentiment, Prisma } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MediaPlatform, RawMediaItem, SourceRunResult } from './collectors/collector.types';
+import type { IgAccount } from './collectors/collectors';
 import {
   collectGoogleNews,
   collectGoogleNewsOfficial,
@@ -92,6 +93,10 @@ const MAX_ITEM_AGE_MS = 14 * 86_400_000;
 const OWN_SOURCE_MAX_AGE_MS = 60 * 86_400_000;
 const YT_SEARCH_EVERY_MS = 30 * 60_000;
 const TG_DEEP_EVERY_MS = 3 * 3_600_000;
+/** ~30 Instagram accounts = ~30 Graph API calls — every 30 min stays far below the hourly limit. */
+const IG_EVERY_MS = 30 * 60_000;
+/** After a rate limit or a dead token Instagram rests this long. */
+const IG_PAUSE_MS = 60 * 60_000;
 /** History found by search (Telegram ?q=, YouTube search) — older posts still matter. */
 const BACKFILL_MAX_AGE_MS = 60 * 86_400_000;
 /** District-local channel posts without a keyword: visible, but below keyword hits. */
@@ -127,6 +132,10 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
   private lastYtSearchAt = 0;
   private lastYtWebAt = 0;
   private lastTgDeepAt = 0;
+  private lastIgAt = 0;
+  private igPausedUntil = 0;
+  /** Health rows of the last Instagram pass — kept while the next one is not due. */
+  private lastIgKeys: string[] = [];
   private rescoredOnce = false;
   private gazetteer: { at: number; key: string; value: PlaceGazetteer } | null = null;
   private lastCleanupAt = 0;
@@ -229,8 +238,14 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
         if (!/^[A-Za-z0-9_]{4,64}$/.test(ch)) throw new BadRequestException(`Telegram kanal nomi noto'g'ri: ${ch}`);
       }
     }
-    if (dto.instagramAccounts) {
-      for (const a of dto.instagramAccounts.map(cleanHandle)) {
+    for (const list of [
+      dto.instagramAccounts,
+      dto.officialInstagramAccounts,
+      dto.ownInstagramAccounts,
+      dto.cityInstagramAccounts,
+      dto.regionInstagramAccounts,
+    ]) {
+      for (const a of (list ?? []).map(cleanHandle)) {
         if (!/^[A-Za-z0-9._]{1,30}$/.test(a)) throw new BadRequestException(`Instagram akkaunt nomi noto'g'ri: ${a}`);
       }
     }
@@ -459,24 +474,36 @@ export class MediaMonitorService implements OnApplicationBootstrap, OnModuleDest
     } else if (!c.youtubeApiKey) {
       this.recordHealth({ key: 'youtube-search', name: 'YouTube qidiruv', platform: 'youtube', items: [], skipped: 'YOUTUBE_API_KEY kiritilmagan — faqat kanallar RSS' }, 0, now);
     }
-    tasks.push(async () => {
-      const ids = await this.loadHashtagIds();
-      const before = ids.size;
-      const r = await collectInstagram(
-        { token: c.instagramAccessToken, businessId: c.instagramBusinessId, version: c.instagramGraphVersion },
-        s,
-        ids,
-        now,
-      );
-      if (ids.size !== before) await this.saveHashtagIds(ids);
-      return r;
-    });
-
-    const results = await mapLimit(tasks, 8);
+    const [fetched, ig] = await Promise.all([mapLimit(tasks, 8), this.collectIg(s, now)]);
+    const results = fetched.concat(ig);
     // Forget sources that were removed from the settings.
-    const live = new Set(results.map((r) => r.key).concat('youtube-search', 'youtube-web'));
+    const live = new Set(results.map((r) => r.key).concat('youtube-search', 'youtube-web', ...this.lastIgKeys));
     for (const k of [...this.health.keys()]) if (!live.has(k)) this.health.delete(k);
     return results;
+  }
+
+  /**
+   * Instagram every 30 min (one Graph API call per account); after a rate
+   * limit or a dead token it rests an hour instead of failing every run.
+   */
+  private async collectIg(s: MediaSettings, now: Date): Promise<SourceRunResult[]> {
+    const c = this.cfg;
+    const t = now.getTime();
+    if (c.instagramAccessToken && (t - this.lastIgAt < IG_EVERY_MS - 30_000 || t < this.igPausedUntil)) return [];
+    this.lastIgAt = t;
+    const ids = await this.loadHashtagIds();
+    const before = ids.size;
+    const run = await collectInstagram(
+      { token: c.instagramAccessToken, businessId: c.instagramBusinessId, version: c.instagramGraphVersion },
+      s,
+      uniqueInstagram(s),
+      ids,
+      now,
+    );
+    if (ids.size !== before) await this.saveHashtagIds(ids);
+    if (run.pause) this.igPausedUntil = t + IG_PAUSE_MS;
+    this.lastIgKeys = run.results.map((r) => r.key);
+    return run.results;
   }
 
   /** Keyword filter + de-duplication + insert. Returns only rows that are new. */
@@ -988,8 +1015,15 @@ function sourceRoles(s: MediaSettings): SourceRoles {
   }
   s.cityTelegramChannels.forEach((c) => raise(city, tg(c), AREA_CHANNEL_RELEVANCE));
   s.regionTelegramChannels.forEach((c) => raise(region, tg(c), AREA_CHANNEL_RELEVANCE));
+  // Instagram lists name hokimliklar themselves — every post is about that area.
+  const ig = (a: string) => `ig:${a.toLowerCase()}`;
+  s.cityInstagramAccounts.forEach((a) => raise(city, ig(a), AREA_OWN_RELEVANCE));
+  s.regionInstagramAccounts.forEach((a) => raise(region, ig(a), AREA_OWN_RELEVANCE));
   return {
-    own: new Set(s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`)),
+    own: new Set([
+      ...s.govAuthorities.filter((a) => a.own).map((a) => `gov:${a.slug}`),
+      ...s.ownInstagramAccounts.map(ig),
+    ]),
     local: new Set(s.localTelegramChannels.map(tg)),
     city,
     region,
@@ -1118,6 +1152,23 @@ function uniqueYoutube(s: MediaSettings): { id: string; official: boolean; own: 
   s.youtubeChannels.forEach((c) => put(c, false, false));
   s.officialYoutubeChannels.forEach((c) => put(c, true, false));
   s.ownYoutubeChannels.forEach((c) => put(c, true, true));
+  return [...out.values()];
+}
+
+/** Each Instagram account once, with its strongest role (own > official > media). */
+function uniqueInstagram(s: MediaSettings): IgAccount[] {
+  const out = new Map<string, IgAccount>();
+  const put = (handle: string, official: boolean, own: boolean) => {
+    const k = handle.toLowerCase();
+    const prev = out.get(k);
+    out.set(k, { handle, official: official || !!prev?.official, own: own || !!prev?.own });
+  };
+  // Own and official first, so the hokimliklar are read even if the list is cut at 40.
+  s.ownInstagramAccounts.forEach((a) => put(a, true, true));
+  s.cityInstagramAccounts.forEach((a) => put(a, true, false));
+  s.regionInstagramAccounts.forEach((a) => put(a, true, false));
+  s.officialInstagramAccounts.forEach((a) => put(a, true, false));
+  s.instagramAccounts.forEach((a) => put(a, false, false));
   return [...out.values()];
 }
 

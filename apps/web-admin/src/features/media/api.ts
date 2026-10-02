@@ -196,6 +196,10 @@ export interface MediaSettings {
   youtubeQuery: string;
   instagramHashtags: string[];
   instagramAccounts: string[];
+  officialInstagramAccounts: string[];
+  ownInstagramAccounts: string[];
+  cityInstagramAccounts: string[];
+  regionInstagramAccounts: string[];
   googleNewsQuery: string;
   minRelevance: number;
   /** "AI tahlil" switch (needs ANTHROPIC_API_KEY on the server). */

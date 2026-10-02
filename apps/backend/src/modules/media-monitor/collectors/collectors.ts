@@ -1,6 +1,6 @@
 import { MediaSettings } from '../media-settings';
-import { decodeEntities, parseFeedDate } from '../media-text.util';
-import { RawMediaItem, SourceRunResult, errorText, fetchJson, fetchText } from './collector.types';
+import { decodeEntities, meaningfulLine, parseFeedDate } from '../media-text.util';
+import { ApiError, RawMediaItem, SourceRunResult, errorText, fetchJson, fetchText } from './collector.types';
 import { parseFeed } from './feed.parser';
 import { GovAuthority, parseGovUzNews } from './gov-uz.parser';
 import { minPostId, parseTelegramPreview } from './telegram.parser';
@@ -431,14 +431,27 @@ async function discoverIgBusinessId(graph: string, token: string): Promise<strin
   return id;
 }
 
-const IG_FIELDS = 'id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count';
+const IG_FIELDS = 'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count';
 
-function igItem(m: IgMedia, sourceName: string, viaSearch: boolean, now: Date): RawMediaItem | null {
+/** One Instagram account to read, with its strongest role. */
+export interface IgAccount {
+  handle: string;
+  /** State body — «Rasmiy» badge. */
+  official: boolean;
+  /** The district hokimligi — every post counts. */
+  own: boolean;
+}
+
+/** Graph API rate-limit codes (app, user, page, custom, Instagram business-use-case). */
+const IG_RATE_CODES = new Set([4, 17, 32, 613, 80002]);
+
+function igItem(m: IgMedia, source: string, sourceName: string, now: Date, role: Partial<IgAccount> = {}): RawMediaItem | null {
   if (!m.permalink) return null;
   const caption = (m.caption ?? '').trim();
-  const firstLine = caption.split('\n').find((l) => l.trim()) ?? '';
+  // Captions often open with emoji or a hashtag block — take the first real line.
+  const firstLine = meaningfulLine(caption) ?? caption.split('\n').find((l) => l.trim()) ?? '';
   return {
-    source: 'instagram',
+    source,
     sourceName,
     platform: 'instagram',
     externalId: m.id,
@@ -448,26 +461,51 @@ function igItem(m: IgMedia, sourceName: string, viaSearch: boolean, now: Date): 
     imageUrl: m.media_type === 'VIDEO' ? (m.thumbnail_url ?? undefined) : m.media_url,
     author: sourceName,
     publishedAt: parseFeedDate(m.timestamp, now),
-    viaSearch,
+    viaSearch: source === 'ig-hashtags',
+    official: role.official === true || role.own === true,
+    alwaysRelevant: role.own === true,
   };
 }
 
+/** What the hokimiyat should do about a Graph API error, in plain words. */
+function igErrorText(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.code === 190) return 'Instagram tokeni eskirgan yoki bekor qilingan — yangi token kerak';
+    if (IG_RATE_CODES.has(err.code ?? -1)) return "Instagram so'rovlar limiti — 1 soatdan keyin davom etadi";
+    if (err.code === 10 || err.code === 200) return `Ruxsat yetarli emas: ${err.message}`;
+    if (err.code === 110 || err.code === 100 || /cannot find|not found|invalid user|business/i.test(err.message)) {
+      return "Akkaunt topilmadi yoki professional emas (shaxsiy akkauntlar o'qilmaydi)";
+    }
+  }
+  return errorText(err);
+}
+
+export interface InstagramRun {
+  /** One row per account (+ hashtags) for the «Holat» panel. */
+  results: SourceRunResult[];
+  /** Rate limit or dead token — the caller pauses Instagram for a while. */
+  pause: boolean;
+}
+
 /**
- * Instagram Graph API (needs INSTAGRAM_ACCESS_TOKEN of an IG Business/Creator
- * account linked to a Facebook Page; INSTAGRAM_BUSINESS_ID is found from it
- * when not set):
- *  - hashtags → ig_hashtag_search → /{hashtag}/recent_media (last 24h);
- *  - accounts → business_discovery (public business/creator profiles' recent posts).
- * Hashtag ids are cached: Instagram allows 30 unique hashtag lookups / 7 days.
+ * Instagram Graph API (needs INSTAGRAM_ACCESS_TOKEN of ANY professional IG
+ * account linked to a Facebook Page — not the hokimiyat's; INSTAGRAM_BUSINESS_ID
+ * is found from it when not set):
+ *  - accounts → business_discovery: the newest posts of public business/creator
+ *    profiles (state bodies, hokimliklar, news outlets) — one call each;
+ *  - hashtags → ig_hashtag_search → /{hashtag}/recent_media (needs Meta's
+ *    "Instagram Public Content Access"). Hashtag ids are cached (30 lookups / 7 days).
+ * A rate limit or a dead token stops the run at once instead of burning calls.
  */
 export async function collectInstagram(
   cfg: { token: string; businessId: string; version: string },
-  settings: Pick<MediaSettings, 'instagramHashtags' | 'instagramAccounts'>,
+  settings: Pick<MediaSettings, 'instagramHashtags'>,
+  accounts: IgAccount[],
   hashtagIds: Map<string, string>,
   now: Date,
-): Promise<SourceRunResult> {
-  const base: SourceRunResult = { key: 'instagram', name: 'Instagram', platform: 'instagram', items: [] };
-  if (!cfg.token) return { ...base, skipped: 'INSTAGRAM_ACCESS_TOKEN kiritilmagan' };
+): Promise<InstagramRun> {
+  const row = (key: string, name: string): SourceRunResult => ({ key, name, platform: 'instagram', items: [] });
+  if (!cfg.token) return { results: [{ ...row('instagram', 'Instagram'), skipped: 'INSTAGRAM_ACCESS_TOKEN kiritilmagan' }], pause: false };
   const g = `https://graph.facebook.com/${cfg.version}`;
   const tok = encodeURIComponent(cfg.token);
   let businessId: string | undefined = cfg.businessId;
@@ -475,54 +513,86 @@ export async function collectInstagram(
     try {
       businessId = await discoverIgBusinessId(g, cfg.token);
     } catch (err) {
-      return { ...base, error: `Instagram biznes akkaunti aniqlanmadi: ${errorText(err)}` };
+      return { results: [{ ...row('instagram', 'Instagram'), error: `Instagram biznes akkaunti aniqlanmadi: ${igErrorText(err)}` }], pause: true };
     }
     if (!businessId) {
       return {
-        ...base,
-        error: "Tokenga Instagram biznes akkaunt ulangan Facebook sahifa topilmadi — INSTAGRAM_BUSINESS_ID ni qo'lda kiriting",
+        results: [{
+          ...row('instagram', 'Instagram'),
+          error: "Tokenga Instagram biznes akkaunt ulangan Facebook sahifa topilmadi — INSTAGRAM_BUSINESS_ID ni qo'lda kiriting",
+        }],
+        pause: false,
       };
     }
   }
   const uid = encodeURIComponent(businessId);
-  const errors: string[] = [];
-  for (const tagName of settings.instagramHashtags.slice(0, 10)) {
-    try {
-      let hid = hashtagIds.get(tagName);
-      if (!hid) {
-        const r = await fetchJson<{ data?: { id: string }[] }>(
-          `${g}/ig_hashtag_search?user_id=${uid}&q=${encodeURIComponent(tagName)}&access_token=${tok}`,
+  let stop: string | undefined;
+  const fatal = (err: unknown) => {
+    if (err instanceof ApiError && (err.code === 190 || IG_RATE_CODES.has(err.code ?? -1))) stop = igErrorText(err);
+  };
+  const results: SourceRunResult[] = [];
+
+  if (settings.instagramHashtags.length) {
+    const tags = row('ig-hashtags', 'Instagram heshteglar');
+    const errors: string[] = [];
+    for (const tagName of settings.instagramHashtags.slice(0, 10)) {
+      if (stop) break;
+      try {
+        let hid = hashtagIds.get(tagName);
+        if (!hid) {
+          const r = await fetchJson<{ data?: { id: string }[] }>(
+            `${g}/ig_hashtag_search?user_id=${uid}&q=${encodeURIComponent(tagName)}&access_token=${tok}`,
+          );
+          hid = r.data?.[0]?.id;
+          if (!hid) continue;
+          hashtagIds.set(tagName, hid);
+        }
+        const media = await fetchJson<{ data?: IgMedia[] }>(
+          `${g}/${hid}/recent_media?user_id=${uid}&fields=${IG_FIELDS}&limit=50&access_token=${tok}`,
         );
-        hid = r.data?.[0]?.id;
-        if (!hid) continue;
-        hashtagIds.set(tagName, hid);
+        for (const m of media.data ?? []) {
+          const it = igItem(m, 'ig-hashtags', `#${tagName}`, now);
+          if (it) tags.items.push(it);
+        }
+      } catch (err) {
+        fatal(err);
+        errors.push(`#${tagName}: ${igErrorText(err)}`);
       }
-      const media = await fetchJson<{ data?: IgMedia[] }>(
-        `${g}/${hid}/recent_media?user_id=${uid}&fields=${IG_FIELDS}&limit=50&access_token=${tok}`,
-      );
-      for (const m of media.data ?? []) {
-        const it = igItem(m, `#${tagName}`, true, now);
-        if (it) base.items.push(it);
-      }
-    } catch (err) {
-      errors.push(`#${tagName}: ${errorText(err)}`);
     }
+    if (errors.length) tags.error = errors.slice(0, 2).join('; ');
+    results.push(tags);
   }
-  for (const account of settings.instagramAccounts.slice(0, 15)) {
-    try {
-      const fields = `business_discovery.username(${account}){username,name,media.limit(25){${IG_FIELDS}}}`;
-      const r = await fetchJson<{ business_discovery?: { username: string; name?: string; media?: { data?: IgMedia[] } } }>(
-        `${g}/${uid}?fields=${encodeURIComponent(fields)}&access_token=${tok}`,
-      );
-      const bd = r.business_discovery;
-      for (const m of bd?.media?.data ?? []) {
-        const it = igItem(m, bd?.name || `@${bd?.username ?? account}`, false, now);
-        if (it) base.items.push(it);
+
+  // A few at a time: ~30 accounts in seconds, without bursting the Graph API.
+  const list = accounts.slice(0, 40);
+  let next = 0;
+  const worker = async () => {
+    while (next < list.length) {
+      const a = list[next++];
+      const key = `ig:${a.handle.toLowerCase()}`;
+      const r = row(key, `@${a.handle}`);
+      results.push(r);
+      if (stop) {
+        r.skipped = stop;
+        continue;
       }
-    } catch (err) {
-      errors.push(`@${account}: ${errorText(err)}`);
+      try {
+        const fields = `business_discovery.username(${a.handle}){username,name,media.limit(12){${IG_FIELDS}}}`;
+        const res = await fetchJson<{ business_discovery?: { username: string; name?: string; media?: { data?: IgMedia[] } } }>(
+          `${g}/${uid}?fields=${encodeURIComponent(fields)}&access_token=${tok}`,
+        );
+        const bd = res.business_discovery;
+        r.name = bd?.name ? `${bd.name} (@${bd.username ?? a.handle})` : `@${bd?.username ?? a.handle}`;
+        for (const m of bd?.media?.data ?? []) {
+          const it = igItem(m, key, bd?.name || `@${bd?.username ?? a.handle}`, now, a);
+          if (it) r.items.push(it);
+        }
+      } catch (err) {
+        fatal(err);
+        r.error = igErrorText(err);
+      }
     }
-  }
-  if (errors.length) base.error = errors.slice(0, 3).join('; ');
-  return base;
+  };
+  await Promise.all(Array.from({ length: Math.min(4, list.length) }, worker));
+  return { results, pause: !!stop };
 }

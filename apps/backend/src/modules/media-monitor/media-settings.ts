@@ -56,10 +56,18 @@ export interface MediaSettings {
   ownYoutubeChannels: string[];
   /** YouTube Data API search query (only with YOUTUBE_API_KEY). */
   youtubeQuery: string;
-  /** Instagram hashtags (without #) — Graph API hashtag search. */
+  /** Instagram hashtags (without #) — Graph API hashtag search (needs Meta's Public Content Access). */
   instagramHashtags: string[];
-  /** Public Instagram business/creator accounts to scan (Business Discovery). */
+  /** News outlets' public Instagram accounts (Business Discovery) — keyword-filtered. */
   instagramAccounts: string[];
+  /** State bodies' Instagram accounts — «Rasmiy», keyword-filtered. */
+  officialInstagramAccounts: string[];
+  /** The district hokimligi's Instagram — every post counts. */
+  ownInstagramAccounts: string[];
+  /** Toshkent shahri hokimligi / city accounts — every post counts for the city filter. */
+  cityInstagramAccounts: string[];
+  /** Toshkent viloyati hokimligi / region accounts — every post counts for the region filter. */
+  regionInstagramAccounts: string[];
   /** Google News search query (covers every outlet Google indexes). */
   googleNewsQuery: string;
   /** Items below this relevance are kept but hidden from the default view. */
@@ -71,7 +79,7 @@ export interface MediaSettings {
 }
 
 /** Bump when default sources are added; saved configs then receive the new ones once. */
-export const SOURCES_VERSION = 5;
+export const SOURCES_VERSION = 6;
 
 export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   keywords: [
@@ -248,7 +256,21 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
   ownYoutubeChannels: ['UC1agOw-aS7iHgozgkQJ9RAg'],
   youtubeQuery: '"Mirzo Ulug\'bek tumani"|"Мирзо-Улугбекский район"|"Mirzo Ulugbek tumani"',
   instagramHashtags: ['mirzoulugbektumani', 'mirzoulugbek'],
-  instagramAccounts: ['kun.uz', 'daryo.uz', 'gazeta.uz'],
+  // Every handle below is the one the outlet / agency links from its own site
+  // or gov.uz page (checked 2026-10-02). Only professional accounts can be read.
+  instagramAccounts: [
+    'kun.uz', 'daryo.rasmiy', 'gazetauzbekistan', 'qalampir.uz', 'uznews', 'spot.uz', 'podrobno.uz', 'xabar.uz',
+    'zamin.uz', 'anhor.uz', 'aniq.uz', 'repost.uz', 'nova24.uz', 'upl_uz', 'uzreport.news',
+  ],
+  // President, UzA, IIV, FVV, both Toshkent hokimliklar, ministries residents feel.
+  officialInstagramAccounts: [
+    'mirziyoyev_sh', 'uza.uz', 'iiv.uz', 'fvvmchs', 'toshshaharhokimlik', 'toshvilhokimlik', 'qurilishvazirligi',
+    'energetika_vazirligi', 'transport_vazirligi', 'ecology_uzb', 'uz_kadastr', 'soliqpressa', 'yoshlaragentligi',
+  ],
+  // gov.uz/oz/mirzoulugbek links this account.
+  ownInstagramAccounts: ['m.ulugbekhokimiyat'],
+  cityInstagramAccounts: ['toshshaharhokimlik'],
+  regionInstagramAccounts: ['toshvilhokimlik'],
   googleNewsQuery:
     '"Mirzo Ulug\'bek tumani" OR "Мирзо-Улугбекский район" OR "Мирзо-Улугбекском районе" OR "Mirzo Ulug\'bek hokimligi"',
   minRelevance: 50,
@@ -290,6 +312,10 @@ export function mergeSettings(stored: Partial<MediaSettings> | null | undefined)
     youtubeQuery: (s.youtubeQuery ?? d.youtubeQuery).trim(),
     instagramHashtags: uniq((s.instagramHashtags ?? d.instagramHashtags).map((h) => h.replace(/^#/, ''))),
     instagramAccounts: uniq((s.instagramAccounts ?? d.instagramAccounts).map(cleanHandle)),
+    officialInstagramAccounts: uniq((s.officialInstagramAccounts ?? d.officialInstagramAccounts).map(cleanHandle)),
+    ownInstagramAccounts: uniq((s.ownInstagramAccounts ?? d.ownInstagramAccounts).map(cleanHandle)),
+    cityInstagramAccounts: uniq((s.cityInstagramAccounts ?? d.cityInstagramAccounts).map(cleanHandle)),
+    regionInstagramAccounts: uniq((s.regionInstagramAccounts ?? d.regionInstagramAccounts).map(cleanHandle)),
     googleNewsQuery: (s.googleNewsQuery ?? d.googleNewsQuery).trim(),
     minRelevance: clamp(s.minRelevance ?? d.minRelevance, 0, 100),
     aiEnabled: s.aiEnabled === true,
@@ -321,8 +347,22 @@ export function upgradeSources(s: MediaSettings): MediaSettings | null {
     ownYoutubeChannels: [...s.ownYoutubeChannels, ...d.ownYoutubeChannels.filter((c) => !s.ownYoutubeChannels.includes(c))],
     govAuthorities: [...s.govAuthorities, ...d.govAuthorities.filter((a) => !s.govAuthorities.some((x) => x.slug === a.slug))],
     googleNewsSites: [...s.googleNewsSites, ...d.googleNewsSites.filter((x) => !s.googleNewsSites.includes(x))],
+    // The first defaults guessed two handles wrong (the outlets use daryo.rasmiy / gazetauzbekistan).
+    instagramAccounts: addNew(s.instagramAccounts.map((a) => IG_RENAMED[a.toLowerCase()] ?? a), d.instagramAccounts),
+    officialInstagramAccounts: addNew(s.officialInstagramAccounts, d.officialInstagramAccounts),
+    ownInstagramAccounts: addNew(s.ownInstagramAccounts, d.ownInstagramAccounts),
+    cityInstagramAccounts: addNew(s.cityInstagramAccounts, d.cityInstagramAccounts),
+    regionInstagramAccounts: addNew(s.regionInstagramAccounts, d.regionInstagramAccounts),
     sourcesVersion: SOURCES_VERSION,
   };
+}
+
+const IG_RENAMED: Record<string, string> = { 'daryo.uz': 'daryo.rasmiy', 'gazeta.uz': 'gazetauzbekistan' };
+
+/** `mine` plus the defaults it lacks (case-insensitive), in order. */
+function addNew(mine: string[], defaults: string[]): string[] {
+  const have = new Set(mine.map((x) => x.toLowerCase()));
+  return uniq([...mine, ...defaults.filter((x) => !have.has(x.toLowerCase()))]);
 }
 
 /** "@kunuz" / "https://t.me/kunuz" / "t.me/s/kunuz" → "kunuz". */

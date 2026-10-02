@@ -58,12 +58,25 @@ export async function fetchText(url: string, timeoutMs = 15_000, headers: Record
   return res.text();
 }
 
+/** An API error with the provider's code (Graph API: 190 = token expired, 4/17/32/613/80002 = rate limit). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly code?: number,
+    readonly subcode?: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function fetchJson<T>(url: string, timeoutMs = 15_000): Promise<T> {
   const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
-  const body = (await res.json().catch(() => ({}))) as T & { error?: { message?: string } };
-  if (!res.ok) {
-    const msg = body?.error?.message ?? `HTTP ${res.status}`;
-    throw new Error(msg);
+  const body = (await res.json().catch(() => ({}))) as T & {
+    error?: { message?: string; code?: number; error_subcode?: number };
+  };
+  if (!res.ok || body?.error) {
+    const e = body?.error;
+    throw new ApiError(e?.message ?? `HTTP ${res.status}`, e?.code, e?.error_subcode);
   }
   return body;
 }
