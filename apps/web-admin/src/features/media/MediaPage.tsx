@@ -320,7 +320,7 @@ export function MediaPage() {
                         <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-70 motion-safe:animate-ping" />
                         <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
                       </span>
-                      Yangiliklar
+                      OAV va davlat manbalaridagi yangiliklar
                     </h2>
                     <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-soft">
                       <span
