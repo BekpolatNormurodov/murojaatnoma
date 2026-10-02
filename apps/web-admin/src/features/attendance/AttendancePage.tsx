@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Pagination } from '@/shared/ui/Pagination';
 import {
   ResponsiveContainer,
@@ -40,6 +41,7 @@ import { EmployeeStatsDrawer } from '@/features/oversight/EmployeeStatsDrawer';
 import { useAttendanceToday, todayIso } from './useAttendanceToday';
 import { useAttendanceMonthlyReport } from './useAttendanceMonthlyReport';
 import { AttendanceRangeView } from './AttendanceRangeView';
+import { AttendanceTimesheet } from './AttendanceTimesheet';
 import {
   ATTENDANCE_STATUS_META,
   clockOf,
@@ -146,6 +148,19 @@ export function AttendancePage() {
   // Sana oraligʻi: from===to bo'lsa bitta kun (kunlik davomat taxtasi),
   // aks holda oraliq (AttendanceRangeView — jami koʻrsatkichlar).
   const [range, setRange] = useState({ from: todayIso(), to: todayIso() });
+  // Kunlik taxta yoki Tabel (barcha xodimlar × oy/oraliq kunlari) — ?view=tabel.
+  const [params, setParams] = useSearchParams();
+  const view: 'day' | 'tabel' = params.get('view') === 'tabel' ? 'tabel' : 'day';
+  const setView = (v: 'day' | 'tabel') =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (v === 'tabel') next.set('view', 'tabel');
+        else next.delete('view');
+        return next;
+      },
+      { replace: true },
+    );
   const isSingleDay = range.from === range.to;
   const date = range.from;
   const isToday = date === todayIso();
@@ -250,8 +265,29 @@ export function AttendancePage() {
         title="Davomat"
         subtitle="Ishga kelish/ketish, kechikish va joylashuv nazorati"
         action={
-          <div className="flex items-center gap-2">
-            {isSingleDay && isToday && dataUpdatedAt > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-11 rounded-xl border border-line bg-surface-2 p-1" role="tablist" aria-label="Ko‘rinish">
+              {(
+                [
+                  ['day', 'Kunlik'],
+                  ['tabel', 'Tabel'],
+                ] as const
+              ).map(([v, l]) => (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={view === v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'rounded-[10px] px-4 text-[13px] font-semibold transition-colors',
+                    view === v ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink',
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            {view === 'day' && isSingleDay && isToday && dataUpdatedAt > 0 && (
               <span className="hidden items-center gap-1.5 text-xs text-ink-muted sm:flex">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-400 opacity-60" />
@@ -260,12 +296,14 @@ export function AttendancePage() {
                 {isFetching ? 'Yangilanmoqda…' : `Jonli · ${clockOf(new Date(dataUpdatedAt).toISOString())}`}
               </span>
             )}
-            <DateRangePicker from={range.from} to={range.to} onChange={changeRange} />
+            {view === 'day' && <DateRangePicker from={range.from} to={range.to} onChange={changeRange} />}
           </div>
         }
       />
 
-      {isError && !data ? (
+      {view === 'tabel' ? (
+        <AttendanceTimesheet />
+      ) : isError && !data ? (
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>

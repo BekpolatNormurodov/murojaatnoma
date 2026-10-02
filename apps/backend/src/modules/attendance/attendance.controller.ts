@@ -9,6 +9,7 @@ import {
   AttendanceService,
   EmployeeMeAttendance,
   MeWeekEntry,
+  Timesheet,
   PrecheckResult,
   TodayAttendance,
 } from './attendance.service';
@@ -18,6 +19,7 @@ import {
   DailyReportQueryDto,
   MonthlyReportQueryDto,
   RangeReportQueryDto,
+  TimesheetQueryDto,
   TodayQueryDto,
 } from './dto/attendance-report-query.dto';
 import { VerifyFaceDto } from './dto/verify-face.dto';
@@ -131,6 +133,17 @@ export class AttendanceController {
   @ApiOperation({ summary: 'Monthly attendance report, optionally filtered by employee (admin)' })
   monthlyReport(@Query() query: MonthlyReportQueryDto): Promise<AttendanceReport> {
     return this.attendanceService.monthlyReport(query);
+  }
+
+  @Get('timesheet')
+  @Roles(EmployeeRole.ADMIN)
+  @ApiOperation({
+    summary:
+      'Tabel: every active employee × every day of the period (default: this month, ≤ 62 days) — ' +
+      'status, in/out, hours, lateness, early leave, totals and norm',
+  })
+  timesheet(@Query() query: TimesheetQueryDto): Promise<Timesheet> {
+    return this.attendanceService.timesheet(query.from, query.to);
   }
 
   @Get('report/range')

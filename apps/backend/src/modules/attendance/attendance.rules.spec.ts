@@ -213,3 +213,70 @@ describe('attendance rules', () => {
     expect(String(created[1].reason)).toMatch(/m from office, outside 200m geofence/);
   });
 });
+
+describe('tabel (timesheet)', () => {
+  const rec = (employeeId: string, type: AttendanceType, d: Date) => ({
+    employeeId,
+    type,
+    isValid: true,
+    recordedAt: d,
+    latitude: OFFICE.lat,
+    longitude: OFFICE.lng,
+    faceScore: 0.9,
+    place: 'office',
+    isLate: type === AttendanceType.CHECK_IN && d.getHours() * 60 + d.getMinutes() > 9 * 60,
+    lateMinutes:
+      type === AttendanceType.CHECK_IN ? Math.max(0, d.getHours() * 60 + d.getMinutes() - 9 * 60) : 0,
+    photoUrl: null,
+  });
+
+  it('every employee × every day, with hours, lateness, early leave, leave and norm', async () => {
+    const day1 = new Date();
+    day1.setDate(day1.getDate() - 2);
+    const day2 = new Date();
+    day2.setDate(day2.getDate() - 1);
+    const key = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const { service } = build({
+      employees: [employee('ali'), employee('vali')],
+      workDays: [0, 1, 2, 3, 4, 5, 6],
+      records: [
+        rec('ali', AttendanceType.CHECK_IN, at(8, 55, day1)),
+        rec('ali', AttendanceType.CHECK_OUT, at(18, 5, day1)),
+        rec('ali', AttendanceType.CHECK_IN, at(9, 20, day2)),
+        rec('ali', AttendanceType.CHECK_OUT, at(17, 30, day2)),
+      ],
+      leaves: [
+        { employeeId: 'vali', type: 'days', amount: 1, startDate: day2, startTime: null, reason: 'Kasal', status: 'APPROVED' },
+      ],
+    });
+    const t = await service.timesheet(key(day1), key(day2));
+    expect(t.days).toHaveLength(2);
+    const ali = t.rows.find((r) => r.employeeId === 'ali')!;
+    expect(ali.cells.map((c) => c.status)).toEqual(['left', 'left']);
+    expect(ali.cells[0]).toMatchObject({ in: '08:55', out: '18:05', lateMinutes: 0, earlyMinutes: 0 });
+    expect(ali.cells[1]).toMatchObject({ in: '09:20', out: '17:30', lateMinutes: 20, earlyMinutes: 30 });
+    expect(ali.totals).toMatchObject({ workdays: 2, came: 2, late: 1, lateMinutes: 20, earlyLeaves: 1, absent: 0, normHours: 18 });
+    expect(ali.totals.hours).toBeCloseTo(9.2 + 8.2, 0);
+
+    const vali = t.rows.find((r) => r.employeeId === 'vali')!;
+    expect(vali.cells.map((c) => c.status)).toEqual(['absent', 'leave']);
+    expect(vali.cells[1].leave).toBe('Kasal');
+    expect(vali.totals).toMatchObject({ workdays: 1, absent: 1, leave: 1, came: 0, normHours: 9 });
+    expect(t.daily).toEqual([
+      { date: key(day1), came: 1, expected: 2 },
+      { date: key(day2), came: 1, expected: 1 },
+    ]);
+  });
+
+  it('future days are blank, not "kelmadi"; bad ranges are refused', async () => {
+    const { service } = build({ employees: [employee('ali')], workDays: [0, 1, 2, 3, 4, 5, 6] });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const k = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    const t = await service.timesheet(k, k);
+    expect(t.rows[0].cells[0].status).toBe('future');
+    expect(t.rows[0].totals).toMatchObject({ workdays: 0, absent: 0 });
+    await expect(service.timesheet('2026-10-10', '2026-10-01')).rejects.toThrow(/Davr/);
+  });
+});

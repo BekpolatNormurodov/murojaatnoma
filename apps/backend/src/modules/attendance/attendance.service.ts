@@ -201,6 +201,56 @@ interface DayAttendanceEntry {
   hoursWorked: number | null;
 }
 
+/** Bitta katak: xodimning bir kuni (tabel). */
+export interface TimesheetCell {
+  date: string;
+  /** present | late | left | absent | leave | dayoff | future */
+  status: TodayAttendanceStatus | 'future';
+  in: string | null;
+  out: string | null;
+  hours: number | null;
+  lateMinutes: number;
+  earlyMinutes: number;
+  /** Kechikish/erta ketish soatlik ruxsat bilan qoplangan. */
+  excused: boolean;
+  /** Ta'til sababi (bo'lsa). */
+  leave: string | null;
+}
+
+export interface TimesheetRow {
+  employeeId: string;
+  fullName: string;
+  position: string;
+  department: string | null;
+  avatarUrl: string | null;
+  workStartTime: string;
+  workEndTime: string;
+  cells: TimesheetCell[];
+  totals: {
+    /** Ish kunlari (o'tgan, ta'tilsiz) — "kelishi kerak edi". */
+    workdays: number;
+    came: number;
+    late: number;
+    lateMinutes: number;
+    earlyLeaves: number;
+    earlyMinutes: number;
+    absent: number;
+    leave: number;
+    hours: number;
+    /** Norma: ish kunlari × kunlik ish soati. */
+    normHours: number;
+  };
+}
+
+export interface Timesheet {
+  from: string;
+  to: string;
+  days: { date: string; weekday: number; isWorkday: boolean; isToday: boolean; isFuture: boolean }[];
+  rows: TimesheetRow[];
+  /** Har kun: nechta keldi / kelishi kerak edi. */
+  daily: { date: string; came: number; expected: number }[];
+}
+
 export interface MeWeekCheckIn {
   time: Date;
   isLate: boolean;
@@ -700,6 +750,152 @@ export class AttendanceService {
       today: { date: todayKey, ...todayDayEntry },
       week,
     };
+  }
+
+  /**
+   * Tabel: barcha faol xodimlar × davrning har bir kuni (oy yoki ixtiyoriy
+   * oraliq, ≤ 62 kun) — holat, keldi/ketdi, soat, kechikish, erta ketish va
+   * jami/norma. Kunlik taxta bilan aynan bir xil qoidalar (ta'til, dam olish,
+   * soatlik ruxsat); kelajak kunlar "future" (kelmadi hisoblanmaydi).
+   */
+  async timesheet(fromIso?: string, toIso?: string): Promise<Timesheet> {
+    const now = new Date();
+    const start = fromIso ? new Date(`${fromIso.slice(0, 10)}T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1);
+    let end = toIso
+      ? new Date(`${toIso.slice(0, 10)}T00:00:00`)
+      : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      throw new BadRequestException("Davr noto'g'ri: boshlanish tugashdan oldin bo'lsin");
+    }
+    const maxEnd = new Date(start);
+    maxEnd.setDate(maxEnd.getDate() + 61);
+    if (end > maxEnd) end = maxEnd;
+
+    const { from } = dayRange(start);
+    const { to } = dayRange(end);
+    const [employees, records, leaves] = await Promise.all([
+      this.prisma.employee.findMany({
+        where: { isActive: true },
+        include: { department: { select: { name: true } } },
+        orderBy: { fullName: 'asc' },
+      }),
+      this.prisma.attendanceRecord.findMany({
+        where: { recordedAt: { gte: from, lte: to } },
+        orderBy: { recordedAt: 'asc' },
+      }),
+      this.approvedLeaves(from, to),
+    ]);
+
+    const byEmpDay = new Map<string, AttendanceRecord[]>();
+    for (const r of records) {
+      const k = `${r.employeeId}|${formatLocalDate(r.recordedAt)}`;
+      const list = byEmpDay.get(k);
+      if (list) list.push(r);
+      else byEmpDay.set(k, [r]);
+    }
+
+    const todayKey = formatLocalDate(now);
+    const dayDates: Date[] = [];
+    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) dayDates.push(new Date(d));
+    const days = dayDates.map((d) => {
+      const key = formatLocalDate(d);
+      return {
+        date: key,
+        weekday: (d.getDay() + 6) % 7,
+        isWorkday: this.isWorkday(d),
+        isToday: key === todayKey,
+        isFuture: key > todayKey,
+      };
+    });
+
+    const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const rows: TimesheetRow[] = employees.map((emp) => {
+      const wp = this.workplaceOf(emp);
+      const dailyHours =
+        Math.max(0, minutesAfter(parseTimeOnDate(now, emp.workStartTime), parseTimeOnDate(now, emp.workEndTime))) / 60;
+      const totals = {
+        workdays: 0,
+        came: 0,
+        late: 0,
+        lateMinutes: 0,
+        earlyLeaves: 0,
+        earlyMinutes: 0,
+        absent: 0,
+        leave: 0,
+        hours: 0,
+        normHours: 0,
+      };
+      const cells: TimesheetCell[] = dayDates.map((d, i) => {
+        const info = days[i];
+        if (info.isFuture) {
+          return { date: info.date, status: 'future', in: null, out: null, hours: null, lateMinutes: 0, earlyMinutes: 0, excused: false, leave: null };
+        }
+        const leaveDay = this.leaveOn(leaves, emp.id, d, emp.workStartTime);
+        const e = this.applyCalendar(this.buildDayEntry(byEmpDay.get(`${emp.id}|${info.date}`) ?? [], wp), {
+          isWorkday: info.isWorkday,
+          leave: leaveDay,
+        });
+        let early = 0;
+        if (e.checkOut && info.isWorkday) {
+          early = Math.max(0, minutesAfter(e.checkOut.time, parseTimeOnDate(d, emp.workEndTime)));
+          if (leaveDay.window && e.checkOut.time.getTime() >= leaveDay.window.start.getTime()) early = 0;
+        }
+        const lateMinutes = e.checkIn?.isLate ? e.checkIn.lateMinutes : 0;
+        if (e.status === 'leave') totals.leave += 1;
+        else if (info.isWorkday) {
+          totals.workdays += 1;
+          totals.normHours += dailyHours;
+          if (!e.checkIn) totals.absent += 1;
+        }
+        if (e.checkIn) totals.came += 1;
+        if (lateMinutes > 0) {
+          totals.late += 1;
+          totals.lateMinutes += lateMinutes;
+        }
+        if (early > 0) {
+          totals.earlyLeaves += 1;
+          totals.earlyMinutes += early;
+        }
+        totals.hours += e.hoursWorked ?? 0;
+        return {
+          date: info.date,
+          status: e.status,
+          in: e.checkIn ? hhmm(e.checkIn.time) : null,
+          out: e.checkOut ? hhmm(e.checkOut.time) : null,
+          hours: e.hoursWorked,
+          lateMinutes,
+          earlyMinutes: early,
+          excused: e.excused,
+          leave: e.leave?.reason ?? null,
+        };
+      });
+      totals.hours = Math.round(totals.hours * 10) / 10;
+      totals.normHours = Math.round(totals.normHours * 10) / 10;
+      return {
+        employeeId: emp.id,
+        fullName: emp.fullName,
+        position: emp.position,
+        department: emp.department?.name ?? null,
+        avatarUrl: emp.avatarUrl,
+        workStartTime: emp.workStartTime,
+        workEndTime: emp.workEndTime,
+        cells,
+        totals,
+      };
+    });
+
+    const daily = days.map((info, i) => {
+      let came = 0;
+      let expected = 0;
+      for (const r of rows) {
+        const c = r.cells[i];
+        if (c.in) came += 1;
+        if (info.isWorkday && !info.isFuture && c.status !== 'leave') expected += 1;
+      }
+      return { date: info.date, came, expected };
+    });
+
+    return { from: formatLocalDate(start), to: formatLocalDate(end), days, rows, daily };
   }
 
   /**

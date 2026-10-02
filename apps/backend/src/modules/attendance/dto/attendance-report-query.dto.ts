@@ -48,6 +48,19 @@ export class TodayQueryDto {
   date?: string;
 }
 
+/** `GET /attendance/timesheet` — tabel: har xodim × har kun (≤ 62 kun). */
+export class TimesheetQueryDto {
+  @ApiPropertyOptional({ example: '2026-10-01', description: 'Start (inclusive). Default: 1st of this month.' })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-31', description: 'End (inclusive). Default: last day of this month.' })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
 export class RangeReportQueryDto {
   @ApiPropertyOptional({ example: '2026-08-01', description: 'Range start (inclusive). Defaults to today.' })
   @IsOptional()
