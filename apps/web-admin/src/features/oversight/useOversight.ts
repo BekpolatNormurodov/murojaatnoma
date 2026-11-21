@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
 
-export type AttendanceStatus = 'present' | 'late' | 'absent' | 'left';
+/** Backend `TodayAttendanceStatus` bilan bir xil: leave = ta'til, dayoff = ish kuni emas. */
+export type AttendanceStatus = 'present' | 'late' | 'absent' | 'left' | 'leave' | 'dayoff';
 
 export interface OversightRow {
   employeeId: string;

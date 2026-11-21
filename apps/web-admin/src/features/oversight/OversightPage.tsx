@@ -57,12 +57,24 @@ function hhmm(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const ATT_META: Record<OversightRow['attendance']['status'], { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' }> = {
+type AttMeta = { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'primary' };
+
+const ATT_META: Record<OversightRow['attendance']['status'], AttMeta> = {
   present: { label: 'Ish joyida', tone: 'success' },
   late: { label: 'Kechikkan', tone: 'warning' },
   left: { label: 'Chiqib ketgan', tone: 'neutral' },
   absent: { label: 'Kelmagan', tone: 'danger' },
+  leave: { label: "Ta'tilda", tone: 'primary' },
+  dayoff: { label: 'Dam olish', tone: 'neutral' },
 };
+
+/**
+ * Backend yangi holat qo'shsa ham sahifa qulamasin: dam olish kuni `dayoff`
+ * kelganda butun /oversight "undefined.tone" bilan yiqilgan edi.
+ */
+function attMeta(status: string): AttMeta {
+  return (ATT_META as Record<string, AttMeta | undefined>)[status] ?? { label: "Noma'lum", tone: 'neutral' };
+}
 
 type FlagFilter = 'all' | 'absent' | 'late' | 'outside' | 'noface';
 
@@ -183,7 +195,7 @@ export function OversightPage() {
       { header: 'F.I.Sh.', value: (r) => r.fullName },
       { header: 'Lavozim', value: (r) => r.position },
       { header: 'Yuz', value: (r) => (r.hasFace ? "Ro'yxatdan o'tgan" : "Yo'q") },
-      { header: 'Holat', value: (r) => ATT_META[r.attendance.status].label },
+      { header: 'Holat', value: (r) => attMeta(r.attendance.status).label },
       { header: 'Keldi', value: (r) => hhmm(r.attendance.checkInAt) },
       { header: 'Ketdi', value: (r) => hhmm(r.attendance.checkOutAt) },
       { header: 'Bugun (soat)', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
@@ -245,7 +257,7 @@ export function OversightPage() {
       <div className="mb-5 inline-flex rounded-xl border border-line bg-surface-2 p-1" role="tablist" aria-label="Xodimlar">
         {(
           [
-            ['active', 'Faol xodimlar', data?.summary.total],
+            ['active', 'Faol xodimlar', data?.summary?.total],
             ['archive', 'Arxiv', archivedRows.length],
           ] as const
         ).map(([v, label, count]) => (
@@ -475,7 +487,7 @@ function OversightCard({
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
-  const att = ATT_META[row.attendance.status];
+  const att = attMeta(row.attendance.status);
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
   return (
