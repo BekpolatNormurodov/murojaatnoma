@@ -42,6 +42,8 @@ import { SalariesModule } from './modules/salaries/salaries.module';
 import { SuggestionsModule } from './modules/suggestions/suggestions.module';
 import { WorkforceModule } from './modules/workforce/workforce.module';
 import { ZonesModule } from './modules/zones/zones.module';
+import { AppSettingsModule } from './modules/settings/app-settings.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -56,6 +58,8 @@ import { ZonesModule } from './modules/zones/zones.module';
     // chat mutation fans out live whether it came over REST or a socket).
     EventEmitterModule.forRoot(),
     PrismaModule,
+    AppSettingsModule,
+    ReportsModule,
     // Global push (FCM) — available to notifications + the location stale-scan.
     PushModule,
     HealthModule,

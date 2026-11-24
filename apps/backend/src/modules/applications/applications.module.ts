@@ -17,6 +17,23 @@ const MAX_ATTACHMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
 /** multipart/form-data file uploads are only accepted for these media kinds. */
 const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
 
+/**
+ * Office documents — accepted ONLY on POST /uploads/document (kunlik hisobot
+ * hujjatlari). Checked by extension too: phones often send a generic
+ * `application/octet-stream` for a .docx/.xlsx picked from Files.
+ */
+const DOCUMENT_UPLOAD_PATH = /\/uploads\/document\/?(\?.*)?$/;
+const DOCUMENT_EXTENSIONS = new Set([
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.rtf', '.odt', '.ods', '.zip',
+]);
+
+export function isAllowedUpload(originalUrl: string, mimetype: string, originalName: string): boolean {
+  if (ALLOWED_ATTACHMENT_MIME_PREFIXES.some((prefix) => mimetype.startsWith(prefix))) return true;
+  return (
+    DOCUMENT_UPLOAD_PATH.test(originalUrl) && DOCUMENT_EXTENSIONS.has(extname(originalName).toLowerCase())
+  );
+}
+
 @Module({
   imports: [
     NotificationsModule,
@@ -42,14 +59,16 @@ const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
             },
           }),
           limits: { fileSize: MAX_ATTACHMENT_UPLOAD_BYTES },
-          fileFilter: (_req, file, callback) => {
-            const isAllowed = ALLOWED_ATTACHMENT_MIME_PREFIXES.some((prefix) =>
-              file.mimetype.startsWith(prefix),
+          fileFilter: (req, file, callback) => {
+            const isAllowed = isAllowedUpload(
+              (req as { originalUrl?: string }).originalUrl ?? '',
+              file.mimetype,
+              file.originalname,
             );
             if (!isAllowed) {
               callback(
                 new BadRequestException(
-                  `Unsupported file type: ${file.mimetype}. Only image/video/audio uploads are accepted.`,
+                  `Unsupported file type: ${file.mimetype}. Only image/video/audio uploads are accepted (documents: POST /uploads/document).`,
                 ),
                 false,
               );

@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LocationSource, Prisma } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
@@ -195,6 +195,140 @@ export class LocationsService {
       distanceToOfficeM,
       recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
     };
+  }
+
+  /**
+   * Cleans a list of mahalla codes coming from the admin: trimmed, de-duplicated
+   * and checked against the real mahallas — an unknown code would silently make
+   * the employee "outside" forever, so it is refused instead.
+   */
+  async normalizeMahallaCodes(codes: string[]): Promise<string[]> {
+    const clean = [...new Set(codes.map((c) => String(c).trim()).filter(Boolean))];
+    if (clean.length === 0) return [];
+    const known = new Set((await this.zones.listZones('MAHALLA')).map((z) => z.code));
+    const unknown = clean.filter((c) => !known.has(c));
+    if (unknown.length > 0) {
+      throw new BadRequestException(`Bunday mahalla yo'q: ${unknown.slice(0, 5).join(', ')}`);
+    }
+    return clean;
+  }
+
+  /**
+   * Call after an employee's territory (assigned mahallas) or office point
+   * changed. Re-derives, with the NEW rules:
+   *  - the denormalized "latest location" flags, so the admin list and live
+   *    map flip to Hududda/Tashqarida immediately instead of waiting for the
+   *    next GPS report (which may be hours away);
+   *  - every fix recorded TODAY, so today's "hududda necha soat" is counted
+   *    against the territory the admin has just set. Earlier days keep the
+   *    territory that was in force on those days.
+   * Uses the same office-first + boundary-tolerance rule as live ingest.
+   */
+  async reevaluateTerritory(employeeId: string): Promise<{ insideAssignedZone: boolean | null; fixesUpdated: number }> {
+    const emp = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        officeLat: true,
+        officeLng: true,
+        officeRadiusM: true,
+        assignedMahallaCodes: true,
+        lastLocationAt: true,
+        lastLat: true,
+        lastLng: true,
+        lastAccuracyM: true,
+        lastMahallaCode: true,
+        lastInsideDistrict: true,
+      },
+    });
+    if (!emp) {
+      throw new NotFoundException('Employee not found');
+    }
+    const office = this.resolveOffice(emp);
+    const codes = emp.assignedMahallaCodes;
+
+    const judge = async (p: {
+      latitude: number;
+      longitude: number;
+      accuracy: number | null;
+      mahallaCode: string | null;
+      insideDistrict: boolean;
+    }): Promise<{ insideOffice: boolean; insideAssignedZone: boolean; distanceToOfficeM: number }> => {
+      const distanceToOfficeM = Math.round(distanceInMeters(p.latitude, p.longitude, office.lat, office.lng));
+      const insideOffice = distanceToOfficeM <= office.radiusM;
+      let insideAssignedZone = this.computeInsideAssignedZone(codes, p.mahallaCode, p.insideDistrict, insideOffice);
+      if (!insideAssignedZone && !insideOffice && codes.length > 0) {
+        insideAssignedZone = await this.zones.isWithinToleranceOfMahallas(
+          p.latitude,
+          p.longitude,
+          codes,
+          zoneToleranceM(p.accuracy),
+        );
+      }
+      return { insideOffice, insideAssignedZone, distanceToOfficeM };
+    };
+
+    let latest: boolean | null = null;
+    if (emp.lastLat != null && emp.lastLng != null) {
+      const j = await judge({
+        latitude: emp.lastLat,
+        longitude: emp.lastLng,
+        accuracy: emp.lastAccuracyM,
+        mahallaCode: emp.lastMahallaCode,
+        insideDistrict: emp.lastInsideDistrict,
+      });
+      latest = j.insideAssignedZone;
+      await this.prisma.employee.update({
+        where: { id: employeeId },
+        data: { lastInsideOffice: j.insideOffice, lastInsideAssignedZone: j.insideAssignedZone },
+      });
+    } else if (emp.lastLocationAt == null) {
+      // Never reported: not "outside" — the list shows "Lokatsiya yo'q".
+      await this.prisma.employee.update({ where: { id: employeeId }, data: { lastInsideAssignedZone: true } });
+    }
+
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const fixes = await this.prisma.employeeLocation.findMany({
+      where: { employeeId, recordedAt: { gte: dayStart } },
+      select: {
+        id: true,
+        latitude: true,
+        longitude: true,
+        accuracy: true,
+        mahallaCode: true,
+        insideDistrict: true,
+        insideOffice: true,
+        insideAssignedZone: true,
+        distanceToOfficeM: true,
+      },
+    });
+    const ids: string[] = [];
+    const zoneFlags: boolean[] = [];
+    const officeFlags: boolean[] = [];
+    const distances: number[] = [];
+    for (const f of fixes) {
+      const j = await judge(f);
+      if (
+        j.insideAssignedZone !== f.insideAssignedZone ||
+        j.insideOffice !== f.insideOffice ||
+        j.distanceToOfficeM !== f.distanceToOfficeM
+      ) {
+        ids.push(f.id);
+        zoneFlags.push(j.insideAssignedZone);
+        officeFlags.push(j.insideOffice);
+        distances.push(j.distanceToOfficeM);
+      }
+    }
+    if (ids.length > 0) {
+      await this.prisma.$executeRaw`
+        UPDATE employee_locations AS l
+        SET "insideAssignedZone" = v.zone, "insideOffice" = v.office, "distanceToOfficeM" = v.dist
+        FROM unnest(${ids}::text[], ${zoneFlags}::boolean[], ${officeFlags}::boolean[], ${distances}::float8[])
+          AS v(id, zone, office, dist)
+        WHERE l.id = v.id`;
+    }
+    return { insideAssignedZone: latest, fixesUpdated: ids.length };
   }
 
   private async writeDenormalized(employeeId: string, d: DerivedLocation): Promise<void> {

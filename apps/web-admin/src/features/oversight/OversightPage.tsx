@@ -18,6 +18,7 @@ import {
   UserRemove,
   ArchiveBook,
   Refresh2,
+  DocumentText1,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -38,6 +39,18 @@ import { EmployeeFormModal } from './EmployeeFormModal';
 import { ArchiveEmployeeDialog } from './ArchiveEmployeeDialog';
 import { usePurgeEmployee, useRestoreEmployee } from './useEmployeeMutations';
 import { useArchivedEmployees, type ArchivedEmployee } from './useEmployeeProfile';
+import {
+  durationText,
+  fetchActivity,
+  hoursOf,
+  localDay,
+  monthRange,
+  useActivity,
+  useAttendanceSettings,
+  useUpdateAttendanceSettings,
+  type ActivityRow,
+} from './useActivity';
+import { Switch } from '@/shared/ui/Switch';
 
 const MONTH_NAMES = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -184,59 +197,99 @@ export function OversightPage() {
   const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
 
   const s = data?.summary;
+  // Bugungi faollik (hududda vaqt + hisobot) — kartalarda ko'rsatiladi.
+  const today = localDay();
+  const todayActivity = useActivity(today, today, view === 'active');
+  const todayMap = useMemo(
+    () => new Map((todayActivity.data?.rows ?? []).map((r) => [r.employeeId, r])),
+    [todayActivity.data],
+  );
+  const [exporting, setExporting] = useState(false);
   // Distinct positions — suggestions for the Lavozim field in the form.
   const positions = useMemo(
     () => [...new Set(rows.map((r) => r.position).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [rows],
   );
 
-  function handleExport() {
-    const cols: ExportColumn<OversightRow>[] = [
-      { header: 'F.I.Sh.', value: (r) => r.fullName },
-      { header: 'Lavozim', value: (r) => r.position },
-      { header: 'Yuz', value: (r) => (r.hasFace ? "Ro'yxatdan o'tgan" : "Yo'q") },
-      { header: 'Holat', value: (r) => attMeta(r.attendance.status).label },
-      { header: 'Keldi', value: (r) => hhmm(r.attendance.checkInAt) },
-      { header: 'Ketdi', value: (r) => hhmm(r.attendance.checkOutAt) },
-      { header: 'Bugun (soat)', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
-      { header: 'Bu oy (soat)', value: (r) => r.attendance.monthHours.toFixed(1), align: 'right' },
-      {
-        header: 'Hudud',
-        value: (r) => (!r.location.hasLocation ? "Ma'lumot yo'q" : r.location.insideAssignedZone ? 'Hududda' : 'Tashqarida'),
-      },
-      { header: 'Mahalla', value: (r) => r.location.mahallaName ?? '—' },
-      { header: "Oylik (sof, so'm)", value: (r) => r.salaryNet ?? 0, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + (r.salaryNet ?? 0), 0)) },
-      { header: "Premya (so'm)", value: (r) => r.premyaThisMonth, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + r.premyaThisMonth, 0)) },
-    ];
-    const summaryRows = s
-      ? [
-          { k: 'Jami xodim', v: s.total },
-          { k: "Yuz ro'yxatdan o'tgan", v: `${s.faceEnrolled}/${s.total}` },
-          { k: 'Hozir ish joyida', v: s.presentNow },
-          { k: 'Kechikkan', v: s.lateNow },
-          { k: 'Hududdan tashqarida', v: s.outsideZone },
-          { k: "Jami oylik fondi (sof, so'm)", v: s.salaryTotalNet },
-        ]
-      : [];
-    const sumCols: ExportColumn<{ k: string; v: string | number }>[] = [
-      { header: "Ko'rsatkich", value: (r) => r.k },
-      { header: 'Qiymat', value: (r) => r.v, align: 'right' },
-    ];
-    const label = `${MONTH_NAMES[month - 1]} ${year}`;
-    exportWorkbook(`xodimlar_boshqaruvi_${year}-${String(month).padStart(2, '0')}`, [
-      {
-        name: 'Umumiy',
-        columns: sumCols,
-        rows: summaryRows,
-        opts: { title: `Xodimlar boshqaruvi — ${label}`, subtitle: "Mirzo Ulug'bek tumani hokimligi" },
-      },
-      {
-        name: 'Xodimlar',
-        columns: cols,
-        rows: filtered,
-        opts: { title: `Xodimlar ro'yxati — ${label}`, subtitle: `${filtered.length} ta xodim` },
-      },
-    ]);
+  /**
+   * Excel: "Faollik" (asosiy) — F.I.Sh., mahallalari, lavozimi, hisobot bergan
+   * kunlar, faol soat, hududda soat, ish vaqti (jadval) va ishlagan soat
+   * alohida; keyin "Bugungi holat" va "Umumiy" varaqlari. Davr = tanlangan oy
+   * (joriy oy bo'lsa bugungacha).
+   */
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const range = monthRange(year, month);
+      const activity = await fetchActivity(range.from, range.to);
+      const byId = new Map(rows.map((r) => [r.employeeId, r]));
+      const actRows = activity.rows.filter((a) => {
+        const r = byId.get(a.employeeId);
+        return r ? filtered.includes(r) : !query.trim() && flag === 'all';
+      });
+      const actCols: ExportColumn<ActivityRow & { n: number }>[] = [
+        { header: '№', value: (r) => r.n, align: 'center' },
+        { header: 'F.I.Sh.', value: (r) => r.fullName },
+        { header: 'Mahallalari', value: (r) => (r.mahallas.length ? r.mahallas.join(', ') : 'Butun tuman') },
+        { header: 'Lavozimi', value: (r) => r.position },
+        { header: "Bo'lim", value: (r) => r.department ?? '—' },
+        { header: 'Hisobot bergan kunlar', value: (r) => r.reportDays, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.reportDays, 0) },
+        { header: 'Hisobotlar soni', value: (r) => r.reportCount, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.reportCount, 0) },
+        { header: 'Faol holatda (soat)', value: (r) => hoursOf(r.activeMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.activeMinutes, 0)) },
+        { header: 'Hududda (soat)', value: (r) => hoursOf(r.zoneMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.zoneMinutes, 0)) },
+        { header: 'Ish vaqti (jadval)', value: (r) => `${r.workStartTime}–${r.workEndTime}`, align: 'center' },
+        { header: 'Kelgan kunlar', value: (r) => r.daysWorked, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.daysWorked, 0) },
+        { header: 'Ishlagan vaqt (soat)', value: (r) => hoursOf(r.workMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.workMinutes, 0)) },
+      ];
+      const todayCols: ExportColumn<OversightRow>[] = [
+        { header: 'F.I.Sh.', value: (r) => r.fullName },
+        { header: 'Lavozim', value: (r) => r.position },
+        { header: 'Yuz', value: (r) => (r.hasFace ? "Ro'yxatdan o'tgan" : "Yo'q") },
+        { header: 'Holat', value: (r) => attMeta(r.attendance.status).label },
+        { header: 'Keldi', value: (r) => hhmm(r.attendance.checkInAt) },
+        { header: 'Ketdi', value: (r) => hhmm(r.attendance.checkOutAt) },
+        { header: 'Bugun (soat)', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
+        { header: 'Hudud', value: (r) => (!r.location.hasLocation ? "Ma'lumot yo'q" : r.location.insideAssignedZone ? 'Hududda' : 'Tashqarida') },
+        { header: 'Hozirgi mahalla', value: (r) => r.location.mahallaName ?? '—' },
+        { header: "Oylik (sof, so'm)", value: (r) => r.salaryNet ?? 0, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + (r.salaryNet ?? 0), 0)) },
+        { header: "Premya (so'm)", value: (r) => r.premyaThisMonth, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + r.premyaThisMonth, 0)) },
+      ];
+      const summaryRows = s
+        ? [
+            { k: 'Davr', v: `${range.from} — ${range.to}` },
+            { k: 'Jami xodim', v: s.total },
+            { k: "Yuz ro'yxatdan o'tgan", v: `${s.faceEnrolled}/${s.total}` },
+            { k: 'Hozir ish joyida', v: s.presentNow },
+            { k: 'Kechikkan', v: s.lateNow },
+            { k: 'Hududdan tashqarida', v: s.outsideZone },
+            { k: 'Hisobot bergan xodimlar', v: actRows.filter((r) => r.reportDays > 0).length },
+            { k: "Jami oylik fondi (sof, so'm)", v: s.salaryTotalNet },
+          ]
+        : [];
+      const sumCols: ExportColumn<{ k: string; v: string | number }>[] = [
+        { header: "Ko'rsatkich", value: (r) => r.k },
+        { header: 'Qiymat', value: (r) => r.v, align: 'right' },
+      ];
+      const label = `${MONTH_NAMES[month - 1]} ${year}`;
+      await exportWorkbook(`xodimlar_faollik_${year}-${String(month).padStart(2, '0')}`, [
+        {
+          name: 'Faollik',
+          columns: actCols,
+          rows: actRows.map((r, i) => ({ ...r, n: i + 1 })),
+          opts: {
+            title: `Xodimlar faolligi — ${label}`,
+            subtitle: `Mirzo Ulug'bek tumani hokimligi · ${range.from} — ${range.to} · ${actRows.length} ta xodim`,
+          },
+        },
+        { name: 'Bugungi holat', columns: todayCols, rows: filtered, opts: { title: `Bugungi holat — ${localDay()}` } },
+        { name: 'Umumiy', columns: sumCols, rows: summaryRows, opts: { title: `Xodimlar boshqaruvi — ${label}` } },
+      ]);
+      setToast('Excel tayyor');
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : "Excel'ni tayyorlab bo'lmadi");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -319,6 +372,8 @@ export function OversightPage() {
           {/* KPI — compact tiles: 2 per row on phones (the 5th spans both),
               3 on tablets, 5 on desktop. No more 150px-tall cards on mobile. */}
           {/* 6-col track on tablets: 3 tiles of 2 + 2 tiles of 3 = two full rows. */}
+          <FaceScanSetting canWrite={canWrite} onDone={setToast} />
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-6 lg:grid-cols-5">
             {isLoading || !s ? (
               Array.from({ length: 5 }).map((_, i) => (
@@ -378,8 +433,8 @@ export function OversightPage() {
               />
             </div>
             <MonthPicker value={monthValue} onChange={setMonthValue} className="min-w-0 sm:w-52" />
-            <Button variant="secondary" onClick={handleExport} disabled={isLoading || filtered.length === 0} title="Excel'ga chiqarish">
-              <DocumentDownload size={17} /> Excel
+            <Button variant="secondary" onClick={() => void handleExport()} disabled={isLoading || exporting || filtered.length === 0} title="Excel: faollik, hisobotlar, hudud va ish vaqti">
+              {exporting ? <RotateRight size={17} className="animate-spin" /> : <DocumentDownload size={17} />} Excel
             </Button>
           </div>
 
@@ -407,6 +462,7 @@ export function OversightPage() {
                     <OversightCard
                       key={r.employeeId}
                       row={r}
+                      today={todayMap.get(r.employeeId)}
                       onAssign={() => setAssigning(r)}
                       onDetail={() => openProfile(r.employeeId)}
                       onEdit={canWrite ? () => setEmpModal({ open: true, row: r }) : undefined}
@@ -429,7 +485,7 @@ export function OversightPage() {
         </>
       )}
 
-      <AssignZonesModal row={assigning} onClose={() => setAssigning(null)} />
+      <AssignZonesModal row={assigning} onClose={() => setAssigning(null)} onDone={setToast} />
       <EmployeeFormModal
         open={empModal.open}
         row={empModal.row}
@@ -476,12 +532,15 @@ export function OversightPage() {
 
 function OversightCard({
   row,
+  today,
   onAssign,
   onDetail,
   onEdit,
   onDelete,
 }: {
   row: OversightRow;
+  /** Bugungi faollik (yuklanmagan bo'lsa undefined). */
+  today?: ActivityRow;
   onAssign: () => void;
   onDetail: () => void;
   onEdit?: () => void;
@@ -536,6 +595,23 @@ function OversightCard({
         </Badge>
       </div>
 
+      {/* Bugun: hududda qancha vaqt + hisobot topshirdimi */}
+      {today && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-soft">
+          <span className="inline-flex items-center gap-1" title="Bugun biriktirilgan hududda bo'lgan vaqt (lokatsiya bo'yicha)">
+            <Timer1 size={13} className="text-emerald-600" />
+            Bugun hududda: <span className="font-semibold tabular-nums text-ink">{durationText(today.zoneMinutes)}</span>
+          </span>
+          <span
+            className={cn('inline-flex items-center gap-1', today.reportCount > 0 ? 'text-emerald-600' : 'text-ink-muted')}
+            title="Bugungi kunlik hisobot"
+          >
+            <DocumentText1 size={13} variant={today.reportCount > 0 ? 'Bulk' : 'Linear'} />
+            {today.reportCount > 0 ? `Hisobot: ${today.reportCount} ta` : "Hisobot yo'q"}
+          </span>
+        </div>
+      )}
+
       {/* Hudud (biriktirish) + oylik/premya */}
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3">
         <button
@@ -572,6 +648,57 @@ function OversightCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Yuz skaneri (Face ID) — butun tizim uchun bitta kalit. O'chirilsa keldi/ketdi
+ * faqat joy bo'yicha (ofis radiusi yoki biriktirilgan mahalla) qabul qilinadi,
+ * mobil ilova kamerani ochmaydi. VIEWER faqat ko'radi.
+ */
+function FaceScanSetting({ canWrite, onDone }: { canWrite: boolean; onDone: (msg: string) => void }) {
+  const { data, isLoading, isError } = useAttendanceSettings();
+  const update = useUpdateAttendanceSettings();
+  const on = data?.faceRequired ?? true;
+
+  async function toggle(next: boolean) {
+    try {
+      await update.mutateAsync({ faceRequired: next });
+      onDone(next ? 'Yuz skaneri yoqildi' : "Yuz skaneri o'chirildi — davomat faqat joy bo'yicha");
+    } catch (err) {
+      onDone(err instanceof Error ? err.message : "O'zgartirib bo'lmadi");
+    }
+  }
+
+  if (isError) return null;
+  return (
+    <div
+      className={cn(
+        'mb-4 flex items-center gap-3 rounded-2xl border p-3.5 sm:p-4',
+        on ? 'border-line bg-surface' : 'border-amber-200 bg-warning-soft',
+      )}
+    >
+      <span
+        className={cn(
+          'grid h-10 w-10 shrink-0 place-items-center rounded-xl',
+          on ? 'bg-violet-50 text-violet-600' : 'bg-amber-100 text-amber-700',
+        )}
+      >
+        <ScanBarcode size={20} variant="Bulk" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-semibold text-ink">
+          Yuz skaneri (Face ID): {isLoading ? '…' : on ? 'majburiy' : "o'chirilgan"}
+        </div>
+        <div className="text-[12px] leading-snug text-ink-muted">
+          {on
+            ? 'Keldi/ketdi uchun yuz mos kelishi va joy to‘g‘ri bo‘lishi shart.'
+            : 'Keldi/ketdi faqat joylashuv bo‘yicha qabul qilinadi — ilova kamerani ochmaydi.'}
+        </div>
+      </div>
+      {update.isPending && <RotateRight size={16} className="shrink-0 animate-spin text-ink-muted" />}
+      <Switch checked={on} onChange={(v) => void toggle(v)} disabled={!canWrite || isLoading || update.isPending} />
     </div>
   );
 }

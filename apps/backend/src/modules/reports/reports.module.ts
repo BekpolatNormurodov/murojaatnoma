@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../../common/prisma/prisma.module';
+import { ReportsController } from './reports.controller';
+import { ReportsService } from './reports.service';
+
+/** Kunlik hisobotlar va hududda yurgan vaqt (xodim faolligi). */
+@Module({
+  imports: [PrismaModule],
+  controllers: [ReportsController],
+  providers: [ReportsService],
+  exports: [ReportsService],
+})
+export class ReportsModule {}

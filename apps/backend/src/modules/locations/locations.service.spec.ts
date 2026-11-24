@@ -177,4 +177,85 @@ describe('LocationsService', () => {
       expect(stale.alerted).toBe(true);
     });
   });
+  describe('hudud o‘zgarganda qayta hisoblash (reevaluateTerritory)', () => {
+    const emp = (over: Record<string, unknown> = {}) => ({
+      id: 'e1',
+      officeLat: null,
+      officeLng: null,
+      officeRadiusM: null,
+      assignedMahallaCodes: ['M1'],
+      lastLocationAt: new Date(),
+      lastLat: 41.4,
+      lastLng: 69.5,
+      lastAccuracyM: 10,
+      lastMahallaCode: 'M2',
+      lastInsideDistrict: true,
+      ...over,
+    });
+
+    it('oxirgi lokatsiya yangi hududga ko‘ra darhol Hududda/Tashqarida bo‘ladi', async () => {
+      const { service, prisma } = buildDeps();
+      (prisma as any).$executeRaw = jest.fn().mockResolvedValue(0);
+      prisma.employeeLocation.findMany.mockResolvedValue([]);
+
+      prisma.employee.findUnique.mockResolvedValue(emp());
+      expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(false);
+      expect(prisma.employee.update).toHaveBeenLastCalledWith({
+        where: { id: 'e1' },
+        data: { lastInsideOffice: false, lastInsideAssignedZone: false },
+      });
+
+      // The mahalla the employee is standing in gets assigned → inside at once.
+      prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: ['M1', 'M2'] }));
+      expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(true);
+
+      // Nothing assigned → the whole district counts.
+      prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: [] }));
+      expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(true);
+    });
+
+    it('bugungi nuqtalardan faqat o‘zgarganlari yangilanadi', async () => {
+      const { service, prisma } = buildDeps();
+      const exec = jest.fn().mockResolvedValue(1);
+      (prisma as any).$executeRaw = exec;
+      prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: ['M2'] }));
+      const base = { latitude: 41.4, longitude: 69.5, accuracy: 10, insideDistrict: true, insideOffice: false };
+      const dist = Math.round(
+        // same office the service resolves from config
+        require('../../common/geo/geo.util').distanceInMeters(41.4, 69.5, OFFICE.officeLatitude, OFFICE.officeLongitude),
+      );
+      prisma.employeeLocation.findMany.mockResolvedValue([
+        { id: 'a', ...base, mahallaCode: 'M2', insideAssignedZone: false, distanceToOfficeM: dist }, // flips to inside
+        { id: 'b', ...base, mahallaCode: 'M2', insideAssignedZone: true, distanceToOfficeM: dist }, // already right
+        { id: 'c', ...base, mahallaCode: 'M9', insideAssignedZone: true, distanceToOfficeM: dist }, // flips to outside
+      ]);
+      const res = await service.reevaluateTerritory('e1');
+      expect(res.fixesUpdated).toBe(2);
+      expect(exec).toHaveBeenCalledTimes(1);
+      const args = exec.mock.calls[0].slice(1);
+      expect(args[0]).toEqual(['a', 'c']);
+      expect(args[1]).toEqual([true, false]);
+    });
+
+    it('lokatsiyasi yo‘q xodim "tashqarida" bo‘lib qolmaydi; yo‘q xodim — 404', async () => {
+      const { service, prisma } = buildDeps();
+      prisma.employeeLocation.findMany.mockResolvedValue([]);
+      prisma.employee.findUnique.mockResolvedValue(emp({ lastLocationAt: null, lastLat: null, lastLng: null }));
+      expect(await service.reevaluateTerritory('e1')).toEqual({ insideAssignedZone: null, fixesUpdated: 0 });
+      expect(prisma.employee.update).toHaveBeenLastCalledWith({
+        where: { id: 'e1' },
+        data: { lastInsideAssignedZone: true },
+      });
+      prisma.employee.findUnique.mockResolvedValue(null);
+      await expect(service.reevaluateTerritory('x')).rejects.toThrow(/not found/i);
+    });
+
+    it('noma’lum mahalla kodi rad etiladi; takrorlar olib tashlanadi', async () => {
+      const { service, zones } = buildDeps();
+      (zones as any).listZones = jest.fn().mockResolvedValue([{ code: 'M1' }, { code: 'M2' }]);
+      expect(await service.normalizeMahallaCodes([' M1', 'M2', 'M1', ''])).toEqual(['M1', 'M2']);
+      await expect(service.normalizeMahallaCodes(['M1', 'ZZ'])).rejects.toThrow(/Bunday mahalla yo'q: ZZ/);
+      expect(await service.normalizeMahallaCodes([])).toEqual([]);
+    });
+  });
 });

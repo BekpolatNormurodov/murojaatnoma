@@ -303,7 +303,7 @@ export class OversightService {
           username: dto.username,
           passwordHash,
           avatarUrl: dto.avatarUrl ?? null,
-          assignedMahallaCodes: dto.assignedMahallaCodes ?? [],
+          assignedMahallaCodes: await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes ?? []),
           departmentId: (await this.departmentIdFor(dto.department)) ?? null,
           ...(dto.workStartTime ? { workStartTime: dto.workStartTime } : {}),
           ...(dto.workEndTime ? { workEndTime: dto.workEndTime } : {}),
@@ -341,7 +341,9 @@ export class OversightService {
       ...(dto.phone ? { phone: dto.phone.trim() } : {}),
       ...(dto.username ? { username: dto.username } : {}),
       ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
-      ...(dto.assignedMahallaCodes !== undefined ? { assignedMahallaCodes: dto.assignedMahallaCodes } : {}),
+      ...(dto.assignedMahallaCodes !== undefined
+        ? { assignedMahallaCodes: await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes) }
+        : {}),
       ...(dto.department !== undefined ? { departmentId: await this.departmentIdFor(dto.department) } : {}),
       ...(dto.workStartTime ? { workStartTime: dto.workStartTime } : {}),
       ...(dto.workEndTime ? { workEndTime: dto.workEndTime } : {}),
@@ -360,6 +362,16 @@ export class OversightService {
         );
       }
       throw e;
+    }
+    // Hudud yoki ofis nuqtasi o'zgardi — "Hududda/Tashqarida" va bugungi
+    // hudud vaqti yangi qoidalar bilan darhol qayta hisoblanadi.
+    if (
+      dto.assignedMahallaCodes !== undefined ||
+      dto.officeLat !== undefined ||
+      dto.officeLng !== undefined ||
+      dto.officeRadiusM !== undefined
+    ) {
+      await this.locations.reevaluateTerritory(id);
     }
     if (dto.salary != null) {
       await this.setSalary(id, dto.salary, dto.salaryYear, dto.salaryMonth);

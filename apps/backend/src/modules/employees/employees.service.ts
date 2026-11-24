@@ -11,6 +11,7 @@ import { Paginated } from '../../common/interfaces/paginated.interface';
  */
 /** Public employee shape — NEVER includes the bcrypt `passwordHash`. */
 export type EmployeeWithFace = Omit<Employee, 'passwordHash'> & { hasFace: boolean };
+import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { EnrollFaceDto } from './dto/enroll-face.dto';
@@ -19,7 +20,10 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
 
 @Injectable()
 export class EmployeesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly locations: LocationsService,
+  ) {}
 
   create(dto: CreateEmployeeDto): Promise<Employee> {
     return this.prisma.employee.create({ data: dto });
@@ -68,30 +72,24 @@ export class EmployeesService {
   async update(id: string, dto: UpdateEmployeeDto): Promise<EmployeeWithFace> {
     await this.findOne(id);
     const data: Prisma.EmployeeUncheckedUpdateInput = { ...dto };
-    // Territory reassignment must re-evaluate the denormalized in-zone flag
-    // against the LAST known position immediately — otherwise the admin live-map
-    // keeps showing stale "Hududda/Tashqarida" until the employee's next report
-    // (which may never come if the app isn't installed). Office presence always
-    // counts; empty assignment => whole district.
+    const territoryChanged = dto.assignedMahallaCodes !== undefined;
     if (dto.assignedMahallaCodes !== undefined) {
-      const last = await this.prisma.employee.findUnique({
-        where: { id },
-        select: { lastMahallaCode: true, lastInsideDistrict: true, lastInsideOffice: true },
-      });
-      if (last) {
-        const codes = dto.assignedMahallaCodes;
-        data.lastInsideAssignedZone =
-          last.lastInsideOffice ||
-          (codes.length === 0
-            ? last.lastInsideDistrict
-            : last.lastMahallaCode != null && codes.includes(last.lastMahallaCode));
-      }
+      data.assignedMahallaCodes = await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes);
     }
     const updated = await this.prisma.employee.update({
       where: { id },
       data,
       include: { _count: { select: { faceTemplates: true } } },
     });
+    // Territory reassignment must re-evaluate the in-zone flags against the
+    // LAST known position (and today's fixes) immediately — otherwise the admin
+    // keeps seeing a stale "Hududda/Tashqarida" until the next GPS report.
+    if (territoryChanged) {
+      const fresh = await this.locations.reevaluateTerritory(id);
+      if (fresh.insideAssignedZone !== null) {
+        updated.lastInsideAssignedZone = fresh.insideAssignedZone;
+      }
+    }
     const { _count, passwordHash: _pw, ...rest } = updated;
     return { ...rest, hasFace: _count.faceTemplates > 0 };
   }

@@ -24,6 +24,7 @@ import {
   Moneys,
   Crown1,
   Radar,
+  DocumentText1,
   type Icon as IconType,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
@@ -68,6 +69,7 @@ const SECTIONS: NavSection[] = [
       // oylik + CRUD in one place (Nazorat funksiyalari shu yerga ko'chdi).
       { to: '/oversight', labelKey: 'Xodimlar boshqaruvi', icon: SecurityUser, feature: 'oversight' },
       { to: '/attendance', labelKey: 'nav.attendance', icon: CalendarTick, feature: 'attendance' },
+      { to: '/reports', labelKey: 'Kunlik hisobotlar', icon: DocumentText1, feature: 'oversight' },
       // dict.ts'da tarjima kaliti yo'q — t() topilmagan kalitni o'zini
       // qaytaradi (I18nProvider fallback), shu sababli literal so'z
       // to'g'ridan-to'g'ri ko'rsatiladi (uz/ru/en'da bir xil).

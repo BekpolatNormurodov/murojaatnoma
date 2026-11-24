@@ -6,6 +6,7 @@ import {
   Building,
   Calendar,
   CallCalling,
+  DocumentText,
   Clock,
   CloseCircle,
   Edit2,
@@ -38,6 +39,8 @@ import { EmployeeFormModal } from './EmployeeFormModal';
 import { AssignZonesModal } from './AssignZonesModal';
 import { ArchiveEmployeeDialog } from './ArchiveEmployeeDialog';
 import { useResetFace, useRestoreEmployee } from './useEmployeeMutations';
+import { ReportList, ZoneTimePanel } from './ActivityViews';
+import { localDay } from './useActivity';
 import {
   useEmployeeMurojaats,
   useEmployeeProfile,
@@ -48,11 +51,13 @@ import {
   type ProfileDay,
 } from './useEmployeeProfile';
 
-type Tab = 'overview' | 'attendance' | 'murojaat' | 'finance';
+type Tab = 'overview' | 'attendance' | 'zone' | 'reports' | 'murojaat' | 'finance';
 
 const TABS: { key: Tab; label: string; icon: IconType }[] = [
   { key: 'overview', label: 'Umumiy', icon: Profile2User },
   { key: 'attendance', label: 'Davomat', icon: Calendar },
+  { key: 'zone', label: 'Hudud vaqti', icon: Location },
+  { key: 'reports', label: 'Hisobotlar', icon: DocumentText },
   { key: 'murojaat', label: 'Murojaatlar', icon: MessageQuestion },
   { key: 'finance', label: 'Oylik va premya', icon: Moneys },
 ];
@@ -211,6 +216,8 @@ export function EmployeeProfilePage() {
           <OverviewTab p={p} canWrite={canWrite} onZones={() => setZones(true)} onFaceReset={() => setFaceReset(true)} />
         )}
         {tab === 'attendance' && <AttendanceTab p={p} onZoom={setZoom} />}
+        {tab === 'zone' && <ZoneTimePanel employeeId={p.employeeId} assignedCount={p.assignedMahallas.length} />}
+        {tab === 'reports' && <ReportList from={localDay(-30)} to={localDay()} employeeId={p.employeeId} />}
         {tab === 'murojaat' && <MurojaatTab p={p} />}
         {tab === 'finance' && <FinanceTab p={p} />}
       </div>

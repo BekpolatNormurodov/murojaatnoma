@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AdminLayout } from './layout/AdminLayout';
 import { ProtectedRoute, GuestRoute, RoleRoute } from './guards';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { RouteError } from './RouteError';
 
 // Route-darajasidagi code-splitting: har bir sahifa alohida chunk sifatida
 // kerak bo'lganda yuklanadi — boshlang'ich bundle keskin kichrayadi, sahifalar
@@ -27,6 +28,7 @@ const OversightPage = lazy(() => import('@/features/oversight/OversightPage').th
 const EmployeeProfilePage = lazy(() =>
   import('@/features/oversight/EmployeeProfilePage').then((m) => ({ default: m.EmployeeProfilePage })),
 );
+const ReportsPage = lazy(() => import('@/features/oversight/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const MediaPage = lazy(() => import('@/features/media/MediaPage').then((m) => ({ default: m.MediaPage })));
 const NewsPage = lazy(() => import('@/features/news/NewsPage').then((m) => ({ default: m.NewsPage })));
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
@@ -35,6 +37,7 @@ const AdminsPage = lazy(() => import('@/features/admins/AdminsPage').then((m) =>
 export const router = createBrowserRouter([
   {
     path: '/login',
+    errorElement: <RouteError />,
     element: (
       <GuestRoute>
         <LoginPage />
@@ -48,7 +51,13 @@ export const router = createBrowserRouter([
         <AdminLayout />
       </ProtectedRoute>
     ),
+    errorElement: <RouteError />,
     children: [
+      {
+        // Pathless wrapper: a page that throws renders RouteError INSIDE the
+        // layout (sidebar/topbar stay), instead of the router's dev screen.
+        errorElement: <RouteError />,
+        children: [
       // Boshqaruv paneli har doim ochiq (SUPER_ADMIN/ADMIN/VIEWER) — rol noaniq/eski
       // bo'lsa ham RoleRoute'ning "/" ga qaytarish natijasida cheksiz redirect
       // hosil bo'lmasligi uchun bu marshrut ataylab RoleRoute bilan o'ralmagan.
@@ -76,6 +85,9 @@ export const router = createBrowserRouter([
       { path: 'news', element: <RoleRoute feature="news"><NewsPage /></RoleRoute> },
       { path: 'settings', element: <RoleRoute feature="settings"><SettingsPage /></RoleRoute> },
       { path: 'admins', element: <RoleRoute feature="adminUsers"><AdminsPage /></RoleRoute> },
+      { path: 'reports', element: <RoleRoute feature="oversight"><ReportsPage /></RoleRoute> },
+        ],
+      },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

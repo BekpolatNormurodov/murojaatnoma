@@ -22,6 +22,7 @@ import { VerifyFaceDto } from './dto/verify-face.dto';
 import { VerifyFaceResultDto } from './dto/verify-face-result.dto';
 import { ZonesService, zoneToleranceM } from '../zones/zones.service';
 import { distanceInMeters } from './utils/geo.util';
+import { AppSettingsService } from '../settings/app-settings.service';
 import { dayRange, formatLocalDate, minutesAfter, parseTimeOnDate } from './utils/date.util';
 
 export interface EmployeeDailySummary {
@@ -284,6 +285,8 @@ export interface EmployeeMeAttendance {
   isWorkday: boolean;
   /** Where check-in counts: office point + radius, and how many mahallas are assigned. */
   workplace: { officeLat: number; officeLng: number; radiusM: number; zonesCount: number };
+  /** false — admin yuz skanerini o'chirgan: ilova kamerasiz, faqat joy bilan belgilaydi. */
+  faceRequired: boolean;
   today: MeDayEntry;
   week: MeWeekEntry[];
 }
@@ -294,6 +297,7 @@ export class AttendanceService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService<AppConfig, true>,
     private readonly zones: ZonesService,
+    private readonly settings: AppSettingsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -747,6 +751,7 @@ export class AttendanceService {
         radiusM: wp.radiusM,
         zonesCount: wp.zones.length,
       },
+      faceRequired: (await this.settings.attendance()).faceRequired,
       today: { date: todayKey, ...todayDayEntry },
       week,
     };
@@ -1066,11 +1071,18 @@ export class AttendanceService {
     const where = await this.placeOf(wp, dto.latitude, dto.longitude, dto.accuracy);
     const locationOk = where.place !== null;
 
+    // Admin switch (Sozlamalar → Davomat): with the face scan turned off a
+    // scan counts on location alone; a face sent anyway is still scored and
+    // stored, it just cannot reject the scan.
+    const { faceRequired } = await this.settings.attendance();
+
     const reasons: string[] = [];
     let faceScore: number;
     let missingEnrollment = false;
 
-    if (dto.embedding) {
+    if (!faceRequired && !dto.embedding && dto.faceScore === undefined) {
+      faceScore = 0;
+    } else if (dto.embedding) {
       // Server-side match: authoritative whenever the client sends a live
       // embedding, regardless of any faceScore the client also included.
       const templates = await this.prisma.faceTemplate.findMany({
@@ -1092,8 +1104,12 @@ export class AttendanceService {
       faceScore = dto.faceScore ?? 0;
     }
 
-    const faceOk = !missingEnrollment && faceScore >= faceMatchThreshold;
+    const faceOk = !faceRequired || (!missingEnrollment && faceScore >= faceMatchThreshold);
     const isValid = faceOk && locationOk;
+    if (!faceRequired) {
+      // Not a rejection reason while the switch is off.
+      reasons.length = 0;
+    }
 
     if (!faceOk && !missingEnrollment) {
       reasons.push(

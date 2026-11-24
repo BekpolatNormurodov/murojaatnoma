@@ -16,9 +16,14 @@ import type { OversightRow } from './useOversight';
 export function AssignZonesModal({
   row,
   onClose,
+  onDone,
 }: {
-  row: Pick<OversightRow, 'employeeId' | 'fullName' | 'assignedMahallaCodes'> | null;
+  row: Pick<OversightRow, 'employeeId' | 'fullName' | 'assignedMahallaCodes'> & {
+    location?: Pick<OversightRow['location'], 'hasLocation' | 'mahallaName'>;
+  } | null;
   onClose: () => void;
+  /** Saqlangandan keyingi xabar (toast). */
+  onDone?: (msg: string) => void;
 }) {
   const { data: mahallas, isLoading } = useMahallas();
   const assign = useAssignZones();
@@ -54,11 +59,36 @@ export function AssignZonesModal({
     });
   }
 
+  const byCode = useMemo(
+    () => new Map((Array.isArray(mahallas) ? mahallas : []).map((m) => [m.code, m])),
+    [mahallas],
+  );
+  const initial = useMemo(() => new Set(row?.assignedMahallaCodes ?? []), [row]);
+  const changed = selected.size !== initial.size || [...selected].some((c) => !initial.has(c));
+  const allVisibleSelected = list.length > 0 && list.every((m) => selected.has(m.code));
+
+  function toggleVisible() {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) list.forEach((m) => next.delete(m.code));
+      else list.forEach((m) => next.add(m.code));
+      return next;
+    });
+  }
+
   async function save() {
     if (!row) return;
     setError(null);
     try {
-      await assign.mutateAsync({ employeeId: row.employeeId, mahallaCodes: [...selected] });
+      const res = await assign.mutateAsync({ employeeId: row.employeeId, mahallaCodes: [...selected] });
+      const where = res?.lastLocationAt
+        ? res.lastInsideAssignedZone
+          ? ' — hozir hududda'
+          : ' — hozir hududdan tashqarida'
+        : '';
+      onDone?.(
+        `${row.fullName}: ${selected.size ? `${selected.size} ta mahalla biriktirildi` : 'butun tuman hudud qilindi'}${where}`,
+      );
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Saqlab bo'lmadi");
@@ -93,6 +123,30 @@ export function AssignZonesModal({
           )}
         </div>
 
+        {row?.location?.hasLocation && row.location.mahallaName && (
+          <p className="flex items-center gap-1.5 text-[12.5px] text-ink-soft">
+            <Location size={14} variant="Bulk" className="shrink-0 text-primary-600" />
+            Hozir: <span className="font-medium text-ink">{row.location.mahallaName}</span>
+          </p>
+        )}
+
+        {selected.size > 0 && (
+          <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">
+            {[...selected].map((code) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => toggle(code)}
+                title="Olib tashlash"
+                className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[12px] font-medium text-primary-700 hover:bg-danger-soft hover:text-red-700"
+              >
+                {byCode.get(code)?.nameUzLat ?? code}
+                <CloseCircle size={13} />
+              </button>
+            ))}
+          </div>
+        )}
+
         {selected.size === 0 && (
           <p className="flex items-center gap-1.5 rounded-lg bg-info-soft px-3 py-2 text-[12px] text-accent-700">
             <Location size={14} variant="Bulk" className="shrink-0" />
@@ -107,8 +161,17 @@ export function AssignZonesModal({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Mahalla nomi yoki kodi bo'yicha qidirish..."
-              className="h-11 w-full bg-transparent pl-10 pr-3.5 text-sm text-ink outline-none placeholder:text-ink-muted"
+              className="h-11 w-full bg-transparent pl-10 pr-28 text-sm text-ink outline-none placeholder:text-ink-muted"
             />
+            {list.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleVisible}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-primary-600 hover:bg-primary-50"
+              >
+                {allVisibleSelected ? 'Bekor qilish' : q.trim() ? `Topilganlar (${list.length})` : 'Hammasi'}
+              </button>
+            )}
           </div>
           <div className="max-h-72 overflow-y-auto p-1.5">
             {isLoading ? (
@@ -157,7 +220,7 @@ export function AssignZonesModal({
           <Button variant="secondary" onClick={onClose} disabled={assign.isPending}>
             Bekor qilish
           </Button>
-          <Button onClick={save} disabled={assign.isPending}>
+          <Button onClick={save} disabled={assign.isPending || !changed} title={changed ? undefined : "O'zgarish yo'q"}>
             {assign.isPending ? <RotateRight size={18} className="animate-spin" /> : <TickCircle size={18} />}
             {assign.isPending ? 'Saqlanmoqda...' : 'Saqlash'}
           </Button>

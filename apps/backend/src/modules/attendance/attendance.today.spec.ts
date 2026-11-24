@@ -59,7 +59,8 @@ function build(employees: unknown[], records: unknown[], leaves: unknown[] = [])
     locate: jest.fn().mockResolvedValue({ insideDistrict: true, district: null, mahalla: null }),
     isWithinToleranceOfMahallas: jest.fn().mockResolvedValue(false),
   };
-  return new AttendanceService(prisma as never, config as never, zones as never);
+  const settings = { attendance: jest.fn().mockResolvedValue({ faceRequired: true }) };
+  return new AttendanceService(prisma as never, config as never, zones as never, settings as never);
 }
 
 describe('AttendanceService.today (davomat board)', () => {

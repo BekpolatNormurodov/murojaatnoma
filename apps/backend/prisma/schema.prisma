@@ -172,6 +172,7 @@ model Employee {
   leaveRequests        LeaveRequest[]
   bonusRequests        BonusRequest[]
   salaries             EmployeeSalary[]
+  dailyReports         DailyReport[]
 
   @@map("employees")
 }
@@ -1438,4 +1439,40 @@ model MediaSetting {
   updatedAt DateTime @default(now()) @updatedAt
 
   @@map("media_settings")
+}
+
+// ---------------------------------------------------------------------------
+// App-wide switches edited from web-admin (Sozlamalar). One row per key;
+// `value` is a small JSON object. Today: key "attendance" -> { faceRequired }.
+// ---------------------------------------------------------------------------
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@map("app_settings")
+}
+
+// ---------------------------------------------------------------------------
+// Daily report (kunlik hisobot) — what an employee did that day, sent from the
+// worker-app as text and/or voice, video, photos, documents. Several per day
+// are allowed; "necha kun hisobot bergani" counts distinct `day`s.
+// `attachments` = [{ kind: 'image'|'voice'|'video'|'file', url, fileName,
+// fileSize, durationSec }] — our own /uploads URLs only.
+// ---------------------------------------------------------------------------
+model DailyReport {
+  id          String   @id @default(uuid())
+  employeeId  String
+  // Local calendar day the report is FOR, "YYYY-MM-DD".
+  day         String
+  text        String?
+  attachments Json     @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, day])
+  @@index([day])
+  @@map("daily_reports")
 }

@@ -92,6 +92,32 @@ export class UploadsController {
   }
 
   @ApiBearerAuth()
+  @Post('document')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } },
+  })
+  @ApiOperation({
+    summary:
+      'Upload a DOCUMENT or media file for a daily report (multipart, field "file", ≤25MB: ' +
+      'pdf/doc/docx/xls/xlsx/ppt/pptx/txt/csv/rtf/odt/ods/zip, or image/video/audio) → durable URL.',
+  })
+  uploadDocument(@UploadedFile() file: Express.Multer.File): UploadedMediaResult {
+    if (!file) {
+      throw new BadRequestException('file is required');
+    }
+    const { publicBaseUrl } = this.configService.get('uploads', { infer: true });
+    return {
+      url: `${publicBaseUrl}/uploads/${file.filename}`,
+      // Multer decodes multipart names as latin1 — restore UTF-8 (Kirill/o'zbek nomlar).
+      fileName: Buffer.from(file.originalname, 'latin1').toString('utf8'),
+      fileSize: file.size,
+      mimeType: file.mimetype,
+    };
+  }
+
+  @ApiBearerAuth()
   @Post('image')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')

@@ -37,6 +37,7 @@ function build(opts: {
   workDays?: number[];
   mahalla?: { code: string; nameUzLat: string } | null;
   nearZone?: boolean;
+  faceRequired?: boolean;
 }) {
   const created: Record<string, unknown>[] = [];
   const prisma = {
@@ -82,6 +83,7 @@ function build(opts: {
     prisma as never,
     { get: jest.fn((k: string) => cfg[k]) } as never,
     zones as never,
+    { attendance: jest.fn().mockResolvedValue({ faceRequired: opts.faceRequired ?? true }) } as never,
   );
   return { service, created };
 }
@@ -211,6 +213,28 @@ describe('attendance rules', () => {
     });
     expect(created[1]).toMatchObject({ isValid: false, place: null, photoUrl: null });
     expect(String(created[1].reason)).toMatch(/m from office, outside 200m geofence/);
+  });
+
+  it('face scan switched off: location alone accepts, but a wrong place still rejects', async () => {
+    const { service, created } = build({ employees: [employee('ali')], faceRequired: false });
+    // No embedding at all — the app skipped the camera.
+    await service.checkIn('ali', { latitude: OFFICE.lat, longitude: OFFICE.lng });
+    expect(created[0]).toMatchObject({ isValid: true, place: 'office', faceScore: 0, reason: null });
+
+    // A face that does NOT match is still not a reason to reject.
+    await service.checkIn('ali', { latitude: OFFICE.lat, longitude: OFFICE.lng, embedding: [0, 1] });
+    expect(created[1]).toMatchObject({ isValid: true, reason: null });
+
+    await service.checkIn('ali', { latitude: 41.3111, longitude: 69.3402 });
+    expect(created[2]).toMatchObject({ isValid: false, place: null });
+    expect(String(created[2].reason)).toMatch(/outside 200m geofence/);
+  });
+
+  it('face scan switched on (default): no face means rejected', async () => {
+    const { service, created } = build({ employees: [employee('ali')] });
+    await service.checkIn('ali', { latitude: OFFICE.lat, longitude: OFFICE.lng });
+    expect(created[0]).toMatchObject({ isValid: false });
+    expect(String(created[0].reason)).toMatch(/face score 0.00 below threshold/);
   });
 });
 
