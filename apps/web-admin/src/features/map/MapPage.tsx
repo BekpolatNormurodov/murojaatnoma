@@ -39,6 +39,7 @@ import {
   initials,
   isOnline,
   LABELS,
+  lastTrackDay,
   OFFLINE_COLOR,
   ONLINE_COLOR,
   PROBLEM_KEYS,
@@ -102,6 +103,17 @@ function markerIcon(loc: LiveLocation, selected: boolean, ariaLabel: string): L.
 }
 
 /**
+ * The map centre that puts `pos` in the middle of what stays visible beside the
+ * detail panel (right rail on ≥640 px, bottom sheet on phones).
+ */
+function besidePanel(map: L.Map, pos: [number, number], zoom: number): L.LatLng {
+  const size = map.getSize();
+  const phone = window.innerWidth < 640;
+  const shift = phone ? L.point(0, size.y * 0.28) : L.point(Math.min(360, size.x * 0.6) / 2, 0);
+  return map.unproject(map.project(pos, zoom).add(shift), zoom);
+}
+
+/**
  * Flies to the selected employee ONCE per selection (keyed on the id, not the
  * live position — otherwise every 15 s poll would re-center and fight the
  * admin's manual pan).
@@ -116,7 +128,8 @@ function FlyTo({ pos, flyKey }: { pos: [number, number] | null; flyKey: string |
     }
     if (pos && flyKey !== lastKey.current) {
       lastKey.current = flyKey;
-      map.flyTo(pos, Math.max(map.getZoom(), 15), { duration: 0.8 });
+      const zoom = Math.max(map.getZoom(), 15);
+      map.flyTo(besidePanel(map, pos, zoom), zoom, { duration: 0.8 });
     }
   }, [pos, flyKey, map]);
   return null;
@@ -138,7 +151,7 @@ function Follow({
   const map = useMap();
   useMapEvents({ dragstart: () => on && onStop() });
   useEffect(() => {
-    if (on && pos) map.panTo(pos, { animate: true, duration: 0.6 });
+    if (on && pos) map.panTo(besidePanel(map, pos, map.getZoom()), { animate: true, duration: 0.6 });
   }, [on, pos, map]);
   return null;
 }
@@ -162,7 +175,9 @@ function FitHome({ mahallas }: { mahallas: ZoneCollection | undefined }) {
 function FlyToTarget({ target }: { target: FlyTarget | null }) {
   const map = useMap();
   useEffect(() => {
-    if (target) map.flyTo(target.pos, Math.max(map.getZoom(), 16), { duration: 0.6 });
+    if (!target) return;
+    const zoom = Math.max(map.getZoom(), 16);
+    map.flyTo(besidePanel(map, target.pos, zoom), zoom, { duration: 0.6 });
   }, [target, map]);
   return null;
 }
@@ -311,7 +326,8 @@ export function MapPage() {
   const [showMahallas, setShowMahallas] = useState(true);
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [mahallaFilter, setMahallaFilter] = useState<MahallaFilter | null>(null);
-  const [trackWindow, setTrackWindow] = useState<TrackWindow>('today');
+  // The admin's own pick, kept per employee: another selection starts fresh.
+  const [trackChoice, setTrackChoice] = useState<{ id: string | null; window: TrackWindow } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile overlay
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null);
 
@@ -351,6 +367,13 @@ export function MapPage() {
     return !!a?.checkIn && !a.checkOut;
   };
 
+  // Nothing today (location off) → the last day they did walk, until the admin picks.
+  const fallbackDay = lastTrackDay(
+    locationsQ.data?.find((l) => l.employeeId === selectedId)?.lastLocationAt,
+  );
+  const picked = trackChoice?.id === selectedId ? trackChoice.window : null;
+  const trackWindow: TrackWindow = picked ?? fallbackDay ?? 'today';
+  const setTrackWindow = (window: TrackWindow) => setTrackChoice({ id: selectedId, window });
   const trackQ = useQuery({
     queryKey: ['track', selectedId, trackWindow],
     queryFn: () => {
@@ -850,7 +873,12 @@ export function MapPage() {
         </div>
 
         {/* Top-right: follow (when someone is selected) + mahalla toggle */}
-        <div className="absolute right-3 top-3 z-[1000] flex items-center gap-2">
+        <div
+          className={cn(
+            'absolute right-3 top-3 z-[1000] flex items-center gap-2',
+            selected && 'sm:right-[372px]',
+          )}
+        >
           {selectedPos && (
             <button
               onClick={() => setFollow((f) => !f)}
@@ -893,6 +921,7 @@ export function MapPage() {
             trackLoading={trackQ.isLoading}
             trackWindow={trackWindow}
             onTrackWindow={setTrackWindow}
+            lastRouteDay={!picked && fallbackDay ? fallbackDay : null}
             summary={summary}
             attendance={attendanceById.get(selected.employeeId) ?? null}
             assignedNames={assignedCodes.map((c) => mahallaNames.get(c) ?? c)}

@@ -404,3 +404,9 @@ svg[fill="none"] polygon:not([stroke-width]):not([fill]) {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A clicked or dragged map polygon must not get the browser's focus rectangle
+   (keyboard focus still shows it). */
+.leaflet-container path.leaflet-interactive:focus:not(:focus-visible) {
+  outline: none;
+}

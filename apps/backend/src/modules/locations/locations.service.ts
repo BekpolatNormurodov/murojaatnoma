@@ -538,6 +538,19 @@ export class LocationsService {
       recordedAt,
     );
 
+    // A retried upload (the answer was lost) must not store the same fix twice.
+    if (dto.recordedAt) {
+      const [stored] =
+        (await this.prisma.employeeLocation.findMany({
+          where: { employeeId, recordedAt: d.recordedAt },
+          select: { id: true },
+          take: 1,
+        })) ?? [];
+      if (stored) {
+        return this.toIngestResult(stored.id, d);
+      }
+    }
+
     const created = await this.prisma.employeeLocation.create({
       data: { employeeId, ...d },
     });
@@ -548,6 +561,28 @@ export class LocationsService {
       );
     }
     return this.toIngestResult(created.id, d);
+  }
+
+  /**
+   * Drops fixes this employee already has (same device time) and repeats inside
+   * the batch itself — the offline queue re-sends a batch whose answer was lost.
+   */
+  private async withoutStored<T extends { recordedAt: Date }>(
+    employeeId: string,
+    fixes: T[],
+  ): Promise<T[]> {
+    const stored =
+      (await this.prisma.employeeLocation.findMany({
+        where: { employeeId, recordedAt: { in: fixes.map((f) => f.recordedAt) } },
+        select: { recordedAt: true },
+      })) ?? [];
+    const seen = new Set(stored.map((r) => r.recordedAt.getTime()));
+    return fixes.filter((f) => {
+      const at = f.recordedAt.getTime();
+      if (seen.has(at)) return false;
+      seen.add(at);
+      return true;
+    });
   }
 
   /** Ingest a batch flushed from the mobile offline queue (oldest-first). */
@@ -584,9 +619,12 @@ export class LocationsService {
       ),
     );
 
-    await this.prisma.employeeLocation.createMany({
-      data: derived.map((d) => ({ employeeId, ...d })),
-    });
+    const fresh = await this.withoutStored(employeeId, derived);
+    if (fresh.length > 0) {
+      await this.prisma.employeeLocation.createMany({
+        data: fresh.map((d) => ({ employeeId, ...d })),
+      });
+    }
 
     let newest = derived[0];
     for (const d of derived) {

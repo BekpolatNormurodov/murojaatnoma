@@ -72,6 +72,8 @@ interface Props {
   track: TrackResult | undefined;
   trackLoading: boolean;
   trackWindow: TrackWindow;
+  /** Set when the route shown is the last walked day because today has none. */
+  lastRouteDay: TrackWindow | null;
   onTrackWindow: (w: TrackWindow) => void;
   summary: TrackSummary;
   /** Today's davomat entry (null when unavailable). */
@@ -96,6 +98,7 @@ export function EmployeeDetailDrawer({
   trackLoading,
   trackWindow,
   onTrackWindow,
+  lastRouteDay,
   summary,
   attendance,
   assignedNames,
@@ -154,20 +157,14 @@ export function EmployeeDetailDrawer({
   );
 
   return (
-    <div className="absolute inset-0 z-[1300]">
-      {/* Backdrop */}
-      <button
-        aria-label={t.close}
-        onClick={onClose}
-        className="absolute inset-0 animate-fade-in cursor-default bg-black/25"
-      />
-
+    // The layer itself ignores the pointer: the map beside the panel stays draggable.
+    <div className="pointer-events-none absolute inset-0 z-[1300]">
       {/* Panel: bottom sheet on phones, right rail on ≥sm */}
       <aside
         className={cn(
           // The whole panel scrolls when the header and metrics leave no room for the list.
           'pointer-events-auto absolute flex flex-col overflow-y-auto overflow-x-hidden border-line bg-surface shadow-pop transition-transform duration-300 ease-out',
-          'inset-x-0 bottom-0 max-h-[82%] rounded-t-2xl border-t',
+          'inset-x-0 bottom-0 max-h-[62%] rounded-t-2xl border-t',
           'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:w-[360px] sm:rounded-t-none sm:rounded-l-2xl sm:border-l sm:border-t-0',
           shown
             ? 'translate-y-0 sm:translate-x-0'
@@ -370,6 +367,11 @@ export function EmployeeDetailDrawer({
             )}
           </div>
         </div>
+        {lastRouteDay && (
+          <p role="status" className="mx-4 mb-2 rounded-lg bg-amber-500/10 px-3 py-2 text-[12px] text-amber-700 dark:text-amber-300">
+            {t.lastRoute}: <b className="tabular-nums">{lastRouteDay.split('-').reverse().join('.')}</b>
+          </p>
+        )}
         <div className="flex gap-1 px-4">
           {WINDOWS.map((w) => (
             <button
@@ -405,6 +407,13 @@ export function EmployeeDetailDrawer({
             </button>
           ))}
         </div>
+
+        <button
+          onClick={() => navigate(`/oversight/${loc.employeeId}?tab=route`)}
+          className="mx-4 mt-2 shrink-0 rounded-lg border border-line px-3 py-2 text-[12px] font-medium text-primary-600 hover:bg-surface-2"
+        >
+          {t.fullRoute}
+        </button>
 
         {/* Track point list */}
         <div className="mt-3 shrink-0 px-2 pb-3 sm:min-h-[160px] sm:flex-1 sm:shrink sm:overflow-y-auto">

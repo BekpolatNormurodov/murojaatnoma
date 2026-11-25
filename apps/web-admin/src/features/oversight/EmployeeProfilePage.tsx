@@ -18,6 +18,7 @@ import {
   Profile2User,
   Refresh2,
   RotateRight,
+  Routing,
   ScanBarcode,
   Star1,
   TickCircle,
@@ -41,6 +42,7 @@ import { AssignZonesModal } from './AssignZonesModal';
 import { ArchiveEmployeeDialog } from './ArchiveEmployeeDialog';
 import { useResetFace, useRestoreEmployee } from './useEmployeeMutations';
 import { ReportList, ZoneTimePanel } from './ActivityViews';
+import { RouteTab } from './RouteTab';
 import { durationText, useAttendanceSettings } from './useActivity';
 import { PeriodBar } from './PeriodBar';
 import { daysInclusive, rangeText, resolvePeriod, type PeriodSelection } from './period';
@@ -54,10 +56,11 @@ import {
   type ProfileDay,
 } from './useEmployeeProfile';
 
-type Tab = 'overview' | 'attendance' | 'zone' | 'reports' | 'murojaat' | 'finance';
+type Tab = 'overview' | 'route' | 'attendance' | 'zone' | 'reports' | 'murojaat' | 'finance';
 
 const TABS: { key: Tab; label: string; icon: IconType }[] = [
   { key: 'overview', label: 'Umumiy', icon: Profile2User },
+  { key: 'route', label: "Yurgan yo'li", icon: Routing },
   { key: 'attendance', label: 'Davomat', icon: Calendar },
   { key: 'zone', label: 'Hudud vaqti', icon: Location },
   { key: 'reports', label: 'Hisobotlar', icon: DocumentText },
@@ -226,6 +229,14 @@ export function EmployeeProfilePage() {
             canWrite={canWrite}
             onZones={() => setZones(true)}
             onFaceReset={() => setFaceReset(true)}
+          />
+        )}
+        {tab === 'route' && (
+          <RouteTab
+            key={p.employeeId}
+            employeeId={p.employeeId}
+            assignedCodes={p.assignedMahallas.map((m) => m.code)}
+            lastAt={p.live?.at ?? null}
           />
         )}
         {tab === 'attendance' && <AttendanceTab p={p} onZoom={setZoom} />}

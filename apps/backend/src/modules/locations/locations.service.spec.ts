@@ -235,6 +235,35 @@ describe('LocationsService', () => {
     });
   });
 
+  describe('qayta yuborilgan nuqtalar', () => {
+    it('batch bazada bor va o‘z ichida takrorlangan nuqtani yozmaydi', async () => {
+      const { service, prisma } = buildDeps();
+      prisma.employee.findUnique.mockResolvedValue(ingestEmployee({}));
+      const old = new Date(Date.now() - 120_000).toISOString();
+      const next = new Date(Date.now() - 60_000).toISOString();
+      prisma.employeeLocation.findMany.mockResolvedValue([{ recordedAt: new Date(old) }]);
+      const res = await service.ingestBatch('e1', [
+        { ...AT_OFFICE, recordedAt: old },
+        { ...AT_OFFICE, recordedAt: next },
+        { ...AT_OFFICE, recordedAt: next },
+      ]);
+      expect(res.accepted).toBe(3);
+      expect(prisma.employeeLocation.createMany.mock.calls[0][0].data).toHaveLength(1);
+    });
+
+    it('yolg‘iz nuqta ikkinchi marta yozilmaydi', async () => {
+      const { service, prisma } = buildDeps();
+      prisma.employee.findUnique.mockResolvedValue(ingestEmployee({}));
+      prisma.employeeLocation.findMany.mockResolvedValue([{ id: 'loc-0' }]);
+      const res = await service.ingest('e1', {
+        ...AT_OFFICE,
+        recordedAt: new Date(Date.now() - 60_000).toISOString(),
+      });
+      expect(res.id).toBe('loc-0');
+      expect(prisma.employeeLocation.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('kechikib kelgan nuqtalar — o‘sha paytdagi hudud bo‘yicha', () => {
     it('hudud o‘zgargan kundan oldingi nuqta eski hududga ko‘ra baholanadi', async () => {
       const { service, prisma } = buildDeps();

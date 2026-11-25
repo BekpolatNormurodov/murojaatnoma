@@ -227,6 +227,8 @@ export const LABELS: Record<Lang, Labels> = {
     today: 'Bugun',
     yesterday: 'Kecha',
     history: 'Oldingi kunlar',
+    fullRoute: "Boshqa kunlar va to'liq yo'l",
+    lastRoute: "Bugun joylashuv yo'q — oxirgi yurilgan yo'l",
     lastHour: "So'nggi 1 soat",
     last3h: "So'nggi 3 soat",
     points: 'nuqta',
@@ -312,6 +314,8 @@ export const LABELS: Record<Lang, Labels> = {
     today: 'Сегодня',
     yesterday: 'Вчера',
     history: 'Предыдущие дни',
+    fullRoute: 'Другие дни и полный маршрут',
+    lastRoute: 'Сегодня нет геолокации — последний пройденный маршрут',
     lastHour: 'Последний час',
     last3h: 'Последние 3 часа',
     points: 'точек',
@@ -393,6 +397,17 @@ export function trackHistoryDays(now = new Date()): TrackWindow[] {
     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i - 1);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` as TrackWindow;
   });
+}
+
+/**
+ * The local day of the last fix when nothing has arrived today (location off,
+ * app closed) — the route to show instead of an empty "today". Else null.
+ */
+export function lastTrackDay(lastAt: string | null | undefined, now = new Date()): TrackWindow | null {
+  if (!lastAt) return null;
+  const at = new Date(lastAt);
+  if (Number.isNaN(at.getTime()) || at >= new Date(now.getFullYear(), now.getMonth(), now.getDate())) return null;
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}` as TrackWindow;
 }
 
 /** from/to ISO range for a track window (a past day: its local midnight to midnight). */
