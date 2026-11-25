@@ -464,6 +464,7 @@ export class OverviewService {
           lastLocationAt: true,
           lastInsideAssignedZone: true,
           lastInsideOffice: true,
+          assignedMahallaCodes: true,
         },
       }),
       this.prisma.attendanceRecord.findMany({
@@ -484,7 +485,9 @@ export class OverviewService {
     const reporting = people.filter(
       (p) => p.lastLocationAt && p.lastLocationAt.getTime() >= threshold,
     );
-    const insideZone = reporting.filter((p) => p.lastInsideAssignedZone || p.lastInsideOffice).length;
+    const insideZone = reporting.filter(
+      (p) => p.lastInsideOffice || (p.assignedMahallaCodes.length > 0 && p.lastInsideAssignedZone),
+    ).length;
 
     return {
       people: people.map((p) => ({ id: p.id, position: p.position })),
@@ -495,7 +498,10 @@ export class OverviewService {
         notCheckedIn: people.length - firstCheckIn.size,
         reportingNow: reporting.length,
         insideZone,
-        outsideZone: reporting.length - insideZone,
+        // Without an assigned mahalla there is no territory to be outside of.
+        outsideZone: reporting.filter(
+          (p) => !p.lastInsideAssignedZone && !p.lastInsideOffice && p.assignedMahallaCodes.length > 0,
+        ).length,
         stale: people.filter((p) => p.lastLocationAt && p.lastLocationAt.getTime() < threshold).length,
         neverReported: people.filter((p) => !p.lastLocationAt).length,
         staleMinutes,

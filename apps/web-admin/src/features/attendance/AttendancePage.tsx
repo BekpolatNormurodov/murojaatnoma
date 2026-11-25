@@ -37,7 +37,7 @@ import { DateRangePicker } from '@/shared/ui/DatePicker';
 import { Skeleton } from '@/shared/ui/Skeleton';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
-import { territoryOf } from '@/shared/lib/territory';
+import { TERRITORY_LABEL, territoryOf } from '@/shared/lib/territory';
 import { EmployeeStatsDrawer } from '@/features/oversight/EmployeeStatsDrawer';
 import { useAttendanceSettings } from '@/features/oversight/useActivity';
 import { useAttendanceToday, todayIso } from './useAttendanceToday';
@@ -93,7 +93,7 @@ const outOfZone = (r: EmployeeTodayEntry) =>
   !r.checkOut &&
   !!r.live &&
   !r.live.stale &&
-  territoryOf(r.live.insideZone, r.live.insideOffice) === 'outside';
+  territoryOf(r.live.insideZone, r.live.insideOffice, r.live.hasZones) === 'outside';
 const hasIssue = (r: EmployeeTodayEntry) => failedCount(r) > 0 || early(r) > 0 || outOfZone(r);
 
 const FILTERS: { key: FilterKey; label: string; test: (r: EmployeeTodayEntry) => boolean }[] = [
@@ -213,7 +213,7 @@ export function AttendancePage() {
         ? working.filter((r) => r.live && !r.live.stale && r.live.insideZone).length
         : null,
       officeNow: working.filter(
-        (r) => r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice) === 'office',
+        (r) => r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice, r.live.hasZones) === 'office',
       ).length,
     };
   }, [roster, summary]);
@@ -714,14 +714,16 @@ export function AttendancePage() {
 /** Jonli joylashuv (yangi backend) yoki kelish paytidagi geofence (eski). */
 function LocationCell({ r }: { r: EmployeeTodayEntry }) {
   if (r.live && r.checkIn && !r.checkOut) {
-    const at = territoryOf(r.live.insideZone, r.live.insideOffice);
+    const at = territoryOf(r.live.insideZone, r.live.insideOffice, r.live.hasZones);
     const tone = r.live.stale
       ? 'text-ink-muted'
       : at === 'zone'
         ? 'text-primary-600'
         : at === 'office'
           ? 'text-accent-600'
-          : 'text-red-600';
+          : at === 'none'
+            ? 'text-ink-muted'
+            : 'text-red-600';
     return (
       <span
         className={cn('flex items-center gap-1.5 text-[12px] font-medium', tone)}
@@ -733,7 +735,7 @@ function LocationCell({ r }: { r: EmployeeTodayEntry }) {
             ? "Aloqa yo'q"
             : at === 'office'
               ? 'Ofisda'
-              : (r.live.mahallaName ?? (at === 'zone' ? 'Hududida' : 'Tashqarida'))}
+              : (r.live.mahallaName ?? (at === 'zone' ? 'Hududida' : TERRITORY_LABEL[at]))}
         </span>
       </span>
     );

@@ -48,7 +48,7 @@ export interface OversightRow {
     mahallaName: string | null;
     isStale: boolean;
   };
-  /** Mahalla codes this employee is assigned to (empty = whole district). */
+  /** Mahalla codes this employee is assigned to (empty = nothing assigned). */
   assignedMahallaCodes: string[];
   /** Net salary for the requested month (null when unset). */
   salaryNet: number | null;
@@ -265,7 +265,7 @@ export class OversightService {
         },
         location: {
           hasLocation: loc?.hasLocation ?? false,
-          insideAssignedZone: loc?.insideAssignedZone ?? true,
+          insideAssignedZone: loc?.insideAssignedZone ?? false,
           insideOffice: loc?.insideOffice ?? false,
           mahallaName: loc?.mahallaName ?? null,
           isStale: loc?.isStale ?? true,
@@ -285,6 +285,8 @@ export class OversightService {
       // Someone at the office is not "outside" even though it is not their territory.
       outsideZone: rows.filter(
         (r) =>
+          // Nobody can be "outside" a territory they were never given.
+          r.assignedMahallaCodes.length > 0 &&
           r.location.hasLocation &&
           !r.location.insideAssignedZone &&
           !r.location.insideOffice,
@@ -600,7 +602,7 @@ export class OversightService {
         ? {
             at: emp.lastLocationAt,
             mahallaName: emp.lastMahallaName,
-            insideZone: emp.lastInsideAssignedZone,
+            insideZone: emp.assignedMahallaCodes.length > 0 && emp.lastInsideAssignedZone,
             insideOffice: emp.lastInsideOffice,
             stale: now.getTime() - emp.lastLocationAt.getTime() > staleMs,
           }

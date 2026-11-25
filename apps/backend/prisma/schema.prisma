@@ -139,7 +139,7 @@ model Employee {
   homeMahallaCode String?
 
   // --- Territory oversight: mahalla codes this employee is assigned to patrol/
-  // serve. Empty = the whole district counts as "in zone". A live report is
+  // serve. Empty = no territory: nothing counts as "in zone". A live report is
   // "in zone" when its resolved mahalla is one of these (see locations.service).
   assignedMahallaCodes String[] @default([])
 
@@ -153,8 +153,8 @@ model Employee {
   lastInsideDistrict Boolean   @default(false)
   lastInsideOffice   Boolean   @default(false)
   // Whether the latest report fell inside this employee's assigned territory
-  // (assignedMahallaCodes; falls back to lastInsideDistrict when unassigned).
-  lastInsideAssignedZone Boolean @default(true)
+  // (assignedMahallaCodes). Always false in meaning when nothing is assigned.
+  lastInsideAssignedZone Boolean @default(false)
   // Set when a "no location for N minutes" alert has already been raised for the
   // current stale episode, so the scheduler doesn't spam. Cleared on next report.
   staleAlertedAt     DateTime?
@@ -521,6 +521,9 @@ model EmployeeLocation {
   insideDistrict    Boolean        @default(false)
   insideOffice      Boolean        @default(false)
   insideAssignedZone Boolean       @default(true)
+  /// Was any mahalla assigned when this fix was judged? false = the time is
+  /// neither inside nor outside a territory.
+  hadTerritory      Boolean        @default(true)
   distanceToOfficeM Float?
   recordedAt        DateTime // device timestamp
   createdAt         DateTime       @default(now()) // server receive timestamp

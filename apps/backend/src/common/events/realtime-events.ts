@@ -23,7 +23,7 @@ export const RT_EVENTS = {
 
 export interface TerritoryChangedEvent {
   employeeId: string;
-  /** The territory now in force; empty = the whole district. */
+  /** The territory now in force; empty = nothing assigned. */
   assignedMahallas: { code: string; name: string }[];
   /** ISO-8601. */
   changedAt: string;

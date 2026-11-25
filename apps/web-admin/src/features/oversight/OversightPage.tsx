@@ -80,7 +80,11 @@ function matchesFlag(r: OversightRow, f: FlagFilter): boolean {
       // Ofisdagi xodim "hududdan tashqari" muammosi emas.
       return (
         r.location.hasLocation &&
-        territoryOf(r.location.insideAssignedZone, r.location.insideOffice) === 'outside'
+        territoryOf(
+          r.location.insideAssignedZone,
+          r.location.insideOffice,
+          (r.assignedMahallaCodes ?? []).length > 0,
+        ) === 'outside'
       );
     case 'noface':
       return !r.hasFace;
@@ -547,7 +551,7 @@ function OversightCard({
   const att = attMeta(row.attendance.status);
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
-  const territory = territoryOf(loc.insideAssignedZone, loc.insideOffice);
+  const territory = territoryOf(loc.insideAssignedZone, loc.insideOffice, assignedCount > 0);
   const zoneChip = (
     <>
       {!loc.hasLocation ? (
@@ -561,19 +565,26 @@ function OversightCard({
         <span
           className={cn(
             'inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium',
-            territory === 'zone' ? 'text-emerald-600' : territory === 'office' ? 'text-sky-600' : 'text-red-500',
+            territory === 'zone'
+              ? 'text-emerald-600'
+              : territory === 'office'
+                ? 'text-sky-600'
+                : territory === 'none'
+                  ? 'text-ink-muted'
+                  : 'text-red-500',
           )}
           title={loc.mahallaName ?? undefined}
         >
           <Location size={14} variant="Bulk" className="shrink-0" /> {TERRITORY_LABEL[territory]}
-          {territory !== 'outside' && loc.isStale ? ' (eski)' : ''}
+          {(territory === 'zone' || territory === 'office') && loc.isStale ? ' (eski)' : ''}
         </span>
       )}
-      <span
-        className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted"
-      >
-        {assignedCount ? `${assignedCount} mahalla` : 'butun tuman'}
-      </span>
+      {/* "Hudud biriktirilmagan" yozilgan bo'lsa, yorliq takrorlanmaydi. */}
+      {territory !== 'none' || !loc.hasLocation ? (
+        <span className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted">
+          {assignedCount ? `${assignedCount} mahalla` : 'mahalla yo‘q'}
+        </span>
+      ) : null}
     </>
   );
   return (

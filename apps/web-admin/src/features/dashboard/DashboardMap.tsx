@@ -38,6 +38,8 @@ const PIN_COLOR: Record<string, string> = { new: '#3b82f6', in_progress: '#f59e0
 
 function staffColor(l: LiveLocation): string {
   if (!isOnline(l) || l.isStale) return '#94a3b8';
+  // No mahalla assigned: neutral, not "outside".
+  if (l.assignedMahallaCodes?.length === 0 && !l.insideOffice) return '#8b5cf6';
   // "Hududda" = their own assigned mahallas (server-computed), not just anywhere in the tuman.
   return l.insideOffice || (l.insideAssignedZone ?? l.insideDistrict) ? '#10b981' : '#ef4444';
 }
@@ -297,6 +299,7 @@ export function DashboardMap({
         <LegendDot color="#3b82f6" ring="#dc2626" label="Muddati o'tgan" />
         <LegendDot color="#10b981" label="Xodim (hududda)" />
         <LegendDot color="#ef4444" label="Xodim (tashqarida)" />
+        <LegendDot color="#8b5cf6" label="Xodim (hududsiz)" />
       </div>
     </div>
   );

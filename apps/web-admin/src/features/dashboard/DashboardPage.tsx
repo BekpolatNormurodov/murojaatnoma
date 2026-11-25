@@ -607,7 +607,9 @@ function MahallaCard({
 
 function LocationCard({ data }: { data: Overview | undefined }) {
   const w = data?.workforce;
-  const live = w ? w.insideZone + w.outsideZone : 0;
+  const live = w?.reportingNow ?? 0;
+  // Signal berayotgan, lekin mahalla biriktirilmagan va ofisda ham emas.
+  const noZone = w ? Math.max(0, w.reportingNow - w.insideZone - w.outsideZone) : 0;
   const pct = (n: number) => (w && w.total ? (n / w.total) * 100 : 0);
   return (
     <Card className="flex flex-col p-5">
@@ -649,11 +651,13 @@ function LocationCard({ data }: { data: Overview | undefined }) {
           <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-surface-2">
             <div className="bg-primary-500" style={{ width: `${pct(w.insideZone)}%` }} />
             <div className="bg-red-500" style={{ width: `${pct(w.outsideZone)}%` }} />
+            <div className="bg-violet-500" style={{ width: `${pct(noZone)}%` }} />
             <div className="bg-slate-400" style={{ width: `${pct(w.stale)}%` }} />
           </div>
           <div className="mt-4 space-y-2 text-[13px]">
             <Row dot="#10b981" label="Hududida yoki ofisda" value={w.insideZone} />
             <Row dot="#ef4444" label="Hududdan tashqarida" value={w.outsideZone} />
+            <Row dot="#8b5cf6" label="Hudud biriktirilmagan" value={noZone} />
             <Row dot="#94a3b8" label={`Aloqa yo'q (${w.staleMinutes}+ daq)`} value={w.stale} />
             <Row dot="#cbd5e1" label="Ilova ishga tushmagan" value={w.neverReported} />
           </div>

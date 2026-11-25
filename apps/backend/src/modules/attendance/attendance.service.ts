@@ -143,6 +143,8 @@ export interface TodayLiveLocation {
   /** Inside the assigned territory (the office does not count). */
   insideZone: boolean;
   insideOffice: boolean;
+  /** false = no mahalla assigned, so "outside" does not apply. */
+  hasZones: boolean;
   stale: boolean;
 }
 
@@ -618,8 +620,9 @@ export class AttendanceService {
           ? {
               at: employee.lastLocationAt,
               mahallaName: employee.lastMahallaName ?? null,
-              insideZone: employee.lastInsideAssignedZone,
+              insideZone: wp.zones.length > 0 && employee.lastInsideAssignedZone,
               insideOffice: employee.lastInsideOffice,
+              hasZones: wp.zones.length > 0,
               stale: employee.lastLocationAt.getTime() < staleBefore,
             }
           : null;

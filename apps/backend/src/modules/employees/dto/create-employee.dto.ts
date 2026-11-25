@@ -44,7 +44,7 @@ export class CreateEmployeeDto {
     type: [String],
     example: ['1090102', '1090103'],
     description:
-      'Mahalla codes (from mahallas.geojson) this employee is assigned to for territory oversight. Empty = the whole district counts as in-zone.',
+      'Mahalla codes (from mahallas.geojson) this employee is assigned to for territory oversight. Empty = no territory (nothing counts as in-zone).',
   })
   // Not @IsOptional(): that would let `null` through to Prisma (500).
   @ValidateIf((_, value) => value !== undefined)

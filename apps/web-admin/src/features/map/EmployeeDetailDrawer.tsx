@@ -135,11 +135,14 @@ export function EmployeeDetailDrawer({
   const distanceM =
     lastFix?.distanceToOfficeM != null ? lastFix.distanceToOfficeM : pos ? haversineM(pos, OFFICE_CENTER) : null;
   const key = statusKey(loc);
+  // Mahalla biriktirilmagan: marshrutda "hududdan tashqarida" belgisi bo'lmaydi.
+  const noZone = loc.assignedMahallaCodes?.length === 0;
   const statusText: Record<string, string> = {
     office: t.office,
     zone: t.zone,
     offzone: t.offzone,
     outside: t.outDistrict,
+    nozone: t.nozone,
     stale: t.stale,
     noloc: t.noLocShort,
   };
@@ -335,8 +338,8 @@ export function EmployeeDetailDrawer({
               <Metric
                 icon={<LocationTick size={15} variant="Bulk" />}
                 label={t.inZoneShare}
-                value={summary.inZonePct != null ? `${summary.inZonePct}%` : '—'}
-                tone={summary.inZonePct != null && summary.inZonePct < 70 ? 'warn' : undefined}
+                value={!noZone && summary.inZonePct != null ? `${summary.inZonePct}%` : '—'}
+                tone={!noZone && summary.inZonePct != null && summary.inZonePct < 70 ? 'warn' : undefined}
               />
               <Metric
                 icon={<Timer1 size={15} variant="Bulk" />}
@@ -434,13 +437,19 @@ export function EmployeeDetailDrawer({
                       size={13}
                       variant="Bulk"
                       className={
-                        p.insideOffice ? 'text-emerald-600' : inZone ? 'text-blue-600' : 'text-amber-500'
+                        p.insideOffice
+                          ? 'text-emerald-600'
+                          : noZone
+                            ? 'text-ink-muted'
+                            : inZone
+                              ? 'text-blue-600'
+                              : 'text-amber-500'
                       }
                     />
                     <span
                       className={cn(
                         'min-w-0 flex-1 truncate text-xs',
-                        coarse ? 'text-ink-muted' : inZone || p.insideOffice ? 'text-ink' : 'text-amber-700',
+                        coarse ? 'text-ink-muted' : noZone || inZone || p.insideOffice ? 'text-ink' : 'text-amber-700',
                       )}
                     >
                       {p.mahallaName ?? '—'}

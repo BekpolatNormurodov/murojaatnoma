@@ -267,6 +267,7 @@ function EmployeeMarkers({
 const SEVERITY: Record<StatusKey, number> = {
   outside: 0,
   offzone: 1,
+  nozone: 3,
   stale: 2,
   zone: 3,
   office: 3,
@@ -503,6 +504,7 @@ export function MapPage() {
     zone: t.fZone,
     offzone: t.fOffzone,
     outside: t.fOutside,
+    nozone: t.fNozone,
     stale: t.fStale,
     noloc: t.fNoloc,
   };
@@ -879,6 +881,7 @@ export function MapPage() {
           <Legend color={STATUS_COLORS.zone} label={t.zone} />
           <Legend color={STATUS_COLORS.offzone} label={t.offzone} />
           <Legend color={STATUS_COLORS.outside} label={t.outDistrict} />
+          <Legend color={STATUS_COLORS.nozone} label={t.nozone} />
           <Legend color={STATUS_COLORS.stale} label={t.stale} />
         </div>
 

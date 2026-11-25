@@ -14,6 +14,8 @@ export interface ZoneStretch {
   inside: boolean;
   /** Hududda emas, lekin ofisda (eski backend'da yo'q). */
   office?: boolean;
+  /** false — o'sha payt mahalla biriktirilmagan edi. */
+  assigned?: boolean;
   mahallaName: string | null;
 }
 
@@ -26,6 +28,7 @@ export interface MahallaTime {
   inside: boolean;
   /** Hududda emas, lekin ofisda (eski backend'da yo'q). */
   office?: boolean;
+  assigned?: boolean;
 }
 
 export interface ZoneDay {
@@ -35,6 +38,8 @@ export interface ZoneDay {
   /** Hududdan tashqarida, lekin ofisda (eski backend'da yo'q). */
   officeMinutes?: number;
   outsideMinutes: number;
+  /** Mahalla biriktirilmagan vaqt (ofisdan tashqarida). */
+  unassignedMinutes?: number;
   /** Lokatsiya kelib turgan jami vaqt (hududda + ofisda + tashqarida). */
   activeMinutes: number;
   /** Faqat ish jadvali oralig'idagi qismi (eski backend'da yo'q). */
@@ -119,7 +124,7 @@ export interface ActivityRow {
   position: string;
   department: string | null;
   avatarUrl: string | null;
-  /** Biriktirilgan mahallalar nomi (bo'sh = butun tuman). */
+  /** Biriktirilgan mahallalar nomi (bo'sh = biriktirilmagan). */
   mahallas: string[];
   workStartTime: string;
   workEndTime: string;
@@ -157,6 +162,7 @@ export interface ActivityDailyDay {
   zoneMinutes: number;
   officeMinutes: number;
   outsideMinutes: number;
+  unassignedMinutes?: number;
   activeMinutes: number;
   workZoneMinutes: number;
   workActiveMinutes: number;

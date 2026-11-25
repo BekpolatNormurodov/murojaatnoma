@@ -47,7 +47,7 @@ export interface ActivityRow {
   position: string;
   department: string | null;
   avatarUrl: string | null;
-  /** Biriktirilgan mahallalar nomi (bo'sh = butun tuman). */
+  /** Biriktirilgan mahallalar nomi (bo'sh = biriktirilmagan). */
   mahallas: string[];
   /** Ish jadvali, "09:00" / "18:00". */
   workStartTime: string;
@@ -86,6 +86,7 @@ export interface ActivityDay {
   zoneMinutes: number;
   officeMinutes: number;
   outsideMinutes: number;
+  unassignedMinutes: number;
   activeMinutes: number;
   workZoneMinutes: number;
   workActiveMinutes: number;
@@ -137,9 +138,11 @@ interface ZoneSecondsRow {
   zone_s: number;
   office_s: number;
   outside_s: number;
+  none_s: number;
   work_zone_s: number;
   work_office_s: number;
   work_outside_s: number;
+  work_none_s: number;
 }
 
 /** Longest period one activity/list request may span. */
@@ -379,6 +382,7 @@ export class ReportsService {
         recordedAt: true,
         insideAssignedZone: true,
         insideOffice: true,
+        hadTerritory: true,
         mahallaName: true,
         accuracy: true,
       },
@@ -422,7 +426,7 @@ export class ReportsService {
   /**
    * Seconds per employee per local day — one SQL pass, the twin of `zoneDays`:
    * imprecise fixes ignored, a segment credited to the earlier fix unless the
-   * gap is too long, cut at Tashkent midnight, bucketed zone → office → outside,
+   * gap is too long, cut at Tashkent midnight, bucketed zone → office → outside / unassigned,
    * and measured again inside the employee's working hours. Whether those hours
    * count on that day is decided by the caller.
    */
@@ -435,7 +439,8 @@ export class ReportsService {
                ("recordedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Tashkent' AS at,
                CASE WHEN "insideAssignedZone" THEN 'zone'
                     WHEN "insideOffice" THEN 'office'
-                    ELSE 'outside' END AS bucket
+                    WHEN "hadTerritory" THEN 'outside'
+                    ELSE 'none' END AS bucket
         FROM employee_locations
         -- A Date is bound as timestamptz; the column is UTC without a zone. Convert
         -- explicitly, or the database's own time zone setting would shift the window.
@@ -486,9 +491,11 @@ export class ReportsService {
              COALESCE(SUM(secs) FILTER (WHERE bucket = 'zone'), 0)::float8 AS zone_s,
              COALESCE(SUM(secs) FILTER (WHERE bucket = 'office'), 0)::float8 AS office_s,
              COALESCE(SUM(secs) FILTER (WHERE bucket = 'outside'), 0)::float8 AS outside_s,
+             COALESCE(SUM(secs) FILTER (WHERE bucket = 'none'), 0)::float8 AS none_s,
              COALESCE(SUM(work_secs) FILTER (WHERE bucket = 'zone'), 0)::float8 AS work_zone_s,
              COALESCE(SUM(work_secs) FILTER (WHERE bucket = 'office'), 0)::float8 AS work_office_s,
-             COALESCE(SUM(work_secs) FILTER (WHERE bucket = 'outside'), 0)::float8 AS work_outside_s
+             COALESCE(SUM(work_secs) FILTER (WHERE bucket = 'outside'), 0)::float8 AS work_outside_s,
+             COALESCE(SUM(work_secs) FILTER (WHERE bucket = 'none'), 0)::float8 AS work_none_s
       FROM measured
       WHERE to_char(midnight, 'YYYY-MM-DD') BETWEEN ${localDate(from)} AND ${localDate(to)}
       GROUP BY "employeeId", midnight`;
@@ -517,11 +524,15 @@ export class ReportsService {
       const office = minutes(r.office_s);
       cur.zone += zone;
       cur.office += office;
-      cur.active += zone + office + minutes(r.outside_s);
+      cur.active += zone + office + minutes(r.outside_s) + minutes(r.none_s);
       if (this.countsAsWorkday(r.day, attendance.get(r.employeeId))) {
         const workZone = minutes(r.work_zone_s);
         cur.workZone += workZone;
-        cur.workActive += workZone + minutes(r.work_office_s) + minutes(r.work_outside_s);
+        cur.workActive +=
+          workZone +
+          minutes(r.work_office_s) +
+          minutes(r.work_outside_s) +
+          minutes(r.work_none_s);
       }
       map.set(r.employeeId, cur);
     }
@@ -718,6 +729,7 @@ export class ReportsService {
             zoneMinutes: zone.zoneMinutes,
             officeMinutes: zone.officeMinutes,
             outsideMinutes: zone.outsideMinutes,
+            unassignedMinutes: zone.unassignedMinutes,
             activeMinutes: zone.activeMinutes,
             workZoneMinutes: zone.workZoneMinutes,
             workActiveMinutes: zone.workActiveMinutes,

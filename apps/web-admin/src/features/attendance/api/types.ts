@@ -57,6 +57,8 @@ export interface TodayLiveLocation {
   mahallaName: string | null;
   /** Assigned territory only — the office does not count. */
   insideZone: boolean;
+  /** false = mahalla biriktirilmagan. */
+  hasZones?: boolean;
   /** At the office (absent on older backends). */
   insideOffice?: boolean;
   stale: boolean;

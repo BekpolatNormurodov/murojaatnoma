@@ -326,11 +326,11 @@ describe('LocationsService', () => {
       );
       await service.territoryChanged('e1', ['M1'], []);
       expect(notifications.employee.mock.calls[1][2]).toBe(
-        'Endi hududingiz — butun tuman.',
+        'Sizga biriktirilgan mahallalar olib tashlandi.',
       );
     });
 
-    it('/locations/me mahalla nomlarini ham beradi; bo‘sh = butun tuman', async () => {
+    it('/locations/me mahalla nomlarini ham beradi; bo‘sh = biriktirilmagan', async () => {
       const { service, prisma } = buildDeps();
       prisma.employee.findUnique.mockResolvedValue({ assignedMahallaCodes: ['M2'] });
       expect(await service.getMyLatest('e1')).toMatchObject({
@@ -451,9 +451,9 @@ describe('LocationsService', () => {
       prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: ['M1', 'M2'] }));
       expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(true);
 
-      // Nothing assigned → the whole district counts.
+      // Nothing assigned → no territory, so nowhere counts as inside.
       prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: [] }));
-      expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(true);
+      expect((await service.reevaluateTerritory('e1')).insideAssignedZone).toBe(false);
     });
 
     it('bugungi nuqtalardan faqat o‘zgarganlari yangilanadi', async () => {
@@ -461,7 +461,7 @@ describe('LocationsService', () => {
       const exec = jest.fn().mockResolvedValue(1);
       (prisma as any).$executeRaw = exec;
       prisma.employee.findUnique.mockResolvedValue(emp({ assignedMahallaCodes: ['M2'] }));
-      const base = { latitude: 41.4, longitude: 69.5, accuracy: 10, insideDistrict: true, insideOffice: false };
+      const base = { latitude: 41.4, longitude: 69.5, accuracy: 10, insideDistrict: true, insideOffice: false, hadTerritory: true };
       const dist = Math.round(
         // same office the service resolves from config
         require('../../common/geo/geo.util').distanceInMeters(41.4, 69.5, OFFICE.officeLatitude, OFFICE.officeLongitude),
@@ -475,8 +475,10 @@ describe('LocationsService', () => {
       expect(res.fixesUpdated).toBe(2);
       expect(exec).toHaveBeenCalledTimes(1);
       const args = exec.mock.calls[0].slice(1);
-      expect(args[0]).toEqual(['a', 'c']);
-      expect(args[1]).toEqual([true, false]);
+      // args[0] — "hudud bor edimi" (hadTerritory), keyin nuqtalar va bayroqlar.
+      expect(args[0]).toBe(true);
+      expect(args[1]).toEqual(['a', 'c']);
+      expect(args[2]).toEqual([true, false]);
     });
 
     it('lokatsiyasi yo‘q xodim "tashqarida" bo‘lib qolmaydi; yo‘q xodim — 404', async () => {

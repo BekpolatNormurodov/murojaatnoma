@@ -12,7 +12,7 @@ import type { OversightRow } from './useOversight';
  * Xodimga hudud (mahalla) biriktirish. Belgilangan mahallalar — shu xodim
  * "bo'lishi kerak" bo'lgan hudud; jonli lokatsiya shulardan tashqarida bo'lsa
  * Nazorat jadvalida "Tashqarida" deb ko'rsatiladi. Hech biri tanlanmasa —
- * butun tuman hisoblanadi.
+ * hudud biriktirilmagan hisoblanadi.
  */
 export function AssignZonesModal({
   row,
@@ -92,11 +92,12 @@ export function AssignZonesModal({
               zone: 'hududda',
               office: 'ofisda',
               outside: 'hududdan tashqarida',
-            }[territoryOf(res.lastInsideAssignedZone, res.lastInsideOffice)]
+              none: 'hudud biriktirilmagan',
+            }[territoryOf(res.lastInsideAssignedZone, res.lastInsideOffice, selected.size > 0)]
           }`
         : '';
       onDone?.(
-        `${row.fullName}: ${selected.size ? `${selected.size} ta mahalla biriktirildi` : 'butun tuman hudud qilindi'}${where}`,
+        `${row.fullName}: ${selected.size ? `${selected.size} ta mahalla biriktirildi` : 'mahallalar olib tashlandi'}${where}`,
       );
       onClose();
     } catch (e) {
@@ -165,7 +166,7 @@ export function AssignZonesModal({
         {selected.size === 0 && (
           <p className="flex items-center gap-1.5 rounded-lg bg-info-soft px-3 py-2 text-[12px] text-accent-700">
             <Location size={14} variant="Bulk" className="shrink-0" />
-            Hech biri tanlanmasa — butun tuman "hudud" hisoblanadi.
+            Hech biri tanlanmasa — hudud biriktirilmagan bo'ladi va hududdagi vaqt hisoblanmaydi.
           </p>
         )}
 

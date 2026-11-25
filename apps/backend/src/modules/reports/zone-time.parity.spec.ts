@@ -92,6 +92,7 @@ run('hudud vaqti: SQL va zoneDays bir xil (haqiqiy Postgres)', () => {
           recordedAt: new Date(at),
           insideAssignedZone: inside,
           insideOffice: rnd() < 0.4,
+          hadTerritory: inside || rnd() < 0.6,
           mahallaName: pick(['Olmazor', 'Buyuk ipak', null]),
           accuracy: pick([null, 5, 40, 149.9, 150, 150.1, 900]),
         });
@@ -184,13 +185,16 @@ run('hudud vaqti: SQL va zoneDays bir xil (haqiqiy Postgres)', () => {
           zoneMinutes: m('zone_s'),
           officeMinutes: m('office_s'),
           outsideMinutes: m('outside_s'),
+          unassignedMinutes: m('none_s'),
           workZoneMinutes: m('work_zone_s'),
-          workActiveMinutes: m('work_zone_s') + m('work_office_s') + m('work_outside_s'),
+          workActiveMinutes:
+            m('work_zone_s') + m('work_office_s') + m('work_outside_s') + m('work_none_s'),
         }).toEqual({
           date: day.date,
           zoneMinutes: day.zoneMinutes,
           officeMinutes: day.officeMinutes,
           outsideMinutes: day.outsideMinutes,
+          unassignedMinutes: day.unassignedMinutes,
           workZoneMinutes: day.workZoneMinutes,
           workActiveMinutes: day.workActiveMinutes,
         });

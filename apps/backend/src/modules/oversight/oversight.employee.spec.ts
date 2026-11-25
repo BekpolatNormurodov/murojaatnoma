@@ -78,6 +78,7 @@ describe('hudud va ofis (nazorat)', () => {
     employeeId: string,
     insideAssignedZone: boolean,
     insideOffice: boolean,
+    assignedMahallaCodes: string[] = ['M1'],
   ) => ({
     employeeId,
     hasLocation: true,
@@ -85,11 +86,11 @@ describe('hudud va ofis (nazorat)', () => {
     insideOffice,
     mahallaName: null,
     isStale: false,
-    assignedMahallaCodes: [],
+    assignedMahallaCodes,
   });
 
   it('ofisdagi xodim "tashqarida" hisoblanmaydi; qatorda insideOffice bor', async () => {
-    const ids = ['zone', 'office', 'out'];
+    const ids = ['zone', 'office', 'out', 'none'];
     const prisma = {
       faceTemplate: { findMany: jest.fn().mockResolvedValue([]) },
       attendanceRecord: { findMany: jest.fn().mockResolvedValue([]) },
@@ -104,6 +105,7 @@ describe('hudud va ofis (nazorat)', () => {
           loc('zone', true, false),
           loc('office', false, true),
           loc('out', false, false),
+          loc('none', false, false, []), // hudud biriktirilmagan — "tashqarida" emas
         ]),
     };
     const salaries = {
@@ -122,7 +124,7 @@ describe('hudud va ofis (nazorat)', () => {
     );
     const res = await svc.overview();
     expect(res.summary.outsideZone).toBe(1);
-    expect(res.rows.map((r) => r.location.insideOffice)).toEqual([false, true, false]);
+    expect(res.rows.map((r) => r.location.insideOffice)).toEqual([false, true, false, false]);
   });
 
   it('tahrirlash: qayta hisobdan keyin xodimga xabar; hudud yuborilmasa — yo‘q', async () => {

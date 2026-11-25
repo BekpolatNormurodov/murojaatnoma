@@ -76,6 +76,12 @@ const TERRITORY_STYLE: Record<Territory, { badge: string; dot: string; chip: str
     chip: 'border-red-200 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
     hint: 'Hududdan tashqari',
   },
+  none: {
+    badge: 'bg-surface-2 text-ink-muted',
+    dot: 'bg-slate-400',
+    chip: 'border-line bg-surface-2 text-ink-soft',
+    hint: 'Hudud biriktirilmagan',
+  },
 };
 
 /**
@@ -95,11 +101,12 @@ export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: strin
           zone: a.zone + d.zoneMinutes,
           office: a.office + (d.officeMinutes ?? 0),
           outside: a.outside + d.outsideMinutes,
+          unassigned: a.unassigned + (d.unassignedMinutes ?? 0),
           active: a.active + d.activeMinutes,
           workZone: a.workZone + (d.workZoneMinutes ?? 0),
           workActive: a.workActive + (d.workActiveMinutes ?? 0),
         }),
-        { zone: 0, office: 0, outside: 0, active: 0, workZone: 0, workActive: 0 },
+        { zone: 0, office: 0, outside: 0, unassigned: 0, active: 0, workZone: 0, workActive: 0 },
       ),
     [list],
   );
@@ -127,7 +134,7 @@ export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: strin
               {isFetching && <RotateRight size={14} className="animate-spin text-ink-muted" />}
             </h3>
             <p className="mt-0.5 text-[12px] text-ink-muted">
-              {assignedCount > 0 ? `${assignedCount} ta biriktirilgan mahalla` : 'Butun tuman hudud hisoblanadi'} ·{' '}
+              {assignedCount > 0 ? `${assignedCount} ta biriktirilgan mahalla` : 'Mahalla biriktirilmagan — hududdagi vaqt hisoblanmaydi'} ·{' '}
               {data?.gapMinutes ?? 15} daqiqadan uzun uzilish hisoblanmaydi
             </p>
           </div>
@@ -164,6 +171,9 @@ export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: strin
           <Stat label="Hududda" value={shown(total.zone)} tone="text-emerald-600" />
           {hasOffice && <Stat label="Ofisda" value={shown(total.office)} tone="text-sky-600" />}
           <Stat label="Tashqarida" value={shown(total.outside)} tone="text-red-500" />
+          {total.unassigned > 0 && (
+            <Stat label="Hududsiz" value={shown(total.unassigned)} tone="text-ink-muted" />
+          )}
           <Stat label="Faol (lokatsiya kelgan)" value={shown(total.active)} tone="text-ink" />
         </div>
       </Card>
@@ -236,6 +246,7 @@ function ZoneDayCard({ d }: { d: ZoneDay }) {
         >
           <div className="h-full bg-emerald-500" style={{ width: `${share}%` }} />
           <div className="h-full bg-sky-400" style={{ width: `${officeShare}%` }} />
+          <div className="h-full bg-slate-300 dark:bg-slate-600" style={{ width: `${percent(d.unassignedMinutes ?? 0)}%` }} />
         </div>
       )}
 
@@ -251,7 +262,7 @@ function ZoneDayCard({ d }: { d: ZoneDay }) {
       {!empty && (d.byMahalla?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1.5 px-4 pt-3 sm:px-5" aria-label="Mahallalar bo'yicha">
           {d.byMahalla!.slice(0, 8).map((m) => {
-            const at = territoryOf(m.inside, m.office);
+            const at = territoryOf(m.inside, m.office, m.assigned);
             return (
               <span
                 key={`${at}-${m.name ?? '-'}`}
@@ -277,7 +288,7 @@ function ZoneDayCard({ d }: { d: ZoneDay }) {
         ) : (
           <ul className="divide-y divide-line/60">
             {d.stretches.map((s, i) => {
-              const at = territoryOf(s.inside, s.office);
+              const at = territoryOf(s.inside, s.office, s.assigned);
               return (
                 <li
                   key={`${s.from}-${i}`}

@@ -9,7 +9,7 @@ export class UpdateEmployeeDto extends PartialType(
 ) {
   @ApiPropertyOptional({
     type: [String],
-    description: 'Omitted = unchanged; [] = the whole district; null is refused.',
+    description: 'Omitted = unchanged; [] = nothing assigned; null is refused.',
   })
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()

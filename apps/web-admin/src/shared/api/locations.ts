@@ -14,7 +14,7 @@ export interface LiveLocation {
   mahallaName: string | null;
   insideDistrict: boolean;
   insideOffice: boolean;
-  /** Inside the employee's own assigned mahallas (= in district when none assigned). */
+  /** Inside the employee's own assigned mahallas (= false when none assigned). */
   insideAssignedZone?: boolean;
   assignedMahallaCodes?: string[];
   lastLocationAt: string | null;

@@ -269,7 +269,7 @@ export function AttendanceBoard() {
 
 /** Yangi signal bor va u na hududda, na ofisda. */
 function isOutside(r: EmployeeTodayEntry): boolean {
-  return !!r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice) === 'outside';
+  return !!r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice, r.live.hasZones) === 'outside';
 }
 
 function IssueText({ r, tab }: { r: EmployeeTodayEntry; tab: Tab }) {

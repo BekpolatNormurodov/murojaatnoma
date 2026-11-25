@@ -49,7 +49,7 @@ function countColumn<T>(header: string, count: (row: T) => number | null | undef
   };
 }
 
-const zonesText = (mahallas: string[]) => (mahallas.length ? mahallas.join(', ') : 'Butun tuman');
+const zonesText = (mahallas: string[]) => (mahallas.length ? mahallas.join(', ') : 'Biriktirilmagan');
 const statusText = (archived: boolean | undefined) => (archived ? 'Arxivda' : 'Faol');
 
 /* ───────────── Sahifadagi filtr / qidiruv ───────────── */
@@ -129,6 +129,7 @@ function dailyColumns(): ExportColumn<DayLine>[] {
     durationColumn('Hududda (24 soat)', (r) => r.zoneMinutes),
     durationColumn('Ofisda (24 soat)', (r) => r.officeMinutes),
     durationColumn('Tashqarida (24 soat)', (r) => r.outsideMinutes),
+    durationColumn('Hududsiz (24 soat)', (r) => r.unassignedMinutes ?? 0),
     durationColumn('Faol (24 soat)', (r) => r.activeMinutes),
     { header: 'Holati', value: (r) => statusText(r.person.archived), align: 'center' },
   ];
@@ -144,7 +145,7 @@ function stretchColumns(): ExportColumn<StretchLine>[] {
     { header: 'Dan', value: (r) => clock(r.from), align: 'center' },
     { header: 'Gacha', value: (r) => stretchEnd(r.from, r.to), align: 'center' },
     durationColumn('Davomiyligi', (r) => r.minutes),
-    { header: 'Holat', value: (r) => TERRITORY_LABEL[territoryOf(r.inside, r.office)] },
+    { header: 'Holat', value: (r) => TERRITORY_LABEL[territoryOf(r.inside, r.office, r.assigned)] },
     { header: 'Mahalla', value: (r) => r.mahallaName ?? '—' },
   ];
 }
@@ -165,7 +166,13 @@ function todayColumns(): ExportColumn<OversightRow>[] {
       value: (r) =>
         !r.location.hasLocation
           ? "Ma'lumot yo'q"
-          : TERRITORY_LABEL[territoryOf(r.location.insideAssignedZone, r.location.insideOffice)],
+          : TERRITORY_LABEL[
+              territoryOf(
+                r.location.insideAssignedZone,
+                r.location.insideOffice,
+                (r.assignedMahallaCodes ?? []).length > 0,
+              )
+            ],
     },
     { header: 'Hozirgi mahalla', value: (r) => r.location.mahallaName ?? '—' },
     {

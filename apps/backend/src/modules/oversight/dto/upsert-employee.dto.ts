@@ -79,7 +79,7 @@ export class UpsertEmployeeDto {
   salaryMonth?: number;
 
   @ApiPropertyOptional({ type: [String], example: ['1090080', '1090082'] })
-  // Omitted = unchanged, [] = the whole district; `null` is refused.
+  // Omitted = unchanged, [] = nothing assigned; `null` is refused.
   @ValidateIf((_, value) => value !== undefined)
   @IsArray()
   @IsString({ each: true })

@@ -331,7 +331,7 @@ function Hero({
   restoring: boolean;
 }) {
   const live = p.live;
-  const territory = live ? territoryOf(live.insideZone, live.insideOffice) : null;
+  const territory = live ? territoryOf(live.insideZone, live.insideOffice, p.assignedMahallas.length > 0) : null;
   return (
     <Card className="overflow-hidden">
       <div className="h-20 bg-gradient-to-r from-primary-600/90 via-primary-500/80 to-emerald-400/70 sm:h-24" />
@@ -400,7 +400,7 @@ function Hero({
           {p.username ? <Badge tone="info">@{p.username}</Badge> : <Badge tone="warning">Login yo'q</Badge>}
           {live && territory && (
             <Badge
-              tone={live.stale ? 'neutral' : territory === 'zone' ? 'success' : territory === 'office' ? 'info' : 'danger'}
+              tone={live.stale ? 'neutral' : territory === 'zone' ? 'success' : territory === 'office' ? 'info' : territory === 'none' ? 'neutral' : 'danger'}
             >
               <Location size={13} /> {live.stale ? '' : `${TERRITORY_LABEL[territory]} · `}
               {live.mahallaName ?? 'Joy aniqlanmadi'} · {timeAgo(live.at)}
@@ -542,7 +542,7 @@ function OverviewTab({
             )}
           </div>
           {p.assignedMahallas.length === 0 ? (
-            <p className="text-[13px] text-ink-soft">Butun tuman (mahalla biriktirilmagan)</p>
+            <p className="text-[13px] text-ink-soft">Mahalla biriktirilmagan</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {p.assignedMahallas.map((m) => (

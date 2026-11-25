@@ -44,6 +44,8 @@ export interface EmployeeProfile {
     at: string;
     mahallaName: string | null;
     insideZone: boolean;
+    /** false = mahalla biriktirilmagan. */
+    hasZones?: boolean;
     /** Ofisda (eski backend'da yo'q). */
     insideOffice?: boolean;
     stale: boolean;

@@ -6,7 +6,7 @@ import { Drawer } from '@/shared/ui/Drawer';
 import { Modal } from '@/shared/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
-import { territoryOf } from '@/shared/lib/territory';
+import { TERRITORY_LABEL, territoryOf } from '@/shared/lib/territory';
 import { useAttendanceToday } from '@/features/attendance/useAttendanceToday';
 import { AttendanceDayDetail } from '@/features/attendance/AttendanceDayDetail';
 import { useLiveEmployees } from './useChat';
@@ -37,7 +37,11 @@ export function ChatPersonDrawer({
   const [zoom, setZoom] = useState(false);
 
   const emp = (Array.isArray(live.data) ? live.data : []).find((e) => e.employeeId === employeeId);
-  const empAt = emp ? territoryOf(emp.insideAssignedZone ?? emp.insideDistrict, emp.insideOffice) : null;
+  const empAt = emp ? territoryOf(
+        emp.insideAssignedZone ?? emp.insideDistrict,
+        emp.insideOffice,
+        emp.assignedMahallaCodes ? emp.assignedMahallaCodes.length > 0 : undefined,
+      ) : null;
   const entry = today.data?.roster.find((r) => r.employeeId === employeeId);
   const name = emp?.fullName ?? entry?.fullName ?? fallback?.name ?? '';
   const photo = emp?.avatarUrl ?? entry?.avatarUrl ?? fallback?.photo ?? undefined;
@@ -125,7 +129,9 @@ export function ChatPersonDrawer({
                     ? 'bg-success-soft text-primary-600'
                     : empAt === 'office'
                       ? 'bg-info-soft text-accent-600'
-                      : 'bg-danger-soft text-red-600',
+                      : empAt === 'none'
+                        ? 'bg-surface-2 text-ink-muted'
+                        : 'bg-danger-soft text-red-600',
               )}
             >
               {!emp.hasLocation || emp.isStale ? <Warning2 size={17} variant="Bulk" /> : <Location size={17} variant="Bulk" />}
@@ -143,7 +149,9 @@ export function ChatPersonDrawer({
                           ? 'Hududida'
                           : empAt === 'office'
                             ? 'Ofisda'
-                            : 'Hududdan tashqarida'
+                            : empAt === 'none'
+                              ? TERRITORY_LABEL.none
+                              : 'Hududdan tashqarida'
                     } · ${timeAgo(emp.lastLocationAt)}`
                   : 'Hozircha signal yo‘q'}
               </span>

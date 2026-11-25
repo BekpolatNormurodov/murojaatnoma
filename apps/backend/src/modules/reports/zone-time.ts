@@ -9,7 +9,8 @@
  * breaks the stretch — so the numbers never claim time we did not observe.
  * A fix less precise than `ZONE_MAX_ACCURACY_M` says too little and is ignored.
  *
- * The three buckets are exclusive: territory first, else office, else outside.
+ * The buckets are exclusive: territory first, else office; otherwise outside —
+ * or "unassigned" when the employee had no mahalla, so no territory to leave.
  * `ReportsService.zoneSecondsByDay` is the SQL twin of this file — keep the
  * two rules identical.
  */
@@ -18,6 +19,8 @@ export interface ZoneFix {
   recordedAt: Date;
   insideAssignedZone: boolean;
   insideOffice: boolean;
+  /** false = no mahalla was assigned at the time (absent = assigned). */
+  hadTerritory?: boolean;
   mahallaName: string | null;
   /** Horizontal accuracy in metres; null = unknown (counted). */
   accuracy: number | null;
@@ -31,6 +34,8 @@ export interface ZoneStretch {
   inside: boolean;
   /** At the office — only ever true when `inside` is false. */
   office: boolean;
+  /** Present (false) only when no territory applied: neither inside nor outside. */
+  assigned?: false;
   mahallaName: string | null;
 }
 
@@ -42,6 +47,7 @@ export interface MahallaTime {
   /** Whether that time counted as inside the assigned territory. */
   inside: boolean;
   office: boolean;
+  assigned?: false;
 }
 
 export interface ZoneDay {
@@ -53,7 +59,9 @@ export interface ZoneDay {
   officeMinutes: number;
   /** Minutes observed outside both. */
   outsideMinutes: number;
-  /** zone + office + outside — how long location was actually coming in. */
+  /** Minutes with no territory assigned, away from the office. */
+  unassignedMinutes: number;
+  /** zone + office + outside + unassigned — how long location was coming in. */
   activeMinutes: number;
   /** The part of `zoneMinutes` inside the working hours of a working day. */
   workZoneMinutes: number;
@@ -126,6 +134,7 @@ export function emptyZoneDay(date: string): ZoneDay {
     zoneMinutes: 0,
     officeMinutes: 0,
     outsideMinutes: 0,
+    unassignedMinutes: 0,
     activeMinutes: 0,
     workZoneMinutes: 0,
     workActiveMinutes: 0,
@@ -136,7 +145,7 @@ export function emptyZoneDay(date: string): ZoneDay {
   };
 }
 
-type Bucket = 'zone' | 'office' | 'outside';
+type Bucket = 'zone' | 'office' | 'outside' | 'none';
 
 /** Exact (unrounded) sums gathered for one day. */
 interface DayTotals {
@@ -146,8 +155,8 @@ interface DayTotals {
 }
 
 const newTotals = (): DayTotals => ({
-  all: { zone: 0, office: 0, outside: 0 },
-  work: { zone: 0, office: 0, outside: 0 },
+  all: { zone: 0, office: 0, outside: 0, none: 0 },
+  work: { zone: 0, office: 0, outside: 0, none: 0 },
   mahallas: new Map(),
 });
 
@@ -181,15 +190,17 @@ export function zoneDays(
     const { day, totals } = entryOf(localDate(from));
     const inside = fix.insideAssignedZone;
     const office = !inside && fix.insideOffice;
-    const bucket: Bucket = inside ? 'zone' : office ? 'office' : 'outside';
+    const assigned = fix.hadTerritory !== false;
+    const unassigned: { assigned?: false } = assigned ? {} : { assigned: false };
+    const bucket: Bucket = inside ? 'zone' : office ? 'office' : assigned ? 'outside' : 'none';
     const name = fix.mahallaName;
 
     totals.all[bucket] += ms;
     if (schedule?.counts(day.date)) {
       totals.work[bucket] += msWithinWork(from, to, schedule);
     }
-    const key = `${bucket}|${name ?? ''}`;
-    const m = totals.mahallas.get(key) ?? { name, inside, office, minutes: 0, ms: 0 };
+    const key = `${bucket}|${assigned}|${name ?? ''}`;
+    const m = totals.mahallas.get(key) ?? { name, inside, office, ...unassigned, minutes: 0, ms: 0 };
     m.ms += ms;
     totals.mahallas.set(key, m);
 
@@ -198,12 +209,13 @@ export function zoneDays(
       last &&
       last.inside === inside &&
       last.office === office &&
+      (last.assigned !== false) === assigned &&
       last.mahallaName === name &&
       last.to.getTime() === from.getTime()
     ) {
       last.to = to;
     } else {
-      day.stretches.push({ from, to, minutes: 0, inside, office, mahallaName: name });
+      day.stretches.push({ from, to, minutes: 0, inside, office, ...unassigned, mahallaName: name });
     }
   };
 
@@ -236,18 +248,22 @@ export function zoneDays(
       day.zoneMinutes = toMinutes(totals.all.zone);
       day.officeMinutes = toMinutes(totals.all.office);
       day.outsideMinutes = toMinutes(totals.all.outside);
-      day.activeMinutes = day.zoneMinutes + day.officeMinutes + day.outsideMinutes;
+      day.unassignedMinutes = toMinutes(totals.all.none);
+      day.activeMinutes =
+        day.zoneMinutes + day.officeMinutes + day.outsideMinutes + day.unassignedMinutes;
       day.workZoneMinutes = toMinutes(totals.work.zone);
       // Summed from rounded buckets, like activeMinutes, so it never exceeds it.
       day.workActiveMinutes =
         day.workZoneMinutes +
         toMinutes(totals.work.office) +
-        toMinutes(totals.work.outside);
+        toMinutes(totals.work.outside) +
+        toMinutes(totals.work.none);
       day.byMahalla = [...totals.mahallas.values()]
-        .map(({ name, inside, office, ms }) => ({
+        .map(({ name, inside, office, assigned, ms }) => ({
           name,
           inside,
           office,
+          ...(assigned === false ? { assigned } : {}),
           minutes: toMinutes(ms),
         }))
         .filter((x) => x.minutes > 0)

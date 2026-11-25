@@ -8,7 +8,7 @@ export type Lang = 'uz' | 'ru';
  * office → in their own zone → in the district but off their zone →
  * outside the district; stale / never reported override the place.
  */
-export type StatusKey = 'office' | 'zone' | 'offzone' | 'outside' | 'stale' | 'noloc';
+export type StatusKey = 'office' | 'zone' | 'offzone' | 'outside' | 'nozone' | 'stale' | 'noloc';
 /** A status filter chip — every bucket plus the "all" pseudo-bucket. */
 export type FilterKey = 'all' | StatusKey;
 
@@ -54,6 +54,7 @@ export const STATUS_COLORS: Record<StatusKey, string> = {
   zone: '#3b82f6',
   offzone: '#f59e0b',
   outside: '#ef4444',
+  nozone: '#8b5cf6',
   stale: '#64748b',
   noloc: '#cbd5e1',
 };
@@ -95,6 +96,7 @@ export const FILTER_ORDER: FilterKey[] = [
   'zone',
   'offzone',
   'outside',
+  'nozone',
   'stale',
   'noloc',
 ];
@@ -103,13 +105,18 @@ export const FILTER_ORDER: FilterKey[] = [
  * Bucket an employee, matching the exact priority used for the marker color:
  * territory first, else office, else outside (same as every other screen).
  * "Zone" is the employee's ASSIGNED mahallas (server-computed with GPS
- * tolerance; the whole district when none are assigned) — being somewhere in
+ * tolerance; nothing when none are assigned) — being somewhere in
  * the district is not enough. Older backends without the flag fall back to
  * the district check.
  */
 export function statusKey(loc: LiveLocation): StatusKey {
   if (!loc.hasLocation) return 'noloc';
   if (loc.isStale) return 'stale';
+  // No mahalla assigned: neither inside nor outside "their" territory.
+  if (loc.assignedMahallaCodes?.length === 0) {
+    if (loc.insideOffice) return 'office';
+    return loc.insideDistrict ? 'nozone' : 'outside';
+  }
   if (loc.insideAssignedZone ?? loc.insideDistrict) return 'zone';
   if (loc.insideOffice) return 'office';
   return loc.insideDistrict ? 'offzone' : 'outside';
@@ -162,6 +169,7 @@ export const LABELS: Record<Lang, Labels> = {
     office: 'Ofisda',
     zone: "O'z hududida",
     offzone: 'Hududidan tashqarida',
+    nozone: 'Hudud biriktirilmagan',
     outDistrict: 'Tumandan tashqarida',
     noLocShort: 'Joylashuvsiz',
     lastSeen: 'Oxirgi aloqa',
@@ -182,6 +190,7 @@ export const LABELS: Record<Lang, Labels> = {
     fZone: 'Hududida',
     fOffzone: 'Hududdan chiqqan',
     fOutside: 'Tumandan tashqarida',
+    fNozone: 'Hududsiz',
     fStale: "Aloqa yo'q",
     fNoloc: 'Joylashuvsiz',
     // auto-refresh
@@ -200,7 +209,7 @@ export const LABELS: Record<Lang, Labels> = {
     follow: 'Kuzatib borish',
     following: 'Kuzatilmoqda',
     assignedZone: 'Biriktirilgan hudud',
-    wholeDistrict: 'Butun tuman',
+    wholeDistrict: 'Biriktirilmagan',
     mahallaUnit: 'mahalla',
     traveled: 'Bosib o‘tdi',
     span: 'Vaqt oralig‘i',
@@ -245,6 +254,7 @@ export const LABELS: Record<Lang, Labels> = {
     office: 'В офисе',
     zone: 'В своей зоне',
     offzone: 'Вне своей зоны',
+    nozone: 'Зона не назначена',
     outDistrict: 'Вне района',
     noLocShort: 'Без локации',
     lastSeen: 'Последняя связь',
@@ -265,6 +275,7 @@ export const LABELS: Record<Lang, Labels> = {
     fZone: 'В зоне',
     fOffzone: 'Вне зоны',
     fOutside: 'Вне района',
+    fNozone: 'Без зоны',
     fStale: 'Нет связи',
     fNoloc: 'Без локации',
     // auto-refresh
@@ -283,7 +294,7 @@ export const LABELS: Record<Lang, Labels> = {
     follow: 'Следить',
     following: 'Слежение',
     assignedZone: 'Закреплённая зона',
-    wholeDistrict: 'Весь район',
+    wholeDistrict: 'Не назначена',
     mahallaUnit: 'махалл',
     traveled: 'Пройдено',
     span: 'Период',
@@ -323,6 +334,7 @@ export function statusLabel(loc: LiveLocation, lang: Lang): string {
     office: t.office,
     zone: t.zone,
     offzone: t.offzone,
+    nozone: t.nozone,
     outside: t.outDistrict,
     stale: t.stale,
     noloc: t.noLoc,

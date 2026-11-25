@@ -162,3 +162,23 @@ describe('hududda yurgan vaqt (zone time)', () => {
     });
   });
 });
+
+describe('mahalla biriktirilmagan vaqt', () => {
+  it('hududda ham, tashqarida ham emas — alohida va faol vaqtga kiradi', () => {
+    const none = { hadTerritory: false };
+    const [day] = zoneDays([
+      fix('09:00', false, 'Olmazor', 24, none),
+      fix('09:10', false, 'Olmazor', 24, { ...none, insideOffice: true }),
+      fix('09:15', false, 'Olmazor', 24, none),
+      fix('09:25', false, 'Olmazor', 24, none),
+    ]);
+    expect(day).toMatchObject({
+      zoneMinutes: 0,
+      outsideMinutes: 0,
+      officeMinutes: 5,
+      unassignedMinutes: 20,
+      activeMinutes: 25,
+    });
+    expect(day.stretches.map((x) => x.assigned)).toEqual([false, false, false]);
+  });
+});

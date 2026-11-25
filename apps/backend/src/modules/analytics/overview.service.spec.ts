@@ -8,9 +8,9 @@ function build(apps: unknown[], legacy: unknown[] = []) {
     citizenRequest: { findMany: jest.fn().mockResolvedValue(legacy) },
     employee: {
       findMany: jest.fn().mockResolvedValue([
-        { id: 'e1', position: 'Inspektor', lastLocationAt: new Date(), lastInsideAssignedZone: true, lastInsideOffice: false },
-        { id: 'e2', position: 'Inspektor', lastLocationAt: new Date(), lastInsideAssignedZone: false, lastInsideOffice: false },
-        { id: 'e3', position: 'Inspektor', lastLocationAt: null, lastInsideAssignedZone: true, lastInsideOffice: false },
+        { id: 'e1', position: 'Inspektor', lastLocationAt: new Date(), lastInsideAssignedZone: true, lastInsideOffice: false, assignedMahallaCodes: ['M1'] },
+        { id: 'e2', position: 'Inspektor', lastLocationAt: new Date(), lastInsideAssignedZone: false, lastInsideOffice: false, assignedMahallaCodes: ['M1'] },
+        { id: 'e3', position: 'Inspektor', lastLocationAt: null, lastInsideAssignedZone: true, lastInsideOffice: false, assignedMahallaCodes: [] },
       ]),
     },
     attendanceRecord: {

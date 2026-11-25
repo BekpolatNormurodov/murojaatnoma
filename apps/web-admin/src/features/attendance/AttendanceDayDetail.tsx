@@ -5,7 +5,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Modal } from '@/shared/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
-import { territoryOf } from '@/shared/lib/territory';
+import { TERRITORY_LABEL, territoryOf } from '@/shared/lib/territory';
 import type { EmployeeTodayEntry } from './api/types';
 import {
   ATTENDANCE_STATUS_META,
@@ -32,7 +32,7 @@ export function AttendanceDayDetail({
   const meta = ATTENDANCE_STATUS_META[entry.status];
   const early = entry.earlyLeaveMinutes ?? 0;
   const failed = entry.failedScans ?? [];
-  const liveAt = entry.live ? territoryOf(entry.live.insideZone, entry.live.insideOffice) : null;
+  const liveAt = entry.live ? territoryOf(entry.live.insideZone, entry.live.insideOffice, entry.live.hasZones) : null;
   const schedule =
     entry.workStartTime && entry.workEndTime ? `${entry.workStartTime}–${entry.workEndTime}` : null;
 
@@ -160,7 +160,9 @@ export function AttendanceDayDetail({
                   ? 'bg-success-soft text-primary-600'
                   : liveAt === 'office'
                     ? 'bg-info-soft text-accent-600'
-                    : 'bg-danger-soft text-red-600',
+                    : liveAt === 'none'
+                      ? 'bg-surface-2 text-ink-muted'
+                      : 'bg-danger-soft text-red-600',
             )}
           >
             {entry.live.stale ? <Warning2 size={17} variant="Bulk" /> : <Location size={17} variant="Bulk" />}
@@ -173,7 +175,13 @@ export function AttendanceDayDetail({
               {entry.live.stale
                 ? `Aloqa yo'q · oxirgi signal ${timeAgo(entry.live.at)}`
                 : `${
-                    liveAt === 'zone' ? 'Hududida' : liveAt === 'office' ? 'Ofisda' : 'Hududdan tashqarida'
+                    liveAt === 'zone'
+                      ? 'Hududida'
+                      : liveAt === 'office'
+                        ? 'Ofisda'
+                        : liveAt === 'none'
+                          ? TERRITORY_LABEL.none
+                          : 'Hududdan tashqarida'
                   } · ${timeAgo(entry.live.at)}`}
             </span>
           </span>

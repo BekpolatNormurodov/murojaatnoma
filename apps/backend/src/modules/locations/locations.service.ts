@@ -113,6 +113,7 @@ interface DerivedLocation {
   insideDistrict: boolean;
   insideOffice: boolean;
   insideAssignedZone: boolean;
+  hadTerritory: boolean;
   distanceToOfficeM: number;
   recordedAt: Date;
 }
@@ -177,21 +178,19 @@ export class LocationsService {
 
   /**
    * Territory oversight: is this position inside the employee's assigned
-   * territory? When no mahallas are assigned, the whole district counts
-   * (`insideDistrict`); otherwise the resolved mahalla must be one of the
-   * assigned ones, or the position within GPS tolerance of one. The office is
-   * NOT territory — it is reported separately as `insideOffice`.
+   * territory — one of the assigned mahallas, or within GPS tolerance of one?
+   * With nothing assigned there is no territory, so the answer is always no.
+   * The office is NOT territory — it is reported separately as `insideOffice`.
    */
   private async isInTerritory(codes: string[], p: TerritoryPoint): Promise<boolean> {
     if (codes.length === 0) {
-      return p.insideDistrict;
+      return false;
     }
     if (p.mahallaCode != null && codes.includes(p.mahallaCode)) {
       return true;
     }
     // Strict point-in-polygon said "outside" — re-check with boundary tolerance
-    // (GPS jitter). Only for the assigned-mahalla case; the whole-district
-    // fallback is huge, so boundary slack there is pointless.
+    // (GPS jitter).
     return this.zones.isWithinToleranceOfMahallas(
       p.latitude,
       p.longitude,
@@ -233,6 +232,7 @@ export class LocationsService {
       insideDistrict: locate.insideDistrict,
       insideOffice: distanceToOfficeM <= office.radiusM,
       insideAssignedZone,
+      hadTerritory: assignedMahallaCodes.length > 0,
       distanceToOfficeM,
       recordedAt,
     };
@@ -318,7 +318,7 @@ export class LocationsService {
     const more = assignedMahallas.length - listed.length;
     const body =
       assignedMahallas.length === 0
-        ? 'Endi hududingiz — butun tuman.'
+        ? 'Sizga biriktirilgan mahallalar olib tashlandi.'
         : `Biriktirilgan mahallalar: ${listed.join(', ')}${more > 0 ? ` va yana ${more} ta` : ''}`;
     await this.notifications.employee(
       employeeId,
@@ -415,8 +415,12 @@ export class LocationsService {
         data: { lastInsideOffice: j.insideOffice, lastInsideAssignedZone: j.insideAssignedZone },
       });
     } else if (emp.lastLocationAt == null) {
-      // Never reported: not "outside" — the list shows "Lokatsiya yo'q".
-      await this.prisma.employee.update({ where: { id: employeeId }, data: { lastInsideAssignedZone: true } });
+      // Never reported: the list shows "Lokatsiya yo'q". The flag stays true only
+      // so that a person who has a territory is not listed as outside it.
+      await this.prisma.employee.update({
+        where: { id: employeeId },
+        data: { lastInsideAssignedZone: codes.length > 0 },
+      });
     }
 
     const dayStart = new Date();
@@ -432,6 +436,7 @@ export class LocationsService {
         insideDistrict: true,
         insideOffice: true,
         insideAssignedZone: true,
+        hadTerritory: true,
         distanceToOfficeM: true,
       },
     });
@@ -439,10 +444,12 @@ export class LocationsService {
     const zoneFlags: boolean[] = [];
     const officeFlags: boolean[] = [];
     const distances: number[] = [];
+    const had = codes.length > 0;
     for (const f of fixes) {
       const j = await judge(f);
       if (
         j.insideAssignedZone !== f.insideAssignedZone ||
+        had !== f.hadTerritory ||
         j.insideOffice !== f.insideOffice ||
         j.distanceToOfficeM !== f.distanceToOfficeM
       ) {
@@ -455,7 +462,8 @@ export class LocationsService {
     if (ids.length > 0) {
       await this.prisma.$executeRaw`
         UPDATE employee_locations AS l
-        SET "insideAssignedZone" = v.zone, "insideOffice" = v.office, "distanceToOfficeM" = v.dist
+        SET "insideAssignedZone" = v.zone, "insideOffice" = v.office, "distanceToOfficeM" = v.dist,
+            "hadTerritory" = ${had}
         FROM unnest(${ids}::text[], ${zoneFlags}::boolean[], ${officeFlags}::boolean[], ${distances}::float8[])
           AS v(id, zone, office, dist)
         WHERE l.id = v.id`;
@@ -629,11 +637,11 @@ export class LocationsService {
       mahallaName: e.lastMahallaName,
       insideDistrict: e.lastInsideDistrict,
       insideOffice: e.lastInsideOffice,
-      insideAssignedZone: e.lastInsideAssignedZone,
+      insideAssignedZone: e.assignedMahallaCodes.length > 0 && e.lastInsideAssignedZone,
       // The mahalla codes this employee is assigned to patrol — the worker-app
       // map draws THESE polygons as the "ish hududi" (not the office circle).
       assignedMahallaCodes: e.assignedMahallaCodes,
-      // Same set with names (empty = the whole district).
+      // Same set with names (empty = nothing assigned).
       assignedMahallas: await this.mahallaRefs(e.assignedMahallaCodes),
     };
   }
@@ -683,7 +691,7 @@ export class LocationsService {
         mahallaName: e.lastMahallaName,
         insideDistrict: e.lastInsideDistrict,
         insideOffice: e.lastInsideOffice,
-        insideAssignedZone: e.lastInsideAssignedZone,
+        insideAssignedZone: e.assignedMahallaCodes.length > 0 && e.lastInsideAssignedZone,
         assignedMahallaCodes: e.assignedMahallaCodes,
         lastLocationAt: e.lastLocationAt,
         ageMinutes,
