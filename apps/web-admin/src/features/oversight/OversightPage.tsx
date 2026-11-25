@@ -139,7 +139,8 @@ export function OversightPage() {
   const archivedRows = archivedQuery.data ?? [];
   const purge = usePurgeEmployee();
   const restore = useRestoreEmployee();
-  const openProfile = (id: string) => navigate(`/oversight/${encodeURIComponent(id)}`);
+  const openProfile = (id: string, tab?: 'zone' | 'reports') =>
+    navigate(`/oversight/${encodeURIComponent(id)}${tab ? `?tab=${tab}` : ''}`);
 
   async function confirmPurge() {
     if (!purging) return;
@@ -389,7 +390,7 @@ export function OversightPage() {
             </div>
             <MonthPicker value={monthValue} onChange={setMonthValue} className="min-w-0 sm:w-52" />
             <Button variant="secondary" onClick={() => setExportOpen(true)} disabled={isLoading || exporting} title="Excel: faollik, hisobotlar, hudud va ish vaqti">
-              {exporting ? <RotateRight size={17} className="animate-spin" /> : <DocumentDownload size={17} />} Excel
+              {exporting ? <RotateRight size={17} className="animate-spin" /> : <DocumentDownload size={17} />} Excel hisobot
             </Button>
           </div>
 
@@ -404,7 +405,7 @@ export function OversightPage() {
             <div className="mt-3 px-3 pb-2 sm:px-4">
               {isLoading ? (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[142px]" />)}
+                  {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[230px]" />)}
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -443,6 +444,8 @@ export function OversightPage() {
                       faceRequired={faceRequired}
                       onAssign={canWrite ? () => setAssigning(r) : undefined}
                       onDetail={() => openProfile(r.employeeId)}
+                      onHours={() => openProfile(r.employeeId, 'zone')}
+                      onReports={() => openProfile(r.employeeId, 'reports')}
                       onEdit={canWrite ? () => setEmpModal({ open: true, row: r }) : undefined}
                       onDelete={canWrite ? () => setArchiving({ id: r.employeeId, fullName: r.fullName }) : undefined}
                     />
@@ -522,6 +525,8 @@ function OversightCard({
   faceRequired,
   onAssign,
   onDetail,
+  onHours,
+  onReports,
   onEdit,
   onDelete,
 }: {
@@ -532,6 +537,10 @@ function OversightCard({
   /** Berilmasa (VIEWER) hudud faqat ko'rsatiladi. */
   onAssign?: () => void;
   onDetail: () => void;
+  /** Profilning "Hudud vaqti" bo'limi. */
+  onHours: () => void;
+  /** Profilning "Hisobotlar" bo'limi. */
+  onReports: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
@@ -543,10 +552,7 @@ function OversightCard({
     <>
       {!loc.hasLocation ? (
         <span
-          className={cn(
-            'inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-muted',
-            onAssign && 'group-hover:text-primary-600',
-          )}
+          className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-muted"
           title="Mobil ilova o'rnatilmagan yoki lokatsiya hali yuborilmagan"
         >
           <Location size={14} variant="Outline" className="shrink-0" /> Lokatsiya yo'q
@@ -564,10 +570,7 @@ function OversightCard({
         </span>
       )}
       <span
-        className={cn(
-          'shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted transition-colors',
-          onAssign && 'group-hover:bg-primary-50 group-hover:text-primary-600',
-        )}
+        className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted"
       >
         {assignedCount ? `${assignedCount} mahalla` : 'butun tuman'}
       </span>
@@ -646,17 +649,7 @@ function OversightCard({
 
       {/* Hudud (biriktirish) + oylik/premya */}
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3">
-        {onAssign ? (
-          <button
-            onClick={onAssign}
-            title={`Hudud biriktirish${assignedCount ? ` (${assignedCount} ta mahalla)` : ' (hozircha butun tuman)'}`}
-            className="group flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg py-1 text-left"
-          >
-            {zoneChip}
-          </button>
-        ) : (
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1">{zoneChip}</div>
-        )}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1">{zoneChip}</div>
         <div className="shrink-0 text-right tabular-nums">
           <div className="whitespace-nowrap text-[13.5px] font-semibold text-primary-600">
             {row.salaryNet != null ? formatSom(row.salaryNet) : <span className="font-normal text-ink-muted">Oylik yo'q</span>}
@@ -664,6 +657,23 @@ function OversightCard({
           {row.premyaThisMonth > 0 && (
             <div className="whitespace-nowrap text-[11px] font-medium text-emerald-600">+{formatSom(row.premyaThisMonth)} premya</div>
           )}
+        </div>
+      </div>
+
+      {/* Asosiy amallar — yozuvli tugmalar, qidirib topish shart emas. */}
+      <div className="flex flex-col gap-2">
+        {onAssign && (
+          <Button size="sm" onClick={onAssign} className="w-full">
+            <Location size={15} /> {assignedCount ? "Mahallalarni o'zgartirish" : 'Mahalla biriktirish'}
+          </Button>
+        )}
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" size="sm" onClick={onHours}>
+            <Timer1 size={15} /> Hudud vaqti
+          </Button>
+          <Button variant="secondary" size="sm" onClick={onReports}>
+            <DocumentText1 size={15} /> Hisobotlar
+          </Button>
         </div>
       </div>
     </div>
