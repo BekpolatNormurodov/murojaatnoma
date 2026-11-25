@@ -1,8 +1,9 @@
 import 'package:app_core/app_core.dart';
+import 'package:user_app/core/constants/api_constants.dart';
 import 'package:user_app/main.dart' as bootstrap;
 
 /// Dev flavor entrypoint — mock ma'lumotlar bilan ishga tushadi.
 void main() {
-  AppConfig.init(flavor: AppFlavor.dev, useMock: true);
+  AppConfig.init(flavor: AppFlavor.dev, useMock: true, apiBaseUrl: kApiBaseUrl);
   bootstrap.bootstrap();
 }

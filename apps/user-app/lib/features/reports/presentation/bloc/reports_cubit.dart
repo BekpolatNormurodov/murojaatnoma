@@ -1,6 +1,7 @@
 import 'package:app_core/app_core.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:user_app/core/monitoring/app_logger.dart';
 import 'package:user_app/features/payments/domain/entities/payment.dart';
 import 'package:user_app/features/payments/domain/usecases/get_payment_history.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
@@ -37,6 +38,7 @@ class ReportsCubit extends Cubit<ReportsState> {
       );
       final paymentsResult = await paymentsFuture;
       final requestsResult = await requestsFuture;
+      if (isClosed) return;
 
       paymentsResult.fold(
         (failure) => emit(ReportsError(failure.message)),
@@ -49,8 +51,12 @@ class ReportsCubit extends Cubit<ReportsState> {
           ),
         ),
       );
-    } on Object catch (e) {
-      emit(ReportsError('Kutilmagan xatolik: $e'));
+    } on Object catch (e, stackTrace) {
+      const AppLogger().logError(e, stackTrace, reason: 'ReportsCubit.load');
+      if (isClosed) return;
+      emit(
+        const ReportsError("Ma'lumotni yuklab bo'lmadi. Qayta urinib ko'ring"),
+      );
     }
   }
 }

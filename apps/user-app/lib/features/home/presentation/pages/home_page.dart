@@ -16,6 +16,7 @@ import 'package:user_app/features/home/presentation/bloc/home_cubit.dart';
 import 'package:user_app/features/news/presentation/widgets/news_section.dart';
 import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:user_app/features/payments/domain/entities/utility.dart';
+import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/injection.dart';
 
 /// Fuqaro bosh sahifasi (dashboard) — 4-tab shellning "home" branchi.
@@ -404,13 +405,15 @@ class _QuickActionsGrid extends StatelessWidget {
         icon: AppIcons.documentUpload,
         label: l10n.quickActionNewApplication,
         color: AppColors.accent,
-        onTap: () => context.go('/applications'),
+        onTap: () =>
+            context.push('/applications/submit', extra: RequestKind.ariza),
       ),
       _QuickAction(
         icon: AppIcons.info,
         label: l10n.quickActionComplaint,
         color: AppColors.warning,
-        onTap: () => context.go('/applications'),
+        onTap: () =>
+            context.push('/applications/submit', extra: RequestKind.shikoyat),
       ),
       _QuickAction(
         icon: AppIcons.receipt,

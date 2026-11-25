@@ -17,8 +17,25 @@ import 'package:user_app/features/notifications/presentation/widgets/notificatio
 /// `/reports`/`/payments-history` bilan bir xil naqsh). `NotificationsCubit`
 /// ning BARCHA holatlari (yuklanish/bo'sh/xato/yuklandi) shu yerda
 /// ko'rsatiladi — hech qachon oq/bo'sh ekran YO'Q.
-class NotificationsPage extends StatelessWidget {
+class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Sahifa har ochilganda yangi ro'yxat olinadi: ro'yxat bor bo'lsa fonda,
+    // aks holda (xato/yuklanmagan) to'liq yuklash.
+    final cubit = context.read<NotificationsCubit>();
+    final state = cubit.state;
+    final silent =
+        state is NotificationsLoaded || state is NotificationsEmpty;
+    unawaited(cubit.load(silent: silent));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,17 +50,14 @@ class NotificationsPage extends StatelessWidget {
         leading: const AppBackButton(),
         title: Text(l10n.notificationsTitle),
         actions: [
+          // Ixcham ikonka: uzun matnli tugma sarlavhani qisib qo'yardi
+          // ("Bildiris…"). Matn tooltip sifatida qoladi.
           if (hasUnread)
-            TextButton(
+            IconButton(
               onPressed: () =>
                   context.read<NotificationsCubit>().markAllRead(),
-              child: Text(
-                l10n.notificationsMarkAllRead,
-                style: AppTextStyles.caption.copyWith(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              tooltip: l10n.notificationsMarkAllRead,
+              icon: const Icon(Icons.done_all, color: AppColors.primary),
             ),
         ],
       ),
@@ -60,10 +74,24 @@ class NotificationsPage extends StatelessWidget {
               onRetry: () => context.read<NotificationsCubit>().load(),
             ),
           ),
-          NotificationsEmpty() => EmptyView(
-            icon: AppIcons.notification,
-            title: l10n.notificationsEmptyTitle,
-            message: l10n.notificationsEmptyMessage,
+          NotificationsEmpty() => RefreshIndicator(
+            onRefresh: () =>
+                context.read<NotificationsCubit>().load(silent: true),
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight,
+                  ),
+                  child: EmptyView(
+                    icon: AppIcons.notification,
+                    title: l10n.notificationsEmptyTitle,
+                    message: l10n.notificationsEmptyMessage,
+                  ),
+                ),
+              ),
+            ),
           ),
           NotificationsLoaded(:final items) => RefreshIndicator(
             onRefresh: () =>

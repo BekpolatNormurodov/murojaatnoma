@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart';
 /// Parslab bo'lmasa xom satrni qaytaradi (mock ma'lumotlar doim to'g'ri
 /// formatda, lekin himoya sifatida).
 String chatTimeLabel(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final hh = parsed.hour.toString().padLeft(2, '0');
   final mm = parsed.minute.toString().padLeft(2, '0');
@@ -17,7 +17,7 @@ String chatTimeLabel(String iso) {
 /// Suhbatlar ro'yxati qatori uchun vaqt — bugungi xabarlar uchun
 /// `HH:mm`, avvalgi kunlar uchun qisqa sana (`formatDate`).
 String conversationTimeLabel(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final now = DateTime.now();
   final sameDay =
@@ -32,8 +32,8 @@ String conversationTimeLabel(String iso) {
 /// uchun ishlatiladi. [a] `null` (birinchi xabar) bo'lsa `false`.
 bool chatSameDay(String? a, String b) {
   if (a == null) return false;
-  final pa = DateTime.tryParse(a);
-  final pb = DateTime.tryParse(b);
+  final pa = DateTime.tryParse(a)?.toLocal();
+  final pb = DateTime.tryParse(b)?.toLocal();
   if (pa == null || pb == null) return false;
   return pa.year == pb.year && pa.month == pb.month && pa.day == pb.day;
 }
@@ -42,7 +42,7 @@ bool chatSameDay(String? a, String b) {
 /// uchun "Kecha", aks holda qisqa sana (`formatDate`). Yangi l10n
 /// kalitlaridan (`chatDateToday`/`chatDateYesterday`) foydalanadi.
 String chatDateSeparatorLabel(BuildContext context, String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final now = DateTime.now();
   final messageDay = DateTime(parsed.year, parsed.month, parsed.day);

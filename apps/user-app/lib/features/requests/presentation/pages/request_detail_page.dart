@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
@@ -49,11 +51,13 @@ class RequestDetailPage extends StatelessWidget {
               :final request,
               :final messages,
               :final sendingMessage,
+              :final messagesFailed,
             ) =>
               _DetailContent(
                 request: request,
                 messages: messages,
                 sendingMessage: sendingMessage,
+                messagesFailed: messagesFailed,
               ),
           },
         ),
@@ -67,11 +71,13 @@ class _DetailContent extends StatelessWidget {
     required this.request,
     required this.messages,
     required this.sendingMessage,
+    required this.messagesFailed,
   });
 
   final CitizenRequest request;
   final List<RequestMessage> messages;
   final bool sendingMessage;
+  final bool messagesFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -132,20 +138,45 @@ class _DetailContent extends StatelessWidget {
           const SizedBox(height: 20),
           _SectionTitle(l10n.requestAttachmentsTitle),
           const SizedBox(height: 8),
-          if (request.attachments.isEmpty)
+          if (request.attachmentsFailed)
+            _InlineLoadError(
+              _t(
+                context,
+                "Biriktirmalarni yuklab bo'lmadi",
+                'Не удалось загрузить вложения',
+              ),
+            )
+          else if (request.attachments.isEmpty)
             Text(
               l10n.requestNoAttachments,
               style: AppTextStyles.caption.copyWith(color: inkMuted),
             )
           else
             for (final attachment in request.attachments) ...[
-              RequestAttachmentTile(attachment: attachment),
+              RequestAttachmentTile(
+                attachment: attachment,
+                onTap:
+                    attachment.type == RequestAttachmentType.image &&
+                        attachment.path.startsWith('http')
+                    ? () => _showImage(context, attachment)
+                    : null,
+              ),
               const SizedBox(height: 8),
             ],
           const SizedBox(height: 20),
           _SectionTitle(l10n.requestResponseTitle),
           const SizedBox(height: 8),
-          if (messages.isEmpty)
+          if (messagesFailed) ...[
+            _InlineLoadError(
+              _t(
+                context,
+                "Xabarlarni yuklab bo'lmadi",
+                'Не удалось загрузить сообщения',
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (messages.isEmpty && !messagesFailed)
             Text(
               l10n.chatEmptyMessage,
               style: AppTextStyles.caption.copyWith(color: inkMuted),
@@ -220,49 +251,13 @@ class _FeedbackCardState extends State<_FeedbackCard> {
   }
 
   Future<void> _reopen() async {
-    final controller = TextEditingController();
     final reason = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          0,
-          20,
-          20 + MediaQuery.viewInsetsOf(ctx).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text("Muammo hal bo'lmadimi?", style: AppTextStyles.h3),
-            const SizedBox(height: 6),
-            Text(
-              'Nima hal bo\'lmaganini yozing — murojaat xodimga qaytariladi.',
-              style: AppTextStyles.caption,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Masalan: chiroq hali ham yonmayapti',
-              ),
-            ),
-            const SizedBox(height: 12),
-            AppButton(
-              label: 'Qayta ochish',
-              onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            ),
-          ],
-        ),
-      ),
+      builder: (_) => const _ReopenSheet(),
     );
-    controller.dispose();
-    if (reason == null || reason.length < 3 || !mounted) return;
+    if (reason == null || !mounted) return;
     setState(() => _busy = true);
     final error = await context.read<RequestDetailCubit>().reopen(reason);
     if (!mounted) return;
@@ -343,6 +338,152 @@ class _FeedbackCardState extends State<_FeedbackCard> {
   }
 }
 
+/// "Hal bo'lmadi" sababi — controller varaq bilan birga yashaydi (yopilish
+/// animatsiyasi paytida dispose qilinib qolmaydi). Sabab 3..500 belgi
+/// (backend `ReopenApplicationDto`); qisqa bo'lsa varaq yopilmaydi.
+class _ReopenSheet extends StatefulWidget {
+  const _ReopenSheet();
+
+  @override
+  State<_ReopenSheet> createState() => _ReopenSheetState();
+}
+
+class _ReopenSheetState extends State<_ReopenSheet> {
+  static const _minLength = 3;
+  static const _maxLength = 500;
+
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final reason = _controller.text.trim();
+    if (reason.length < _minLength) {
+      setState(
+        () => _error = _t(
+          context,
+          'Sababni yozing (kamida $_minLength harf)',
+          'Укажите причину (минимум $_minLength символа)',
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop(reason);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        0,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text("Muammo hal bo'lmadimi?", style: AppTextStyles.h3),
+          const SizedBox(height: 6),
+          Text(
+            "Nima hal bo'lmaganini yozing — murojaat xodimga qaytariladi.",
+            style: AppTextStyles.caption,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 4,
+            maxLength: _maxLength,
+            decoration: InputDecoration(
+              hintText: 'Masalan: chiroq hali ham yonmayapti',
+              errorText: _error,
+            ),
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
+          ),
+          const SizedBox(height: 12),
+          AppButton(label: 'Qayta ochish', onPressed: _submit),
+        ],
+      ),
+    );
+  }
+}
+
+/// Rasm biriktirmasini to'liq ekranda (kattalashtirish bilan) ko'rsatadi.
+void _showImage(BuildContext context, RequestAttachment attachment) {
+  unawaited(
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: InteractiveViewer(
+                  child: Image.network(
+                    attachment.path,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, _, _) => const Center(
+                      child: Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white70,
+                        size: 48,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Sahifaning bir bo'limi yuklanmaganda — xabar va qayta urinish.
+class _InlineLoadError extends StatelessWidget {
+  const _InlineLoadError(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            message,
+            style: AppTextStyles.caption.copyWith(color: AppColors.danger),
+          ),
+        ),
+        TextButton(
+          onPressed: () => context.read<RequestDetailCubit>().reloadMessages(),
+          child: Text(context.l10n.retry),
+        ),
+      ],
+    );
+  }
+}
+
 /// Thread'dagi bitta xabar — fuqaro xabarlari o'ngga (brend rangida),
 /// xodim/tizim xabarlari chapga (neytral qopqoq bilan) tekislanadi —
 /// odatiy chat vizual tili.
@@ -397,6 +538,18 @@ class _MessageBubble extends StatelessWidget {
             ),
             child: Text(message.text, style: AppTextStyles.body),
           ),
+          if (_messageFile(message) case final file?) ...[
+            const SizedBox(height: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 280),
+              child: RequestAttachmentTile(
+                attachment: file,
+                onTap: file.type == RequestAttachmentType.image
+                    ? () => _showImage(context, file)
+                    : null,
+              ),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
             formatIsoDateTime(message.createdAt),
@@ -409,6 +562,27 @@ class _MessageBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Xabarga biriktirilgan fayl (masalan xodim javobidagi isbot rasmi) —
+/// server faqat havola beradi, turi kengaytmadan aniqlanadi.
+RequestAttachment? _messageFile(RequestMessage message) {
+  final url = message.attachmentUrl;
+  if (url == null || !url.startsWith('http')) return null;
+  final name = Uri.tryParse(url)?.pathSegments.lastOrNull ?? url;
+  final ext = name.substring(name.lastIndexOf('.') + 1).toLowerCase();
+  final type = switch (ext) {
+    'mp4' || 'mov' || 'm4v' || 'webm' || '3gp' => RequestAttachmentType.video,
+    'm4a' || 'mp3' || 'aac' || 'ogg' || 'wav' => RequestAttachmentType.voice,
+    'jpg' ||
+    'jpeg' ||
+    'png' ||
+    'webp' ||
+    'gif' ||
+    'heic' => RequestAttachmentType.image,
+    _ => RequestAttachmentType.file,
+  };
+  return RequestAttachment(type: type, path: url, name: name);
 }
 
 /// Xabarlar thread'iga fuqaro nomidan yangi xabar yozish uchun ixcham
@@ -442,6 +616,7 @@ class _MessageComposerState extends State<_MessageComposer> {
       return;
     }
 
+    if (widget.sending) return;
     final error = await context.read<RequestDetailCubit>().sendMessage(text);
     if (!context.mounted) return;
     if (error == null) {

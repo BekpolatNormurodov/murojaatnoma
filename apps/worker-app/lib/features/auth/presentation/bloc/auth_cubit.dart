@@ -9,6 +9,20 @@ import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 
 part 'auth_state.dart';
 
+/// Login tugashidan oldin aniqlanadigan qurilma/server holati.
+class SessionPreparation {
+  const SessionPreparation({this.faceEnrolled = false, this.faceRequired});
+
+  final bool faceEnrolled;
+
+  /// `null` — aniqlab bo'lmadi (joriy qiymat qoladi).
+  final bool? faceRequired;
+}
+
+/// Qarang: `prepareSession` (`session_bootstrap.dart`).
+typedef SessionPreparer =
+    Future<SessionPreparation> Function(AuthSession session);
+
 /// Ishchi avtorizatsiyasini boshqaruvchi Cubit.
 ///
 /// Xodimlar login+parol bilan kiradi (`login`); OTP metodlari
@@ -21,10 +35,14 @@ class AuthCubit extends Cubit<AuthState> {
     required VerifyOtp verifyOtp,
     required LoginEmployee loginEmployee,
     required RestoreSession restoreSession,
-  }) : _verifyOtp = verifyOtp,
+    SessionPreparer? prepareSession,
+  }) : _prepare = prepareSession,
+       _verifyOtp = verifyOtp,
        _loginEmployee = loginEmployee,
        _restoreSession = restoreSession,
        super(const AuthState());
+
+  final SessionPreparer? _prepare;
 
   /// SMS-OTP kod yuborish UseCase'i.
   final SendOtp sendOtp;
@@ -48,13 +66,11 @@ class AuthCubit extends Cubit<AuthState> {
     final result = await _loginEmployee(
       LoginEmployeeParams(username: username, password: password),
     );
-    result.fold(
-      (failure) => emit(
+    await result.fold<Future<void>>(
+      (failure) async => emit(
         state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
       ),
-      (session) => emit(
-        state.copyWith(status: AuthStatus.authenticated, session: session),
-      ),
+      _authenticated,
     );
   }
 
@@ -82,12 +98,33 @@ class AuthCubit extends Cubit<AuthState> {
   Future<void> verifyOtp(String phone, String code) async {
     emit(state.copyWith(status: AuthStatus.loading));
     final result = await _verifyOtp(VerifyOtpParams(phone: phone, code: code));
-    result.fold(
-      (failure) => emit(
+    await result.fold<Future<void>>(
+      (failure) async => emit(
         state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
       ),
-      (session) => emit(
-        state.copyWith(status: AuthStatus.authenticated, session: session),
+      _authenticated,
+    );
+  }
+
+  Future<void> _authenticated(AuthSession session) async {
+    SessionPreparation? preparation;
+    final prepare = _prepare;
+    if (prepare != null) {
+      try {
+        preparation = await prepare(session).timeout(
+          const Duration(seconds: 6),
+        );
+      } on Object {
+        // Tayyorlash muvaffaqiyatsiz — kirish baribir davom etadi.
+      }
+    }
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        status: AuthStatus.authenticated,
+        session: session,
+        faceEnrolled: preparation?.faceEnrolled,
+        faceRequired: preparation?.faceRequired,
       ),
     );
   }
@@ -128,4 +165,11 @@ class AuthCubit extends Cubit<AuthState> {
   /// muvaffaqiyatli ro'yxatdan o'tishdan keyin ham abadiy `/face/enroll`ga
   /// qaytarib turaverar edi (loop'ga o'xshash "tiqilib qolish").
   void markFaceEnrolled() => emit(state.copyWith(faceEnrolled: true));
+
+  /// Admin sozlamasi (`faceRequired`) o'qilgach chaqiriladi — o'zgargan
+  /// bo'lsagina emit qiladi (GoRouter redirectni qayta baholaydi).
+  void setFaceRequired({required bool isRequired}) {
+    if (isClosed || state.faceRequired == isRequired) return;
+    emit(state.copyWith(faceRequired: isRequired));
+  }
 }

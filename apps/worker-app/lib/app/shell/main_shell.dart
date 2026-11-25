@@ -4,6 +4,7 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
@@ -30,10 +31,11 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Tizimga kirish bilanoq joylashuv kuzatuvini boshlaymiz. Idempotent —
     // allaqachon ishlayotgan bo'lsa hech nima qilmaydi. Ruxsat berilmagan
     // bo'lsa "Xarita" tabidagi ruxsat ekrani uni qayta so'raydi.
@@ -41,7 +43,19 @@ class _MainShellState extends State<MainShell> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // Sozlamalardan ruxsat berib / GPS yoqib qaytgan bo'lishi mumkin —
+    // ruxsat oynasi ochilmaydi (faqat tekshiriladi).
+    unawaited(getIt<LocationTrackingService>().start(prompt: false));
+    if (!AppConfig.useMock && getIt.isRegistered<RealtimeSocketService>()) {
+      unawaited(getIt<RealtimeSocketService>().connect());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Tizimdan chiqilganda (qobiq yo'q qilinganda) kuzatuvni to'xtatamiz —
     // chiqib ketgan qurilma lokatsiya yubormasligi kerak.
     unawaited(getIt<LocationTrackingService>().stop());

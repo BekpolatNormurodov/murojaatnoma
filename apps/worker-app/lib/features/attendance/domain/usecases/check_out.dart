@@ -40,6 +40,7 @@ class CheckOut implements UseCase<CheckScanResult, AttendanceScanParams> {
       latitude: params.latitude,
       longitude: params.longitude,
       photoUrl: params.photoUrl,
+      accuracy: params.accuracy,
     );
   }
 }

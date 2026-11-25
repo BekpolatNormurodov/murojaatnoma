@@ -36,6 +36,9 @@ class _RequestRespondPageState extends State<RequestRespondPage> {
   }
 
   Future<void> _submit() async {
+    final current = context.read<RequestDetailCubit>().state;
+    if (current is RequestDetailLoaded && current.submitting) return;
+    FocusScope.of(context).unfocus();
     final l10n = context.l10n;
     final text = _controller.text.trim();
     if (text.isEmpty) {

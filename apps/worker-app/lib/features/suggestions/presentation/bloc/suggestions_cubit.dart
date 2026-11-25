@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/suggestions/domain/entities/suggestion.dart';
 import 'package:worker_app/features/suggestions/domain/usecases/get_suggestions.dart';
 import 'package:worker_app/features/suggestions/domain/usecases/vote_suggestion.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'suggestions_state.dart';
 
@@ -53,7 +54,7 @@ class SuggestionsCubit extends Cubit<SuggestionsState> {
         );
       });
     } on Object catch (e) {
-      emit(SuggestionsError('Kutilmagan xatolik: $e'));
+      emit(SuggestionsError(unexpectedError(e)));
     }
   }
 
@@ -83,7 +84,7 @@ class SuggestionsCubit extends Cubit<SuggestionsState> {
     emit(current.copyWith(votingIds: {...current.votingIds, id}));
     try {
       final result = await _voteSuggestion(VoteSuggestionParams(id));
-      return result.fold(
+      return await result.fold(
         (failure) {
           emit(current);
           return failure.message;
@@ -99,7 +100,15 @@ class SuggestionsCubit extends Cubit<SuggestionsState> {
       );
     } on Object catch (e) {
       emit(current);
-      return 'Kutilmagan xatolik: $e';
+      return unexpectedError(e);
     }
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(SuggestionsState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

@@ -9,7 +9,7 @@ import 'package:worker_app/features/suggestions/presentation/widgets/suggestion_
 /// (`ApplicationCard.formatIsoDate` — `requests` moduli — bilan bir xil
 /// naqsh).
 String formatSuggestionDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   return parsed == null ? iso : formatDate(parsed);
 }
 

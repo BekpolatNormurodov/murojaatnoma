@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
@@ -7,6 +8,8 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:worker_app/core/recording/video_playback_page.dart';
 import 'package:worker_app/core/recording/voice_playback_controller.dart';
 import 'package:worker_app/core/utils/attachment_launcher.dart';
+import 'package:worker_app/core/utils/media_url.dart';
+import 'package:worker_app/features/chat/presentation/widgets/network_thumbnail.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 
 /// Bitta biriktirilgan faylni ([AttachmentRef]) ko'rsatuvchi qator —
@@ -65,14 +68,21 @@ class AttachmentTile extends StatelessWidget {
     final isVoice = attachment.type == AttachmentType.voice;
     final isVideo = attachment.type == AttachmentType.video;
     final isFile = attachment.type == AttachmentType.file;
-    // Yuborilgan (o'chirilmaydigan) generic hujjat bosilsa uni qurilma
-    // brauzeri / standart ilovada ochadi. Ovoz (chapdagi play tugmasi) va
-    // rasm (lightbox) o'z holicha qoladi; hali yuborilmagan lokal fayllar
-    // (onRemove berilgan javob formasi) ochilmaydi.
+    final isImage = attachment.type == AttachmentType.image;
+    // Rasm — to'liq ekranli ko'ruvchi; yuborilgan (o'chirilmaydigan) hujjat —
+    // qurilma brauzeri / standart ilova. Ovoz chapdagi play tugmasi bilan;
+    // hali yuborilmagan lokal hujjat ochilmaydi.
     final effectiveOnTap =
         onTap ??
         (isVideo
-            ? () => showVideoPlaybackPage(context, path: attachment.path)
+            ? () => showVideoPlaybackPage(
+                context,
+                path: absoluteMediaUrl(attachment.path),
+              )
+            : isImage
+            ? () => unawaited(
+                showImageViewer(context, absoluteMediaUrl(attachment.path)),
+              )
             : (isFile && onRemove == null)
             ? () => unawaited(openAttachmentUrl(context, attachment.path))
             : null);
@@ -80,8 +90,12 @@ class AttachmentTile extends StatelessWidget {
     return AppListTile(
       title: attachment.name,
       subtitle: parts.isEmpty ? null : parts.join(' • '),
-      leadingIcon: isVoice ? null : _iconFor(attachment.type),
-      leading: isVoice ? _VoicePlayLeading(path: attachment.path) : null,
+      leadingIcon: isVoice || isImage ? null : _iconFor(attachment.type),
+      leading: isVoice
+          ? _VoicePlayLeading(path: absoluteMediaUrl(attachment.path))
+          : isImage
+          ? _ImageLeading(path: absoluteMediaUrl(attachment.path))
+          : null,
       filled: true,
       onTap: effectiveOnTap,
       showChevron: effectiveOnTap != null,
@@ -103,6 +117,72 @@ class AttachmentTile extends StatelessWidget {
                 ),
               ),
             ),
+    );
+  }
+}
+
+/// Rasm biriktirmaning kichik ko'rinishi (tarmoq yoki lokal fayl).
+class _ImageLeading extends StatelessWidget {
+  const _ImageLeading({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(AppRadii.sm),
+    child: SizedBox(
+      width: 44,
+      height: 44,
+      child: path.startsWith('http')
+          ? NetworkThumbnail(url: path)
+          : Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const Icon(
+                IconsaxPlusLinear.gallery,
+                color: AppColors.primary,
+              ),
+            ),
+    ),
+  );
+}
+
+/// Rasmni to'liq ekranda (kattalashtirish bilan) ko'rsatadi.
+Future<void> showImageViewer(BuildContext context, String path) =>
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute<void>(builder: (_) => _ImageViewer(path: path)),
+    );
+
+class _ImageViewer extends StatelessWidget {
+  const _ImageViewer({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget broken(BuildContext _, Object _, StackTrace? _) => const Center(
+      child: Text(
+        "Rasmni ochib bo'lmadi",
+        style: TextStyle(color: Colors.white),
+      ),
+    );
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        leading: const CloseButton(),
+      ),
+      body: SafeArea(
+        child: SizedBox.expand(
+          child: InteractiveViewer(
+            maxScale: 5,
+            child: path.startsWith('http')
+                ? Image.network(path, errorBuilder: broken)
+                : Image.file(File(path), errorBuilder: broken),
+          ),
+        ),
+      ),
     );
   }
 }

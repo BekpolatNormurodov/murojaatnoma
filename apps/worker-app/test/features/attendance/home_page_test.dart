@@ -6,19 +6,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/attendance/presentation/pages/home_page.dart';
 import 'package:worker_app/features/attendance/presentation/widgets/today_status_card.dart';
-import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
 import 'package:worker_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:worker_app/features/auth/domain/usecases/verify_otp.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/notifications/domain/entities/notification_item.dart';
+import 'package:worker_app/features/notifications/domain/repositories/notifications_repository.dart';
+import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:worker_app/injection.dart';
 
 class _MockAttendanceRepository extends Mock implements AttendanceRepository {}
 
@@ -29,6 +33,16 @@ class _MockVerifyOtp extends Mock implements VerifyOtp {}
 class _MockLoginEmployee extends Mock implements LoginEmployee {}
 
 class _MockRestoreSession extends Mock implements RestoreSession {}
+
+class _EmptyNotificationsRepository implements NotificationsRepository {
+  @override
+  Future<Either<Failure, List<NotificationItem>>> list(String id) async =>
+      const Right([]);
+
+  @override
+  Future<Either<Failure, NotificationItem>> markRead(String id) async =>
+      const Left(ServerFailure());
+}
 
 /// `AttendanceCubit.load()` haqiqiy repository chaqiruvini ishga tushiradi
 /// — widget testida buni chetlab, berilgan holatni to'g'ridan-to'g'ri
@@ -45,7 +59,7 @@ class _FixedStateAttendanceCubit extends AttendanceCubit {
   final AttendanceState _fixedState;
 
   @override
-  Future<void> load() async => emit(_fixedState);
+  Future<void> load({bool silent = false}) async => emit(_fixedState);
 }
 
 const _session = AuthSession(
@@ -74,6 +88,13 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(const VerifyOtpParams(phone: '', code: ''));
+    // `HomePage` shaxsiy ko'rsatkichlarni (`MyDashboardCubit`) `getIt`dagi
+    // `DioClient` orqali o'qiydi — testda tarmoq 400 qaytaradi, kartalar
+    // shunchaki ko'rsatilmaydi.
+    SharedPreferences.setMockInitialValues({});
+    if (!getIt.isRegistered<DioClient>()) {
+      getIt.registerSingleton<DioClient>(DioClient());
+    }
   });
 
   setUp(() async {
@@ -138,7 +159,10 @@ void main() {
                 value: attendanceCubit..load(),
               ),
               BlocProvider<NotificationsCubit>(
-                create: (_) => NotificationsCubit(),
+                create: (_) => NotificationsCubit(
+                  repository: _EmptyNotificationsRepository(),
+                  authCubit: authCubit,
+                ),
               ),
             ],
             child: const HomePage(),
@@ -173,14 +197,44 @@ void main() {
     ) async {
       await pumpWithState(
         tester,
-        const AttendanceLoaded(today: _today, week: [_today]),
+        const AttendanceLoaded(today: null, week: [_today]),
       );
 
       expect(find.byType(TodayStatusCard), findsOneWidget);
       expect(find.text('Yuz bilan tasdiqlash'), findsOneWidget);
-      // Bugungi status (present -> "Keldi") ham ko'rinadi.
-      expect(find.text('Keldi'), findsOneWidget);
     });
+
+    testWidgets(
+      'checked in today: shows "Keldi" and the check-out CTA instead',
+      (tester) async {
+        await pumpWithState(
+          tester,
+          const AttendanceLoaded(today: _today, week: [_today]),
+        );
+
+        expect(find.text('Keldi'), findsOneWidget);
+        expect(find.text('Ishdan chiqish'), findsOneWidget);
+        expect(find.text('Yuz bilan tasdiqlash'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'face scan switched off: location CTA + hint, no camera CTA',
+      (tester) async {
+        await pumpWithState(
+          tester,
+          const AttendanceLoaded(
+            today: null,
+            week: [_today],
+            faceRequired: false,
+          ),
+        );
+
+        expect(find.text('Keldim — joylashuv bilan'), findsOneWidget);
+        expect(find.byKey(const Key('face_off_hint')), findsOneWidget);
+        expect(find.text('Yuz bilan tasdiqlash'), findsNothing);
+      },
+    );
 
     testWidgets('renders the greeting header with the session name', (
       tester,
@@ -213,7 +267,7 @@ void main() {
       (tester) async {
         await pumpWithState(
           tester,
-          const AttendanceLoaded(today: _today, week: [_today]),
+          const AttendanceLoaded(today: null, week: [_today]),
           // Test muhitida haqiqiy `Geolocator` plugini yo'q — uni ataylab
           // xato tashlaydigan `locate` bilan almashtiramiz (xuddi
           // `_defaultLocate` xizmat o'chiq bo'lsa qilgani kabi), shunda
@@ -227,7 +281,8 @@ void main() {
         await tester.pump(const Duration(seconds: 1)); // let it resolve
 
         expect(tester.takeException(), isNull);
-        expect(find.text("Joylashuvni aniqlab bo'lmadi"), findsOneWidget);
+        // Precheck joylashuv xatosining o'z sababini ko'rsatadi.
+        expect(find.text("test: joylashuv yo'q"), findsOneWidget);
       },
     );
 
@@ -241,7 +296,7 @@ void main() {
       addTearDown(tester.view.reset);
 
       final attendanceCubit = _FixedStateAttendanceCubit(
-        const AttendanceLoaded(today: _today, week: [_today]),
+        const AttendanceLoaded(today: null, week: [_today]),
         repository: repository,
         geofence: geofence,
         locate: () async => Position(
@@ -269,6 +324,12 @@ void main() {
                 BlocProvider<AuthCubit>.value(value: authCubit),
                 BlocProvider<AttendanceCubit>.value(
                   value: attendanceCubit..load(),
+                ),
+                BlocProvider<NotificationsCubit>(
+                  create: (_) => NotificationsCubit(
+                    repository: _EmptyNotificationsRepository(),
+                    authCubit: authCubit,
+                  ),
                 ),
               ],
               child: const HomePage(),
@@ -306,7 +367,7 @@ void main() {
       (tester) async {
         await pumpWithState(
           tester,
-          const AttendanceLoaded(today: _today, week: [_today]),
+          const AttendanceLoaded(today: null, week: [_today]),
           // Ish hududidan yiroq nuqta — `checkGeofence()` deterministik
           // ravishda `false` qaytaradi (haqiqiy Geolocator plagini
           // talab qilinmaydi).
@@ -329,7 +390,7 @@ void main() {
         await tester.pump(const Duration(seconds: 1)); // let it resolve
 
         expect(tester.takeException(), isNull);
-        expect(find.text('Siz ish hududidan tashqaridasiz'), findsOneWidget);
+        expect(find.text('Ish joyingizdan uzoqdasiz'), findsOneWidget);
       },
     );
   });
@@ -445,7 +506,7 @@ void main() {
       expect(find.text('Tahlil'), findsOneWidget);
     });
 
-    testWidgets("renders the 'So'nggi faoliyat' mock activity list", (
+    testWidgets("renders the 'So'nggi faoliyat' list from dashboard data", (
       tester,
     ) async {
       await pumpWithState(
@@ -453,10 +514,10 @@ void main() {
         const AttendanceLoaded(today: _today, week: [_today]),
       );
 
+      // Demo rejimda `MyDashboardCubit` o'z mock ma'lumotini beradi.
       expect(find.text("So'nggi faoliyat"), findsOneWidget);
-      expect(find.text('Majlis boshlanadi'), findsOneWidget);
-      expect(find.text('Chatda yangi xabar bor'), findsOneWidget);
       expect(find.text('Yangi murojaat biriktirildi'), findsOneWidget);
+      expect(find.text('Davomat qayd etildi'), findsOneWidget);
     });
 
     testWidgets("tapping 'Tahlil' scrolls toward the weekly analytics section "

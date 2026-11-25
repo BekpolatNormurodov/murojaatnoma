@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,7 +38,10 @@ OutboxItem _item(String id) => OutboxItem(
 );
 
 void main() {
-  setUpAll(() => registerFallbackValue(_FakeParams()));
+  setUpAll(() {
+    registerFallbackValue(_FakeParams());
+    registerFallbackValue(File('x'));
+  });
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test('a failed send is persisted, survives, and is delivered by flush', () async {
@@ -74,5 +80,47 @@ void main() {
     final outbox = ChatOutbox(send, _MockUploads());
     await Future.wait([outbox.deliver(_item('L2')), outbox.deliver(_item('L2'))]);
     verify(() => send(any())).called(1);
+  });
+
+  test('logout during a slow send does not save the message again', () async {
+    final send = _MockSend();
+    final gate = Completer<void>();
+    when(() => send(any())).thenAnswer((_) async {
+      await gate.future;
+      return const Left(ServerFailure('offline'));
+    });
+    final outbox = ChatOutbox(send, _MockUploads());
+    final delivering = outbox.deliver(_item('L3'));
+    await pumpEventQueue();
+    await outbox.clear();
+    gate.complete();
+    await delivering;
+    expect(await outbox.pendingFor('dm-emp-1'), isEmpty);
+  });
+
+  test('documents use /uploads/document; a permanent reject is dropped', () async {
+    final dir = Directory.systemTemp.createTempSync('outbox');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = File('${dir.path}/a.pdf')..writeAsStringSync('x');
+    final uploads = _MockUploads();
+    when(() => uploads.uploadDocument(any()))
+        .thenThrow(UploadException('Unsupported file type', statusCode: 400));
+    final outbox = ChatOutbox(_MockSend(), uploads);
+    final result = await outbox.deliver(
+      OutboxItem(
+        localId: 'F1',
+        conversationId: 'dm-emp-1',
+        type: MessageType.file,
+        createdAt: '2026-10-01T10:00:00Z',
+        attachment: ChatAttachment(
+          kind: MessageType.file,
+          path: file.path,
+          name: 'a.pdf',
+        ),
+      ),
+    );
+    expect(result.error, 'Unsupported file type');
+    verify(() => uploads.uploadDocument(any())).called(1);
+    expect(await outbox.pendingFor('dm-emp-1'), isEmpty);
   });
 }

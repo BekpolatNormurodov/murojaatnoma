@@ -97,7 +97,11 @@ class _SalarySkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(AppRadii.lg);
-    return Padding(
+    // Kichik ekran / katta shriftda skeleton balandligi ekrandan oshib
+    // RenderFlex overflow bermasin — skroll qilinmaydigan o'ram.
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,6 +115,7 @@ class _SalarySkeleton extends StatelessWidget {
             ),
           ],
         ],
+      ),
       ),
     );
   }

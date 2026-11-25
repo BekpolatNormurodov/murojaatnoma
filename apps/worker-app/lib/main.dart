@@ -6,14 +6,16 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:worker_app/app/app.dart';
+import 'package:worker_app/core/network/worker_auth_interceptor.dart';
 import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
+import 'package:worker_app/core/session/session_bootstrap.dart';
+import 'package:worker_app/core/session/session_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
-import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
 import 'package:worker_app/firebase_options.dart';
 import 'package:worker_app/injection.dart';
 
@@ -22,16 +24,26 @@ import 'package:worker_app/injection.dart';
 /// Har bir flavor entrypointi (`main_dev.dart`, `main_prod.dart`, va shu
 /// fayldagi standart `main()`) avval `AppConfig.init(...)` chaqirib flavor
 /// va mock rejimni belgilaydi, so'ng shu funksiyani chaqiradi.
-Future<void> bootstrap() async {
+///
+/// [systemServices] `false` — mahalliy bildirishnoma va push (FCM)
+/// ishga tushirilmaydi (integration testlar: tizim ruxsat oynasi ochilmasin,
+/// Google serverlariga so'rov ketmasin). Standart — yoqilgan.
+Future<void> bootstrap({bool systemServices = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await configureDependencies();
+  // Server sessiyani rad etsa — qo'lda chiqish bilan BIR XIL toza chiqish.
+  // Obuna HAR QANDAY tarmoq so'rovidan OLDIN: aks holda erta kelgan xabar
+  // yo'qolib, ilova "kirgan, lekin tokensiz" holatda qolardi.
+  WorkerAuthInterceptor.sessionExpired.listen((_) {
+    if (!getIt<AuthCubit>().state.isAuthenticated) return;
+    unawaited(SessionService().signOut(remote: false));
+  });
   await _restoreSession();
-  unawaited(_initNotifications());
-  unawaited(_initPush());
-  // Server sessiyani rad etsa (refresh 401) — login ekraniga qaytaramiz
-  // (aks holda har ekranda "sessiya tugagan" xatolari chiqib turardi).
-  AuthInterceptor.sessionExpired.listen((_) => getIt<AuthCubit>().reset());
+  if (systemServices) {
+    unawaited(_initNotifications());
+    unawaited(_initPush());
+  }
   // Oldingi seansda yuborilmay qolgan chat xabarlarini yuboramiz.
   if (!AppConfig.useMock && getIt<AuthCubit>().state.isAuthenticated) {
     unawaited(getIt<ChatOutbox>().flush());
@@ -60,6 +72,9 @@ void _initRealtime() {
         socket.disconnect();
       }
     });
+    NetworkStatus.instance.onReconnect.listen((_) {
+      if (authCubit.state.isAuthenticated) unawaited(socket.connect());
+    });
   } on Object {
     // Socket ishga tushmasa — ilova baribir normal ishlaydi.
   }
@@ -80,13 +95,17 @@ Future<void> _initPush() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-    await getIt<FcmService>().init();
-
+    // Obuna `init()`dan OLDIN — ruxsat oynasi/sekin tarmoq paytida
+    // kirilsa ham qurilma tokeni ro'yxatdan o'tadi.
+    var workerId = getIt<AuthCubit>().state.session?.workerId;
     getIt<AuthCubit>().stream.listen((state) {
-      if (state.isAuthenticated) {
+      final next = state.isAuthenticated ? state.session?.workerId : null;
+      if (next != null && next != workerId) {
         unawaited(getIt<FcmService>().syncToken());
       }
+      workerId = next;
     });
+    await getIt<FcmService>().init();
   } on Object {
     // Firebase/push ishga tushmasa — ilova baribir normal ishlaydi.
   }
@@ -106,6 +125,8 @@ Future<void> _initNotifications() async {
   final notifications = getIt<NotificationService>()
     ..onIncomingCallTap = (callId, callerName, media) {
       if (AppConfig.useMock) return;
+      // Chiqilgan qurilmada eski push bosilsa — e'tiborsiz.
+      if (!getIt<AuthCubit>().state.isAuthenticated) return;
       unawaited(getIt<RealtimeSocketService>().connect());
       unawaited(
         getIt<CallCubit>().acceptFromPush(
@@ -127,35 +148,27 @@ Future<void> _initNotifications() async {
 
 /// Saqlangan auth sessiyasini (agar bor bo'lsa) tiklaydi — shu tufayli
 /// avval kirgan ishchi keyingi safar ilovani ochganda `/login`ga
-/// QAYTARILMAYDI (`AuthCubit.restore()`, `runApp()`dan OLDIN — splash
-/// `resolveAuthRedirect`ni birinchi baholaganda holat allaqachon to'g'ri
-/// bo'ladi, hech qanday `/login` "milt etishi" yo'q).
+/// QAYTARILMAYDI (`runApp()`dan OLDIN).
 ///
-/// Autentifikatsiya tiklangan bo'lsa, yuz ro'yxatdan o'tkazish holatini
-/// ham (mavjud shablon orqali) tiklaydi — aks holda `resolveAuthRedirect`
-/// allaqachon ro'yxatdan o'tgan ishchini har safar keraksiz qayta
-/// `/face/enroll`ga yo'naltirar edi. Bu muvofiqlashtirish ATAYLAB
-/// `AuthCubit`ning O'ZIDA EMAS, shu yerda (ilova ildizida) — Auth va Face
-/// qatlamlari bir-biriga bog'liq bo'lib qolmasligi uchun.
+/// Yuz ro'yxatdan o'tkazish holati (shablon egasi bo'yicha) va admin "yuz
+/// majburiy" sozlamasi ham shu yerda tiklanadi. Yuz ro'yxatdan o'tmagan
+/// bo'lsa sozlama qisqa (3 s) kutiladi — aks holda xodim bir lahza majburiy
+/// enroll ekranini ko'rib qolardi. Hech qachon throw qilmaydi.
 Future<void> _restoreSession() async {
   final authCubit = getIt<AuthCubit>();
   await authCubit.restore();
-  if (!authCubit.state.isAuthenticated) return;
+  final workerId = authCubit.state.session?.workerId;
+  if (!authCubit.state.isAuthenticated || workerId == null) return;
 
-  try {
-    final templateResult = await getIt<FaceRepository>().getTemplate();
-    final workerId = authCubit.state.session?.workerId;
-    templateResult.fold((_) {}, (template) {
-      // Shablon SHU xodimniki bo'lsagina — qurilmada boshqa xodimdan qolgan
-      // yuz bilan "ro'yxatdan o'tgan" deb hisoblanmasin.
-      if (template != null &&
-          (workerId == null || template.workerId == workerId)) {
-        authCubit.markFaceEnrolled();
-      }
-    });
-  } on Object {
-    // Yuz holatini tiklab bo'lmasa — jim o'tkazib yuboriladi (foydalanuvchi
-    // shunchaki `/face/enroll`ni ko'radi, ilova hech qachon qulamaydi).
+  final cached = cachedFaceRequired();
+  if (cached != null) authCubit.setFaceRequired(isRequired: cached);
+  if (await syncFaceOwner(workerId)) authCubit.markFaceEnrolled();
+
+  final pending = refreshFaceRequired();
+  if (authCubit.state.faceEnrolled || cached == false) {
+    unawaited(pending);
+  } else {
+    await pending.timeout(const Duration(seconds: 3), onTimeout: () {});
   }
 }
 

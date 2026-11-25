@@ -1,6 +1,8 @@
 import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/features/attendance/data/exceptions/attendance_exceptions.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/domain/entities/check_scan_result.dart';
@@ -16,17 +18,19 @@ import 'package:worker_app/features/attendance/domain/entities/my_attendance.dar
 /// - `GET /attendance/me -> { ..., today, week }`.
 abstract class AttendanceRemoteDataSource {
   Future<CheckScanResult> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   });
 
   Future<CheckScanResult> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   });
 
   Future<MyAttendance> myAttendance();
@@ -41,6 +45,13 @@ abstract class AttendanceRemoteDataSource {
 /// saqlaydi.
 class AttendanceRemoteDataSourceMockImpl
     implements AttendanceRemoteDataSource {
+  AttendanceRemoteDataSourceMockImpl({this.faceRequired = kMockFaceRequired});
+
+  /// Demo rejimdagi "Yuz skaneri majburiy" sozlamasi — `false` bo'lsa
+  /// `myAttendance()` `faceRequired: false` qaytaradi va check-in/out
+  /// embeddingsiz (faqat joylashuv bilan) qabul qilinadi.
+  bool faceRequired;
+
   DateTime? _todayCheckInAt;
   DateTime? _todayCheckOutAt;
 
@@ -49,10 +60,11 @@ class AttendanceRemoteDataSourceMockImpl
 
   @override
   Future<CheckScanResult> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     final now = DateTime.now();
@@ -66,7 +78,7 @@ class AttendanceRemoteDataSourceMockImpl
 
     return CheckScanResult(
       isValid: true,
-      faceScore: 0.94,
+      faceScore: embedding == null ? 0 : 0.94,
       type: 'CHECK_IN',
       isLate: lateMinutes > 0,
       lateMinutes: lateMinutes,
@@ -76,10 +88,11 @@ class AttendanceRemoteDataSourceMockImpl
 
   @override
   Future<CheckScanResult> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 600));
     final now = DateTime.now();
@@ -87,7 +100,7 @@ class AttendanceRemoteDataSourceMockImpl
 
     return CheckScanResult(
       isValid: true,
-      faceScore: 0.93,
+      faceScore: embedding == null ? 0 : 0.93,
       type: 'CHECK_OUT',
       isLate: false,
       lateMinutes: 0,
@@ -141,6 +154,7 @@ class AttendanceRemoteDataSourceMockImpl
       workStartTime: '09:00',
       today: today,
       week: week,
+      faceRequired: faceRequired,
     );
   }
 
@@ -171,6 +185,28 @@ class AttendanceRemoteDataSourceMockImpl
   }
 }
 
+/// `POST /attendance/check-in|check-out` so'rov tanasi.
+///
+/// [embedding] `null` bo'lsa (admin yuz skanerini o'chirgan —
+/// `faceRequired == false`) tana faqat `{latitude, longitude, accuracy?}`
+/// bo'ladi: `embedding`/`photoUrl` umuman yuborilmaydi.
+@visibleForTesting
+Map<String, dynamic> scanBody({
+  required double latitude,
+  required double longitude,
+  List<double>? embedding,
+  String? photoUrl,
+  double? accuracy,
+}) {
+  return {
+    if (embedding != null) 'embedding': embedding,
+    'latitude': latitude,
+    'longitude': longitude,
+    if (accuracy != null) 'accuracy': accuracy,
+    if (embedding != null && photoUrl != null) 'photoUrl': photoUrl,
+  };
+}
+
 /// Real backend implementatsiyasi — [DioClient] orqali.
 ///
 /// Moslikni (odatda >=0.7 kosinus o'xshashlik) SERVER o'zi hisoblaydi —
@@ -184,20 +220,22 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
 
   @override
   Future<CheckScanResult> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     try {
       final response = await _client.dio.post<Map<String, dynamic>>(
         '/attendance/check-in',
-        data: {
-          'embedding': embedding,
-          'latitude': latitude,
-          'longitude': longitude,
-          if (photoUrl != null) 'photoUrl': photoUrl,
-        },
+        data: scanBody(
+          latitude: latitude,
+          longitude: longitude,
+          embedding: embedding,
+          photoUrl: photoUrl,
+          accuracy: accuracy,
+        ),
       );
       return CheckScanResult.fromJson(response.data ?? const {});
     } on DioException catch (e) {
@@ -213,20 +251,22 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
 
   @override
   Future<CheckScanResult> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     try {
       final response = await _client.dio.post<Map<String, dynamic>>(
         '/attendance/check-out',
-        data: {
-          'embedding': embedding,
-          'latitude': latitude,
-          'longitude': longitude,
-          if (photoUrl != null) 'photoUrl': photoUrl,
-        },
+        data: scanBody(
+          latitude: latitude,
+          longitude: longitude,
+          embedding: embedding,
+          photoUrl: photoUrl,
+          accuracy: accuracy,
+        ),
       );
       return CheckScanResult.fromJson(response.data ?? const {});
     } on DioException catch (e) {

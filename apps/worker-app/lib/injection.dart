@@ -5,12 +5,15 @@ import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/app/router/app_router.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/core/network/worker_auth_interceptor.dart';
 import 'package:worker_app/core/notifications/fcm_service.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
+import 'package:worker_app/core/session/session_bootstrap.dart';
 import 'package:worker_app/features/attendance/data/attendance_history.dart';
 import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
+import 'package:worker_app/features/attendance/data/attendance_settings_source.dart';
 import 'package:worker_app/features/attendance/data/scan_photo_uploader.dart';
 import 'package:worker_app/features/attendance/data/datasources/attendance_remote_data_source.dart';
 import 'package:worker_app/features/attendance/data/repositories/attendance_repository_impl.dart';
@@ -21,6 +24,7 @@ import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/attendance/domain/usecases/get_my_attendance.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:worker_app/features/reports/data/report_draft_store.dart';
 import 'package:worker_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
@@ -97,6 +101,17 @@ import 'package:worker_app/features/premya/data/repositories/premya_repository_i
 import 'package:worker_app/features/premya/domain/repositories/premya_repository.dart';
 import 'package:worker_app/features/premya/domain/usecases/get_my_premya.dart';
 import 'package:worker_app/features/premya/domain/usecases/submit_premya.dart';
+import 'package:worker_app/features/reports/data/datasources/reports_remote_data_source.dart';
+import 'package:worker_app/features/reports/data/repositories/reports_repository_impl.dart';
+import 'package:worker_app/features/reports/domain/repositories/reports_repository.dart';
+import 'package:worker_app/features/reports/domain/usecases/delete_report.dart';
+import 'package:worker_app/features/reports/domain/usecases/get_my_reports.dart';
+import 'package:worker_app/features/reports/domain/usecases/get_zone_time.dart';
+import 'package:worker_app/features/reports/domain/usecases/submit_report.dart';
+import 'package:worker_app/features/reports/domain/usecases/upload_report_file.dart';
+import 'package:worker_app/features/reports/presentation/bloc/report_compose_cubit.dart';
+import 'package:worker_app/features/reports/presentation/bloc/reports_cubit.dart';
+import 'package:worker_app/features/reports/presentation/bloc/zone_time_cubit.dart';
 import 'package:worker_app/features/requests/data/datasources/applications_remote_data_source.dart';
 import 'package:worker_app/features/requests/data/repositories/applications_repository_impl.dart';
 import 'package:worker_app/features/requests/domain/repositories/applications_repository.dart';
@@ -129,12 +144,19 @@ Future<void> configureDependencies() async {
   getIt
     // ---- External ----
     ..registerSingleton<SharedPreferences>(prefs)
-    ..registerLazySingleton<DioClient>(DioClient.new)
+    ..registerLazySingleton<DioClient>(() {
+      final client = DioClient();
+      WorkerAuthInterceptor.install(client.dio);
+      return client;
+    })
     // ---- Doimiy lokatsiya kuzatuvi (xodim -> backend /locations) ----
     // Uzluksiz GPS hisobotlari + offline outbox. Auth muvaffaqiyatli
     // bo'lgach `getIt<LocationTrackingService>().start()` chaqiriladi.
     ..registerLazySingleton<LocationTrackingService>(
-      () => LocationTrackingService(getIt<DioClient>().dio),
+      () => LocationTrackingService(
+        getIt<DioClient>().dio,
+        ownerId: () => getIt<AuthCubit>().state.session?.workerId,
+      ),
     )
     ..registerLazySingleton<FlutterSecureStorage>(
       () => const FlutterSecureStorage(),
@@ -155,7 +177,13 @@ Future<void> configureDependencies() async {
     // `isAuthenticated` hook'i `connect()`ni, logout esa `disconnect()`ni
     // chaqiradi. Mock rejimda umuman ulanmaydi (token/backend yo'q).
     ..registerLazySingleton<RealtimeSocketService>(
-      () => RealtimeSocketService(getIt<SharedPreferences>()),
+      () => RealtimeSocketService(
+        getIt<SharedPreferences>(),
+        // Socket token rad etilsa: oddiy so'rov 401 oladi va interceptor
+        // tokenni yangilaydi.
+        refreshSession: () =>
+            getIt<DioClient>().dio.get<dynamic>('/auth/me'),
+      ),
     )
     // `UploadsService` — chat media biriktirmalarini (`POST /uploads`)
     // serverga yuklaydi (mahalliy fayl -> URL), so'ng `chat:send` shu URL'ni
@@ -201,6 +229,7 @@ Future<void> configureDependencies() async {
         verifyOtp: getIt<VerifyOtp>(),
         loginEmployee: getIt<LoginEmployee>(),
         restoreSession: getIt<RestoreSession>(),
+        prepareSession: prepareSession,
       ),
     )
     // ---- Face (Vazifa 13: xavfsiz saqlash + enroll/verify) ----
@@ -252,6 +281,12 @@ Future<void> configureDependencies() async {
           ? AttendanceRemoteDataSourceMockImpl()
           : AttendanceRemoteDataSourceApiImpl(getIt<DioClient>()),
     )
+    // Admin "yuz skaneri majburiy" sozlamasi (`GET /settings/attendance`).
+    ..registerLazySingleton<AttendanceSettingsSource>(
+      () => AppConfig.useMock
+          ? MockAttendanceSettingsSource()
+          : ApiAttendanceSettingsSource(getIt<DioClient>()),
+    )
     ..registerLazySingleton<AttendanceRepository>(
       () =>
           AttendanceRepositoryImpl(remote: getIt<AttendanceRemoteDataSource>()),
@@ -297,6 +332,10 @@ Future<void> configureDependencies() async {
         repository: getIt<AttendanceRepository>(),
         geofence: getIt<GeofenceService>(),
         precheck: getIt<AttendancePrecheck>(),
+        // Yuz skaneri o'chirilganda (`faceRequired == false`) keldi/ketdi
+        // kamerasiz — shu usecase'lar orqali, faqat joylashuv bilan.
+        checkIn: getIt<CheckIn>(),
+        checkOut: getIt<CheckOut>(),
       ),
     )
     // "Shu yerdan belgilay olamanmi?" — server qoidasi (xodimning ofisi +
@@ -663,5 +702,53 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<GetMyPremya>(
       () => GetMyPremya(getIt<PremyaRepository>()),
+    )
+    // ---- Kunlik hisobot (matn + ovoz/video/rasm/hujjat) va hududda
+    // bo'lgan vaqt (Mock/Api seam — AppConfig.useMock tanlaydi) ----
+    ..registerLazySingleton<ReportsRemoteDataSource>(
+      () => AppConfig.useMock
+          ? ReportsRemoteDataSourceMockImpl()
+          : ReportsRemoteDataSourceApiImpl(
+              getIt<DioClient>(),
+              getIt<UploadsService>(),
+            ),
+    )
+    ..registerLazySingleton<ReportsRepository>(
+      () => ReportsRepositoryImpl(remote: getIt<ReportsRemoteDataSource>()),
+    )
+    ..registerLazySingleton<GetMyReports>(
+      () => GetMyReports(getIt<ReportsRepository>()),
+    )
+    ..registerLazySingleton<SubmitReport>(
+      () => SubmitReport(getIt<ReportsRepository>()),
+    )
+    ..registerLazySingleton<DeleteReport>(
+      () => DeleteReport(getIt<ReportsRepository>()),
+    )
+    ..registerLazySingleton<GetZoneTime>(
+      () => GetZoneTime(getIt<ReportsRepository>()),
+    )
+    ..registerLazySingleton<UploadReportFile>(
+      () => UploadReportFile(getIt<ReportsRepository>()),
+    )
+    // Har `/reports` / `/reports/new` ochilishida yangi instansiya.
+    ..registerFactory<ReportsCubit>(
+      () => ReportsCubit(
+        getMyReports: getIt<GetMyReports>(),
+        deleteReport: getIt<DeleteReport>(),
+      ),
+    )
+    ..registerFactory<ZoneTimeCubit>(
+      () => ZoneTimeCubit(getZoneTime: getIt<GetZoneTime>()),
+    )
+    ..registerFactory<ReportComposeCubit>(
+      () => ReportComposeCubit(
+        uploadFile: getIt<UploadReportFile>(),
+        submitReport: getIt<SubmitReport>(),
+        drafts: ReportDraftStore(
+          getIt<SharedPreferences>(),
+          () => getIt<AuthCubit>().state.session?.workerId,
+        ),
+      ),
     );
 }

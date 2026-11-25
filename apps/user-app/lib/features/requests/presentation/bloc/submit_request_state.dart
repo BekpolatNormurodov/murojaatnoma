@@ -37,3 +37,16 @@ class SubmitRequestFailure extends SubmitRequestState {
   @override
   List<Object?> get props => [message];
 }
+
+/// Murojaat YARATILDI, lekin [failed] fayllar yuklanmadi — qayta urinish
+/// yoki fayllarsiz yakunlash mumkin (murojaat qayta yuborilmaydi).
+class SubmitRequestAttachmentsFailed extends SubmitRequestState {
+  const SubmitRequestAttachmentsFailed(this.created, this.failed, this.message);
+
+  final CitizenRequest created;
+  final List<RequestAttachment> failed;
+  final String message;
+
+  @override
+  List<Object?> get props => [created, failed, message];
+}

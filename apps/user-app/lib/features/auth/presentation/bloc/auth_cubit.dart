@@ -2,11 +2,20 @@ import 'package:app_core/app_core.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
+import 'package:user_app/features/auth/domain/entities/onboarding_snapshot.dart';
 import 'package:user_app/features/auth/domain/usecases/restore_session.dart';
 import 'package:user_app/features/auth/domain/usecases/send_otp.dart';
 import 'package:user_app/features/auth/domain/usecases/verify_otp.dart';
 
 part 'auth_state.dart';
+
+/// Qurilmadagi onboarding holatini (shu fuqaro uchun) o'qiydi. [restored] —
+/// sessiya saqlangandan tiklandi (`true`) yoki yangi OTP kirish (`false`).
+typedef OnboardingLoader =
+    Future<OnboardingSnapshot> Function(
+      AuthSession session, {
+      required bool restored,
+    });
 
 /// Fuqaro avtorizatsiyasini boshqaruvchi Cubit — telefon/OTP oqimi.
 class AuthCubit extends Cubit<AuthState> {
@@ -14,8 +23,10 @@ class AuthCubit extends Cubit<AuthState> {
     required this.sendOtp,
     required VerifyOtp verifyOtp,
     required RestoreSession restoreSession,
+    OnboardingLoader? loadOnboarding,
   }) : _verifyOtp = verifyOtp,
        _restoreSession = restoreSession,
+       _loadOnboarding = loadOnboarding,
        super(const AuthState());
 
   /// SMS-OTP kod yuborish UseCase'i.
@@ -29,10 +40,48 @@ class AuthCubit extends Cubit<AuthState> {
   /// UseCase'i.
   final RestoreSession _restoreSession;
 
+  final OnboardingLoader? _loadOnboarding;
+
+  /// Autentifikatsiya holatini onboarding bayroqlari bilan BITTA `emit`da
+  /// chiqaradi — router oraliq (masalan keraksiz `/register`) holatni
+  /// ko'rmaydi.
+  Future<void> _emitAuthenticated(
+    AuthSession session, {
+    required bool restored,
+  }) async {
+    var snapshot = const OnboardingSnapshot();
+    final loader = _loadOnboarding;
+    if (loader != null) {
+      try {
+        snapshot = await loader(session, restored: restored);
+      } on Object {
+        // Tiklab bo'lmasa — onboarding boshidan, ilova qulamaydi.
+      }
+    }
+    if (isClosed) return;
+    final name = snapshot.fullName?.trim();
+    emit(
+      AuthState(
+        status: AuthStatus.authenticated,
+        session: name == null || name.isEmpty
+            ? session
+            : session.copyWith(name: name),
+        registered: snapshot.registered,
+        faceEnrolled: snapshot.faceEnrolled,
+        pinSet: snapshot.pinSet,
+      ),
+    );
+  }
+
   /// Telefon raqamiga SMS-OTP tasdiqlash kodini yuborish.
+  ///
+  /// So'rov allaqachon bajarilayotgan bo'lsa (`loading`) — e'tiborsiz
+  /// qoldiriladi (ikki marta bosish ikki SMS yubormasin).
   Future<void> requestOtp(String phone) async {
+    if (state.status == AuthStatus.loading) return;
     emit(state.copyWith(status: AuthStatus.loading));
     final result = await sendOtp(SendOtpParams(phone));
+    if (isClosed) return;
     result.fold(
       (failure) => emit(
         state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
@@ -42,16 +91,20 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   /// Telefonga yuborilgan SMS-OTP kodni tasdiqlash.
+  ///
+  /// `OtpInput.onCompleted` va "Tasdiqlash" tugmasi bir vaqtda ishlashi
+  /// mumkin — so'rov bajarilayotganda (`loading`) qayta chaqiruv
+  /// e'tiborsiz qoldiriladi (bir kod ikki marta yuborilmasin).
   Future<void> verifyOtp(String phone, String code) async {
+    if (state.status == AuthStatus.loading) return;
     emit(state.copyWith(status: AuthStatus.loading));
     final result = await _verifyOtp(VerifyOtpParams(phone: phone, code: code));
-    result.fold(
-      (failure) => emit(
+    if (isClosed) return;
+    await result.fold(
+      (failure) async => emit(
         state.copyWith(status: AuthStatus.error, errorMessage: failure.message),
       ),
-      (session) => emit(
-        state.copyWith(status: AuthStatus.authenticated, session: session),
-      ),
+      (session) => _emitAuthenticated(session, restored: false),
     );
   }
 
@@ -70,7 +123,7 @@ class AuthCubit extends Cubit<AuthState> {
     final result = await _restoreSession(const NoParams());
     final session = result.fold((_) => null, (session) => session);
     if (session != null) {
-      emit(state.copyWith(status: AuthStatus.authenticated, session: session));
+      await _emitAuthenticated(session, restored: true);
     }
   }
 
@@ -83,7 +136,17 @@ class AuthCubit extends Cubit<AuthState> {
   /// `refreshListenable`ini ishga tushiradi, natijada `resolveAuthRedirect`
   /// joriy manzilni qayta baholaydi va foydalanuvchini `/face/onboarding`ga
   /// yo'naltiradi (qarang: `redirect_policy.dart`).
-  void markRegistered() => emit(state.copyWith(registered: true));
+  void markRegistered({String? fullName}) {
+    final name = fullName?.trim();
+    emit(
+      state.copyWith(
+        registered: true,
+        session: name == null || name.isEmpty
+            ? null
+            : state.session?.copyWith(name: name),
+      ),
+    );
+  }
 
   /// `/face/onboarding` muvaffaqiyatli yakunlangach chaqiriladi (Faza 3).
   ///

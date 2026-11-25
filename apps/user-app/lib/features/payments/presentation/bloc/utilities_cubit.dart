@@ -23,18 +23,28 @@ class UtilitiesCubit extends Cubit<UtilitiesState> {
     : _getUtilities = getUtilities,
       _cache =
           cache ??
-          (getIt.isRegistered<CacheService>()
-              ? getIt<CacheService>()
-              : null),
+          (getIt.isRegistered<CacheService>() ? getIt<CacheService>() : null),
       super(const UtilitiesLoading());
 
   final GetUtilities _getUtilities;
   final CacheService? _cache;
   static const _logger = AppLogger();
 
+  /// Har `load`/`reset`da oshadi — eskirgan javob e'tiborsiz qoldiriladi.
+  int _generation = 0;
+
+  /// Chiqishda: oldingi fuqaroning holati va yo'ldagi javobi tashlanadi.
+  /// Bu cubit LAZY SINGLETON — yopilmaydi, faqat tozalanadi.
+  void reset() {
+    _generation++;
+    if (!isClosed) emit(const UtilitiesLoading());
+  }
+
   /// Kommunal xizmatlar ro'yxatini yuklaydi (yoki qayta yuklaydi — masalan
   /// pull-to-refresh yoki muvaffaqiyatli to'lovdan keyin).
   Future<void> load() async {
+    if (isClosed) return;
+    final generation = ++_generation;
     final cached = _cache?.getJsonList<Utility>(
       Utility.cacheKey,
       Utility.fromJson,
@@ -46,6 +56,7 @@ class UtilitiesCubit extends Cubit<UtilitiesState> {
     }
 
     final result = await _getUtilities(const NoParams());
+    if (isClosed || generation != _generation) return;
     result.fold(
       (failure) {
         if (cached != null && cached.isNotEmpty) {

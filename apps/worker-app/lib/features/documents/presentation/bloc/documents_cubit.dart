@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/documents/domain/entities/document_item.dart';
 import 'package:worker_app/features/documents/domain/usecases/get_documents.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'documents_state.dart';
 
@@ -49,11 +50,19 @@ class DocumentsCubit extends Cubit<DocumentsState> {
         emit(items.isEmpty ? const DocumentsEmpty() : DocumentsLoaded(items));
       });
     } on Object catch (e) {
-      emit(DocumentsError('Kutilmagan xatolik: $e'));
+      emit(DocumentsError(unexpectedError(e)));
     }
   }
 
   /// So'nggi ishlatilgan filtrlar bilan qayta yuklaydi (pull-to-refresh,
   /// "Qayta urinish" tugmasi).
   Future<void> reload() => load(type: _type, status: _status);
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(DocumentsState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

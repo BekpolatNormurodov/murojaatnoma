@@ -10,7 +10,7 @@ import 'package:worker_app/features/documents/presentation/widgets/document_type
 /// (`formatMeetingDateTime` — `meetings` moduli — bilan bir xil naqsh,
 /// mock ma'lumotlar doim to'g'ri formatda, lekin himoya sifatida).
 String formatDocumentDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   return formatDate(parsed);
 }

@@ -44,3 +44,9 @@ const int kFaceInputSize = 112;
 /// `clock` bilan deterministik ishlaydi — bu konstanta faqat productionda
 /// (DI, `injection.dart`) uzatiladi.
 const Duration kFaceScanStableDuration = Duration(seconds: 3);
+
+/// Demo (mock) rejimdagi "Yuz skaneri majburiy" sozlamasi — jonli backendda
+/// bu qiymatni admin boshqaradi (`GET /settings/attendance`,
+/// `GET /attendance/me` → `faceRequired`). `false` qilib qo'yilsa demo
+/// ilova kamerasiz, faqat joylashuv bo'yicha keldi/ketdi qiladi.
+const bool kMockFaceRequired = true;

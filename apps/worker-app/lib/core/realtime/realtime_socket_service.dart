@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:app_core/app_core.dart';
 import 'package:flutter/foundation.dart';
@@ -29,11 +30,16 @@ typedef _EventController = StreamController<Map<String, dynamic>>;
 /// va tayyor bo'lgach yuboriladi ([_runWhenReady]). Chat emitlari xona
 /// (`chat:join`)dan keyin yuborilgani uchun bu poygaga tushmaydi.
 class RealtimeSocketService {
-  RealtimeSocketService(this._prefs);
+  RealtimeSocketService(this._prefs, {this.refreshSession});
 
   final SharedPreferences _prefs;
 
+  /// Server socket tokenini rad etganda chaqiriladi (access token yangilansin).
+  final Future<void> Function()? refreshSession;
+
   io.Socket? _socket;
+  Timer? _retryTimer;
+  int _rejections = 0;
 
   // ---- Server -> client eventlari uchun broadcast oqimlari (CHAT) ----
   final _chatMessage = _EventController.broadcast();
@@ -169,7 +175,13 @@ class RealtimeSocketService {
   ///
   /// `bootstrap()`dagi auth `isAuthenticated` hook'idan chaqiriladi.
   Future<void> connect() async {
-    if (_socket != null) return;
+    final existing = _socket;
+    if (existing != null) {
+      // Uzilib qolgan (avtomatik qayta ulanmagan) socket — qayta ulaymiz.
+      if (!existing.connected && !existing.active) existing.connect();
+      return;
+    }
+    _retryTimer?.cancel();
 
     final token = _prefs.getString(AuthInterceptor.tokenKey);
     if (token == null || token.isEmpty) return;
@@ -183,7 +195,13 @@ class RealtimeSocketService {
       io.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
-          .setAuth({'token': token})
+          // Har (qayta) ulanishda JORIY token o'qiladi — access token 15
+          // daqiqada eskiradi.
+          .setAuthFn(
+            (send) => send({
+              'token': _prefs.getString(AuthInterceptor.tokenKey) ?? '',
+            }),
+          )
           .build(),
     );
     _bindEvents(socket);
@@ -194,14 +212,37 @@ class RealtimeSocketService {
   /// Socketni uzadi va tozalaydi (logout'da chaqiriladi). Broadcast
   /// oqimlari OCHIQ qoladi — keyingi `connect()` ularni qayta ishlatadi.
   void disconnect() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    _rejections = 0;
+    _pendingCallEmits.clear();
+    _dropSocket();
+  }
+
+  void _dropSocket() {
     final socket = _socket;
     if (socket == null) return;
     _socket = null;
     _ready = false;
-    _pendingCallEmits.clear();
     socket
       ..dispose()
       ..close();
+  }
+
+  /// `auth:error` / serverdan uzilish: socket tashlanadi, token yangilanadi va
+  /// o'sib boruvchi kutish bilan qayta ulanadi.
+  @visibleForTesting
+  Future<void> handleServerRejection() async {
+    if (_retryTimer?.isActive ?? false) return;
+    _dropSocket();
+    final delay = Duration(seconds: min(60, 1 << min(_rejections, 6)));
+    _rejections++;
+    _retryTimer = Timer(delay, () => unawaited(connect()));
+    try {
+      await refreshSession?.call();
+    } on Object catch (e) {
+      debugPrint('[socket] session refresh failed: $e');
+    }
   }
 
   // ---- CHAT: client -> server emitlari ----
@@ -257,12 +298,15 @@ class RealtimeSocketService {
     required String toUserId,
     required String media,
     String? conversationId,
+    Duration timeout = const Duration(seconds: 20),
   }) {
     final completer = Completer<String?>();
     _runWhenReady(() {
+      // Muddat o'tgan taklif keyin yuborilmasin.
+      if (completer.isCompleted) return;
       final socket = _socket;
       if (socket == null) {
-        if (!completer.isCompleted) completer.complete(null);
+        completer.complete(null);
         return;
       }
       socket.emitWithAck(
@@ -277,11 +321,19 @@ class RealtimeSocketService {
           if (data is Map && data['callId'] is String) {
             callId = data['callId'] as String;
           }
-          if (!completer.isCompleted) completer.complete(callId);
+          if (!completer.isCompleted) {
+            completer.complete(callId);
+          } else if (callId != null) {
+            // Kechikkan ack — chaqiruv allaqachon bekor deb hisoblangan.
+            cancelCall(callId);
+          }
         },
       );
     });
-    return completer.future;
+    final guard = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+    return completer.future.whenComplete(guard.cancel);
   }
 
   /// `call:accept` — chaqirilayotgan xodim qabul qiladi.
@@ -435,6 +487,7 @@ class RealtimeSocketService {
   }
 
   void _onReady() {
+    _rejections = 0;
     if (_ready) return;
     _ready = true;
     final pending = List<void Function()>.from(_pendingCallEmits);
@@ -475,17 +528,21 @@ class RealtimeSocketService {
       ..on('meeting:ended', (d) => _add(_meetingEnded, d))
       // TAYYOR / AUTH
       ..on('presence:snapshot', (_) => _onReady())
-      ..on(
-        'auth:error',
-        (Object? e) => debugPrint('[socket] auth:error: $e'),
-      )
+      ..on('auth:error', (Object? e) {
+        debugPrint('[socket] auth:error: $e');
+        if (identical(socket, _socket)) unawaited(handleServerRejection());
+      })
       ..onConnectError((Object? e) => debugPrint('[socket] connect_error: $e'))
-      ..onDisconnect((_) {
+      ..onDisconnect((Object? reason) {
         // Faqat "tayyor emas" deb belgilaymiz. `_pendingCallEmits`ni
         // TOZALAMAYMIZ: socket qisqa uzilib qayta ulanganda (Wi-Fi<->mobil
         // almashuvi) qabul/tugatish (`call:accept`/`call:end`) kabi terminal
         // signallar yo'qolmasligi va `_onReady`da qayta yuborilishi kerak.
         _ready = false;
+        // Server o'zi uzsa socket.io qayta ulanmaydi.
+        if (reason == 'io server disconnect' && identical(socket, _socket)) {
+          unawaited(handleServerRejection());
+        }
       });
   }
 

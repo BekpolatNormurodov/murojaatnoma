@@ -49,13 +49,15 @@ class PayCubit extends Cubit<PayState> {
   Future<void> confirmOtp(String code) async {
     final pending = _pendingParams;
     if (pending == null) return;
+    // Darhol "band qilamiz" — ikki marta tasdiqlash ikki to'lov yubormasin.
+    _pendingParams = null;
     emit(const PaySubmitting());
     final result = await _payUtility(pending);
+    if (isClosed) return;
     result.fold(
       (failure) => emit(PayFailure(failure.message)),
       (payment) => emit(PaySuccess(payment)),
     );
-    _pendingParams = null;
   }
 
   /// SMS tasdiqlash bosqichi bekor qilindi (foydalanuvchi varaqni yopdi,

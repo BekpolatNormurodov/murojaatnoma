@@ -39,20 +39,22 @@ class _FakeAttendanceRepository implements AttendanceRepository {
 
   @override
   Future<Either<Failure, CheckScanResult>> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) {
     throw UnimplementedError('AttendanceCubit does not call checkIn');
   }
 
   @override
   Future<Either<Failure, CheckScanResult>> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) {
     throw UnimplementedError('AttendanceCubit does not call checkOut');
   }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:user_app/core/session/confirm_logout.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/pin/presentation/bloc/pin_cubit.dart';
 
@@ -132,7 +133,22 @@ class _PinEntryBody extends StatelessWidget {
               child: IntrinsicHeight(
                 child: Column(
                   children: [
-                    const SizedBox(height: 16),
+                    // Profildan kelingan bo'lsa — orqaga; onboarding'da
+                    // (orqaga yo'l yo'q) — noto'g'ri raqamdan chiqish.
+                    Align(
+                      alignment: context.canPop()
+                          ? Alignment.centerLeft
+                          : Alignment.centerRight,
+                      child: context.canPop()
+                          ? const AppBackButton()
+                          : TextButton.icon(
+                              onPressed: busy
+                                  ? null
+                                  : () => confirmLogout(context),
+                              icon: const Icon(AppIcons.logout, size: 18),
+                              label: Text(l10n.logout),
+                            ),
+                    ),
                     const _HeaderIcon(icon: AppIcons.shield),
                     const SizedBox(height: 24),
                     AnimatedSwitcher(
@@ -161,15 +177,17 @@ class _PinEntryBody extends StatelessWidget {
                     SizedBox(
                       height: 24,
                       child: Center(
-                        child: AnimatedOpacity(
-                          duration: const Duration(milliseconds: 150),
-                          opacity: busy ? 1 : 0,
-                          child: const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2.2),
-                          ),
-                        ),
+                        // Spinner faqat `busy`da daraxtda — ko'rinmas holda
+                        // ham aylanib turmasin.
+                        child: busy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.2,
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),

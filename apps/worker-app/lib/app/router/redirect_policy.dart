@@ -25,6 +25,7 @@ const _home = '/home';
 String? resolveAuthRedirect({
   required AuthState authState,
   required String location,
+  bool voluntaryEnroll = false,
 }) {
   // `/splash` — `BrandSplash`ning o'zi (`onFinished`) taxminan 2500ms dan
   // keyin `/home`ga o'tishga "urinadi"; shu payt YANGI manzil ushbu
@@ -44,6 +45,19 @@ String? resolveAuthRedirect({
     // baholanganda `authFlowLocations.contains('/login')` — `null` —
     // barqarorlashadi.
     return authFlowLocations.contains(location) ? null : _login;
+  }
+
+  if (!authState.faceEnrolled && !authState.faceRequired) {
+    // Admin yuz skanerini O'CHIRGAN — yuz ro'yxatdan o'tkazish majburiy
+    // emas, keldi/ketdi faqat joylashuv bo'yicha. Auth-oqimi manzillaridan
+    // va (sozlama kech kelib, xodim allaqachon majburiy enroll ekraniga
+    // tushib qolgan bo'lsa) `/face/enroll`dan `/home`ga; `/home` qayta
+    // baholanganda `null` — barqarorlashadi.
+    // Profildan IXTIYORIY ro'yxatdan o'tish (`?voluntary=1`) ruxsat etiladi.
+    final leave =
+        authFlowLocations.contains(location) ||
+        (location == _faceEnroll && !voluntaryEnroll);
+    return leave ? _home : null;
   }
 
   if (!authState.faceEnrolled) {

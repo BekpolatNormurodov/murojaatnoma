@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
@@ -175,7 +177,11 @@ class AppRouter {
       pageBuilder: (context, state) => _fade(
         BlocProvider(
           create: (_) => getIt<SubmitRequestCubit>(),
-          child: const SubmitRequestPage(),
+          child: SubmitRequestPage(
+            initialKind: state.extra is RequestKind
+                ? state.extra! as RequestKind
+                : RequestKind.ariza,
+          ),
         ),
         state,
       ),
@@ -211,8 +217,7 @@ class AppRouter {
     // emas.
     GoRoute(
       path: '/notifications',
-      pageBuilder: (context, state) =>
-          _fade(const NotificationsPage(), state),
+      pageBuilder: (context, state) => _fade(const NotificationsPage(), state),
     ),
 
     // ---- Asosiy qobiq (pastki navigatsiya) ----
@@ -223,8 +228,9 @@ class AppRouter {
           routes: [
             GoRoute(
               path: '/home',
-              builder: (context, _) => BlocProvider(
-                create: (_) => getIt<HomeCubit>()..load(),
+              builder: (context, _) => _SharedCubitScope<HomeCubit>(
+                cubit: getIt<HomeCubit>(),
+                onOpen: (cubit) => cubit.load(),
                 child: const HomePage(),
               ),
             ),
@@ -234,8 +240,9 @@ class AppRouter {
           routes: [
             GoRoute(
               path: '/kommunalka',
-              builder: (context, _) => BlocProvider(
-                create: (_) => getIt<UtilitiesCubit>()..load(),
+              builder: (context, _) => _SharedCubitScope<UtilitiesCubit>(
+                cubit: getIt<UtilitiesCubit>(),
+                onOpen: (cubit) => cubit.load(),
                 child: const UtilitiesPage(),
               ),
             ),
@@ -267,6 +274,39 @@ class AppRouter {
 
   /// `MaterialApp.router` uchun router konfiguratsiyasi.
   GoRouter get config => _router;
+}
+
+/// Ilova davomida yashaydigan (`getIt` lazy-singleton) cubit'ni subtree'ga
+/// beradi: `BlocProvider.value` uni YOPMAYDI. (`BlocProvider(create:)` shell
+/// yo'qolganda — chiqishda — yopib yuborar, qayta kirishda yopiq instansiya
+/// qaytib, ekran oldingi fuqaro holatida qotar edi.) [onOpen] ekran har
+/// yangi ochilganda bir marta chaqiriladi.
+class _SharedCubitScope<C extends Cubit<Object?>> extends StatefulWidget {
+  const _SharedCubitScope({
+    required this.cubit,
+    required this.onOpen,
+    required this.child,
+  });
+
+  final C cubit;
+  final Future<void> Function(C cubit) onOpen;
+  final Widget child;
+
+  @override
+  State<_SharedCubitScope<C>> createState() => _SharedCubitScopeState<C>();
+}
+
+class _SharedCubitScopeState<C extends Cubit<Object?>>
+    extends State<_SharedCubitScope<C>> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(widget.onOpen(widget.cubit));
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      BlocProvider<C>.value(value: widget.cubit, child: widget.child);
 }
 
 /// Silliq (fade + subtle slide) o'tish animatsiyasi bilan sahifa — to'lov/

@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:worker_app/app/auth_navigation_host.dart';
 import 'package:worker_app/app/router/app_router.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
@@ -48,10 +49,18 @@ class WorkerApp extends StatelessWidget {
             // `/call/:id` to'liq-ekran sahifasiga AVTOMATIK o'tadigan global
             // tinglovchi qo'shamiz (navigatsiyaning YAGONA manbai — UI o'zi
             // navigatsiya qilmaydi).
-            builder: (context, child) => _CallNavigationHost(
-              child: _MeetingNavigationHost(
-                // Internet holati (oflayn / sekin / tiklandi) — butun ilova ustida.
-                child: NetworkBanner(child: child ?? const SizedBox.shrink()),
+            builder: (context, child) => AuthNavigationHost(
+              // Logout / sessiya tugashi — istalgan ekrandan `/login`ga,
+              // ochiq dialog/sheet'lar yopilgan holda.
+              router: getIt<AppRouter>().config,
+              child: _CallNavigationHost(
+                child: _MeetingNavigationHost(
+                  // Internet holati (oflayn / sekin / tiklandi) — butun ilova
+                  // ustida.
+                  child: NetworkBanner(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
               ),
             ),
           );

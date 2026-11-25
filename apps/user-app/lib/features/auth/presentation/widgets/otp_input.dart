@@ -136,9 +136,11 @@ class OtpInputState extends State<OtpInput>
                 // shu bilan foydalanuvchi silkinish paytida aynan qaysi
                 // raqamlar noto'g'ri chiqqanini (qizil) ko'radi.
                 final isError = _hasError && filled;
-                return AnimatedContainer(
+                // `Flexible`: tor ekranda (360 dp, 6 xona) kataklar
+                // kengligi qolgan joyga moslashadi — toshib ketmaydi.
+                final cell = AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  margin: const EdgeInsets.symmetric(horizontal: 7),
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: 62,
                   height: 68,
                   decoration: BoxDecoration(
@@ -171,6 +173,7 @@ class OtpInputState extends State<OtpInput>
                     ),
                   ),
                 );
+                return Flexible(child: cell);
               }),
             ),
           ),

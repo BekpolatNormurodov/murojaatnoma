@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
 import 'package:user_app/core/cache/cache_service.dart';
 import 'package:user_app/core/monitoring/app_logger.dart';
+import 'package:user_app/features/requests/domain/citizen_requests_revision.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/usecases/get_citizen_requests.dart';
 
@@ -35,7 +38,26 @@ class RequestsCubit extends Cubit<RequestsState> {
   }) : _getCitizenRequests = getCitizenRequests,
        _cache = cache ?? _resolveCache(),
        _logger = logger ?? const AppLogger(),
-       super(const RequestsLoading());
+       super(const RequestsLoading()) {
+    citizenRequestsRevision.addListener(_onRevision);
+  }
+
+  /// Har `load`da oshadi — sekin kelgan eski javob yangi filtr natijasini
+  /// bosib ketmaydi.
+  int _sequence = 0;
+
+  /// Faqat ro'yxat bir marta yuklangan bo'lsa yangilaymiz.
+  bool _loadedOnce = false;
+
+  void _onRevision() {
+    if (_loadedOnce && !isClosed) unawaited(reload());
+  }
+
+  @override
+  Future<void> close() {
+    citizenRequestsRevision.removeListener(_onRevision);
+    return super.close();
+  }
 
   final GetCitizenRequests _getCitizenRequests;
 
@@ -92,6 +114,10 @@ class RequestsCubit extends Cubit<RequestsState> {
     RequestStatus? status,
     String? query,
   }) async {
+    if (isClosed) return;
+    final sequence = ++_sequence;
+    bool stale() => isClosed || sequence != _sequence;
+    _loadedOnce = true;
     _kind = kind;
     _status = status;
     _query = query;
@@ -114,6 +140,7 @@ class RequestsCubit extends Cubit<RequestsState> {
       final result = await _getCitizenRequests(
         GetCitizenRequestsParams(kind: kind, status: status, query: query),
       );
+      if (stale()) return;
       await result.fold(
         (failure) async {
           _logger.logError(
@@ -137,15 +164,21 @@ class RequestsCubit extends Cubit<RequestsState> {
               items.map((r) => r.toJson()).toList(),
             );
           }
+          if (stale()) return;
           emit(items.isEmpty ? const RequestsEmpty() : RequestsLoaded(items));
         },
       );
     } on Object catch (e, stackTrace) {
       _logger.logError(e, stackTrace, reason: 'RequestsCubit.load');
+      if (stale()) return;
       if (cached != null && cached.isNotEmpty) {
         emit(RequestsLoaded(cached));
       } else {
-        emit(RequestsError('Kutilmagan xatolik: $e'));
+        emit(
+          const RequestsError(
+            "Ma'lumotni yuklab bo'lmadi. Qayta urinib ko'ring",
+          ),
+        );
       }
     }
   }

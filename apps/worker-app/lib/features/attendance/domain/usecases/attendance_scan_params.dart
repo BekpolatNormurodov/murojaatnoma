@@ -11,21 +11,35 @@ import 'package:equatable/equatable.dart';
 /// (`FaceCubit`) o'zi alohida saqlaydi, bu usecase'ga bog'liq emas).
 class AttendanceScanParams extends Equatable {
   const AttendanceScanParams({
-    required this.embedding,
     required this.latitude,
     required this.longitude,
+    this.embedding,
     this.photoUrl,
+    this.accuracy,
   });
 
   /// Liveness tugagach hisoblangan probe yuz embeddingi.
-  final List<double> embedding;
+  ///
+  /// `null` — admin yuz skanerini O'CHIRGAN (`faceRequired == false`):
+  /// so'rov faqat joylashuv bilan yuboriladi (server ham faqat joy
+  /// bo'yicha tekshiradi).
+  final List<double>? embedding;
   final double latitude;
   final double longitude;
+
+  /// GPS aniqligi (metr) — server ixtiyoriy qabul qiladi.
+  final double? accuracy;
 
   /// Yuz tekshiruvidan o'tgan kadr (oldin `/uploads`ga yuklangan) — server
   /// davomat yozuviga "kim keldi" isboti sifatida saqlaydi.
   final String? photoUrl;
 
   @override
-  List<Object?> get props => [embedding, latitude, longitude, photoUrl];
+  List<Object?> get props => [
+    embedding,
+    latitude,
+    longitude,
+    photoUrl,
+    accuracy,
+  ];
 }

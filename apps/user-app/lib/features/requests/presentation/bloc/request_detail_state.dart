@@ -19,34 +19,44 @@ class RequestDetailLoaded extends RequestDetailState {
     required this.request,
     this.messages = const [],
     this.sendingMessage = false,
+    this.messagesFailed = false,
   });
 
   final CitizenRequest request;
 
   /// Murojaat mavzusidagi xabarlar (thread) — fuqaro savollari + xodim
-  /// javoblari, xronologik tartibda. Xabarlarni yuklab bo'lmasa (masalan
-  /// server xatosi) — bo'sh ro'yxat: butun sahifani xato holatiga
-  /// aylantirmaydi, faqat thread bo'sh ko'rinadi.
+  /// javoblari, xronologik tartibda.
   final List<RequestMessage> messages;
 
   /// `true` bo'lsa yangi xabar yuborilmoqda — composer tugmasi loading
   /// holatida.
   final bool sendingMessage;
 
+  /// Thread'ni oxirgi marta yuklab bo'lmadi — [messages] eski (yoki bo'sh)
+  /// bo'lib qoladi, sahifa xato va "Qayta urinish" ko'rsatadi.
+  final bool messagesFailed;
+
   RequestDetailLoaded copyWith({
     CitizenRequest? request,
     List<RequestMessage>? messages,
     bool? sendingMessage,
+    bool? messagesFailed,
   }) {
     return RequestDetailLoaded(
       request: request ?? this.request,
       messages: messages ?? this.messages,
       sendingMessage: sendingMessage ?? this.sendingMessage,
+      messagesFailed: messagesFailed ?? this.messagesFailed,
     );
   }
 
   @override
-  List<Object?> get props => [request, messages, sendingMessage];
+  List<Object?> get props => [
+    request,
+    messages,
+    sendingMessage,
+    messagesFailed,
+  ];
 }
 
 /// Murojaatni yuklashda xatolik (masalan topilmadi/server xatosi) —

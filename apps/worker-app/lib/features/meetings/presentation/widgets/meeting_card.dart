@@ -10,7 +10,7 @@ import 'package:worker_app/features/meetings/presentation/widgets/meeting_status
 /// dart` — bilan bir xil naqsh, mock ma'lumotlar doim to'g'ri formatda,
 /// lekin himoya sifatida).
 String formatMeetingDateTime(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final hh = parsed.hour.toString().padLeft(2, '0');
   final mm = parsed.minute.toString().padLeft(2, '0');

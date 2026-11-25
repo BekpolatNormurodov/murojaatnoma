@@ -35,7 +35,26 @@ class NotificationsCubit extends Cubit<NotificationsState> {
     required AuthCubit authCubit,
   }) : _repository = repository,
        _authCubit = authCubit,
-       super(const NotificationsLoading());
+       super(const NotificationsLoading()) {
+    var workerId = _workerIdOf(authCubit.state);
+    // Qayta kirishda (shu jarayonda) ro'yxat o'zi qayta yuklanadi.
+    _authSub = authCubit.stream.listen((authState) {
+      final next = _workerIdOf(authState);
+      if (next != null && next != workerId) unawaited(load());
+      workerId = next;
+    });
+  }
+
+  StreamSubscription<AuthState>? _authSub;
+
+  static String? _workerIdOf(AuthState state) =>
+      state.isAuthenticated ? state.session?.workerId : null;
+
+  @override
+  Future<void> close() {
+    unawaited(_authSub?.cancel());
+    return super.close();
+  }
 
   final NotificationsRepository _repository;
   final AuthCubit _authCubit;
@@ -53,7 +72,15 @@ class NotificationsCubit extends Cubit<NotificationsState> {
         : 0;
   }
 
+  /// Chiqishda (logout / sessiya tugashi) — oldingi xodimning ro'yxati
+  /// keyingi xodimga ko'rinmasin.
+  void clear() {
+    if (isClosed) return;
+    emit(const NotificationsEmpty());
+  }
+
   Future<void> load() async {
+    if (isClosed) return;
     emit(const NotificationsLoading());
     final employeeId = _authCubit.state.session?.workerId;
     if (employeeId == null || employeeId.isEmpty) {
@@ -65,6 +92,9 @@ class NotificationsCubit extends Cubit<NotificationsState> {
       return;
     }
     final result = await _repository.list(employeeId);
+    // Yuklash davomida chiqilgan (yoki boshqa xodim kirgan) — eski javob
+    // yangi sessiyaga yozilmasin.
+    if (isClosed || _authCubit.state.session?.workerId != employeeId) return;
     result.fold(
       (failure) => emit(NotificationsError(failure.message)),
       (items) {

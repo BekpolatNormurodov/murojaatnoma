@@ -10,6 +10,7 @@ import 'package:worker_app/features/requests/domain/entities/application.dart';
 import 'package:worker_app/features/requests/presentation/bloc/requests_cubit.dart';
 import 'package:worker_app/features/requests/presentation/widgets/application_card.dart';
 import 'package:worker_app/features/requests/presentation/widgets/status_chip.dart';
+import 'package:worker_app/core/widgets/scrollable_empty_state.dart';
 
 /// "Murojaatlar" tabi — xodimga tegishli/biriktirilgan fuqarolar
 /// murojaatlari ro'yxati: tab (biriktirilgan/tegishli) + qidiruv + filtr
@@ -238,7 +239,7 @@ class _RequestsEmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return EmptyState(
+    return ScrollableEmptyState(
       icon: AppIcons.requests,
       title: l10n.requestsEmptyTitle,
       message: hasFilters
@@ -259,7 +260,7 @@ class _RequestsErrorView extends StatelessWidget {
     final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: EmptyState(
+      child: ScrollableEmptyState(
         icon: AppIcons.close,
         title: l10n.requestsErrorTitle,
         message: message,

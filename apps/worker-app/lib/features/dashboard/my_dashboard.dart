@@ -217,7 +217,8 @@ class ActivityItem extends Equatable {
     body: j['body'] as String? ?? '',
     type: j['type'] as String? ?? 'GENERAL',
     createdAt:
-        DateTime.tryParse(j['createdAt'] as String? ?? '') ?? DateTime.now(),
+        DateTime.tryParse(j['createdAt'] as String? ?? '')?.toLocal() ??
+        DateTime.now(),
     isRead: j['isRead'] == true,
   );
 

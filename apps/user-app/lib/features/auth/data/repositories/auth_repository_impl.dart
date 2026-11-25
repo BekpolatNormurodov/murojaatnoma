@@ -37,6 +37,12 @@ class AuthRepositoryImpl implements AuthRepository {
       return const Right(unit);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));
+    } on ServerException catch (e) {
+      // Backend xabari ("Kod noto'g'ri", "Kod eskirdi", ...) fuqaroga
+      // aynan ko'rsatilishi kerak — umumiy matn bilan almashtirmaymiz.
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on Exception catch (_) {
       return const Left(ServerFailure('Serverda xatolik yuz berdi'));
     }
@@ -62,6 +68,12 @@ class AuthRepositoryImpl implements AuthRepository {
       return Right(session);
     } on AuthException catch (e) {
       return Left(AuthFailure(e.message));
+    } on ServerException catch (e) {
+      // Backend xabari ("Kod noto'g'ri", "Kod eskirdi", ...) fuqaroga
+      // aynan ko'rsatilishi kerak — umumiy matn bilan almashtirmaymiz.
+      return Left(ServerFailure(e.message));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
     } on Exception catch (_) {
       return const Left(ServerFailure('Serverda xatolik yuz berdi'));
     }
@@ -71,6 +83,15 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthSession?> currentSession() async {
     final raw = prefs.getString(_sessionKey);
     if (raw == null) return null;
+    // Access token yo'q (masalan, server sessiyani rad etib, interceptor
+    // tokenlarni o'chirgan) — saqlangan sessiya "yarim kirgan" holat bo'lib
+    // qolmasin: uni tozalab, login ekraniga qaytaramiz.
+    final token = prefs.getString(AuthInterceptor.tokenKey);
+    if (token == null || token.isEmpty) {
+      await prefs.remove(_sessionKey);
+      await prefs.remove(_refreshTokenKey);
+      return null;
+    }
     // Migratsiya: eski kalitdagi refresh tokenni interceptor kalitiga
     // ko'chiramiz — mavjud sessiyalar qayta login talab qilmaydi.
     final legacy = prefs.getString(_refreshTokenKey);

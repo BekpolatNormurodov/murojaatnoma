@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/news/domain/entities/news_item.dart';
 import 'package:worker_app/features/news/domain/usecases/get_news_list.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'news_state.dart';
 
@@ -28,10 +29,18 @@ class NewsCubit extends Cubit<NewsState> {
         emit(items.isEmpty ? const NewsEmpty() : NewsLoaded(items));
       });
     } on Object catch (e) {
-      emit(NewsError('Kutilmagan xatolik: $e'));
+      emit(NewsError(unexpectedError(e)));
     }
   }
 
   /// Qayta yuklaydi (pull-to-refresh, "Qayta urinish" tugmasi).
   Future<void> reload() => load();
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(NewsState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

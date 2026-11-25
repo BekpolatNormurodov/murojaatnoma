@@ -7,6 +7,7 @@ import 'package:worker_app/features/requests/domain/repositories/applications_re
 import 'package:worker_app/features/requests/domain/usecases/get_application.dart';
 import 'package:worker_app/features/requests/domain/usecases/rate_application.dart';
 import 'package:worker_app/features/requests/domain/usecases/respond_application.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'request_detail_state.dart';
 
@@ -52,7 +53,7 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
         (application) => emit(RequestDetailLoaded(application: application)),
       );
     } on Object catch (e) {
-      emit(RequestDetailError('Kutilmagan xatolik: $e'));
+      emit(RequestDetailError(unexpectedError(e)));
     }
   }
 
@@ -116,7 +117,7 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     emit(current.copyWith(submitting: true));
     try {
       final result = await action(current.application);
-      return result.fold(
+      return await result.fold(
         (failure) {
           emit(current.copyWith(submitting: false));
           return failure.message;
@@ -128,7 +129,15 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
       );
     } on Object catch (e) {
       emit(current.copyWith(submitting: false));
-      return 'Kutilmagan xatolik: $e';
+      return unexpectedError(e);
     }
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(RequestDetailState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

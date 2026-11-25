@@ -143,6 +143,7 @@ class CitizenRequest extends Equatable {
     this.resolvedAt,
     this.history = const [],
     this.reopenCount = 0,
+    this.attachmentsFailed = false,
   });
 
   factory CitizenRequest.fromJson(Map<String, dynamic> json) {
@@ -218,6 +219,35 @@ class CitizenRequest extends Equatable {
   /// Fuqaro "hal bo'lmadi" deb necha marta qayta ochgan (ko'pi bilan 2).
   final int reopenCount;
 
+  /// Biriktirmalar ro'yxatini serverdan olib bo'lmadi ([attachments]
+  /// bo'shligi "fayl yo'q" degani emas). Keshga yozilmaydi.
+  final bool attachmentsFailed;
+
+  CitizenRequest copyWith({
+    List<RequestAttachment>? attachments,
+    bool? attachmentsFailed,
+  }) => CitizenRequest(
+    id: id,
+    kind: kind,
+    category: category,
+    title: title,
+    body: body,
+    status: status,
+    createdAt: createdAt,
+    response: response,
+    attachments: attachments ?? this.attachments,
+    region: region,
+    district: district,
+    rating: rating,
+    ratingComment: ratingComment,
+    address: address,
+    dueAt: dueAt,
+    resolvedAt: resolvedAt,
+    history: history,
+    reopenCount: reopenCount,
+    attachmentsFailed: attachmentsFailed ?? this.attachmentsFailed,
+  );
+
   /// So'nggi biriktirilgan mas'ul xodim (tarixdan).
   String? get assigneeName {
     for (final e in history.reversed) {
@@ -246,6 +276,7 @@ class CitizenRequest extends Equatable {
     resolvedAt,
     history,
     reopenCount,
+    attachmentsFailed,
   ];
 
   Map<String, dynamic> toJson() => {

@@ -21,10 +21,11 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
 
   @override
   Future<Either<Failure, CheckScanResult>> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     try {
       final result = await remote.checkIn(
@@ -32,6 +33,7 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
         latitude: latitude,
         longitude: longitude,
         photoUrl: photoUrl,
+        accuracy: accuracy,
       );
       return Right(result);
     } on AlreadyCheckedInException catch (e) {
@@ -45,10 +47,11 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
 
   @override
   Future<Either<Failure, CheckScanResult>> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     try {
       final result = await remote.checkOut(
@@ -56,6 +59,7 @@ class AttendanceRepositoryImpl implements AttendanceRepository {
         latitude: latitude,
         longitude: longitude,
         photoUrl: photoUrl,
+        accuracy: accuracy,
       );
       return Right(result);
     } on AlreadyCheckedOutException catch (e) {

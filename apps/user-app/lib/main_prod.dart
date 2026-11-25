@@ -1,4 +1,5 @@
 import 'package:app_core/app_core.dart';
+import 'package:user_app/core/constants/api_constants.dart';
 import 'package:user_app/main.dart' as bootstrap;
 
 /// Prod flavor entrypoint.
@@ -17,7 +18,7 @@ void main() {
   AppConfig.init(
     flavor: AppFlavor.prod,
     useMock: useMock,
-    apiBaseUrl: 'https://murojaatnoma.uz/api',
+    apiBaseUrl: kApiBaseUrl,
   );
   bootstrap.bootstrap();
 }

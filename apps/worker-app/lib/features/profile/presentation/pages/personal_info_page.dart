@@ -163,7 +163,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                       ),
                 icon: AppIcons.scan,
                 variant: AppButtonVariant.secondary,
-                onPressed: () => context.push('/face/enroll'),
+                onPressed: () => context.push('/face/enroll?voluntary=1'),
               ),
             ),
             const SizedBox(height: 16),

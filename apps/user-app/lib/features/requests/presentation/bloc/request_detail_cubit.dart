@@ -1,3 +1,5 @@
+import 'package:app_core/app_core.dart';
+import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:user_app/core/monitoring/app_logger.dart';
@@ -52,11 +54,27 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
   /// parametrsiz qayta yuklay olishi uchun saqlanadi.
   String? _lastId;
 
+  /// [rate]/[reopen] bajarilayotganmi — ikki marta bosish ikki so'rov
+  /// yubormasin.
+  bool _mutating = false;
+
+  /// Xabar yuborilganda/baholanganda/qayta ochilganda oshadi — shundan
+  /// OLDIN boshlangan [reloadMessages] javobi yangi holatni bosib ketmaydi.
+  int _revision = 0;
+
+  /// Fuqaroga ko'rsatiladigan umumiy matn — xom istisno matni (`$e`) UI'ga
+  /// hech qachon chiqmaydi (u faqat logga yoziladi).
+  static const _unexpectedError =
+      "Ma'lumotni yuklab bo'lmadi. Qayta urinib ko'ring";
+  static const _sendFailed = "Xabar yuborilmadi. Qayta urinib ko'ring";
+  static const _busyMessage = "So'rov bajarilmoqda, biroz kuting";
+
   Future<void> load(String id) async {
     _lastId = id;
     emit(const RequestDetailLoading());
     try {
       final result = await _getCitizenRequest(GetCitizenRequestParams(id));
+      if (isClosed) return;
       await result.fold(
         (failure) async {
           _logger.logError(
@@ -68,65 +86,102 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
         },
         (request) async {
           final messages = await _fetchMessages(id);
-          emit(RequestDetailLoaded(request: request, messages: messages));
+          if (isClosed) return;
+          emit(
+            RequestDetailLoaded(
+              request: request,
+              messages: messages ?? const [],
+              messagesFailed: messages == null,
+            ),
+          );
         },
       );
     } on Object catch (e, stackTrace) {
       _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.load');
-      emit(RequestDetailError('Kutilmagan xatolik: $e'));
+      if (isClosed) return;
+      emit(const RequestDetailError(_unexpectedError));
     }
   }
 
   /// Xabarlarni (thread) alohida yuklaydi — muvaffaqiyatsizlik butun
-  /// sahifani xato holatiga aylantirmaydi, faqat bo'sh ro'yxat qaytaradi
-  /// (murojaatning o'zi allaqachon yuklangan, xabarlar ikkinchi darajali).
-  Future<List<RequestMessage>> _fetchMessages(String id) async {
+  /// sahifani xato holatiga aylantirmaydi; `null` qaytadi (bo'sh ro'yxatdan
+  /// farqli: chaqiruvchi mavjud xabarlarni saqlab qoladi).
+  Future<List<RequestMessage>?> _fetchMessages(String id) async {
     try {
       final result = await _getRequestMessages(GetRequestMessagesParams(id));
-      final messages = result.fold((failure) {
+      return result.fold<List<RequestMessage>?>((failure) {
         _logger.logError(
           failure,
           StackTrace.current,
           reason: 'RequestDetailCubit._fetchMessages',
         );
-        return const <RequestMessage>[];
+        return null;
       }, (messages) => messages);
-      return messages;
     } on Object catch (e, stackTrace) {
       _logger.logError(
         e,
         stackTrace,
         reason: 'RequestDetailCubit._fetchMessages',
       );
-      return const [];
+      return null;
     }
   }
 
   /// Hal qilingan murojaatni baholaydi (1..5). Xato bo'lsa — xabar matni.
   Future<String?> rate(int rating, {String? comment}) async {
     final id = _lastId;
-    final current = state;
-    if (id == null || current is! RequestDetailLoaded) return null;
-    final result = await _repository.rate(id, rating, comment: comment);
-    return result.fold((f) => f.message, (updated) {
-      emit(current.copyWith(request: updated));
-      return null;
-    });
+    if (id == null || state is! RequestDetailLoaded) return null;
+    if (_mutating) return _busyMessage;
+    _mutating = true;
+    try {
+      final result = await _repository.rate(id, rating, comment: comment);
+      return result.fold<String?>((f) => f.message, (updated) {
+        _revision++;
+        final latest = state;
+        if (!isClosed && latest is RequestDetailLoaded) {
+          emit(latest.copyWith(request: updated));
+        }
+        return null;
+      });
+    } on Object catch (e, stackTrace) {
+      _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.rate');
+      return _unexpectedError;
+    } finally {
+      _mutating = false;
+    }
   }
 
   /// "Muammo hal bo'lmadi" — qayta ochadi; sabab thread'ga yoziladi.
   Future<String?> reopen(String reason) async {
     final id = _lastId;
-    final current = state;
-    if (id == null || current is! RequestDetailLoaded) return null;
-    final result = await _repository.reopen(id, reason);
-    final updated = result.fold((_) => null, (r) => r);
-    if (updated == null) {
-      return result.fold((f) => f.message, (_) => null);
+    if (id == null || state is! RequestDetailLoaded) return null;
+    if (_mutating) return _busyMessage;
+    _mutating = true;
+    try {
+      final result = await _repository.reopen(id, reason);
+      final updated = result.fold((_) => null, (r) => r);
+      if (updated == null) {
+        return result.fold<String?>((f) => f.message, (_) => null);
+      }
+      _revision++;
+      final messages = await _fetchMessages(id);
+      final latest = state;
+      if (!isClosed && latest is RequestDetailLoaded) {
+        emit(
+          latest.copyWith(
+            request: updated,
+            messages: messages,
+            messagesFailed: messages == null,
+          ),
+        );
+      }
+      return null;
+    } on Object catch (e, stackTrace) {
+      _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.reopen');
+      return _unexpectedError;
+    } finally {
+      _mutating = false;
     }
-    final messages = await _fetchMessages(id);
-    emit(current.copyWith(request: updated, messages: messages));
-    return null;
   }
 
   /// So'nggi ishlatilgan ID bilan qayta yuklaydi ("Qayta urinish").
@@ -135,14 +190,47 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     return id == null ? Future<void>.value() : load(id);
   }
 
-  /// Faqat xabarlar thread'ini qayta yuklaydi (pastga tortib yangilash) —
-  /// butun sahifa skeleton holatiga qaytmaydi.
+  /// Pastga tortib yangilash: murojaat (holat/biriktirmalar) va xabarlar
+  /// qayta yuklanadi — sahifa skeletonga qaytmaydi, xatoda mavjud ma'lumot
+  /// saqlanadi.
   Future<void> reloadMessages() async {
     final id = _lastId;
-    final current = state;
-    if (id == null || current is! RequestDetailLoaded) return;
+    if (id == null || state is! RequestDetailLoaded) return;
+    final revision = _revision;
+    CitizenRequest? request;
+    try {
+      final result = await _getCitizenRequest(GetCitizenRequestParams(id));
+      request = result.fold((_) => null, (r) => r);
+    } on Object catch (e, stackTrace) {
+      _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.reload');
+    }
+    if (isClosed) return;
     final messages = await _fetchMessages(id);
-    emit(current.copyWith(messages: messages));
+    final latest = state;
+    // Yuklash davomida xabar yuborilayotgan bo'lsa — optimistik yozuvni
+    // eskirgan ro'yxat bilan ustidan yozmaymiz.
+    if (isClosed ||
+        latest is! RequestDetailLoaded ||
+        latest.sendingMessage ||
+        revision != _revision) {
+      return;
+    }
+    if (request != null && request.attachmentsFailed) {
+      final old = latest.request;
+      if (!old.attachmentsFailed) {
+        request = request.copyWith(
+          attachments: old.attachments,
+          attachmentsFailed: false,
+        );
+      }
+    }
+    emit(
+      latest.copyWith(
+        request: request,
+        messages: messages,
+        messagesFailed: messages == null,
+      ),
+    );
   }
 
   /// [text]ni fuqaro nomidan murojaat thread'iga yuboradi.
@@ -163,6 +251,8 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
     if (id == null || current is! RequestDetailLoaded || trimmed.isEmpty) {
       return null;
     }
+    // Oldingi xabar hali yuborilmoqda — ikkinchisini parallel yubormaymiz.
+    if (current.sendingMessage) return _busyMessage;
 
     final optimisticId =
         '$_optimisticIdPrefix${DateTime.now().microsecondsSinceEpoch}';
@@ -173,6 +263,7 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
       createdAt: DateTime.now().toIso8601String(),
     );
 
+    _revision++;
     emit(
       current.copyWith(
         sendingMessage: true,
@@ -180,9 +271,17 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
       ),
     );
 
-    final result = await _sendRequestMessage(
-      SendRequestMessageParams(id: id, text: trimmed),
-    );
+    Either<Failure, RequestMessage> result;
+    try {
+      result = await _sendRequestMessage(
+        SendRequestMessageParams(id: id, text: trimmed),
+      );
+    } on Object catch (e, stackTrace) {
+      _logger.logError(e, stackTrace, reason: 'RequestDetailCubit.sendMessage');
+      result = const Left(ServerFailure(_sendFailed));
+    }
+    // Sahifa yopilgan — natija endi hech kimga ko'rsatilmaydi.
+    if (isClosed) return null;
 
     return result.fold(
       (failure) {
@@ -205,15 +304,23 @@ class RequestDetailCubit extends Cubit<RequestDetailState> {
         return failure.message;
       },
       (message) {
+        _revision++;
         final latest = state;
         if (latest is RequestDetailLoaded) {
+          // Shu orada thread qayta yuklangan bo'lsa (masalan "qayta ochish")
+          // optimistik yozuv yo'q — yuborilgan xabar baribir ko'rinsin,
+          // lekin ikki marta emas.
+          final others = latest.messages.where((m) => m.id != message.id);
+          final replaced = [
+            for (final m in others)
+              if (m.id == optimisticId) message else m,
+          ];
           emit(
             latest.copyWith(
               sendingMessage: false,
-              messages: [
-                for (final m in latest.messages)
-                  if (m.id == optimisticId) message else m,
-              ],
+              messages: replaced.contains(message)
+                  ? replaced
+                  : [...replaced, message],
             ),
           );
         }

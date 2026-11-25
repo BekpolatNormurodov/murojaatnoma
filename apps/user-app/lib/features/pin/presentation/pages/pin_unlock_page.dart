@@ -6,8 +6,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:user_app/core/session/logout_service.dart';
+import 'package:user_app/core/widgets/confirm_dialog.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/pin/presentation/bloc/pin_cubit.dart';
+import 'package:user_app/injection.dart';
 
 /// Ilova-qulf ekrani (`/pin/unlock`) — sessiya tiklangan (auto-login,
 /// qurilma sovuq ishga tushirilgan) HAR safar ko'rsatiladi. `pinUnlocked`
@@ -15,7 +18,12 @@ import 'package:user_app/features/pin/presentation/bloc/pin_cubit.dart';
 /// boshlanadi, faqat to'g'ri PIN kiritilgach `true`ga o'tadi (qarang:
 /// `redirect_policy.dart`, `AuthCubit.markPinUnlocked`).
 class PinUnlockPage extends StatefulWidget {
-  const PinUnlockPage({super.key});
+  const PinUnlockPage({this.lockoutDelay = _defaultLockoutDelay, super.key});
+
+  static const _defaultLockoutDelay = Duration(milliseconds: 1800);
+
+  /// Urinishlar tugagach xabar shuncha ko'rinib turadi, so'ng chiqariladi.
+  final Duration lockoutDelay;
 
   @override
   State<PinUnlockPage> createState() => _PinUnlockPageState();
@@ -23,6 +31,44 @@ class PinUnlockPage extends StatefulWidget {
 
 class _PinUnlockPageState extends State<PinUnlockPage> {
   final _pinKey = GlobalKey<AppPinInputState>();
+  Timer? _lockoutTimer;
+  bool _loggingOut = false;
+
+  @override
+  void dispose() {
+    _lockoutTimer?.cancel();
+    super.dispose();
+  }
+
+  /// PIN o'chiriladi va to'liq chiqiladi — qayta kirish SMS kod orqali.
+  Future<void> _logoutForgettingPin() async {
+    if (_loggingOut || !mounted) return;
+    // Server javobi kutilayotganda klaviatura va tugma bloklanadi.
+    setState(() => _loggingOut = true);
+    _lockoutTimer?.cancel();
+    await getIt<LogoutService>().logout(
+      router: GoRouter.of(context),
+      forgetPin: true,
+    );
+    if (mounted) setState(() => _loggingOut = false);
+  }
+
+  Future<void> _confirmForgotPin() async {
+    final ru = Localizations.localeOf(context).languageCode == 'ru';
+    final confirmed = await showConfirmDialog(
+      context: context,
+      icon: AppIcons.logout,
+      title: ru ? 'Забыли PIN-код?' : 'PIN kodni unutdingizmi?',
+      message: ru
+          ? 'Вы выйдете из аккаунта. Войдите по SMS-коду и задайте новый PIN.'
+          : 'Hisobdan chiqasiz. SMS kod bilan qayta kirib, yangi PIN '
+                "o'rnatasiz.",
+      confirmLabel: context.l10n.logoutConfirmCta,
+      cancelLabel: context.l10n.cancel,
+      danger: true,
+    );
+    if (confirmed) await _logoutForgettingPin();
+  }
 
   /// Qulf ochilgach bosh sahifaga o'tkazadi.
   ///
@@ -45,8 +91,13 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
           switch (state) {
             case PinVerifyError():
             case PinStorageError():
+              _pinKey.currentState?.shakeAndClear();
             case PinLockedOut():
               _pinKey.currentState?.shakeAndClear();
+              _lockoutTimer ??= Timer(
+                widget.lockoutDelay,
+                () => unawaited(_logoutForgettingPin()),
+              );
             case PinVerifySuccess():
               unawaited(_proceedToHome(context));
             case PinInitial():
@@ -71,7 +122,9 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
           // Kiritilgan PIN saqlangan xesh bilan solishtirilayotgan qisqa
           // oraliq — klaviatura shu payt bloklanadi (`PinSetPage`dagi
           // `PinSaving` bilan bir xil naqsh) va kichik spinner ko'rsatiladi.
-          final busy = state is PinVerifying;
+          final busy = state is PinVerifying || _loggingOut;
+          final locked = state is PinLockedOut;
+          final ru = Localizations.localeOf(context).languageCode == 'ru';
 
           return SafeArea(
             child: LayoutBuilder(
@@ -109,17 +162,17 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
                           SizedBox(
                             height: 24,
                             child: Center(
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 150),
-                                opacity: busy ? 1 : 0,
-                                child: const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.2,
-                                  ),
-                                ),
-                              ),
+                              // Spinner faqat `busy`da daraxtda — ko'rinmas
+                              // holda ham aylanib turmasin.
+                              child: busy
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                      ),
+                                    )
+                                  : null,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -127,7 +180,7 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
                             // Tekshirish davom etayotganda klaviatura
                             // bloklanadi — ikkita parallel `verifyPin`
                             // chaqiruvining (poyga sharoiti) oldini oladi.
-                            ignoring: busy,
+                            ignoring: busy || locked,
                             child: AnimatedOpacity(
                               duration: const Duration(milliseconds: 150),
                               opacity: busy ? 0.5 : 1,
@@ -140,6 +193,15 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
                             ),
                           ).animate().fadeIn().slideY(begin: 0.08, end: 0),
                           const Spacer(flex: 2),
+                          TextButton(
+                            onPressed: _loggingOut ? null : _confirmForgotPin,
+                            child: Text(
+                              ru
+                                  ? 'Забыли PIN? Выйти'
+                                  : 'PIN kodni unutdingizmi? Chiqish',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ],
                       ),
                     ),

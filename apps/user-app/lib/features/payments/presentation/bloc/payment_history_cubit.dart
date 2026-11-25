@@ -26,9 +26,7 @@ class PaymentHistoryCubit extends Cubit<PaymentHistoryState> {
   }) : _getPaymentHistory = getPaymentHistory,
        _cache =
            cache ??
-           (getIt.isRegistered<CacheService>()
-               ? getIt<CacheService>()
-               : null),
+           (getIt.isRegistered<CacheService>() ? getIt<CacheService>() : null),
        super(const PaymentHistoryLoading());
 
   final GetPaymentHistory _getPaymentHistory;
@@ -48,6 +46,8 @@ class PaymentHistoryCubit extends Cubit<PaymentHistoryState> {
     }
 
     final result = await _getPaymentHistory(const NoParams());
+    // Sahifa yopilgan (masalan chiqishda) — keshga ham yozmaymiz.
+    if (isClosed) return;
     result.fold(
       (failure) {
         if (cached != null && cached.isNotEmpty) {

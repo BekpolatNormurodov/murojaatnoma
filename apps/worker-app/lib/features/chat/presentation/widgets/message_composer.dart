@@ -4,7 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:worker_app/core/recording/media_limits.dart';
 import 'package:worker_app/core/recording/video_recorder_page.dart';
+import 'package:worker_app/features/reports/presentation/pages/report_compose_page.dart'
+    show kReportDocumentExtensions;
 import 'package:worker_app/core/recording/voice_recorder_sheet.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/presentation/widgets/sticker_catalog.dart';
@@ -142,16 +145,23 @@ class _MessageComposerState extends State<MessageComposer> {
     }
   }
 
-  /// REAL qurilma hujjat tanlagichi (`file_picker`) — istalgan turdagi
-  /// faylni tanlaydi va biriktirma sifatida yuboradi.
+  /// REAL qurilma hujjat tanlagichi (`file_picker`) — server qabul qiladigan
+  /// turdagi (va 25 MB gacha) faylni biriktirma sifatida yuboradi.
   Future<void> _pickFile() async {
     setState(() => _busy = true);
     try {
-      final result = await FilePicker.platform.pickFiles();
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: kReportDocumentExtensions,
+      );
       if (result == null || !mounted) return;
       final picked = result.files.single;
       final path = picked.path;
       if (path == null) return;
+      if (picked.size > kMaxUploadBytes) {
+        AppAlert.error(context, kFileTooLargeMessage);
+        return;
+      }
       widget.onSendAttachment(
         ChatAttachment(
           kind: MessageType.file,
@@ -175,6 +185,10 @@ class _MessageComposerState extends State<MessageComposer> {
     try {
       final media = await showVideoRecorderScreen(context);
       if (media == null || !mounted) return;
+      if ((media.sizeBytes ?? 0) > kMaxUploadBytes) {
+        AppAlert.error(context, kFileTooLargeMessage);
+        return;
+      }
       widget.onSendAttachment(
         ChatAttachment(
           kind: MessageType.roundVideo,

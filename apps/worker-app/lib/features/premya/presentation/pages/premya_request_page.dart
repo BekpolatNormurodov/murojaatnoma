@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/premya/domain/usecases/submit_premya.dart';
 import 'package:worker_app/injection.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 /// "Premya so'rash" — xodim ishlagan mehnatiga (masalan reja bajarilgani
 /// uchun) mukofot so'raydigan TO'LIQ EKRANLI sahifa.
@@ -36,27 +40,49 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
     super.dispose();
   }
 
+  String? _amountError;
+
+  /// Ixtiyoriy summa: bo'sh — `null`; aks holda musbat butun son
+  /// (juda katta son `int.tryParse`da jim yo'qolib ketmasin).
+  static const _maxAmount = 1000000000;
+
   Future<void> _submit() async {
+    if (_submitting) return;
+    FocusScope.of(context).unfocus();
     final l10n = context.l10n;
     final reasonText = _reasonController.text.trim();
     final valid = reasonText.isNotEmpty;
-    setState(
-      () => _reasonError = valid ? null : l10n.premyaReasonRequired,
-    );
-    if (!valid) return;
 
     final amountText = _amountController.text.trim();
     final amount = amountText.isEmpty ? null : int.tryParse(amountText);
+    final amountValid =
+        amountText.isEmpty ||
+        (amount != null && amount > 0 && amount <= _maxAmount);
+    setState(() {
+      _reasonError = valid ? null : l10n.premyaReasonRequired;
+      _amountError = amountValid
+          ? null
+          : "Summa 1 dan 1 000 000 000 so'mgacha bo'lishi kerak";
+    });
+    if (!valid || !amountValid) return;
 
     setState(() => _submitting = true);
-    final result = await getIt<SubmitPremya>()(
-      SubmitPremyaParams(reason: reasonText, amount: amount),
-    );
+    final Either<Failure, Object?> result;
+    try {
+      result = await getIt<SubmitPremya>()(
+        SubmitPremyaParams(reason: reasonText, amount: amount),
+      );
+    } on Object catch (e) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      AppAlert.error(context, unexpectedError(e));
+      return;
+    }
     if (!mounted) return;
     setState(() => _submitting = false);
 
-    result.fold(
-      (failure) => AppAlert.error(context, failure.message),
+    await result.fold<Future<void>>(
+      (failure) async => AppAlert.error(context, failure.message),
       (_) async {
         await AppDialog.success(
           context: context,
@@ -96,6 +122,13 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
               controller: _amountController,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              maxLength: 10,
+              errorText: _amountError,
+              onChanged: (_) {
+                if (_amountError != null) {
+                  setState(() => _amountError = null);
+                }
+              },
             ),
             const SizedBox(height: 20),
             _SectionTitle(l10n.premyaReasonLabel),
@@ -130,7 +163,7 @@ class _PremyaRequestPageState extends State<PremyaRequestPage> {
               label: l10n.premyaSubmit,
               icon: AppIcons.send,
               loading: _submitting,
-              onPressed: _submitting ? null : _submit,
+              onPressed: _submitting ? null : () => unawaited(_submit()),
             ),
           ],
         ),

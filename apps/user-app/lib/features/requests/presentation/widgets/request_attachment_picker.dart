@@ -1,7 +1,6 @@
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
-import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/presentation/widgets/request_attachment_tile.dart';
@@ -13,13 +12,9 @@ import 'package:user_app/features/requests/presentation/widgets/request_attachme
 /// orqali oladi, o'zgarishlarni [onChanged] orqali chiqaradi — haqiqiy
 /// ro'yxat holatini chaqiruvchi o'zi saqlaydi.
 ///
-/// Rasm uchun `image_picker` (galereya/kamera) ishlatiladi. Ovozli
-/// xabar/fayl uchun loyihada recorder/file-picker paketi hali
-/// ulanmagan — shuning uchun MOCK biriktirma yaratiladi, shunda oqim va
-/// UI to'liq ishlaydi (`worker-app/features/requests` bilan bir xil
-/// yondashuv).
-// TODO(citizen-requests): real voice/file capture — recorder/file_picker
-// paketi qo'shilgach, mock generatorlari almashtiriladi.
+/// Faqat rasm (`image_picker`: galereya/kamera). Ovoz yozish/fayl tanlash
+/// paketlari ulanmagan va backend fuqarodan hujjat qabul qilmaydi — shuning
+/// uchun bunday tugmalar ko'rsatilmaydi (soxta fayl yaratilmaydi).
 class RequestAttachmentPicker extends StatefulWidget {
   const RequestAttachmentPicker({
     required this.attachments,
@@ -37,8 +32,7 @@ class RequestAttachmentPicker extends StatefulWidget {
   final ValueChanged<List<RequestAttachment>> onChanged;
 
   /// Bitta murojaatga biriktirsa bo'ladigan MAKSIMAL fayllar soni —
-  /// forma "shishib" ketmasligi va tasodifan cheksiz mock fayl/ovoz
-  /// qo'shilishining oldini olish uchun (sarlavha ustidagi hisoblagichda
+  /// forma "shishib" ketmasligi uchun (sarlavha ustidagi hisoblagichda
   /// ham ko'rsatiladi, qarang: `SubmitRequestPage`).
   final int maxCount;
 
@@ -119,39 +113,6 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
     );
   }
 
-  void _addMockVoice() {
-    if (_atLimit) {
-      _showLimitReached();
-      return;
-    }
-    final count = widget.attachments
-        .where((a) => a.type == RequestAttachmentType.voice)
-        .length;
-    final ref = RequestAttachment(
-      type: RequestAttachmentType.voice,
-      path: 'mock://voice/${DateTime.now().millisecondsSinceEpoch}.m4a',
-      name: '${context.l10n.attachmentAddVoice} ${count + 1}.m4a',
-      durationMs: 0,
-    );
-    widget.onChanged([...widget.attachments, ref]);
-  }
-
-  void _addMockFile() {
-    if (_atLimit) {
-      _showLimitReached();
-      return;
-    }
-    final count = widget.attachments
-        .where((a) => a.type == RequestAttachmentType.file)
-        .length;
-    final ref = RequestAttachment(
-      type: RequestAttachmentType.file,
-      path: 'mock://file/${DateTime.now().millisecondsSinceEpoch}',
-      name: '${context.l10n.attachmentAddFile} ${count + 1}.pdf',
-    );
-    widget.onChanged([...widget.attachments, ref]);
-  }
-
   void _remove(RequestAttachment ref) {
     widget.onChanged(widget.attachments.where((a) => a != ref).toList());
   }
@@ -171,16 +132,6 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
               label: l10n.attachmentAddImage,
               icon: AppIcons.gallery,
               onTap: _busy ? null : _addImage,
-            ),
-            AppChip(
-              label: l10n.attachmentAddVoice,
-              icon: IconsaxPlusLinear.microphone_2,
-              onTap: _busy ? null : _addMockVoice,
-            ),
-            AppChip(
-              label: l10n.attachmentAddFile,
-              icon: IconsaxPlusLinear.document_text,
-              onTap: _busy ? null : _addMockFile,
             ),
           ],
         ),

@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/meetings/domain/entities/meeting.dart';
 import 'package:worker_app/features/meetings/domain/usecases/get_meetings.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'meetings_state.dart';
 
@@ -38,7 +39,7 @@ class MeetingsCubit extends Cubit<MeetingsState> {
         emit(items.isEmpty ? const MeetingsEmpty() : MeetingsLoaded(items));
       });
     } on Object catch (e) {
-      emit(MeetingsError('Kutilmagan xatolik: $e'));
+      emit(MeetingsError(unexpectedError(e)));
     }
   }
 
@@ -46,4 +47,12 @@ class MeetingsCubit extends Cubit<MeetingsState> {
   /// "Qayta urinish" tugmasi, yoki tafsilot sahifasidan qaytgach — u yerda
   /// qo'shilish ro'yxatga ta'sir qilgan bo'lishi mumkin).
   Future<void> reload() => load(status: _status);
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(MeetingsState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

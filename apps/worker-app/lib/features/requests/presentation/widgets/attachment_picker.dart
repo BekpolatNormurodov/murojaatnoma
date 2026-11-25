@@ -2,11 +2,15 @@ import 'dart:async';
 
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:worker_app/core/recording/media_limits.dart';
 import 'package:worker_app/core/recording/video_recorder_page.dart';
 import 'package:worker_app/core/recording/voice_recorder_sheet.dart';
+import 'package:worker_app/features/reports/presentation/pages/report_compose_page.dart'
+    show kReportDocumentExtensions;
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 import 'package:worker_app/features/requests/presentation/widgets/attachment_tile.dart';
 
@@ -22,11 +26,8 @@ import 'package:worker_app/features/requests/presentation/widgets/attachment_til
 /// va video — REAL qurilma yozib olish (`showVoiceRecorderSheet` —
 /// `record`, `showVideoRecorderScreen` — `camera`); "Video" chipida
 /// manba sifatida kamera tanlansa ham shu premium recorder ochiladi,
-/// galereyadan tanlash esa hamon `image_picker` orqali. Fayl uchun
-/// loyihada file-picker paketi hali ulanmagan — shuning uchun MOCK
-/// biriktirma yaratiladi (pastdagi "file" metodiga qarang).
-// TODO(requests-ui): real file capture — file_picker paketi qo'shilgach
-// mock generatori almashtiriladi.
+/// galereyadan tanlash esa hamon `image_picker` orqali. Hujjat —
+/// `file_picker` orqali (pdf/doc/xls…, 25 MB gacha).
 class AttachmentPicker extends StatefulWidget {
   const AttachmentPicker({
     required this.attachments,
@@ -90,6 +91,11 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
       if (picked == null) return;
 
       final length = await picked.length();
+      if (!mounted) return;
+      if (length > _maxBytes) {
+        AppAlert.error(context, kFileTooLargeMessage);
+        return;
+      }
       final ref = AttachmentRef(
         type: isVideo ? AttachmentType.video : AttachmentType.image,
         path: picked.path,
@@ -115,6 +121,10 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     try {
       final result = await showVideoRecorderScreen(context);
       if (result == null || !mounted) return;
+      if ((result.sizeBytes ?? 0) > _maxBytes) {
+        AppAlert.error(context, kFileTooLargeMessage);
+        return;
+      }
       final ref = AttachmentRef(
         type: AttachmentType.video,
         path: result.path,
@@ -181,17 +191,46 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
     );
   }
 
-  void _addMockFile() {
-    final count = widget.attachments
-        .where((a) => a.type == AttachmentType.file)
-        .length;
-    final ref = AttachmentRef(
-      type: AttachmentType.file,
-      path: 'mock://file/${DateTime.now().millisecondsSinceEpoch}',
-      name: 'Hujjat ${count + 1}.pdf',
-    );
-    widget.onChanged([...widget.attachments, ref]);
+  /// REAL hujjat tanlash (`file_picker`) — ilgari bu yerda soxta
+  /// "Hujjat N.pdf" (`mock://`) qo'shilardi va yuborishda jim tashlab
+  /// yuborilardi. 25 MB dan katta fayl qo'shilmaydi.
+  Future<void> _addFile() async {
+    setState(() => _busy = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: kReportDocumentExtensions,
+      );
+      if (result == null || result.files.isEmpty || !mounted) return;
+      final picked = result.files.single;
+      final path = picked.path;
+      if (path == null) {
+        AppAlert.error(context, context.l10n.attachmentPickError);
+        return;
+      }
+      if (picked.size > _maxBytes) {
+        AppAlert.error(context, kFileTooLargeMessage);
+        return;
+      }
+      widget.onChanged([
+        ...widget.attachments,
+        AttachmentRef(
+          type: AttachmentType.file,
+          path: path,
+          name: picked.name,
+          sizeBytes: picked.size,
+        ),
+      ]);
+    } on Object {
+      if (mounted) {
+        AppAlert.error(context, context.l10n.attachmentPickError);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
+
+  static const _maxBytes = kMaxUploadBytes;
 
   void _remove(AttachmentRef ref) {
     widget.onChanged(widget.attachments.where((a) => a != ref).toList());
@@ -243,7 +282,7 @@ class _AttachmentPickerState extends State<AttachmentPicker> {
                   child: AppChip(
                     label: l10n.attachmentAddFile,
                     icon: IconsaxPlusLinear.document_text,
-                    onTap: _busy ? null : _addMockFile,
+                    onTap: _busy ? null : () => unawaited(_addFile()),
                   ),
                 ),
               ],

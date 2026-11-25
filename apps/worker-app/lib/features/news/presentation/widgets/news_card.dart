@@ -7,7 +7,7 @@ import 'package:worker_app/features/news/domain/entities/news_item.dart';
 /// ko'rinishga o'giradi; parslab bo'lmasa xom satrni qaytaradi
 /// (`formatMeetingDateTime` — `meetings` moduli — bilan bir xil naqsh).
 String formatNewsDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   return formatDate(parsed);
 }

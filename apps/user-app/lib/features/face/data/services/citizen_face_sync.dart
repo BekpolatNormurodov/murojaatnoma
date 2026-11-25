@@ -26,6 +26,16 @@ class CitizenFaceSync {
   final Duration timeout;
   String? _url;
 
+  /// [reset]da oshadi — chiqishdan oldin boshlangan so'rov javobi keyingi
+  /// fuqaro uchun keshlanmaydi.
+  int _generation = 0;
+
+  /// Chiqish / egasi almashganda: xotiradagi yuz URL'i unutiladi.
+  void reset() {
+    _generation++;
+    _url = null;
+  }
+
   Future<File> _portrait() async {
     final docs = await _documentsDirectory();
     return File('${docs.path}/face/portrait.jpg');
@@ -54,22 +64,26 @@ class CitizenFaceSync {
   /// rasmni yuklab). Hech narsa bo'lmasa `null`.
   Future<String?> ensureUploaded() async {
     if (_url != null) return _url;
+    final generation = _generation;
     try {
       final res = await _client.dio
           .get<Map<String, dynamic>>('/applications/face')
           .timeout(timeout);
       final url = res.data?['photoUrl'];
+      if (generation != _generation) return null;
       if (url is String && url.isNotEmpty) return _url = url;
     } on Object {
       // pastda lokal rasmdan urinamiz
     }
     for (final file in [await _portrait(), await _enrolled()]) {
+      if (generation != _generation) return null;
       if (file.existsSync()) return _upload(file);
     }
     return null;
   }
 
   Future<String?> _upload(File file) async {
+    final generation = _generation;
     try {
       final form = FormData.fromMap({
         'file': await MultipartFile.fromFile(
@@ -82,6 +96,7 @@ class CitizenFaceSync {
           .post<Map<String, dynamic>>('/applications/face', data: form)
           .timeout(timeout);
       final url = res.data?['photoUrl'];
+      if (generation != _generation) return null;
       return url is String && url.isNotEmpty ? _url = url : null;
     } on Object {
       return null;

@@ -89,6 +89,7 @@ class FaceCubit extends Cubit<FaceState> {
   static const _minEyeOpenProbability = 0.30;
 
   CameraController? _controller;
+  var _starting = false;
 
   /// Old kamera tavsifi — `_bindCamera` (va uning jim-xatolikdan keyingi
   /// qayta-bog'lanishi) uni QAYTA ishlatishi uchun saqlanadi.
@@ -135,6 +136,18 @@ class FaceCubit extends Cubit<FaceState> {
   /// boshlaydi. Har bir bosqich xatosi mos `FaceState`ga aylantiriladi —
   /// hech qachon uncaught qolmaydi.
   Future<void> startCamera() async {
+    // Ruxsat dialogi `inactive` -> `resumed` beradi: birinchi ishga tushirish
+    // tugamasdan ikkinchisini boshlamaymiz (ikki kontroller, ikki so'rov).
+    if (_starting || isClosed) return;
+    _starting = true;
+    try {
+      await _startCameraOnce();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _startCameraOnce() async {
     _finished = false;
     _busy = false;
     _stableSince = null;
@@ -156,6 +169,8 @@ class FaceCubit extends Cubit<FaceState> {
       );
       return;
     }
+
+    if (isClosed) return;
 
     try {
       final cameras = await availableCameras();
@@ -204,6 +219,11 @@ class FaceCubit extends Cubit<FaceState> {
       );
       await controller.initialize();
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      // Sahifa shu orada yopilgan — kamerani egasiz qoldirmaymiz.
+      if (isClosed || _finished) {
+        await controller.dispose();
+        return;
+      }
       _controller = controller;
       emit(const FaceSearching());
       _streaming = true;
@@ -260,7 +280,20 @@ class FaceCubit extends Cubit<FaceState> {
   /// Ilova qayta oldinga chiqqanda oqimni tiklaydi; kontroller allaqachon
   /// yo'qolgan bo'lsa, to'liq qayta ishga tushiradi.
   Future<void> resumeCamera() async {
-    if (_finished) return;
+    if (_finished || _starting || isClosed) return;
+    final current = state;
+    if (current is FacePermissionDenied) {
+      // Rad etilgandan keyin dialogni qayta ochmaymiz — faqat holatni
+      // tekshiramiz (foydalanuvchi sozlamalarda yoqqan bo'lishi mumkin).
+      final PermissionStatus status;
+      try {
+        status = await Permission.camera.status;
+      } on Object {
+        return;
+      }
+      if (status.isGranted && !isClosed) await startCamera();
+      return;
+    }
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) {
       await startCamera();
@@ -687,6 +720,13 @@ class FaceCubit extends Cubit<FaceState> {
   }
 
   int _clampByte(int value) => _clampInt(value.toDouble(), 0, 255);
+
+  /// Sahifa yopilgandan keyin tugagan asinxron bosqichlar holat chiqarmaydi.
+  @override
+  void emit(FaceState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 
   @override
   Future<void> close() async {

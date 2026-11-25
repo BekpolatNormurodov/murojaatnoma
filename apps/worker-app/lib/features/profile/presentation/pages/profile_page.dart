@@ -12,7 +12,7 @@ import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/face/domain/repositories/face_repository.dart';
-import 'package:worker_app/core/session/session_service.dart';
+import 'package:worker_app/core/session/logout_flow.dart';
 import 'package:worker_app/features/attendance/data/attendance_history.dart';
 import 'package:worker_app/injection.dart';
 
@@ -52,8 +52,12 @@ class ProfilePage extends StatelessWidget {
     final l10n = context.l10n;
     // Tasodifiy chiqib ketishning oldini olish uchun tasdiqlash modali —
     // "Ha, chiqish" tanlanmasa hech narsa qilinmaydi.
+    // MUHIM: dialog ROOT navigator kontekstida. `AppDialog.confirm`
+    // tugmalari berilgan kontekstning navigatorini `pop` qiladi — profil
+    // tab ichida (shell branch) bo'lgani uchun sahifa kontekstida dialog
+    // emas, PROFIL SAHIFASI yopilib qolardi (qora ekran, chiqish ishlamasdi).
     final confirmed = await AppDialog.confirm(
-      context: context,
+      context: Navigator.of(context, rootNavigator: true).context,
       icon: AppIcons.logout,
       title: l10n.logoutConfirmTitle,
       message: l10n.logoutConfirmMessage,
@@ -63,29 +67,15 @@ class ProfilePage extends StatelessWidget {
     );
     if (!confirmed || !context.mounted) return;
 
-    // Saqlangan JWT/sessiyani ham tozalash kerak — aks holda
-    // `AuthInterceptor` keyingi so'rovlarga eskirgan tokenni qo'shib
-    // yuboraveradi. `logout()` xato tashlasa ham (masalan saqlash
-    // xizmati muvaffaqiyatsiz bo'lsa) chiqish HECH QACHON ilovani
-    // qulatmasligi kerak — shuning uchun bu yerda ushlanadi va
-    // navigatsiya baribir davom etadi.
-    // To'liq tozalash: server (refresh revoke + FCM), lokatsiya navbati, yuz
-    // shabloni, oflayn kesh. Har qadam himoyalangan — hech qachon xato
-    // bermaydi va internet yo'q bo'lsa ham ~6 s ichida tugaydi.
-    await SessionService().logout();
-    if (!context.mounted) return;
+    // To'liq tozalash: server (refresh revoke + FCM), lokatsiya navbati,
+    // oflayn kesh, global holatlar. Har qadam himoyalangan — hech qachon
+    // xato bermaydi.
     final auth = context.read<AuthCubit>();
     final router = GoRouter.of(context);
-    final rootNav = Navigator.of(context, rootNavigator: true);
-    // QORA EKRAN tuzatildi (web-admin "hard redirect" bilan bir xil sabab):
-    // logout'da YOPILMAY qolgan popup/dialog/sheet route'ining barrier'i
-    // (showDialog 0.45-qora barrier, yoki qo'ng'iroq overlay'i) ekran ustida
-    // osilib qolardi — soft `go('/login')` uni olib tashlamaydi. Shuning uchun
-    // avval BARCHA popup route'larini tozalaymiz (GoRouter sahifalari
-    // `PopupRoute` EMAS — saqlanadi), keyin sessiyani reset qilib `/login`ga
-    // aniq o'tamiz. Endi hech qanday overlay osilib qolmaydi.
-    auth.reset();
-    rootNav.popUntil((route) => route is! PopupRoute);
+    await logoutWithProgress(context);
+    // Ilova ildizidagi `AuthNavigationHost` ham `/login`ga o'tkazadi;
+    // quyidagisi — idempotent zaxira.
+    if (auth.state.isAuthenticated) auth.reset();
     router.go('/login');
   }
 
@@ -193,6 +183,16 @@ class ProfilePage extends StatelessWidget {
                             'Календарь и фото',
                           ),
                           accent: true,
+                        ),
+                        _MenuItem(
+                          _t(context, 'Kunlik hisobot', 'Ежедневный отчёт'),
+                          AppIcons.documentUpload,
+                          () => context.push('/reports'),
+                          hint: _t(
+                            context,
+                            "Hisobotlar va hududda bo'lgan vaqt",
+                            'Отчёты и время в зоне',
+                          ),
                         ),
                         _MenuItem(
                           l10n.profileWorkingHoursLabel,

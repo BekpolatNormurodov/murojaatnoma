@@ -78,6 +78,12 @@ class CallCubit extends Cubit<CallState> {
   /// qoladi — ikki marta bosilsa qayta kirmasligi uchun qo'riqchi.
   bool _accepting = false;
 
+  /// Har bir tozalashda oshadi — uzoq `await`dan qaytgan `startCall`/`accept`
+  /// qo'ng'iroq allaqachon tugaganini shu orqali biladi.
+  int _generation = 0;
+
+  bool _stale(int generation) => generation != _generation || isClosed;
+
   /// Faol qo'ng'iroq bormi (2-qo'ng'iroq qo'riqchisi uchun).
   bool get _busy =>
       state.phase == CallPhase.outgoing ||
@@ -121,21 +127,28 @@ class CallCubit extends Cubit<CallState> {
       ),
     );
 
+    final generation = _generation;
     final mediaReady = await _openLocalMedia(media);
     if (!mediaReady) return; // _fail allaqachon holatni tugatgan.
 
-    await _createPeerConnection();
+    await _createPeerConnection(generation);
+    if (_stale(generation)) return;
     await _addLocalTracks();
+    if (_stale(generation)) return;
 
     final callId = await _socket.inviteCall(
       toUserId: toUserId,
       media: media.wire,
     );
+    if (_stale(generation)) {
+      // Ack kelguncha bekor qilingan — narigi tomon jiringlab qolmasin.
+      if (callId != null) _socket.cancelCall(callId);
+      return;
+    }
     if (callId == null) {
       _fail("Qo'ng'iroqni boshlab bo'lmadi");
       return;
     }
-    if (state.phase != CallPhase.outgoing) return; // oradanto tugadi.
     emit(state.copyWith(callId: callId));
   }
 
@@ -149,15 +162,18 @@ class CallCubit extends Cubit<CallState> {
     // Jiringlash (FCM to'liq-ekran) bildirishnomasini darhol olib tashlaymiz.
     unawaited(_notifications.cancelIncomingCall());
 
+    final generation = _generation;
     final mediaReady = await _openLocalMedia(state.media);
     if (!mediaReady) {
       // Ruxsat berilmasa — chaqiruvchiga rad javobi va tozalash.
-      _socket.rejectCall(callId);
+      if (state.endReason == CallEndReason.failed) _socket.rejectCall(callId);
       return;
     }
 
-    await _createPeerConnection();
+    await _createPeerConnection(generation);
+    if (_stale(generation)) return;
     await _addLocalTracks();
+    if (_stale(generation)) return;
     _socket.acceptCall(callId);
     emit(state.copyWith(phase: CallPhase.connecting));
     _armConnectWatchdog();
@@ -205,6 +221,24 @@ class CallCubit extends Cubit<CallState> {
     final callId = state.callId;
     if (callId != null) _socket.endCall(callId);
     _finish(CallEndReason.hangup);
+  }
+
+  /// Logout / sessiya tugashi: qo'ng'iroqni tugatadi, media yopiladi va
+  /// holat darhol [CallPhase.idle]ga qaytadi.
+  void endSession() {
+    switch (state.phase) {
+      case CallPhase.outgoing:
+        cancel();
+      case CallPhase.incoming:
+        reject();
+      case CallPhase.connecting:
+      case CallPhase.active:
+        hangUp();
+      case CallPhase.idle:
+      case CallPhase.ended:
+        _teardownMedia();
+    }
+    if (state.phase != CallPhase.idle) emit(const CallState.idle());
   }
 
   /// Mikrofonni yoqadi/o'chiradi.
@@ -381,6 +415,7 @@ class CallCubit extends Cubit<CallState> {
   /// to'ldiradi. Ruxsat berilmasa/xatolik bo'lsa `false` qaytaradi va
   /// holatni [CallEndReason.failed] bilan tugatadi.
   Future<bool> _openLocalMedia(CallMedia media) async {
+    final generation = _generation;
     try {
       await _ensureRenderers();
       final constraints = <String, dynamic>{
@@ -389,20 +424,34 @@ class CallCubit extends Cubit<CallState> {
             ? {'facingMode': 'user'}
             : false,
       };
+      if (_stale(generation)) return false;
       final stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (_stale(generation)) {
+        for (final track in stream.getTracks()) {
+          unawaited(track.stop());
+        }
+        unawaited(stream.dispose());
+        return false;
+      }
       _localStream = stream;
       localRenderer.srcObject = stream;
       return true;
     } on Object catch (e) {
       debugPrint('[call] getUserMedia error: $e');
+      if (_stale(generation)) return false;
       _fail('Kamera/mikrofonga ruxsat berilmadi');
       return false;
     }
   }
 
-  Future<void> _createPeerConnection() async {
+  Future<void> _createPeerConnection(int generation) async {
     final config = await _iceConfig();
+    if (_stale(generation)) return;
     final pc = await createPeerConnection(config);
+    if (_stale(generation)) {
+      unawaited(pc.close());
+      return;
+    }
 
     pc
       ..onIceCandidate = (RTCIceCandidate candidate) {
@@ -578,6 +627,7 @@ class CallCubit extends Cubit<CallState> {
   /// TREKLAR to'xtaydi, PC yopiladi, rendererlar bo'shatiladi — kamera
   /// hech qachon "osilib" qolmaydi.
   void _teardownMedia() {
+    _generation++;
     _accepting = false;
     _connectTimer?.cancel();
     _connectTimer = null;

@@ -128,11 +128,18 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<AuthSession?> currentSession() async {
     final raw = prefs.getString(_sessionKey);
     if (raw == null) return null;
+    // Access token yo'q — sessiya yaroqsiz (masalan token tozalangach ilova
+    // o'ldirilgan). Aks holda "kirgan, lekin har ekran 401" holati qolardi.
+    if ((prefs.getString(AuthInterceptor.tokenKey) ?? '').isEmpty) {
+      await logout();
+      return null;
+    }
     final session =
         AuthSessionModel.fromJson(jsonDecode(raw) as Map<String, dynamic>);
     // Migratsiya: eski sessiyalarda refresh token `SharedPreferences`ga
     // yozilmagan bo'lishi mumkin — `AuthInterceptor` auto-refresh qila olishi
-    // uchun uni bir marta ko'chirib qo'yamiz (qayta login talab qilinmaydi).
+    // uchun uni bir marta ko'chirib qo'yamiz (faqat access token bor paytda;
+    // rotatsiya qilingan yangi token hech qachon ustidan yozilmaydi).
     final refreshToken = session.refreshToken;
     if (refreshToken != null &&
         refreshToken.isNotEmpty &&

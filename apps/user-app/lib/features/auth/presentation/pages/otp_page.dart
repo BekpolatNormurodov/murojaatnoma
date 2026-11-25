@@ -31,6 +31,10 @@ class _OtpPageState extends State<OtpPage> {
   Timer? _resendTimer;
   int _secondsLeft = _resendCooldownSeconds;
 
+  /// "Qayta yuborish" so'rovi javobini kutyapmizmi — muvaffaqiyatsiz
+  /// bo'lsa, fuqaro 30 soniya kutmasdan darhol qayta urina olishi kerak.
+  bool _resending = false;
+
   @override
   void initState() {
     super.initState();
@@ -61,7 +65,10 @@ class _OtpPageState extends State<OtpPage> {
 
   void _handleResend(BuildContext context) {
     _otpKey.currentState?.clear();
-    setState(() => _code = '');
+    setState(() {
+      _code = '';
+      _resending = true;
+    });
     context.read<AuthCubit>().requestOtp(widget.phone);
     _startResendCooldown();
   }
@@ -82,7 +89,15 @@ class _OtpPageState extends State<OtpPage> {
         listener: (context, state) {
           if (state.status == AuthStatus.authenticated) {
             context.go('/home');
+          } else if (state.status == AuthStatus.otpSent) {
+            _resending = false;
           } else if (state.status == AuthStatus.error) {
+            if (_resending) {
+              // Kod qayta YUBORILMADI — sovutishni bekor qilamiz.
+              _resending = false;
+              _resendTimer?.cancel();
+              setState(() => _secondsLeft = 0);
+            }
             // Noto'g'ri/eskirgan kod — PIN oqimidagi `shakeAndClear` bilan
             // bir xil taassurot: kataklar silkinadi, tozalanadi va
             // foydalanuvchi darhol qayta kirita boshlashi mumkin.

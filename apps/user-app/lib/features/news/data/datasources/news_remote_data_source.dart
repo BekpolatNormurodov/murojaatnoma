@@ -29,8 +29,7 @@ String _extractNewsErrorMessage(DioException e) {
 }
 
 /// Real backend implementatsiyasi — `GET https://murojaatnoma.uz/api/news`
-/// orqali ishlaydi. Endpoint `@Public` (avtorizatsiya tokeni talab
-/// qilinmaydi).
+/// orqali ishlaydi.
 ///
 /// Javob YALANG'OCH massiv (`List<dynamic>`) YOKI sahifalangan
 /// `{data: [...]}` konvert (envelope) shaklida kelishi mumkin — ikkalasi
@@ -60,6 +59,9 @@ class NewsApiImpl implements NewsRemoteDataSource {
           .map(NewsItem.fromJson)
           .toList();
     } on DioException catch (e) {
+      // Backend hozircha `GET /news`ni fuqaroga yopgan (403) — bu "xato"
+      // emas: "Qayta urinish" hech qachon yordam bermaydi, bo'lim bo'sh.
+      if (e.response?.statusCode == 403) return const [];
       throw ServerException(_extractNewsErrorMessage(e));
     }
   }

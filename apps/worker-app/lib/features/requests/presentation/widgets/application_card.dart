@@ -9,14 +9,14 @@ import 'package:worker_app/features/requests/presentation/widgets/status_chip.da
 /// parslab bo'lmasa xom satrni qaytaradi (mock ma'lumotlar doim to'g'ri
 /// formatda, lekin himoya sifatida).
 String formatIsoDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   return parsed == null ? iso : formatDate(parsed);
 }
 
 /// [formatIsoDate] bilan bir xil, lekin soat:daqiqani ham qo'shadi —
 /// javob berilgan payt kabi to'liq vaqt muhim bo'lgan joylarda.
 String formatIsoDateTime(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final hh = parsed.hour.toString().padLeft(2, '0');
   final mm = parsed.minute.toString().padLeft(2, '0');
@@ -95,20 +95,36 @@ class ApplicationCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 const Icon(AppIcons.coin, size: 14, color: AppColors.warning),
                 const SizedBox(width: 4),
-                Text(
-                  '${application.points} ${l10n.pointsSuffix}',
-                  style: AppTextStyles.caption.copyWith(
-                    color: inkSoft,
-                    fontWeight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    '${application.points} ${l10n.pointsSuffix}',
+                    style: AppTextStyles.caption.copyWith(
+                      color: inkSoft,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
-              const Spacer(),
-              Icon(AppIcons.calendar, size: 14, color: inkMuted),
-              const SizedBox(width: 4),
-              Text(
-                formatIsoDate(application.createdAt),
-                style: AppTextStyles.caption.copyWith(color: inkMuted),
+              const SizedBox(width: 8),
+              // Sana o'ngda; tor ekran / katta shriftda toshib ketmaydi.
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Icon(AppIcons.calendar, size: 14, color: inkMuted),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        formatIsoDate(application.createdAt),
+                        style: AppTextStyles.caption.copyWith(color: inkMuted),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

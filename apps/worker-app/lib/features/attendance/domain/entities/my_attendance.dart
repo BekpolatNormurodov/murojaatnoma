@@ -22,6 +22,7 @@ class MyAttendance extends Equatable {
     this.workEndTime = '',
     this.zonesCount = 0,
     this.officeRadiusM,
+    this.faceRequired = true,
   });
 
   factory MyAttendance.fromJson(Map<String, dynamic> json) {
@@ -39,6 +40,9 @@ class MyAttendance extends Equatable {
       officeRadiusM:
           ((json['workplace'] as Map<String, dynamic>?)?['radiusM'] as num?)
               ?.toInt(),
+      // Eski backend bu maydonni bermaydi — yuz skaneri majburiy deb
+      // hisoblanadi (avvalgi xatti-harakat).
+      faceRequired: json['faceRequired'] as bool? ?? true,
       today: dayFromMyAttendanceJson(
         json['today'] as Map<String, dynamic>? ?? const {},
       ),
@@ -77,6 +81,11 @@ class MyAttendance extends Equatable {
   /// Ofis radiusi (metr) — keldi-ketdi qayerdan qabul qilinadi.
   final int? officeRadiusM;
 
+  /// Admin yuz skanerini yoqib qo'yganmi (`GET /attendance/me` →
+  /// `faceRequired`). `false` — keldi/ketdi faqat joylashuv bo'yicha
+  /// belgilanadi (kamera ochilmaydi).
+  final bool faceRequired;
+
   @override
   List<Object?> get props => [
     employeeId,
@@ -88,6 +97,7 @@ class MyAttendance extends Equatable {
     workEndTime,
     zonesCount,
     officeRadiusM,
+    faceRequired,
   ];
 }
 

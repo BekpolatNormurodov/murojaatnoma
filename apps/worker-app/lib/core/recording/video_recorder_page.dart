@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
+import 'package:worker_app/core/recording/media_limits.dart';
 import 'package:worker_app/core/recording/recorded_media.dart';
 import 'package:worker_app/core/recording/recording_format.dart';
 import 'package:worker_app/core/recording/recording_paths.dart';
@@ -160,7 +161,14 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
   }
 
   Future<void> _openController(CameraDescription description) async {
-    final controller = CameraController(description, ResolutionPreset.high);
+    // O'rtacha sifat + cheklangan bitreyt: yozuv 25 MB ga sig'adi va sekin
+    // internetda yuklanadi.
+    final controller = CameraController(
+      description,
+      ResolutionPreset.medium,
+      videoBitrate: kVideoBitrate,
+      audioBitrate: kAudioBitrate,
+    );
     await controller.initialize();
     if (!mounted) {
       unawaited(controller.dispose());
@@ -200,7 +208,10 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
       _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
         final startedAt = _startedAt;
         if (!mounted || startedAt == null) return;
-        setState(() => _elapsed = DateTime.now().difference(startedAt));
+        final elapsed = DateTime.now().difference(startedAt);
+        setState(() => _elapsed = elapsed);
+        // Chegaraga yetdi — yozuv avtomatik to'xtaydi (yo'qolmaydi).
+        if (elapsed >= kMaxVideoRecording) unawaited(_stopRecording());
       });
       setState(() {
         _recording = true;
@@ -213,9 +224,12 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
     }
   }
 
+  bool _stopping = false;
+
   Future<void> _stopRecording() async {
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null || _stopping) return;
+    _stopping = true;
     _ticker?.cancel();
     _ticker = null;
 
@@ -262,6 +276,8 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
         setState(() => _recording = false);
         AppAlert.error(context, context.l10n.videoRecorderError);
       }
+    } finally {
+      _stopping = false;
     }
   }
 
@@ -271,6 +287,7 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
     _previewController = null;
     await preview?.dispose();
     if (path != null) unawaited(_deleteQuietly(path));
+    if (!mounted) return;
     setState(() {
       _phase = _Phase.live;
       _recordedPath = null;
@@ -384,7 +401,10 @@ class _LiveView extends StatelessWidget {
                       onTap: recording ? null : onClose,
                     ),
                     const Spacer(),
-                    if (recording) _RecBadge(elapsed: elapsed),
+                    if (recording)
+                      _RecBadge(elapsed: elapsed)
+                    else
+                      const _LimitBadge(),
                     const Spacer(),
                     const SizedBox(width: 44),
                   ],
@@ -495,7 +515,9 @@ class _RecBadge extends StatelessWidget {
               .fadeOut(duration: 500.ms),
           const SizedBox(width: 8),
           Text(
-            formatRecordingDuration(elapsed),
+            // Qolgan vaqt (ortga sanash).
+            '${formatRecordingDuration(elapsed)} · qoldi '
+            '${formatRecordingDuration(_remaining(elapsed))}',
             style: AppTextStyles.label.copyWith(
               color: AppColors.surface,
               fontFeatures: const [FontFeature.tabularFigures()],
@@ -505,6 +527,29 @@ class _RecBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+Duration _remaining(Duration elapsed) {
+  final left = kMaxVideoRecording - elapsed;
+  return left.isNegative ? Duration.zero : left;
+}
+
+/// Yozishdan oldin chegarani aytib turadi.
+class _LimitBadge extends StatelessWidget {
+  const _LimitBadge();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(99),
+    ),
+    child: Text(
+      "Ko'pi bilan ${formatRecordingDuration(kMaxVideoRecording)}",
+      style: AppTextStyles.caption.copyWith(color: AppColors.surface),
+    ),
+  );
 }
 
 class _CircleIconButton extends StatelessWidget {

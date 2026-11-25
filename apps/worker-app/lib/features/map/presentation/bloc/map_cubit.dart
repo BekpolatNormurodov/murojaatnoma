@@ -4,6 +4,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
 
 part 'map_state.dart';
@@ -28,10 +29,14 @@ class MapCubit extends Cubit<MapState> {
     Stream<Position> Function() positionStream = _defaultPositionStream,
     Future<bool> Function() ensurePermission = _defaultEnsurePermission,
     Future<bool> Function() isPermanentlyDenied = _defaultIsPermanentlyDenied,
+    Future<bool> Function() hasPermission = _defaultHasPermission,
+    Future<Position> Function()? currentPosition = _defaultCurrentPosition,
   }) : _geofence = geofence,
+       _currentPosition = currentPosition,
        _positionStream = positionStream,
        _ensurePermission = ensurePermission,
        _isPermanentlyDenied = isPermanentlyDenied,
+       _hasPermission = hasPermission,
        super(const MapInitial());
 
   final GeofenceService _geofence;
@@ -44,6 +49,12 @@ class MapCubit extends Cubit<MapState> {
   /// inject qilingan: `_ensurePermission`ni (va uning testlarini)
   /// o'zgartirmasdan, faqat rad etish SABABINI aniqlashtiradi.
   final Future<bool> Function() _isPermanentlyDenied;
+
+  /// Bir martalik joriy fiks ([_seedPosition]); `null` — ishlatilmaydi.
+  final Future<Position> Function()? _currentPosition;
+
+  /// Ruxsatni SO'RAMASDAN tekshirish ([resumeIfPermitted]).
+  final Future<bool> Function() _hasPermission;
 
   StreamSubscription<Position>? _subscription;
   List<LatLng> _trail = const [];
@@ -105,7 +116,44 @@ class MapCubit extends Cubit<MapState> {
       if (!isClosed && generation == _generation) {
         emit(MapError(_unexpectedErrorMessage(e)));
       }
+      return;
     }
+    unawaited(_seedPosition(generation));
+  }
+
+  /// `geolocator` bitta umumiy oqim beradi: serverga yuboruvchi kuzatuv uni
+  /// allaqachon ochgan bo'lsa, keyin ulangan xarita oxirgi nuqtani OLMAYDI —
+  /// joyida turgan xodim harakatlanmaguncha xaritada ko'rinmas va "Tuman
+  /// tashqarisida" deb turardi. Shu uchun birinchi fiks alohida so'raladi.
+  Future<void> _seedPosition(int generation) async {
+    final read = _currentPosition;
+    if (read == null) return;
+    try {
+      final position = await read();
+      if (isClosed || generation != _generation) return;
+      // Oqimdan nuqta kelib bo'lgan bo'lsa — u yangiroq.
+      if (state is! MapLoading) return;
+      _onPosition(position);
+    } on Object {
+      // Oqim baribir ulangan — keyingi nuqta kelganda ko'rinadi.
+    }
+  }
+
+  /// Ilovaga qaytilganda: ruxsat/xato ekranida turgan bo'lsa va ruxsat
+  /// endi bor bo'lsa (sozlamalardan berilgan) — kuzatuvni boshlaydi. Ruxsat
+  /// oynasini hech qachon ochmaydi (aks holda rad etilgan oyna yopilishi
+  /// bilan yana ochilardi).
+  Future<void> resumeIfPermitted() async {
+    if (state is! MapPermissionDenied && state is! MapError) return;
+    final generation = _generation;
+    var granted = false;
+    try {
+      granted = await _hasPermission();
+    } on Object {
+      granted = false;
+    }
+    if (!granted || isClosed || generation != _generation) return;
+    await start();
   }
 
   /// Kuzatuvni to'xtatadi: oqim obunasini bekor qiladi (shu jumladan hali
@@ -214,8 +262,12 @@ class MapCubit extends Cubit<MapState> {
     emit(MapError(_unexpectedErrorMessage(error)));
   }
 
-  String _unexpectedErrorMessage(Object error) =>
-      'Kutilmagan xatolik: $error';
+  String _unexpectedErrorMessage(Object error) => switch (error) {
+    LocationServiceDisabledException() =>
+      "Joylashuv xizmati o'chirilgan. Uni yoqib, qayta urining",
+    PermissionDeniedException() => 'Joylashuvga ruxsat berilmagan',
+    _ => unexpectedError(error),
+  };
 
   @override
   Future<void> close() {
@@ -242,6 +294,13 @@ class MapCubit extends Cubit<MapState> {
     }
   }
 
+  static Future<bool> _defaultHasPermission() async {
+    if (!await Geolocator.isLocationServiceEnabled()) return false;
+    final permission = await Geolocator.checkPermission();
+    return permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+  }
+
   /// `positionStream` uchun standart (qurilma-only) implementatsiya —
   /// o'rtacha aniqlikdagi harakat uchun 5 metrlik filtr bilan doimiy
   /// yangilanish.
@@ -250,6 +309,13 @@ class MapCubit extends Cubit<MapState> {
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
           distanceFilter: 5,
+        ),
+      );
+
+  static Future<Position> _defaultCurrentPosition() =>
+      Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          timeLimit: Duration(seconds: 15),
         ),
       );
 

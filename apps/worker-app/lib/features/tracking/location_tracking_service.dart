@@ -15,12 +15,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// ilova minimallashtirilganda/ekran o'chganda ham uzilmaydi. [start] ni bir
 /// necha bor chaqirish xavfsiz — allaqachon ishlayotgan bo'lsa hech nima
 /// qilmaydi.
+///
+/// Har bir buferlangan nuqta EGASI (xodim id) bilan saqlanadi va faqat o'sha
+/// xodim kirgan paytda yuboriladi — logout yoki sessiya tugashida nuqtalar
+/// yo'qolmaydi va boshqa xodim nomidan ketmaydi.
 class LocationTrackingService {
-  LocationTrackingService(this._dio);
+  LocationTrackingService(
+    this._dio, {
+    String? Function()? ownerId,
+    Future<bool> Function()? ensurePermission,
+    Future<bool> Function()? hasPermission,
+    Stream<Position> Function()? positions,
+    Future<Position> Function()? currentPosition,
+  }) : _ownerId = ownerId,
+       _permissionOverride = ensurePermission,
+       _hasPermissionOverride = hasPermission,
+       _positionsOverride = positions,
+       _currentOverride = currentPosition;
 
   final Dio _dio;
+  final String? Function()? _ownerId;
+  final Future<bool> Function()? _permissionOverride;
+  final Future<bool> Function()? _hasPermissionOverride;
+  final Stream<Position> Function()? _positionsOverride;
+  final Future<Position> Function()? _currentOverride;
 
-  static const String _outboxKey = 'location_outbox_v1';
+  static const String outboxKey = 'location_outbox_v1';
+  static const String _ownerField = '_owner';
+  static const int _batchSize = 100;
   static const int _distanceFilterMeters = 15;
   static const int _maxBuffer = 500;
   static const Duration _flushInterval = Duration(seconds: 30);
@@ -38,6 +60,14 @@ class LocationTrackingService {
   DateTime? _lastSentAt;
   bool _heartbeatInFlight = false;
 
+  /// Har bir [stop]da oshadi — kechikkan ruxsat/fiks natijasi e'tiborsiz.
+  int _generation = 0;
+
+  /// UI uchun holat (bosh sahifadagi ogohlantirish).
+  final ValueNotifier<TrackingStatus> status = ValueNotifier(
+    TrackingStatus.idle,
+  );
+
   bool get isRunning => _running;
 
   /// Oxirgi kuzatilgan xato (diagnostika uchun).
@@ -45,39 +75,58 @@ class LocationTrackingService {
 
   /// Ruxsatni tekshiradi/so'raydi va joylashuv oqimini boshlaydi. Joylashuv
   /// xizmati yoki ruxsat mavjud bo'lmasa `false` qaytaradi.
-  Future<bool> start() {
+  ///
+  /// [prompt] `false` — ruxsat oynasi OCHILMAYDI. Ilovaga qaytishda shunday
+  /// chaqiriladi: oynaning o'zi yopilganda ham "qaytish" keladi va rad
+  /// etgan xodimdan darhol qayta so'ralardi (Android'da ikkinchi rad —
+  /// doimiy taqiq).
+  Future<bool> start({bool prompt = true}) {
     if (_running) return Future.value(true);
     // MainShell va MapPage ikkalasi ham start() chaqiradi; ruxsat tekshiruvi
     // davomida ikkinchi chaqiruv `_running`ni hali false ko'rib, IKKINCHI
-    // oqim + taymer ochardi (birinchisi oqib ketardi, stop() faqat oxirgisini
-    // yopardi). Davom etayotgan ishga tushirishni bo'lishamiz.
-    return _starting ??= _start().whenComplete(() => _starting = null);
+    // oqim + taymer ochardi. Davom etayotgan ishga tushirishni bo'lishamiz.
+    final pending = _starting;
+    if (pending != null) return pending;
+    late final Future<bool> future;
+    future = _start(prompt: prompt).whenComplete(() {
+      if (identical(_starting, future)) _starting = null;
+    });
+    return _starting = future;
   }
 
   Future<bool>? _starting;
 
-  Future<bool> _start() async {
+  Future<bool> _start({required bool prompt}) async {
+    final generation = _generation;
+    var granted = false;
     try {
-      if (!await _ensurePermission()) return false;
+      granted = await (prompt
+          ? (_permissionOverride ?? _requestPermission)()
+          : (_hasPermissionOverride ?? _checkPermission)());
     } on Object catch (error) {
       // Masalan boshqa ruxsat dialogi ochiq (PermissionRequestInProgress).
       _lastError = error;
+    }
+    // Kutish davomida stop() chaqirilgan — kuzatuv qayta tirilmasin.
+    if (generation != _generation) return false;
+    if (!granted) {
+      status.value = TrackingStatus.blocked;
       return false;
     }
     if (_running) return true;
 
     _running = true;
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: _buildSettings(),
-    ).listen(
+    final stream =
+        _positionsOverride?.call() ??
+        Geolocator.getPositionStream(locationSettings: _buildSettings());
+    _positionSub = stream.listen(
       _onPosition,
-      onError: (Object error) {
-        _lastError = error;
-      },
+      onError: _onStreamError,
       cancelOnError: false,
     );
 
     _flushTimer = Timer.periodic(_flushInterval, (_) => _tick());
+    status.value = TrackingStatus.running;
 
     // Birinchi hisobotni darhol yuboramiz — admin xaritasi harakatni
     // kutmasdan yonadi.
@@ -86,19 +135,67 @@ class LocationTrackingService {
     return true;
   }
 
-  /// Logout: navbatdagi (yuborilmagan) nuqtalarni o'chiradi — aks holda
-  /// shu qurilmaga keyin kirgan BOSHQA xodim tokeni bilan yuborilardi.
-  Future<void> clearOutbox() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_outboxKey);
+  void _onStreamError(Object error) {
+    _lastError = error;
+    if (error is LocationServiceDisabledException ||
+        error is PermissionDeniedException) {
+      // Oqim endi nuqta bermaydi — to'xtatamiz, keyingi start() (ilovaga
+      // qaytish) qayta ishga tushiradi.
+      unawaited(stop().then((_) => status.value = TrackingStatus.blocked));
+    }
   }
 
   Future<void> stop() async {
+    _generation++;
+    _starting = null;
     _running = false;
-    await _positionSub?.cancel();
+    status.value = TrackingStatus.idle;
+    final sub = _positionSub;
     _positionSub = null;
     _flushTimer?.cancel();
     _flushTimer = null;
+    await sub?.cancel();
+  }
+
+  /// Egasi yozilmagan (eski) nuqtalarga joriy xodimni ega qilib qo'yadi —
+  /// chiqishdan oldin chaqiriladi.
+  Future<void> claimOutbox() async {
+    final owner = _ownerId?.call();
+    if (owner == null) return;
+    await _locked((prefs) async {
+      final buffer = prefs.getStringList(outboxKey);
+      if (buffer == null || buffer.isEmpty) return;
+      await prefs.setStringList(outboxKey, [
+        for (final raw in buffer) _claimed(raw, owner),
+      ]);
+    });
+  }
+
+  static String _claimed(String raw, String owner) {
+    final map = _decode(raw);
+    if (map == null || map[_ownerField] != null) return raw;
+    return jsonEncode({...map, _ownerField: owner});
+  }
+
+  static Map<String, dynamic>? _decode(String raw) {
+    try {
+      return jsonDecode(raw) as Map<String, dynamic>;
+    } on Object {
+      return null;
+    }
+  }
+
+  /// Bufer ustidagi o'qi-yoz amallari ketma-ket bajariladi.
+  Future<void> _lock = Future<void>.value();
+
+  Future<void> _locked(Future<void> Function(SharedPreferences prefs) action) {
+    final next = _lock.then((_) async {
+      await action(await SharedPreferences.getInstance());
+    });
+    _lock = next.catchError((Object error) {
+      _lastError = error;
+    });
+    return next;
   }
 
   /// Platformaga mos joylashuv sozlamalari. Android'da foreground-service
@@ -137,14 +234,12 @@ class LocationTrackingService {
       case TargetPlatform.windows:
         // `best` — LocationSettings uchun standart aniqlik, shu bois ochiq
         // yozilmadi.
-        return const LocationSettings(
-          distanceFilter: _distanceFilterMeters,
-        );
+        return const LocationSettings(distanceFilter: _distanceFilterMeters);
     }
   }
 
   Future<void> _tick() async {
-    await _flushOutbox();
+    await flush();
     final last = _lastSentAt;
     if (_running &&
         !_heartbeatInFlight &&
@@ -161,27 +256,32 @@ class LocationTrackingService {
   }
 
   Future<void> _reportCurrent() async {
+    final generation = _generation;
     try {
       // Darhol yuboriladigan ILK fiks ham ANIQ (best) bo'lsin — vaqt cheklovi
-      // (15 s) sun'iy yo'ldoshga ulanishga imkon beradi; aks holda dag'al
-      // (last-known/tarmoq) fiks kelib, birinchi nuqta noto'g'ri bo'lardi.
-      final current = await Geolocator.getCurrentPosition(
-        // Aniqlik (best) — LocationSettings standarti; vaqt cheklovi (15 s)
-        // sun'iy yo'ldosh fiksiga ulguradi.
-        locationSettings: const LocationSettings(
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
+      // (15 s) sun'iy yo'ldoshga ulanishga imkon beradi.
+      final current =
+          await (_currentOverride?.call() ??
+              Geolocator.getCurrentPosition(
+                locationSettings: const LocationSettings(
+                  timeLimit: Duration(seconds: 15),
+                ),
+              ));
+      if (generation != _generation) return;
       await _onPosition(current);
     } on Object catch (error) {
       _lastError = error;
     }
   }
 
-  Future<bool> _ensurePermission() async {
+  Future<bool> _requestPermission() => _permission(request: true);
+
+  Future<bool> _checkPermission() => _permission(request: false);
+
+  Future<bool> _permission({required bool request}) async {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
+    if (request && permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
     return permission == LocationPermission.always ||
@@ -189,15 +289,18 @@ class LocationTrackingService {
   }
 
   Future<void> _onPosition(Position position) async {
+    final owner = _ownerId?.call();
+    // Hech kim kirmagan — nuqta hech kimga tegishli emas.
+    if (_ownerId != null && owner == null) return;
     final report = _toReport(position);
     _lastSentAt = DateTime.now();
     try {
       await _dio.post<dynamic>('/locations', data: report);
       // Muvaffaqiyatli yuborish = onlayn bo'ldik — bufernikini oqizamiz.
-      await _flushOutbox();
+      await flush();
     } on Object catch (error) {
       _lastError = error;
-      await _enqueue(report);
+      await _enqueue(report, owner);
     }
   }
 
@@ -213,33 +316,87 @@ class LocationTrackingService {
     };
   }
 
-  Future<void> _enqueue(Map<String, dynamic> report) async {
-    final prefs = await SharedPreferences.getInstance();
-    final buffer = (prefs.getStringList(_outboxKey) ?? <String>[])
-      ..add(jsonEncode(report));
-    while (buffer.length > _maxBuffer) {
-      buffer.removeAt(0);
-    }
-    await prefs.setStringList(_outboxKey, buffer);
-  }
+  Future<void> _enqueue(Map<String, dynamic> report, String? owner) =>
+      _locked((prefs) async {
+        final buffer = (prefs.getStringList(outboxKey) ?? <String>[])
+          ..add(jsonEncode({...report, if (owner != null) _ownerField: owner}));
+        while (buffer.length > _maxBuffer) {
+          buffer.removeAt(0);
+        }
+        await prefs.setStringList(outboxKey, buffer);
+      });
+
+  Future<void>? _flushing;
+
+  /// Buferdagi (joriy xodimga tegishli) nuqtalarni yuboradi. Bir vaqtda
+  /// bitta oqizish ishlaydi.
+  Future<void> flush() => _flushing ??= _flushOutbox().whenComplete(() {
+    _flushing = null;
+  });
 
   Future<void> _flushOutbox() async {
-    final prefs = await SharedPreferences.getInstance();
-    final buffer = prefs.getStringList(_outboxKey) ?? <String>[];
-    if (buffer.isEmpty) return;
+    while (true) {
+      final owner = _ownerId?.call();
+      if (_ownerId != null && owner == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final mine = (prefs.getStringList(outboxKey) ?? <String>[])
+          .where((raw) {
+            final entryOwner = _decode(raw)?[_ownerField];
+            return entryOwner == null || entryOwner == owner;
+          })
+          .take(_batchSize)
+          .toList(growable: false);
+      if (mine.isEmpty) return;
+      if (!await _sendBatch(mine)) return;
+    }
+  }
 
-    final items = buffer
-        .map((e) => jsonDecode(e) as Map<String, dynamic>)
-        .toList(growable: false);
+  /// `true` — shu yozuvlar buferdan chiqdi (yuborildi yoki server ularni
+  /// qat'iyan rad etdi); `false` — keyinroq qayta urinamiz.
+  Future<bool> _sendBatch(List<String> entries) async {
+    final items = <Map<String, dynamic>>[
+      for (final raw in entries)
+        if (_decode(raw) case final map?) {...map}..remove(_ownerField),
+    ];
+    if (items.isEmpty) {
+      await _remove(entries); // buzilgan yozuvlar
+      return true;
+    }
     try {
       await _dio.post<dynamic>(
         '/locations/batch',
         data: <String, dynamic>{'items': items},
       );
-      await prefs.remove(_outboxKey);
-    } on Object catch (error) {
-      // Hali offline — buferni keyingi urinish uchun saqlab qolamiz.
+    } on DioException catch (error) {
       _lastError = error;
+      final code = error.response?.statusCode;
+      if (code != 400 && code != 413 && code != 422) return false;
+      // Qayta urinish foydasiz: yaroqsiz nuqtani ajratib tashlaymiz, aks
+      // holda u butun navbatni abadiy to'sib qo'yardi.
+      if (entries.length > 1) {
+        final half = entries.length ~/ 2;
+        return await _sendBatch(entries.sublist(0, half)) &&
+            await _sendBatch(entries.sublist(half));
+      }
+    } on Object catch (error) {
+      _lastError = error;
+      return false;
     }
+    await _remove(entries);
+    return true;
   }
+
+  /// Faqat shu yozuvlarni o'chiradi — yuborish davomida qo'shilganlari qoladi.
+  Future<void> _remove(List<String> sent) => _locked((prefs) async {
+    final buffer = prefs.getStringList(outboxKey) ?? <String>[];
+    sent.forEach(buffer.remove);
+    if (buffer.isEmpty) {
+      await prefs.remove(outboxKey);
+    } else {
+      await prefs.setStringList(outboxKey, buffer);
+    }
+  });
 }
+
+/// Kuzatuv holati: ishlayapti / ruxsat yoki GPS yo'qligi sabab to'xtagan.
+enum TrackingStatus { idle, running, blocked }

@@ -5,6 +5,7 @@ import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/mock/mock_applications.dart';
+import 'package:worker_app/features/requests/domain/attachment_type_resolver.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 
 /// Fuqarolar murojaatlari (arizalar) uchun masofaviy ma'lumot manbai.
@@ -320,21 +321,52 @@ class ApplicationsRemoteDataSourceApiImpl
       // ISBOT FAYLLARI: telefonda olingan rasm/video/ovoz endi haqiqatan
       // yuklanadi (ilgari faqat birinchi http-URL yuborilib, qurilmadagi
       // fayllar JIM TASHLAB YUBORILARDI — xodim isbot yubordim deb o'ylardi).
-      final urls = <String>[];
+      // Avval barcha fayllar borligini tekshiramiz — yo'qolgan isbot jim
+      // tashlab yuborilmasin va yarim javob ketmasin.
       for (final a in response.attachments) {
-        if (a.path.startsWith('http://') || a.path.startsWith('https://')) {
-          urls.add(a.path);
+        if (!_isRemote(a.path) && !File(a.path).existsSync()) {
+          throw ServerException(
+            "Fayl topilmadi: ${a.name}. Uni olib tashlab, qayta qo'shing",
+          );
+        }
+      }
+      // `/applications/:id/attachments/upload` orqali ketgan media murojaatga
+      // o'zi bog'lanadi; qolgan URL'lar (hujjatlar) faqat xabar orqali
+      // ko'rinadi.
+      final linked = <String>[];
+      final unlinked = <String>[];
+      for (final a in response.attachments) {
+        if (_isRemote(a.path)) {
+          unlinked.add(a.path);
           continue;
         }
         final url = await _uploadProof(id, a);
-        if (url != null) urls.add(url);
+        if (url == null) {
+          throw ServerException('Fayl yuklanmadi: ${a.name}');
+        }
+        (a.type == AttachmentType.file ? unlinked : linked).add(url);
       }
+      // Javobga bitta URL sig'adi — hujjat ustun.
+      final primary = unlinked.firstOrNull ?? linked.firstOrNull;
 
+      // Qolgan har bir hujjat alohida xabar sifatida — yakuniy javobdan
+      // OLDIN: (1) ilova eng so'nggi xodim xabarini "javob" deb ko'rsatadi,
+      // (2) biri o'tmasa murojaat yarim isbot bilan yopilib qolmaydi.
+      for (final url in unlinked.skip(1)) {
+        await _client.dio.post<Map<String, dynamic>>(
+          '/applications/$id/messages',
+          data: {
+            'senderRole': 'EMPLOYEE',
+            'text': "Qo'shimcha hujjat",
+            'attachmentUrl': _absoluteUrl(url),
+          },
+        );
+      }
       await _client.dio.post<Map<String, dynamic>>(
         '/applications/$id/reply',
         data: {
           'text': response.text,
-          if (urls.isNotEmpty) 'attachmentUrl': urls.first,
+          if (primary != null) 'attachmentUrl': _absoluteUrl(primary),
           // Yakuniy javob — murojaat "Hal qilindi" bo'ladi (fuqaro baholaydi).
           'resolve': true,
         },
@@ -374,12 +406,13 @@ class ApplicationsRemoteDataSourceApiImpl
     }
   }
 
+  static bool _isRemote(String path) =>
+      path.startsWith('http://') || path.startsWith('https://');
+
   /// Bitta lokal faylni yuklaydi: rasm/video/ovoz — murojaat ilovasi
   /// sifatida (`/applications/:id/attachments/upload`, fuqaro ham ko'radi);
-  /// boshqa hujjatlar — umumiy `/uploads` (URL javob xabariga qo'shiladi).
+  /// boshqa hujjatlar — `/uploads/document` (URL javob xabariga qo'shiladi).
   Future<String?> _uploadProof(String applicationId, AttachmentRef a) async {
-    final file = File(a.path);
-    if (!file.existsSync()) return null;
     final name = a.name.isNotEmpty ? a.name : a.path.split('/').last;
     final isMedia =
         a.type == AttachmentType.image ||
@@ -393,7 +426,11 @@ class ApplicationsRemoteDataSourceApiImpl
       ),
     });
     final resp = await _client.dio.post<Map<String, dynamic>>(
-      isMedia ? '/applications/$applicationId/attachments/upload' : '/uploads',
+      // Hujjatlar (pdf/doc/xls…) — `/uploads/document`; umumiy `/uploads`
+      // faqat rasm/video/audio qabul qiladi.
+      isMedia
+          ? '/applications/$applicationId/attachments/upload'
+          : '/uploads/document',
       data: form,
     );
     return resp.data?['url'] as String?;
@@ -528,16 +565,25 @@ Map<String, dynamic> _adaptEventJson(Map<String, dynamic> json) => {
 Map<String, dynamic> _adaptAttachmentJson(Map<String, dynamic> json) {
   final apiType = json['type'] as String?;
   final url = json['url'] as String?;
+  // Backendda faqat PHOTO/VIDEO bor; PHOTO ostida boshqa fayl ham kelishi
+  // mumkin — kengaytma aniqroq.
+  final byName = attachmentTypeFor(url);
   return {
     'type': apiType == 'VIDEO'
         ? AttachmentType.video.name
-        : AttachmentType.image.name,
+        : (byName == AttachmentType.file && !_hasExtension(url)
+              ? AttachmentType.image
+              : byName)
+              .name,
     'path': url,
     'name': (json['fileName'] as String?) ?? url,
     'size_bytes': json['sizeBytes'],
     'duration_ms': null,
   };
 }
+
+bool _hasExtension(String? url) =>
+    (url ?? '').split('?').first.split('/').last.contains('.');
 
 /// `/applications/:id/messages` ro'yxatidagi ENG SO'NGGI xodim (`EMPLOYEE`)
 /// xabarini mobil `ApplicationResponse.fromJson` shakliga moslashtiradi —
@@ -561,7 +607,7 @@ Map<String, dynamic>? _adaptResponseFromMessages(List<dynamic> messages) {
         ? const <Map<String, dynamic>>[]
         : [
             {
-              'type': AttachmentType.image.name,
+              'type': attachmentTypeFor(attachmentUrl).name,
               'path': attachmentUrl,
               'name': attachmentUrl,
               'size_bytes': null,

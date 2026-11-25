@@ -24,6 +24,9 @@ abstract class FacePhotoStore {
   /// Saqlangan yuz-rasm yo'li — fayl mavjud bo'lsa, aks holda `null`
   /// (profil sarlavhasi shunda initsial-avatarga qaytadi).
   Future<String?> currentPath();
+
+  /// Saqlangan rasmni o'chiradi (boshqa xodim kirganda). Best-effort.
+  Future<void> clear();
 }
 
 /// `path_provider` + `dart:io` orqali ishlaydigan implementatsiya.
@@ -78,6 +81,16 @@ class FacePhotoStoreImpl implements FacePhotoStore {
       // Best-effort — rasm ixtiyoriy; saqlash muvaffaqiyatsiz bo'lsa ham
       // ro'yxatdan o'tkazish davom etadi.
       return null;
+    }
+  }
+
+  @override
+  Future<void> clear() async {
+    try {
+      final file = await _target();
+      if (file.existsSync()) await file.delete();
+    } on Object {
+      // best-effort
     }
   }
 

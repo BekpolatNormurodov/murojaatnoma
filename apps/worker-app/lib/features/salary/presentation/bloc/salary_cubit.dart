@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/salary/domain/entities/salary.dart';
 import 'package:worker_app/features/salary/domain/usecases/get_my_salaries.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'salary_state.dart';
 
@@ -26,10 +27,18 @@ class SalaryCubit extends Cubit<SalaryState> {
         emit(salaries.isEmpty ? const SalaryEmpty() : SalaryLoaded(salaries));
       });
     } on Object catch (e) {
-      emit(SalaryError('Kutilmagan xatolik: $e'));
+      emit(SalaryError(unexpectedError(e)));
     }
   }
 
   /// Qayta yuklaydi (pull-to-refresh yoki "Qayta urinish" tugmasi).
   Future<void> reload() => load();
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(SalaryState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

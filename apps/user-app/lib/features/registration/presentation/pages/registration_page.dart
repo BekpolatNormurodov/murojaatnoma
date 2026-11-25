@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/session/confirm_logout.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/registration/domain/entities/citizen_profile.dart';
 import 'package:user_app/features/registration/domain/entities/region.dart';
@@ -169,10 +170,15 @@ class _RegistrationPageState extends State<RegistrationPage> {
     );
   }
 
+  /// Noto'g'ri raqam bilan kirilgan bo'lsa — onboarding'dan chiqish yo'li.
+  Future<void> _logout() => confirmLogout(context);
+
   Future<void> _proceedToFaceOnboarding(BuildContext context) async {
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     if (!context.mounted) return;
-    context.read<AuthCubit>().markRegistered();
+    context.read<AuthCubit>().markRegistered(
+      fullName: _fullNameController.text,
+    );
     if (!context.mounted) return;
     context.go('/face/onboarding');
   }
@@ -210,8 +216,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
               _regionCode = value;
               _districtCode = null;
             }),
-            onDistrictChanged: (value) =>
-                setState(() => _districtCode = value),
+            onDistrictChanged: (value) => setState(() => _districtCode = value),
             fullNameError: _fullNameError,
             documentError: _documentError,
             birthDateError: _birthDateError,
@@ -241,6 +246,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 setState(() => _optionalExpanded = !_optionalExpanded),
             submitting: state is RegistrationSubmitting,
             onSubmit: _submit,
+            onLogout: _logout,
           );
         },
       ),
@@ -280,6 +286,7 @@ class _RegistrationForm extends StatelessWidget {
     required this.onToggleOptional,
     required this.submitting,
     required this.onSubmit,
+    required this.onLogout,
   });
 
   final TextEditingController fullNameController;
@@ -306,6 +313,7 @@ class _RegistrationForm extends StatelessWidget {
   final VoidCallback onToggleOptional;
   final bool submitting;
   final VoidCallback onSubmit;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -321,7 +329,17 @@ class _RegistrationForm extends StatelessWidget {
         onPressed: submitting ? null : onSubmit,
       ),
       children: [
-        const SizedBox(height: 12),
+        SafeArea(
+          bottom: false,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: submitting ? null : onLogout,
+              icon: const Icon(AppIcons.logout, size: 18),
+              label: Text(l10n.logout),
+            ),
+          ),
+        ),
         const Center(child: _HeaderIcon()),
         const SizedBox(height: 20),
         Text(
@@ -337,25 +355,22 @@ class _RegistrationForm extends StatelessWidget {
         ).animate(delay: 100.ms).fadeIn(),
         const SizedBox(height: 28),
         AppTextField(
-              label: l10n.registrationFullNameLabel,
-              hint: l10n.registrationFullNameHint,
-              icon: AppIcons.profile,
-              controller: fullNameController,
-              keyboardType: TextInputType.name,
-              textInputAction: TextInputAction.done,
-              autofocus: true,
-              inputFormatters: const [FullNameInputFormatter()],
-              errorText: fullNameError,
-              helperText: fullNameError == null
-                  ? 'Murojaat yuborish uchun shu maydon yetarli — '
-                        'qolganlari ixtiyoriy'
-                  : null,
-              onChanged: (_) => onFullNameChanged(),
-              onSubmitted: (_) => onSubmit(),
-            )
-            .animate(delay: 160.ms)
-            .fadeIn()
-            .slideY(begin: 0.1, end: 0),
+          label: l10n.registrationFullNameLabel,
+          hint: l10n.registrationFullNameHint,
+          icon: AppIcons.profile,
+          controller: fullNameController,
+          keyboardType: TextInputType.name,
+          textInputAction: TextInputAction.done,
+          autofocus: true,
+          inputFormatters: const [FullNameInputFormatter()],
+          errorText: fullNameError,
+          helperText: fullNameError == null
+              ? 'Murojaat yuborish uchun shu maydon yetarli — '
+                    'qolganlari ixtiyoriy'
+              : null,
+          onChanged: (_) => onFullNameChanged(),
+          onSubmitted: (_) => onSubmit(),
+        ).animate(delay: 160.ms).fadeIn().slideY(begin: 0.1, end: 0),
         const SizedBox(height: 24),
         _OptionalSectionToggle(
           expanded: optionalExpanded,
@@ -385,110 +400,92 @@ class _RegistrationForm extends StatelessWidget {
           const SizedBox(height: 16),
           if (documentType == DocumentType.pinfl)
             AppTextField(
-                  key: const ValueKey('registration-pinfl-field'),
-                  label: _optionalLabel(l10n.registrationPinflLabel),
-                  hint: l10n.registrationPinflHint,
-                  icon: AppIcons.card,
-                  controller: pinflController,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(14),
-                  ],
-                  errorText: documentError,
-                  onChanged: (_) => onDocumentChanged(),
-                )
-                .animate(delay: 20.ms)
-                .fadeIn()
-                .slideY(begin: 0.08, end: 0)
+              key: const ValueKey('registration-pinfl-field'),
+              label: _optionalLabel(l10n.registrationPinflLabel),
+              hint: l10n.registrationPinflHint,
+              icon: AppIcons.card,
+              controller: pinflController,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(14),
+              ],
+              errorText: documentError,
+              onChanged: (_) => onDocumentChanged(),
+            ).animate(delay: 20.ms).fadeIn().slideY(begin: 0.08, end: 0)
           else
             AppTextField(
-                  key: const ValueKey('registration-passport-field'),
-                  label: _optionalLabel(l10n.registrationPassportLabel),
-                  hint: l10n.registrationPassportHint,
-                  icon: AppIcons.card,
-                  controller: passportController,
-                  keyboardType: TextInputType.text,
-                  textInputAction: TextInputAction.next,
-                  inputFormatters: const [PassportInputFormatter()],
-                  errorText: documentError,
-                  onChanged: (_) => onDocumentChanged(),
-                )
-                .animate(delay: 20.ms)
-                .fadeIn()
-                .slideY(begin: 0.08, end: 0),
+              key: const ValueKey('registration-passport-field'),
+              label: _optionalLabel(l10n.registrationPassportLabel),
+              hint: l10n.registrationPassportHint,
+              icon: AppIcons.card,
+              controller: passportController,
+              keyboardType: TextInputType.text,
+              textInputAction: TextInputAction.next,
+              inputFormatters: const [PassportInputFormatter()],
+              errorText: documentError,
+              onChanged: (_) => onDocumentChanged(),
+            ).animate(delay: 20.ms).fadeIn().slideY(begin: 0.08, end: 0),
           const SizedBox(height: 16),
           AppTextField(
-                label: _optionalLabel(l10n.registrationBirthDateLabel),
-                hint: l10n.registrationBirthDateHint,
-                icon: AppIcons.calendar,
-                controller: birthDateController,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.next,
-                inputFormatters: const [DateInputFormatter()],
-                errorText: birthDateError,
-                onChanged: (_) => onBirthDateChanged(),
-              )
-              .animate(delay: 60.ms)
-              .fadeIn()
-              .slideY(begin: 0.08, end: 0),
+            label: _optionalLabel(l10n.registrationBirthDateLabel),
+            hint: l10n.registrationBirthDateHint,
+            icon: AppIcons.calendar,
+            controller: birthDateController,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            inputFormatters: const [DateInputFormatter()],
+            errorText: birthDateError,
+            onChanged: (_) => onBirthDateChanged(),
+          ).animate(delay: 60.ms).fadeIn().slideY(begin: 0.08, end: 0),
           const SizedBox(height: 16),
           AppSelect<String>(
-                label: _optionalLabel(l10n.registrationRegionLabel),
-                hint: l10n.registrationRegionHint,
-                searchHint: l10n.searchHint,
-                icon: AppIcons.location,
-                value: regionCode,
-                options: [
-                  for (final region in kUzbekistanRegions)
-                    AppSelectOption(
-                      value: region.code,
-                      label: RegionMeta.regionLabel(l10n, region.code),
-                    ),
-                ],
-                onChanged: onRegionChanged,
-              )
-              .animate(delay: 100.ms)
-              .fadeIn()
-              .slideY(begin: 0.08, end: 0),
+            label: _optionalLabel(l10n.registrationRegionLabel),
+            hint: l10n.registrationRegionHint,
+            searchHint: l10n.searchHint,
+            icon: AppIcons.location,
+            value: regionCode,
+            options: [
+              for (final region in kUzbekistanRegions)
+                AppSelectOption(
+                  value: region.code,
+                  label: RegionMeta.regionLabel(l10n, region.code),
+                ),
+            ],
+            onChanged: onRegionChanged,
+          ).animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0),
           const SizedBox(height: 16),
           AppSelect<String>(
-                label: _optionalLabel(l10n.registrationDistrictLabel),
-                hint: regionCode == null
-                    ? l10n.registrationDistrictHintNoRegion
-                    : l10n.registrationDistrictHint,
-                searchHint: l10n.searchHint,
-                icon: AppIcons.location,
-                enabled: regionCode != null,
-                value: districtCode,
-                options: [
-                  for (final district in districtOptions)
-                    AppSelectOption(
-                      value: district,
-                      label: RegionMeta.districtLabel(l10n, district),
-                    ),
-                ],
-                onChanged: onDistrictChanged,
-              )
-              .animate(delay: 140.ms)
-              .fadeIn()
-              .slideY(begin: 0.08, end: 0),
+            label: _optionalLabel(l10n.registrationDistrictLabel),
+            hint: regionCode == null
+                ? l10n.registrationDistrictHintNoRegion
+                : l10n.registrationDistrictHint,
+            searchHint: l10n.searchHint,
+            icon: AppIcons.location,
+            enabled: regionCode != null,
+            value: districtCode,
+            options: [
+              for (final district in districtOptions)
+                AppSelectOption(
+                  value: district,
+                  label: RegionMeta.districtLabel(l10n, district),
+                ),
+            ],
+            onChanged: onDistrictChanged,
+          ).animate(delay: 140.ms).fadeIn().slideY(begin: 0.08, end: 0),
           const SizedBox(height: 16),
           AppTextField(
-                label: _optionalLabel(l10n.registrationAddressLabel),
-                hint: l10n.registrationAddressHint,
-                icon: AppIcons.building,
-                controller: addressController,
-                keyboardType: TextInputType.streetAddress,
-                textInputAction: TextInputAction.done,
-                maxLines: 2,
-                errorText: addressError,
-                onChanged: (_) => onAddressChanged(),
-              )
-              .animate(delay: 180.ms)
-              .fadeIn()
-              .slideY(begin: 0.08, end: 0),
+            label: _optionalLabel(l10n.registrationAddressLabel),
+            hint: l10n.registrationAddressHint,
+            icon: AppIcons.building,
+            controller: addressController,
+            keyboardType: TextInputType.streetAddress,
+            textInputAction: TextInputAction.done,
+            maxLines: 2,
+            errorText: addressError,
+            onChanged: (_) => onAddressChanged(),
+          ).animate(delay: 180.ms).fadeIn().slideY(begin: 0.08, end: 0),
         ],
       ],
     );

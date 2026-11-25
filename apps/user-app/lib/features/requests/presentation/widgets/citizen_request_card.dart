@@ -10,14 +10,15 @@ import 'package:user_app/features/requests/presentation/widgets/request_status_c
 /// bo'lmasa xom satrni qaytaradi (mock ma'lumotlar doim to'g'ri formatda,
 /// lekin himoya sifatida).
 String formatIsoDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  // Server UTC beradi — foydalanuvchiga mahalliy vaqt ko'rsatiladi.
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   return parsed == null ? iso : formatDate(parsed);
 }
 
 /// [formatIsoDate] bilan bir xil, lekin soat:daqiqani ham qo'shadi —
 /// javob berilgan payt kabi to'liq vaqt muhim bo'lgan joylarda.
 String formatIsoDateTime(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   if (parsed == null) return iso;
   final hh = parsed.hour.toString().padLeft(2, '0');
   final mm = parsed.minute.toString().padLeft(2, '0');

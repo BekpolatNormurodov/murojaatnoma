@@ -32,6 +32,7 @@ import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart
 import 'package:worker_app/features/face/domain/services/liveness_controller.dart';
 import 'package:worker_app/features/face/domain/usecases/enroll_face.dart';
 import 'package:worker_app/features/face/domain/usecases/verify_face.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'face_state.dart';
 
@@ -838,7 +839,7 @@ class FaceCubit extends Cubit<FaceState> {
         screenshotPath: screenshotPath,
       );
     } on Object catch (e) {
-      emit(FaceError('Tekshirishda xatolik: $e'));
+      emit(FaceError(unexpectedError(e)));
     } finally {
       _busy = false;
     }
@@ -913,7 +914,7 @@ class FaceCubit extends Cubit<FaceState> {
         ),
       );
     } on Object catch (e) {
-      emit(FaceError('Yuzni tekshirishda xatolik: $e'));
+      emit(FaceError(unexpectedError(e)));
     }
   }
 
@@ -939,8 +940,8 @@ class FaceCubit extends Cubit<FaceState> {
     final Position position;
     try {
       position = await _locate();
-    } on Object catch (e) {
-      emit(FaceError("Joylashuvni aniqlab bo'lmadi: $e"));
+    } on Object {
+      emit(FaceError("Joylashuvni aniqlab bo'lmadi. Qayta urining"));
       return;
     }
 
@@ -961,6 +962,8 @@ class FaceCubit extends Cubit<FaceState> {
       embedding: probe,
       latitude: position.latitude,
       longitude: position.longitude,
+      // Server chegara tolerantligini precheck bilan bir xil hisoblasin.
+      accuracy: position.accuracy,
       photoUrl: photoUrl,
     );
     final Either<Failure, CheckScanResult> checkInEither;
@@ -1068,7 +1071,11 @@ class FaceCubit extends Cubit<FaceState> {
         permission == LocationPermission.deniedForever) {
       throw StateError('Joylashuvga ruxsat berilmagan');
     }
-    return Geolocator.getCurrentPosition();
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        timeLimit: Duration(seconds: 20),
+      ),
+    );
   }
 
   // ================= Qismi qurilma-only: capture pipeline =================
@@ -1139,7 +1146,7 @@ class FaceCubit extends Cubit<FaceState> {
     } on Object catch (e) {
       _busy = false;
       _stableSince = null;
-      emit(FaceError("Ro'yxatdan o'tkazishda xatolik: $e"));
+      emit(FaceError(unexpectedError(e)));
     }
   }
 
@@ -1390,5 +1397,13 @@ class FaceCubit extends Cubit<FaceState> {
       // Yopilayotganda — jim o'tkazib yuboriladi.
     }
     return super.close();
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(FaceState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

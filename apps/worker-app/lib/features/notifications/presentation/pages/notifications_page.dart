@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:worker_app/core/widgets/scrollable_empty_state.dart';
 import 'package:worker_app/features/notifications/domain/entities/notification_item.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/notifications/presentation/widgets/notification_tile.dart';
@@ -11,8 +14,20 @@ import 'package:worker_app/features/notifications/presentation/widgets/notificat
 /// `/points`/`/meetings` bilan bir xil naqsh). `NotificationsCubit`ning
 /// BARCHA holatlari (yuklanish/bo'sh/xato/yuklandi) shu yerda
 /// ko'rsatiladi — hech qachon oq/bo'sh ekran YO'Q.
-class NotificationsPage extends StatelessWidget {
+class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
+  @override
+  void initState() {
+    super.initState();
+    // Sahifa har ochilganda yangi ro'yxat olinadi.
+    unawaited(context.read<NotificationsCubit>().load());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,10 +63,13 @@ class NotificationsPage extends StatelessWidget {
             message: message,
             onRetry: () => context.read<NotificationsCubit>().load(),
           ),
-          NotificationsEmpty() => EmptyState(
-            icon: AppIcons.notification,
-            title: l10n.notificationsEmptyTitle,
-            message: l10n.notificationsEmptyMessage,
+          NotificationsEmpty() => RefreshIndicator(
+            onRefresh: () => context.read<NotificationsCubit>().load(),
+            child: ScrollableEmptyState(
+              icon: AppIcons.notification,
+              title: l10n.notificationsEmptyTitle,
+              message: l10n.notificationsEmptyMessage,
+            ),
           ),
           NotificationsLoaded(:final items) => RefreshIndicator(
             onRefresh: () => context.read<NotificationsCubit>().load(),
@@ -130,7 +148,7 @@ class _ErrorView extends StatelessWidget {
     final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: EmptyState(
+      child: ScrollableEmptyState(
         icon: AppIcons.close,
         title: l10n.notificationsErrorTitle,
         message: message,

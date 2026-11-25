@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:user_app/features/pin/data/datasources/pin_attempt_store.dart';
 import 'package:user_app/features/pin/domain/usecases/set_pin.dart';
 import 'package:user_app/features/pin/domain/usecases/verify_pin.dart';
 
@@ -16,10 +17,17 @@ part 'pin_state.dart';
 /// `SetPin`/`VerifyPin` (demak, `PinRepository`) allaqachon barcha
 /// istisnolarni `Either<Failure, _>`ga aylantiradi.
 class PinCubit extends Cubit<PinState> {
-  PinCubit({required SetPin setPin, required VerifyPin verifyPin})
-    : _setPin = setPin,
-      _verifyPin = verifyPin,
-      super(const PinInitial());
+  PinCubit({
+    required SetPin setPin,
+    required VerifyPin verifyPin,
+    PinAttemptStore? attempts,
+  }) : _setPin = setPin,
+       _verifyPin = verifyPin,
+       _attempts = attempts,
+       super(const PinInitial());
+
+  /// Urinishlar sonini saqlovchi — ilovani qayta ochish hisobni nollamaydi.
+  final PinAttemptStore? _attempts;
 
   final SetPin _setPin;
   final VerifyPin _verifyPin;
@@ -33,8 +41,7 @@ class PinCubit extends Cubit<PinState> {
   /// bloklash ([PinLockedOut]).
   static const maxAttempts = 5;
 
-  /// Ketma-ket noto'g'ri VERIFY urinishlar hisoblagichi — oddiy, xotirada
-  /// (bu Cubit instansiyasi doirasida), hech qachon qurilmaga yozilmaydi.
+  /// Ketma-ket noto'g'ri VERIFY urinishlar hisoblagichi.
   int _failedAttempts = 0;
 
   /// SET rejimi, 1-qadam: birinchi kiritishni qabul qiladi.
@@ -61,6 +68,8 @@ class PinCubit extends Cubit<PinState> {
 
     emit(const PinSaving());
     final result = await _setPin(SetPinParams(pin));
+    if (result.isRight()) await _attempts?.write(0);
+    if (isClosed) return;
     result.fold(
       (failure) => emit(PinStorageError(failure.message)),
       (_) => emit(const PinSetSuccess()),
@@ -73,22 +82,34 @@ class PinCubit extends Cubit<PinState> {
   /// yetganda esa (to'g'ri PIN hali ham qabul qilinadi, "yumshoq" bloklash)
   /// [PinLockedOut].
   Future<void> verifyPin(String pin) async {
+    if (state is PinVerifying) return;
     emit(const PinVerifying());
-    final result = await _verifyPin(VerifyPinParams(pin));
-    result.fold((failure) => emit(PinStorageError(failure.message)), (
-      matches,
-    ) {
-      if (matches) {
-        _failedAttempts = 0;
-        emit(const PinVerifySuccess());
+    final store = _attempts;
+    if (store != null) {
+      _failedAttempts = await store.read();
+      if (isClosed) return;
+      // Limit allaqachon tugagan (ilova qayta ochilgan) — tekshirmaymiz.
+      if (_failedAttempts >= maxAttempts) {
+        emit(const PinLockedOut());
         return;
       }
-      _failedAttempts++;
-      emit(
-        _failedAttempts >= maxAttempts
-            ? const PinLockedOut()
-            : const PinVerifyError(),
-      );
-    });
+    }
+    final result = await _verifyPin(VerifyPinParams(pin));
+    if (isClosed) return;
+    await result.fold(
+      (failure) async => emit(PinStorageError(failure.message)),
+      (matches) async {
+        _failedAttempts = matches ? 0 : _failedAttempts + 1;
+        await store?.write(_failedAttempts);
+        if (isClosed) return;
+        emit(
+          matches
+              ? const PinVerifySuccess()
+              : _failedAttempts >= maxAttempts
+              ? const PinLockedOut()
+              : const PinVerifyError(),
+        );
+      },
+    );
   }
 }

@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/documents/domain/entities/document_item.dart';
 import 'package:worker_app/features/documents/domain/usecases/get_document.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'document_detail_state.dart';
 
@@ -32,7 +33,7 @@ class DocumentDetailCubit extends Cubit<DocumentDetailState> {
         (document) => emit(DocumentDetailLoaded(document)),
       );
     } on Object catch (e) {
-      emit(DocumentDetailError('Kutilmagan xatolik: $e'));
+      emit(DocumentDetailError(unexpectedError(e)));
     }
   }
 
@@ -40,5 +41,13 @@ class DocumentDetailCubit extends Cubit<DocumentDetailState> {
   Future<void> retry() {
     final id = _lastId;
     return id == null ? Future<void>.value() : load(id);
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(DocumentDetailState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

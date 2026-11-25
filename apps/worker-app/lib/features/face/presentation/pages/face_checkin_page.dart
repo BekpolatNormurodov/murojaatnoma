@@ -49,6 +49,15 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
   Timer? _geofenceTimer;
   GeofenceStatus? _geofenceStatus;
 
+  /// Sahifadan faqat bir marta chiqiladi (tugma + taymer poygasi).
+  bool _left = false;
+
+  void _leave() {
+    if (_left || !mounted) return;
+    _left = true;
+    leaveScanner(context);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -97,8 +106,7 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
 
   Future<void> _navigateHomeAfterDelay() async {
     await Future<void>.delayed(const Duration(milliseconds: 1800));
-    if (!mounted) return;
-    context.go('/home');
+    _leave();
   }
 
   @override
@@ -109,7 +117,9 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
         listener: (context, state) {
           switch (state) {
             case FaceCheckinSuccess(:final time):
-              unawaited(_showSuccessDialog(context, time, widget.kind));
+              unawaited(
+                _showSuccessDialog(context, time, widget.kind, _leave),
+              );
               unawaited(_navigateHomeAfterDelay());
               // Haqiqiy (on-device) mahalliy bildirishnoma — check-in/
               // check-out muvaffaqiyatli bo'lganini tasdiqlaydi.
@@ -172,10 +182,36 @@ class _FaceCheckinPageState extends State<FaceCheckinPage>
               break;
           }
         },
-        builder: (context, state) => _CheckinBody(
-          state: state,
-          geofenceStatus: _geofenceStatus,
-          kind: widget.kind,
+        builder: (context, state) => Stack(
+          fit: StackFit.expand,
+          children: [
+            _CheckinBody(
+              state: state,
+              geofenceStatus: _geofenceStatus,
+              kind: widget.kind,
+            ),
+            // Kamera ko'rinishida orqaga tugmasi yuqori panelda; qolgan
+            // (ruxsat/xato/yuklanish) ekranlarda ham chiqish bo'lishi shart.
+            if (state is FaceInitializing ||
+                state is FacePermissionDenied ||
+                state is FaceCameraError ||
+                state is FaceModelError)
+              Positioned(
+                top: 0,
+                left: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: AppBackButton(
+                      key: const Key('scanner_close'),
+                      onPressed: _leave,
+                      background: Colors.black.withValues(alpha: 0.28),
+                      foreground: AppColors.surface,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -194,6 +230,7 @@ Future<void> _showSuccessDialog(
   BuildContext context,
   String time,
   AttendanceScanKind kind,
+  VoidCallback onDone,
 ) {
   final l10n = context.l10n;
   final isCheckout = kind == AttendanceScanKind.checkOut;
@@ -203,9 +240,7 @@ Future<void> _showSuccessDialog(
     message: '${l10n.faceCheckinTimeLabel}: $time\n'
         '${isCheckout ? l10n.faceCheckoutDone : l10n.faceCheckinDone}',
     buttonLabel: l10n.faceContinue,
-    onClose: () {
-      if (context.mounted) context.go('/home');
-    },
+    onClose: onDone,
   );
 }
 
@@ -233,12 +268,37 @@ Future<void> _showRetryDialog(
         label: context.l10n.retry,
         variant: AppButtonVariant.danger,
         onPressed: () {
-          Navigator.of(context).pop();
+          Navigator.of(context, rootNavigator: true).pop();
           context.read<FaceCubit>().retry();
+        },
+      ),
+      const SizedBox(height: 8),
+      AppButton(
+        key: const Key('scanner_home'),
+        label: 'Bosh sahifa',
+        variant: AppButtonVariant.secondary,
+        onPressed: () {
+          Navigator.of(context, rootNavigator: true).pop();
+          leaveScanner(context);
         },
       ),
     ],
   );
+}
+
+/// Skanerdan chiqish: ustidagi dialoglar yopiladi, so'ng sahifa `pop`
+/// qilinadi (chaqiruvchi `push` natijasini oladi) yoki `/home`.
+void leaveScanner(BuildContext context) {
+  if (!context.mounted) return;
+  Navigator.of(
+    context,
+    rootNavigator: true,
+  ).popUntil((route) => route.settings is Page);
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go('/home');
+  }
 }
 
 /// Kunlik check-in uchun 2-3 ta TAKRORLANMAS `LivenessAction` deterministik

@@ -36,6 +36,10 @@ class NotificationsCubit extends Cubit<NotificationsState> {
   final NotificationsDataSource _dataSource;
   final CacheService? _cache;
   Timer? _poll;
+
+  /// [clear] har chaqirilganda oshadi — chiqishdan OLDIN boshlangan `load`
+  /// javobi keyin kelsa, oldingi fuqaroning ro'yxati qayta ko'rinmasin.
+  int _generation = 0;
   static const _logger = AppLogger();
 
   /// Joriy o'qilmagan bildirishnomalar soni — holatdan qat'i nazar
@@ -51,6 +55,7 @@ class NotificationsCubit extends Cubit<NotificationsState> {
   /// yangilaydi (bosh sahifa ochilganda, avto-yangilashda); xatoda joriy
   /// holat saqlanadi.
   Future<void> load({bool silent = false}) async {
+    final generation = _generation;
     List<NotificationItem>? cached;
     if (!silent) {
       cached = _cache?.getJsonList<NotificationItem>(
@@ -66,10 +71,10 @@ class NotificationsCubit extends Cubit<NotificationsState> {
 
     try {
       final items = await _dataSource.fetch();
+      if (isClosed || generation != _generation) return;
       final sorted = [...items]
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       _persist(sorted);
-      if (isClosed) return;
       emit(
         sorted.isEmpty
             ? const NotificationsEmpty()
@@ -77,7 +82,7 @@ class NotificationsCubit extends Cubit<NotificationsState> {
       );
     } on Object catch (e) {
       _logger.logError(e, null, reason: 'NotificationsCubit.load');
-      if (silent || isClosed) return;
+      if (silent || isClosed || generation != _generation) return;
       if (cached == null || cached.isEmpty) {
         emit(
           NotificationsError(
@@ -127,6 +132,22 @@ class NotificationsCubit extends Cubit<NotificationsState> {
         _logger.logError(e, null, reason: 'NotificationsCubit.markAllRead');
       }),
     );
+  }
+
+  /// Chiqishda (logout / sessiya tugashi) chaqiriladi: avto-yangilash
+  /// taymerini to'xtatadi, keshni o'chiradi va holatni boshlang'ichga
+  /// qaytaradi — qurilmadagi keyingi fuqaro oldingisining
+  /// bildirishnomalarini ko'rmasin. Kesh xatosi chiqishni to'xtatmaydi.
+  Future<void> clear() async {
+    _generation++;
+    _poll?.cancel();
+    _poll = null;
+    try {
+      await _cache?.remove(NotificationItem.cacheKey);
+    } on Object catch (e) {
+      _logger.logError(e, null, reason: 'NotificationsCubit.clear');
+    }
+    if (!isClosed) emit(const NotificationsLoading());
   }
 
   void _persist(List<NotificationItem> items) {

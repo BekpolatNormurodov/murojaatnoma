@@ -60,6 +60,9 @@ class _PayPageState extends State<PayPage> {
     return digits.isEmpty ? 0 : double.parse(digits);
   }
 
+  /// Ochiq SMS varag'ining konteksti — uni FAQAT shu sahifa yopadi.
+  BuildContext? _otpSheetContext;
+
   bool get _isManualCard => _selectedCard == null;
 
   String get _cardNumberForSubmit =>
@@ -104,11 +107,28 @@ class _PayPageState extends State<PayPage> {
       subtitle: context.l10n.smsConfirmMessage,
       child: BlocProvider.value(
         value: cubit,
-        child: PaymentOtpSheet(demoCode: demoCode),
+        child: Builder(
+          builder: (sheetContext) {
+            _otpSheetContext = sheetContext;
+            return PaymentOtpSheet(demoCode: demoCode);
+          },
+        ),
       ),
     );
+    _otpSheetContext = null;
     if (cubit.state is PayAwaitingOtp) {
       cubit.cancelOtp();
+    }
+  }
+
+  /// Natija kelgach SMS varag'ini yopadi — natija dialogidan OLDIN (aks
+  /// holda varaqning `pop`i yangi ochilgan dialogni yopib yuborar edi).
+  void _closeOtpSheet() {
+    final sheetContext = _otpSheetContext;
+    _otpSheetContext = null;
+    if (sheetContext == null || !sheetContext.mounted) return;
+    if (ModalRoute.of(sheetContext)?.isCurrent ?? false) {
+      Navigator.of(sheetContext).pop();
     }
   }
 
@@ -132,6 +152,7 @@ class _PayPageState extends State<PayPage> {
             if (state is PayAwaitingOtp) {
               await _openOtpSheet(context, state.demoCode);
             } else if (state is PaySuccess) {
+              _closeOtpSheet();
               // To'lov muvaffaqiyatli bo'lgach bosh sahifa va kommunalka
               // ro'yxatini (ular lazy-singleton — qarang: injection.dart)
               // to'g'ridan-to'g'ri yangilaymiz, chunki bu sahifa ular bilan
@@ -158,11 +179,11 @@ class _PayPageState extends State<PayPage> {
                 title: l10n.paySuccessTitle,
                 message: l10n.paySuccessMessage,
                 buttonLabel: l10n.closeLabel,
-                onClose: () {
-                  if (context.mounted) context.pop();
-                },
               );
+              // Tugma ham, fon bosilishi ham sahifani yopadi.
+              if (context.mounted) context.pop();
             } else if (state is PayFailure) {
+              _closeOtpSheet();
               AppAlert.error(context, state.message);
             }
           },

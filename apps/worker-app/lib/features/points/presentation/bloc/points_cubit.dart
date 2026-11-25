@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/points/domain/entities/points.dart';
 import 'package:worker_app/features/points/domain/usecases/get_current_points.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'points_state.dart';
 
@@ -33,10 +34,18 @@ class PointsCubit extends Cubit<PointsState> {
         );
       });
     } on Object catch (e) {
-      emit(PointsError('Kutilmagan xatolik: $e'));
+      emit(PointsError(unexpectedError(e)));
     }
   }
 
   /// Qayta yuklaydi (pull-to-refresh yoki "Qayta urinish" tugmasi).
   Future<void> reload() => load();
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(PointsState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

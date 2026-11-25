@@ -34,6 +34,12 @@ class _PhoneInputPageState extends State<PhoneInputPage> {
     return Scaffold(
       body: BlocConsumer<AuthCubit, AuthState>(
         listener: (context, state) {
+          // `/otp` shu sahifa USTIGA push qilinadi — bu sahifa daraxtda
+          // qoladi va `AuthCubit`ni tinglashda davom etadi. Faqat ekranda
+          // ko'rinib turganida reaksiya qilamiz: aks holda "Qayta yuborish"
+          // ikkinchi `/otp` sahifasini ochar, har bir OTP xatosi esa ikki
+          // marta ko'rsatilar edi.
+          if (!(ModalRoute.of(context)?.isCurrent ?? true)) return;
           if (state.status == AuthStatus.otpSent) {
             context.push('/otp', extra: '+998 ${_phone.text}');
           } else if (state.status == AuthStatus.error) {

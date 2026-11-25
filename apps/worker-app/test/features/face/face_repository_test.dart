@@ -228,9 +228,8 @@ void main() {
       );
 
       test(
-        'remote upload failing is swallowed as a soft warning — enroll() '
-        'still returns Right(unit) (local template already saved, offline '
-        'match keeps working)',
+        'remote upload failing surfaces a ServerFailure (the server template '
+        'is required for check-in) while the local template stays saved',
         () async {
           AppConfig.useMock = false;
           remote.uploadError = ServerException('tarmoq xatosi');
@@ -238,7 +237,11 @@ void main() {
 
           final result = await subject.enroll(template);
 
-          expect(result, equals(const Right<Failure, Unit>(unit)));
+          expect(result.isLeft(), isTrue);
+          result.fold(
+            (failure) => expect(failure, isA<ServerFailure>()),
+            (_) => fail('upload failure must not look like success'),
+          );
           expect(local.stored, equals(template));
           expect(remote.uploadCallCount, 1);
         },

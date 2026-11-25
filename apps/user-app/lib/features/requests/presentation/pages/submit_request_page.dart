@@ -19,7 +19,10 @@ import 'package:user_app/features/requests/presentation/widgets/request_attachme
 /// `CitizenRequestsApiImpl.submit`), forma faqat murojaatning o'ziga
 /// tegishli maydonlarni so'raydi.
 class SubmitRequestPage extends StatefulWidget {
-  const SubmitRequestPage({super.key});
+  const SubmitRequestPage({this.initialKind = RequestKind.ariza, super.key});
+
+  /// Boshlang'ich tur — bosh sahifadagi "Ariza"/"Shikoyat" tezkor amali.
+  final RequestKind initialKind;
 
   @override
   State<SubmitRequestPage> createState() => _SubmitRequestPageState();
@@ -34,7 +37,7 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
 
   final _titleController = TextEditingController();
   final _bodyController = TextEditingController();
-  RequestKind _kind = RequestKind.ariza;
+  late RequestKind _kind = widget.initialKind;
   String? _category;
   String? _regionCode;
   String? _districtCode;
@@ -160,211 +163,274 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
     final canvas = isDark ? AppColors.darkCanvas : AppColors.canvas;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
 
-    return Scaffold(
-      backgroundColor: canvas,
-      appBar: AppBar(
+    // Yuborish davomida orqaga qaytilsa fayl yuklash uzilib qoladi.
+    final busy =
+        context.watch<SubmitRequestCubit>().state is SubmitRequestSubmitting;
+
+    return PopScope(
+      canPop: !busy,
+      child: Scaffold(
         backgroundColor: canvas,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: const AppBackButton(),
-        title: Text(l10n.citizenRequestSubmitTitle, style: AppTextStyles.h3),
-      ),
-      body: SafeArea(
-        child: BlocConsumer<SubmitRequestCubit, SubmitRequestState>(
-          listener: (context, state) async {
-            if (state is SubmitRequestSuccess) {
-              await AppDialog.success(
-                context: context,
-                title: l10n.createRequestSuccessTitle,
-                message: l10n.createRequestSuccessMessage,
-                onClose: () {
-                  if (context.mounted) context.pop();
-                },
-              );
-            } else if (state is SubmitRequestFailure) {
-              AppAlert.error(context, state.message);
-            }
-          },
-          builder: (context, state) {
-            final submitting = state is SubmitRequestSubmitting;
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              children: [
-                // Yuborish davomida butun forma bloklanadi (IgnorePointer)
-                // va xiralashtiriladi (AnimatedOpacity) — aniq "yuborilmoqda,
-                // hozircha tahrirlash mumkin emas" signali, tugmaning o'zi
-                // (pastda, wrapper tashqarisida) esa o'z loading holatini
-                // to'liq yorqinlikda ko'rsatadi.
-                AnimatedOpacity(
-                  opacity: submitting ? 0.55 : 1,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(
-                    ignoring: submitting,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.citizenRequestKindLabel,
-                          style: AppTextStyles.label,
-                        ),
-                        const SizedBox(height: 8),
-                        AppSegmented<RequestKind>(
-                          value: _kind,
-                          segments: [
-                            AppSegment(
-                              value: RequestKind.ariza,
-                              label: l10n.requestKindAriza,
-                            ),
-                            AppSegment(
-                              value: RequestKind.shikoyat,
-                              label: l10n.requestKindShikoyat,
-                            ),
-                          ],
-                          onChanged: (value) => setState(() => _kind = value),
-                        ),
-                        const SizedBox(height: 16),
-                        AppTextField(
-                          label: l10n.createRequestTitleLabel,
-                          hint: l10n.createRequestTitleHint,
-                          controller: _titleController,
-                          errorText: _titleError,
-                          enabled: !submitting,
-                          maxLength: 120,
-                          textInputAction: TextInputAction.next,
-                          onChanged: (value) {
-                            if (_titleError != null &&
-                                value.trim().length >= _minTitleLength) {
-                              setState(() => _titleError = null);
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        AppSelect<String>(
-                          label: l10n.createRequestCategoryLabel,
-                          hint: l10n.createRequestCategoryHint,
-                          searchHint: l10n.searchHint,
-                          icon: AppIcons.category,
-                          value: _category,
-                          options: [
-                            for (final category in _categories(l10n))
-                              AppSelectOption(value: category, label: category),
-                          ],
-                          onChanged: (value) => setState(() {
-                            _category = value;
-                            _categoryError = null;
-                          }),
-                          errorText: _categoryError,
-                          enabled: !submitting,
-                        ),
-                        const SizedBox(height: 16),
-                        Text('Manzil (lokatsiya)', style: AppTextStyles.label),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Ixtiyoriy — muammo tegishli hudud',
-                          style: AppTextStyles.caption.copyWith(
-                            color: inkMuted,
+        appBar: AppBar(
+          backgroundColor: canvas,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          leading: const AppBackButton(),
+          title: Text(l10n.citizenRequestSubmitTitle, style: AppTextStyles.h3),
+        ),
+        body: SafeArea(
+          child: BlocConsumer<SubmitRequestCubit, SubmitRequestState>(
+            listener: (context, state) async {
+              if (state is SubmitRequestSuccess) {
+                await AppDialog.success(
+                  context: context,
+                  title: l10n.createRequestSuccessTitle,
+                  message: l10n.createRequestSuccessMessage,
+                );
+                // Tugma ham, fon bosilishi ham sahifani yopadi.
+                if (context.mounted) context.pop();
+              } else if (state is SubmitRequestFailure) {
+                AppAlert.error(context, state.message);
+              }
+            },
+            builder: (context, state) {
+              final submitting = state is SubmitRequestSubmitting;
+              // Murojaat yaratilgan, fayllar qolgan — forma qulflanadi.
+              final partial = state is SubmitRequestAttachmentsFailed
+                  ? state
+                  : null;
+              final locked = submitting || partial != null;
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                children: [
+                  // Yuborish davomida butun forma bloklanadi (IgnorePointer)
+                  // va xiralashtiriladi (AnimatedOpacity) — aniq "yuborilmoqda,
+                  // hozircha tahrirlash mumkin emas" signali, tugmaning o'zi
+                  // (pastda, wrapper tashqarisida) esa o'z loading holatini
+                  // to'liq yorqinlikda ko'rsatadi.
+                  AnimatedOpacity(
+                    opacity: locked ? 0.55 : 1,
+                    duration: const Duration(milliseconds: 200),
+                    child: IgnorePointer(
+                      ignoring: locked,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.citizenRequestKindLabel,
+                            style: AppTextStyles.label,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: AppSelect<String>(
-                                hint: l10n.registrationRegionHint,
-                                searchHint: l10n.searchHint,
-                                icon: AppIcons.location,
-                                value: _regionCode,
-                                options: [
-                                  for (final region in kUzbekistanRegions)
-                                    AppSelectOption(
-                                      value: region.code,
-                                      label: RegionMeta.regionLabel(
-                                        l10n,
-                                        region.code,
-                                      ),
-                                    ),
-                                ],
-                                onChanged: (value) => setState(() {
-                                  _regionCode = value;
-                                  _districtCode = null;
-                                }),
-                                enabled: !submitting,
+                          const SizedBox(height: 8),
+                          AppSegmented<RequestKind>(
+                            value: _kind,
+                            segments: [
+                              AppSegment(
+                                value: RequestKind.ariza,
+                                label: l10n.requestKindAriza,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: AppSelect<String>(
-                                hint: _regionCode == null
-                                    ? l10n.registrationDistrictHintNoRegion
-                                    : l10n.registrationDistrictHint,
-                                searchHint: l10n.searchHint,
-                                icon: AppIcons.location,
-                                value: _districtCode,
-                                options: [
-                                  for (final district in _districtOptions)
-                                    AppSelectOption(
-                                      value: district,
-                                      label: RegionMeta.districtLabel(
-                                        l10n,
-                                        district,
-                                      ),
-                                    ),
-                                ],
-                                onChanged: (value) =>
-                                    setState(() => _districtCode = value),
-                                enabled: !submitting && _regionCode != null,
+                              AppSegment(
+                                value: RequestKind.shikoyat,
+                                label: l10n.requestKindShikoyat,
                               ),
+                            ],
+                            onChanged: (value) => setState(() => _kind = value),
+                          ),
+                          const SizedBox(height: 16),
+                          AppTextField(
+                            label: l10n.createRequestTitleLabel,
+                            hint: l10n.createRequestTitleHint,
+                            controller: _titleController,
+                            errorText: _titleError,
+                            enabled: !submitting,
+                            maxLength: 120,
+                            textInputAction: TextInputAction.next,
+                            onChanged: (value) {
+                              if (_titleError != null &&
+                                  value.trim().length >= _minTitleLength) {
+                                setState(() => _titleError = null);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          AppSelect<String>(
+                            label: l10n.createRequestCategoryLabel,
+                            hint: l10n.createRequestCategoryHint,
+                            searchHint: l10n.searchHint,
+                            icon: AppIcons.category,
+                            value: _category,
+                            options: [
+                              for (final category in _categories(l10n))
+                                AppSelectOption(
+                                  value: category,
+                                  label: category,
+                                ),
+                            ],
+                            onChanged: (value) => setState(() {
+                              _category = value;
+                              _categoryError = null;
+                            }),
+                            errorText: _categoryError,
+                            enabled: !submitting,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Manzil (lokatsiya)',
+                            style: AppTextStyles.label,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Ixtiyoriy — muammo tegishli hudud',
+                            style: AppTextStyles.caption.copyWith(
+                              color: inkMuted,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        AppTextField(
-                          label: l10n.createRequestDescriptionLabel,
-                          hint: l10n.createRequestDescriptionHint,
-                          controller: _bodyController,
-                          maxLines: 5,
-                          maxLength: 2000,
-                          errorText: _bodyError,
-                          helperText: _bodyError == null
-                              ? 'Muammoni imkon qadar aniq va batafsil yozing'
-                              : null,
-                          enabled: !submitting,
-                          onChanged: (value) {
-                            if (_bodyError != null &&
-                                value.trim().length >= _minBodyLength) {
-                              setState(() => _bodyError = null);
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          '${l10n.createRequestAttachmentsLabel} '
-                          '(${_attachments.length}/'
-                          '${RequestAttachmentPicker.defaultMaxCount})',
-                          style: AppTextStyles.label,
-                        ),
-                        const SizedBox(height: 8),
-                        RequestAttachmentPicker(
-                          attachments: _attachments,
-                          onChanged: (value) =>
-                              setState(() => _attachments = value),
-                        ),
-                      ],
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: AppSelect<String>(
+                                  hint: l10n.registrationRegionHint,
+                                  searchHint: l10n.searchHint,
+                                  icon: AppIcons.location,
+                                  value: _regionCode,
+                                  options: [
+                                    for (final region in kUzbekistanRegions)
+                                      AppSelectOption(
+                                        value: region.code,
+                                        label: RegionMeta.regionLabel(
+                                          l10n,
+                                          region.code,
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: (value) => setState(() {
+                                    _regionCode = value;
+                                    _districtCode = null;
+                                  }),
+                                  enabled: !submitting,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: AppSelect<String>(
+                                  hint: _regionCode == null
+                                      ? l10n.registrationDistrictHintNoRegion
+                                      : l10n.registrationDistrictHint,
+                                  searchHint: l10n.searchHint,
+                                  icon: AppIcons.location,
+                                  value: _districtCode,
+                                  options: [
+                                    for (final district in _districtOptions)
+                                      AppSelectOption(
+                                        value: district,
+                                        label: RegionMeta.districtLabel(
+                                          l10n,
+                                          district,
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: (value) =>
+                                      setState(() => _districtCode = value),
+                                  enabled: !submitting && _regionCode != null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          AppTextField(
+                            label: l10n.createRequestDescriptionLabel,
+                            hint: l10n.createRequestDescriptionHint,
+                            controller: _bodyController,
+                            maxLines: 5,
+                            maxLength: 2000,
+                            errorText: _bodyError,
+                            helperText: _bodyError == null
+                                ? 'Muammoni imkon qadar aniq va batafsil yozing'
+                                : null,
+                            enabled: !submitting,
+                            onChanged: (value) {
+                              if (_bodyError != null &&
+                                  value.trim().length >= _minBodyLength) {
+                                setState(() => _bodyError = null);
+                              }
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            '${l10n.createRequestAttachmentsLabel} '
+                            '(${_attachments.length}/'
+                            '${RequestAttachmentPicker.defaultMaxCount})',
+                            style: AppTextStyles.label,
+                          ),
+                          const SizedBox(height: 8),
+                          RequestAttachmentPicker(
+                            attachments: _attachments,
+                            onChanged: (value) =>
+                                setState(() => _attachments = value),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 28),
-                AppButton(
-                  label: l10n.createRequestSubmit,
-                  icon: AppIcons.send,
-                  loading: submitting,
-                  onPressed: submitting ? null : _submit,
-                ),
-              ],
-            );
-          },
+                  const SizedBox(height: 28),
+                  if (partial != null)
+                    _AttachmentsFailedCard(state: partial)
+                  else
+                    AppButton(
+                      label: l10n.createRequestSubmit,
+                      icon: AppIcons.send,
+                      loading: submitting,
+                      onPressed: submitting ? null : _submit,
+                    ),
+                ],
+              );
+            },
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Murojaat yuborilgan, lekin ba'zi fayllar yuklanmagan holat.
+class _AttachmentsFailedCard extends StatelessWidget {
+  const _AttachmentsFailedCard({required this.state});
+
+  final SubmitRequestAttachmentsFailed state;
+
+  @override
+  Widget build(BuildContext context) {
+    final ru = Localizations.localeOf(context).languageCode == 'ru';
+    final count = state.failed.length;
+    final cubit = context.read<SubmitRequestCubit>();
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            ru
+                ? 'Обращение отправлено, но не загружено файлов: $count'
+                : 'Murojaat yuborildi, lekin $count ta fayl yuklanmadi',
+            style: AppTextStyles.bodyStrong,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            state.message,
+            style: AppTextStyles.caption.copyWith(color: AppColors.danger),
+          ),
+          const SizedBox(height: 12),
+          AppButton(
+            label: ru ? 'Повторить загрузку' : 'Qayta yuklash',
+            onPressed: cubit.retryAttachments,
+          ),
+          const SizedBox(height: 8),
+          AppButton(
+            label: ru ? 'Завершить без файлов' : 'Fayllarsiz yakunlash',
+            variant: AppButtonVariant.ghost,
+            onPressed: cubit.finishWithoutAttachments,
+          ),
+        ],
       ),
     );
   }

@@ -158,4 +158,22 @@ void main() {
 
     expect(find.text('Yuzingizni ovalga joylang'), findsOneWidget);
   });
+
+  for (final state in <FaceState>[
+    const FacePermissionDenied(),
+    const FaceSearching(),
+    const FaceError('Server javob bermadi'),
+  ]) {
+    testWidgets('forced enrolment offers logout at 360x640 ($state)', (
+      tester,
+    ) async {
+      tester.view
+        ..physicalSize = const Size(360, 640)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpWithState(tester, state);
+      expect(find.byKey(const Key('face_enroll_logout')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

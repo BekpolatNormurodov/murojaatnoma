@@ -23,10 +23,11 @@ class _FakeAttendanceRemoteDataSource implements AttendanceRemoteDataSource {
 
   @override
   Future<CheckScanResult> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     final err = checkInError;
     if (err != null) throw err;
@@ -35,10 +36,11 @@ class _FakeAttendanceRemoteDataSource implements AttendanceRemoteDataSource {
 
   @override
   Future<CheckScanResult> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     final err = checkOutError;
     if (err != null) throw err;

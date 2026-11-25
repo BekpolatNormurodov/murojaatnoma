@@ -16,6 +16,7 @@ import 'package:worker_app/features/chat/presentation/widgets/chat_person_sheet.
 import 'package:worker_app/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:worker_app/features/chat/presentation/widgets/message_composer.dart';
 import 'package:worker_app/injection.dart';
+import 'package:worker_app/core/widgets/scrollable_empty_state.dart';
 
 /// Bitta suhbat sahifasi — sarlavha panelida avatar+nom+mavjudlik/ishtirokchilar,
 /// skrollanadigan xabarlar ro'yxati (sana ajratgichlari va turga xos
@@ -329,7 +330,7 @@ class _ConversationPageState extends State<ConversationPage> {
                 children: [
                   Expanded(
                     child: messages.isEmpty
-                        ? EmptyState(
+                        ? ScrollableEmptyState(
                             icon: AppIcons.chat,
                             title: l10n.conversationEmptyTitle,
                             message: l10n.conversationEmptyMessage,
@@ -664,7 +665,7 @@ class _ConversationErrorView extends StatelessWidget {
     final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: EmptyState(
+      child: ScrollableEmptyState(
         icon: AppIcons.close,
         title: l10n.conversationErrorTitle,
         message: message,

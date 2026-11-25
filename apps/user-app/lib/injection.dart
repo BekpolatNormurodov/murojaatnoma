@@ -7,6 +7,9 @@ import 'package:user_app/app/router/app_router.dart';
 import 'package:user_app/core/cache/cache_service.dart';
 import 'package:user_app/core/monitoring/app_logger.dart';
 import 'package:user_app/core/notifications/notification_service.dart';
+import 'package:user_app/core/session/account_data_store.dart';
+import 'package:user_app/core/session/logout_service.dart';
+import 'package:user_app/core/session/onboarding_restorer.dart';
 import 'package:user_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:user_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:user_app/features/auth/domain/repositories/auth_repository.dart';
@@ -41,6 +44,7 @@ import 'package:user_app/features/payments/domain/usecases/pay_utility.dart';
 import 'package:user_app/features/payments/presentation/bloc/pay_cubit.dart';
 import 'package:user_app/features/payments/presentation/bloc/payment_history_cubit.dart';
 import 'package:user_app/features/payments/presentation/bloc/utilities_cubit.dart';
+import 'package:user_app/features/pin/data/datasources/pin_attempt_store.dart';
 import 'package:user_app/features/pin/data/datasources/pin_local_data_source.dart';
 import 'package:user_app/features/pin/data/repositories/pin_repository_impl.dart';
 import 'package:user_app/features/pin/domain/repositories/pin_repository.dart';
@@ -137,6 +141,24 @@ Future<void> configureDependencies() async {
         sendOtp: getIt<SendOtp>(),
         verifyOtp: getIt<VerifyOtp>(),
         restoreSession: getIt<RestoreSession>(),
+        loadOnboarding: (session, {required restored}) =>
+            getIt<OnboardingRestorer>()(session, restored: restored),
+      ),
+    )
+    // ---- Qurilmadagi fuqaro ma'lumotining egasi + onboarding tiklash ----
+    ..registerLazySingleton<AccountDataStore>(
+      () => AccountDataStore(
+        storage: getIt<FlutterSecureStorage>(),
+        prefs: getIt<SharedPreferences>(),
+        faceSync: getIt<CitizenFaceSync>(),
+      ),
+    )
+    ..registerLazySingleton<OnboardingRestorer>(
+      () => OnboardingRestorer(
+        accountData: getIt<AccountDataStore>(),
+        registration: getIt<RegistrationRepository>(),
+        face: getIt<FaceRepository>(),
+        pin: getIt<PinRepository>(),
       ),
     )
     // ---- Registration (Faza 3: shaxsiy ma'lumotlar — OTP dan keyin, yuz/
@@ -213,7 +235,11 @@ Future<void> configureDependencies() async {
     // ishlatadi, lekin ularning holati bir-biriga "sizib qolmasligi"
     // kerak (`RequestDetailCubit` bilan bir xil naqsh).
     ..registerFactory<PinCubit>(
-      () => PinCubit(setPin: getIt<SetPin>(), verifyPin: getIt<VerifyPin>()),
+      () => PinCubit(
+        setPin: getIt<SetPin>(),
+        verifyPin: getIt<VerifyPin>(),
+        attempts: PinAttemptStore(getIt<FlutterSecureStorage>()),
+      ),
     )
     // ---- Payments (kommunalka) — Mock/Api seam via AppConfig.useMock ----
     ..registerLazySingleton<PaymentsRemoteDataSource>(
@@ -342,5 +368,18 @@ Future<void> configureDependencies() async {
     )
     ..registerLazySingleton<NotificationsCubit>(
       () => NotificationsCubit(dataSource: getIt<NotificationsDataSource>()),
+    )
+    // ---- Chiqish: "Chiqish" tugmasi + sessiya tugashi uchun YAGONA yo'l ----
+    ..registerLazySingleton<LogoutService>(
+      () => LogoutService(
+        authRepository: getIt<AuthRepository>(),
+        authCubit: getIt<AuthCubit>(),
+        notificationsCubit: getIt<NotificationsCubit>(),
+        accountData: getIt<AccountDataStore>(),
+        resetters: [
+          () => getIt<HomeCubit>().reset(),
+          () => getIt<UtilitiesCubit>().reset(),
+        ],
+      ),
     );
 }

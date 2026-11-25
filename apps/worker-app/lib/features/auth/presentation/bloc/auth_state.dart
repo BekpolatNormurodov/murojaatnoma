@@ -9,6 +9,7 @@ class AuthState extends Equatable {
     this.faceEnrolled = false,
     this.errorMessage,
     this.devCode,
+    this.faceRequired = true,
   });
 
   final AuthStatus status;
@@ -34,6 +35,12 @@ class AuthState extends Equatable {
   /// `AuthState()`) yoki yangi `requestOtp()` natijasi orqali bo'ladi.
   final String? devCode;
 
+  /// Admin yuz skanerini yoqib qo'yganmi (`GET /settings/attendance`).
+  /// `false` bo'lsa yuzi ro'yxatdan o'tmagan xodim `/face/enroll`ga
+  /// majburlanmaydi — keldi/ketdi faqat joylashuv bo'yicha. Standart
+  /// `true` (avvalgi xatti-harakat; server javob bermasa ham shunday).
+  final bool faceRequired;
+
   /// Ishchi tizimga muvaffaqiyatli kirgan bo'lsa `true`.
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
@@ -43,6 +50,7 @@ class AuthState extends Equatable {
     bool? faceEnrolled,
     String? errorMessage,
     String? devCode,
+    bool? faceRequired,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -50,6 +58,7 @@ class AuthState extends Equatable {
       faceEnrolled: faceEnrolled ?? this.faceEnrolled,
       errorMessage: errorMessage,
       devCode: devCode ?? this.devCode,
+      faceRequired: faceRequired ?? this.faceRequired,
     );
   }
 
@@ -60,5 +69,6 @@ class AuthState extends Equatable {
     faceEnrolled,
     errorMessage,
     devCode,
+    faceRequired,
   ];
 }

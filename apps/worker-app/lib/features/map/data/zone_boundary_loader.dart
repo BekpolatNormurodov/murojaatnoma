@@ -46,7 +46,7 @@ class ZoneBoundaryLoader {
   static const double _workZoneFillAlpha = 0.16;
 
   /// [assignedCodes] — xodim biriktirilgan mahalla kodlari
-  /// (`properties.id`). Bo'sh bo'lsa (biriktirilmagan / offline) faqat tuman
+  /// (`properties.code`). Bo'sh bo'lsa (biriktirilmagan / offline) faqat tuman
   /// chegarasi ish hududi bo'lib qoladi (fallback).
   // GeoJSON is static for the whole session — fetched once per loader, so a
   // zone re-assignment only re-filters/re-colours, never re-downloads.
@@ -144,8 +144,8 @@ class ZoneBoundaryLoader {
 
   /// `/locations/me` — joriy xodimning biriktirilgan mahalla kodlari va
   /// (server hisoblagan) ish hududi ichida/tashqarisida holati. Xato/offline
-  /// bo'lsa bo'sh natija (biriktirilmagan kabi — tuman fallback ishlaydi).
-  Future<MyZone> loadMyZone() async {
+  /// bo'lsa `null` — "biriktirilmagan"dan FARQLI.
+  Future<MyZone?> loadMyZone() async {
     try {
       final res = await _dio.get<Map<String, dynamic>>('/locations/me');
       final data = res.data ?? const <String, dynamic>{};
@@ -160,7 +160,7 @@ class ZoneBoundaryLoader {
         insideAssignedZone: inside is bool ? inside : null,
       );
     } on Object {
-      return MyZone.empty;
+      return null;
     }
   }
 
@@ -233,13 +233,14 @@ class ZoneBoundaryLoader {
     }
   }
 
-  /// Mahalla kodi — `properties.id` (masalan "1090080"). Biriktirilgan
-  /// mahallalarni (`assignedMahallaCodes`) tanlash uchun ishlatiladi. Tuman
-  /// feature'ida bo'lmasligi mumkin — u holda bo'sh (kod bo'yicha
-  /// solishtirilmaydi ham).
+  /// Mahalla kodi — `properties.code` (backend `/zones/geojson`, masalan
+  /// "1090080"); `properties.id` — GIS manba fayllaridagi nom (zaxira).
+  /// Biriktirilgan mahallalarni (`assignedMahallaCodes`) tanlash uchun
+  /// ishlatiladi. Tuman feature'ida bo'lmasligi mumkin — u holda bo'sh (kod
+  /// bo'yicha solishtirilmaydi ham).
   String _codeOf(Map<String, dynamic>? props) {
     if (props == null) return '';
-    final value = props['id'];
+    final value = props['code'] ?? props['id'];
     if (value == null) return '';
     return value.toString().trim();
   }
@@ -311,7 +312,7 @@ class MyZone {
     required this.insideAssignedZone,
   });
 
-  /// Biriktirilgan mahalla kodlari (`properties.id` bilan mos). Bo'sh bo'lsa —
+  /// Biriktirilgan mahalla kodlari (`properties.code` bilan mos). Bo'sh bo'lsa —
   /// biriktirilmagan (butun tuman ish hududi).
   final List<String> assignedMahallaCodes;
 
@@ -337,7 +338,7 @@ class MahallaArea {
 
   final String name;
 
-  /// Mahalla kodi (`properties.id`) — biriktirilgan mahallalarni tanlash
+  /// Mahalla kodi (`properties.code`) — biriktirilgan mahallalarni tanlash
   /// uchun. Tuman hududida bo'sh.
   final String code;
   final List<MahallaPolygon> parts;

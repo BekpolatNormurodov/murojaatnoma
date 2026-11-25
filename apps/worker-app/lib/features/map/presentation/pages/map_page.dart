@@ -13,6 +13,7 @@ import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/features/map/data/offline_tiles.dart';
 import 'package:worker_app/features/map/data/yandex_map.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
+import 'package:worker_app/features/map/data/zone_refresher.dart';
 import 'package:worker_app/features/map/presentation/bloc/map_cubit.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
@@ -67,9 +68,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   final _loader = ZoneBoundaryLoader(getIt<DioClient>().dio);
   Timer? _zoneRefreshTimer;
 
-  /// Biriktirilgan mahalla kodlari (oxirgi `/locations/me`) — o'zgarsa
-  /// chegaralar qayta chiziladi.
-  Set<String> _assignedCodes = const {};
+  /// Biriktirilgan mahallalar + chegaralarni yangilovchi.
+  late final _zones = ZoneRefresher(
+    loadZone: _loader.loadMyZone,
+    loadBoundaries: (codes) => _loader.load(assignedCodes: codes),
+  );
 
   /// `FlutterMap` HOZIR chizilganmi (`onMapReady` keldi) — `MapController`
   /// faqat shunda ishlaydi. Ruxsat/xato ekranida xarita yo'q.
@@ -133,24 +136,21 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) unawaited(_loadBoundaries());
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_loadBoundaries());
+    // Sozlamalardan ruxsat berib qaytgan bo'lsa — xarita o'zi tiklanadi.
+    unawaited(context.read<MapCubit>().resumeIfPermitted());
   }
 
-  /// `/locations/me` (biriktirilgan mahallalar) + chegaralar. Birinchi
-  /// chaqiruvda geojson yuklanadi; keyingilarida (taymer/resume) faqat kodlar
-  /// o'zgargan bo'lsa qayta chiziladi (geojson loader ichida keshlangan).
+  /// `/locations/me` (biriktirilgan mahallalar) + chegaralar. Faqat kodlar
+  /// o'zgarganda qayta chiziladi; xatoda avvalgi hudud qoladi.
   Future<void> _loadBoundaries() async {
-    final myZone = await _loader.loadMyZone();
-    final codes = myZone.assignedMahallaCodes.toSet();
-    final firstLoad = _boundaries.polygons.isEmpty;
-    if (!firstLoad && _setEquals(codes, _assignedCodes)) return;
-    final boundaries = await _loader.load(assignedCodes: codes);
-    if (!mounted) return;
-    _assignedCodes = codes;
+    final changed = await _zones.refresh();
+    if (!changed || !mounted) return;
     setState(() {
-      _boundaries = boundaries;
-      // Jonli GPS hisobi kelguncha bannerni server qiymati bilan boshlaymiz.
-      _insideZone ??= myZone.insideAssignedZone;
+      _boundaries = _zones.boundaries;
+      // Jonli GPS hisobi kelguncha banner server qiymati bilan boshlanadi.
+      _insideZone = _zones.serverInside;
     });
     // Xarita ochilishida BUTUN Mirzo Ulug'bek tumani ko'rinsin (bir marta).
     _fitToDistrictIfReady();
@@ -259,9 +259,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     _fitToDistrictIfReady();
   }
 
-  static bool _setEquals(Set<String> a, Set<String> b) =>
-      a.length == b.length && a.containsAll(b);
-
   /// Faqat pozitsiya oldingi hisobdan sezilarli (>~15 m) uzoqlashganda joriy
   /// mahallani qayta aniqlaydi — ray-casting har GPS o'lchovida emas, faqat
   /// haqiqiy harakatda ishlaydi (performance). O'zgarsa `setState` bilan chip
@@ -347,6 +344,12 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         // onMapReady qayta keladi.
         if (state is MapPermissionDenied || state is MapError) {
           _mapReady = false;
+        }
+        // Ruxsat endi bor (masalan "Ruxsat berish"dan keyin) — serverga
+        // yuboruvchi kuzatuv ham ishga tushsin.
+        if (state is MapTracking && getIt.isRegistered<LocationTrackingService>()) {
+          final tracking = getIt<LocationTrackingService>();
+          if (!tracking.isRunning) unawaited(tracking.start());
         }
         // Tuman chegarasi mavjud bo'lsa — xarita BUTUN tumanga freym qilingan
         // (qarang: [_fitToDistrictIfReady]); jonli GPS kamerani o'ziga
@@ -570,7 +573,10 @@ class _TrackingScaffold extends StatelessWidget {
                     children: [
                       const _WorkZoneLegendChip(),
                       const SizedBox(height: 8),
-                      _MahallaChip(mahalla: currentMahalla),
+                      _MahallaChip(
+                        mahalla: currentMahalla,
+                        locating: snapshot == null,
+                      ),
                     ],
                   ),
                 ),
@@ -819,7 +825,10 @@ class _WorkZoneLegendChip extends StatelessWidget {
 /// `mahallaAt`) — tarmoqqa murojaat qilmaydi. Mos l10n kaliti yo'q, shuning
 /// uchun matn oddiy o'zbekcha.
 class _MahallaChip extends StatelessWidget {
-  const _MahallaChip({required this.mahalla});
+  const _MahallaChip({required this.mahalla, required this.locating});
+
+  /// Joylashuv hali noma'lum — "Tuman tashqarisida" deb bo'lmaydi.
+  final bool locating;
 
   final MahallaArea? mahalla;
 
@@ -827,7 +836,11 @@ class _MahallaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inside = mahalla != null && mahalla!.name.isNotEmpty;
-    final label = inside ? mahalla!.name : 'Tuman tashqarisida';
+    final label = inside
+        ? mahalla!.name
+        : locating
+        ? context.l10n.mapLocating
+        : 'Tuman tashqarisida';
     final accent = inside ? AppColors.primary : AppColors.inkMuted;
 
     return Container(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:worker_app/features/requests/domain/attachment_type_resolver.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 import 'package:worker_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:worker_app/features/requests/presentation/widgets/application_card.dart';
@@ -823,7 +824,7 @@ class _Bubble extends StatelessWidget {
                   const SizedBox(height: 6),
                   AttachmentTile(
                     attachment: AttachmentRef(
-                      type: AttachmentType.image,
+                      type: attachmentTypeFor(message.attachmentUrl),
                       path: message.attachmentUrl!,
                       name: message.attachmentUrl!.split('/').last,
                     ),

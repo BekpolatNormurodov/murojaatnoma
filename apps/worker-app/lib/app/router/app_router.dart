@@ -44,6 +44,11 @@ import 'package:worker_app/features/points/presentation/bloc/points_cubit.dart';
 import 'package:worker_app/features/points/presentation/pages/points_page.dart';
 import 'package:worker_app/features/premya/presentation/pages/premya_request_page.dart';
 import 'package:worker_app/features/profile/presentation/pages/profile_page.dart';
+import 'package:worker_app/features/reports/presentation/bloc/report_compose_cubit.dart';
+import 'package:worker_app/features/reports/presentation/bloc/reports_cubit.dart';
+import 'package:worker_app/features/reports/presentation/bloc/zone_time_cubit.dart';
+import 'package:worker_app/features/reports/presentation/pages/report_compose_page.dart';
+import 'package:worker_app/features/reports/presentation/pages/reports_page.dart';
 import 'package:worker_app/features/requests/presentation/bloc/request_detail_cubit.dart';
 import 'package:worker_app/features/requests/presentation/bloc/requests_cubit.dart';
 import 'package:worker_app/features/requests/presentation/pages/request_detail_page.dart';
@@ -87,6 +92,7 @@ class AppRouter {
       redirect: (context, state) => resolveAuthRedirect(
         authState: context.read<AuthCubit>().state,
         location: state.matchedLocation,
+        voluntaryEnroll: state.uri.queryParameters['voluntary'] == '1',
       ),
       errorBuilder: (context, state) => Scaffold(
         body: SafeArea(
@@ -358,6 +364,31 @@ class AppRouter {
         GoRoute(
           path: '/my-attendance',
           builder: (context, _) => const MyAttendancePage(),
+        ),
+        // `/reports` — "Kunlik hisobot" (bosh sahifa kartasi + profil
+        // menyusidan PUSH): hisobotlar ro'yxati + "Hududda bo'lgan vaqt"
+        // tabi. `/reports/new` — yangi hisobot formasi (`pop(true)` —
+        // yuborildi, ro'yxat yangilanadi).
+        GoRoute(
+          path: '/reports',
+          builder: (context, state) => MultiBlocProvider(
+            providers: [
+              BlocProvider(create: (_) => getIt<ReportsCubit>()..load()),
+              BlocProvider(create: (_) => getIt<ZoneTimeCubit>()..load()),
+            ],
+            child: ReportsPage(
+              initialTab: state.uri.queryParameters['tab'] == 'zone' ? 1 : 0,
+            ),
+          ),
+          routes: [
+            GoRoute(
+              path: 'new',
+              builder: (context, _) => BlocProvider(
+                create: (_) => getIt<ReportComposeCubit>(),
+                child: const ReportComposePage(),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/profile/info',

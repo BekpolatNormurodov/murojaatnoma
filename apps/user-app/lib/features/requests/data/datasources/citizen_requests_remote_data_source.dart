@@ -20,6 +20,9 @@ abstract class CitizenRequestsRemoteDataSource {
 
   Future<CitizenRequest> submit(CitizenRequest draft);
 
+  /// Qurilmadagi faylni murojaatga yuklaydi.
+  Future<void> uploadAttachment(String requestId, RequestAttachment attachment);
+
   /// Bitta murojaat mavzusidagi barcha xabarlarni (fuqaro savollari + xodim
   /// javoblari) xronologik tartibda oladi.
   Future<List<RequestMessage>> getMessages(String requestId);
@@ -94,12 +97,25 @@ class CitizenRequestsRemoteDataSourceMockImpl
       body: draft.body.trim(),
       status: RequestStatus.yuborilgan,
       createdAt: DateTime.now().toIso8601String(),
-      attachments: draft.attachments,
       region: draft.region,
       district: draft.district,
     );
     mockCitizenRequests.insert(0, created);
     return created;
+  }
+
+  @override
+  Future<void> uploadAttachment(
+    String requestId,
+    RequestAttachment attachment,
+  ) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final i = mockCitizenRequests.indexWhere((r) => r.id == requestId);
+    if (i == -1) throw ServerException('Murojaat topilmadi: $requestId');
+    final r = mockCitizenRequests[i];
+    mockCitizenRequests[i] = r.copyWith(
+      attachments: [...r.attachments, attachment],
+    );
   }
 
   @override
@@ -323,6 +339,48 @@ String _extractErrorMessage(DioException e) {
   return e.message ?? 'Server xatosi';
 }
 
+/// Backend faqat rasm/video/audio qabul qiladi — turi ANIQ ko'rsatiladi
+/// (aks holda `application/octet-stream` bo'lib rad etilishi mumkin).
+DioMediaType _mediaTypeFor(RequestAttachment attachment) {
+  final name = attachment.path.toLowerCase();
+  final ext = name.substring(name.lastIndexOf('.') + 1);
+  return switch (ext) {
+    'png' => DioMediaType('image', 'png'),
+    'webp' => DioMediaType('image', 'webp'),
+    'gif' => DioMediaType('image', 'gif'),
+    'heic' => DioMediaType('image', 'heic'),
+    'mp4' => DioMediaType('video', 'mp4'),
+    'mov' => DioMediaType('video', 'quicktime'),
+    'm4a' => DioMediaType('audio', 'mp4'),
+    'mp3' => DioMediaType('audio', 'mpeg'),
+    _ => switch (attachment.type) {
+      RequestAttachmentType.video => DioMediaType('video', 'mp4'),
+      RequestAttachmentType.voice => DioMediaType('audio', 'mp4'),
+      _ => DioMediaType('image', 'jpeg'),
+    },
+  };
+}
+
+/// Backend `Attachment` JSON'i. Audio ham serverda `VIDEO` turida saqlanadi,
+/// shuning uchun avval `mimeType`ga qaraladi.
+RequestAttachment? _attachmentFromJson(Map<String, dynamic> json) {
+  final url = json['url'];
+  if (url is! String || url.isEmpty) return null;
+  final mime = json['mimeType'] as String? ?? '';
+  final type = mime.startsWith('audio/')
+      ? RequestAttachmentType.voice
+      : mime.startsWith('video/') || json['type'] == 'VIDEO'
+      ? RequestAttachmentType.video
+      : RequestAttachmentType.image;
+  final name = json['fileName'] as String?;
+  return RequestAttachment(
+    type: type,
+    path: url,
+    name: name == null || name.isEmpty ? url.split('/').last : name,
+    sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
+  );
+}
+
 /// Real backend implementatsiyasi — `POST/GET https://murojaatnoma.uz/api
 /// /applications*` orqali ishlaydi.
 ///
@@ -457,10 +515,24 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
       } on Object {
         events = const [];
       }
-      return _requestFromApplicationJson(
+      final request = _requestFromApplicationJson(
         response.data ?? const {},
         events: events,
       );
+      try {
+        final r = await _client.dio.get<List<dynamic>>(
+          '/applications/$id/attachments',
+        );
+        return request.copyWith(
+          attachments: [
+            for (final raw in r.data ?? const <dynamic>[])
+              if (raw is Map<String, dynamic>)
+                if (_attachmentFromJson(raw) case final attachment?) attachment,
+          ],
+        );
+      } on Object {
+        return request.copyWith(attachmentsFailed: true);
+      }
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }
@@ -495,6 +567,28 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
         },
       );
       return _requestFromApplicationJson(response.data ?? const {});
+    } on DioException catch (e) {
+      throw ServerException(_extractErrorMessage(e));
+    }
+  }
+
+  @override
+  Future<void> uploadAttachment(
+    String requestId,
+    RequestAttachment attachment,
+  ) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(
+        attachment.path,
+        filename: attachment.name,
+        contentType: _mediaTypeFor(attachment),
+      ),
+    });
+    try {
+      await _client.dio.post<Map<String, dynamic>>(
+        '/applications/$requestId/attachments/upload',
+        data: form,
+      );
     } on DioException catch (e) {
       throw ServerException(_extractErrorMessage(e));
     }

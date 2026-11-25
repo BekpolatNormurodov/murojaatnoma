@@ -16,6 +16,14 @@ class AuthSession extends Equatable {
   final String phone;
   final String region;
 
+  AuthSession copyWith({String? name}) => AuthSession(
+    token: token,
+    userId: userId,
+    name: name ?? this.name,
+    phone: phone,
+    region: region,
+  );
+
   @override
   List<Object?> get props => [token, userId, name, phone, region];
 }

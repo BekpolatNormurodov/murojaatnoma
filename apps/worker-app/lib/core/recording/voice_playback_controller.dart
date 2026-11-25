@@ -84,7 +84,13 @@ class VoicePlaybackController extends ChangeNotifier {
 
     final player = AudioPlayer();
     try {
-      final duration = await player.setFilePath(path);
+      // Serverdagi (http/https) ovoz — masalan yuborilgan kunlik hisobot
+      // biriktirmasi; aks holda qurilmadagi lokal fayl.
+      final isRemote =
+          path.startsWith('http://') || path.startsWith('https://');
+      final duration = isRemote
+          ? await player.setUrl(path)
+          : await player.setFilePath(path);
       _player = player;
       _duration = duration;
       _positionSub = player.positionStream.listen((position) {

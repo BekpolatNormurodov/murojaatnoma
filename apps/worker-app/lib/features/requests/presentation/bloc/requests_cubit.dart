@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/requests/domain/entities/application.dart';
 import 'package:worker_app/features/requests/domain/repositories/applications_repository.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'requests_state.dart';
 
@@ -37,6 +38,8 @@ class RequestsCubit extends Cubit<RequestsState> {
 
   /// `true` bo'lsa holat yoki muhimlik filtrlaridan biri tanlangan —
   /// filtr tugmasining faol-holat ko'rsatkichi uchun.
+  var _loadSeq = 0;
+
   bool get hasActiveFilters => _status != null || _priority != null;
 
   /// Murojaatlar ro'yxatini (berilgan filtrlar bilan) yuklaydi. Har doim
@@ -53,6 +56,7 @@ class RequestsCubit extends Cubit<RequestsState> {
     _priority = priority;
     _query = query;
 
+    final seq = ++_loadSeq;
     emit(const RequestsLoading());
     try {
       final result = await _repository.list(
@@ -60,6 +64,9 @@ class RequestsCubit extends Cubit<RequestsState> {
         status: status,
         query: query,
       );
+      // Tez yozilgan qidiruv/filtr: eskiroq so'rov javobi yangisini
+      // bosib ketmasin.
+      if (seq != _loadSeq) return;
       result.fold((failure) => emit(RequestsError(failure.message)), (items) {
         final filtered = priority == null
             ? items
@@ -69,7 +76,7 @@ class RequestsCubit extends Cubit<RequestsState> {
         );
       });
     } on Object catch (e) {
-      emit(RequestsError('Kutilmagan xatolik: $e'));
+      if (seq == _loadSeq) emit(RequestsError(unexpectedError(e)));
     }
   }
 
@@ -82,4 +89,12 @@ class RequestsCubit extends Cubit<RequestsState> {
     priority: _priority,
     query: _query,
   );
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(RequestsState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

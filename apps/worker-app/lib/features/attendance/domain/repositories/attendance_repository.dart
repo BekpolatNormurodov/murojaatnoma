@@ -31,19 +31,21 @@ abstract class AttendanceRepository {
   /// check-in qiladi — moslikni SERVER hisoblaydi (natija:
   /// [CheckScanResult.isValid]/[CheckScanResult.faceScore]).
   Future<Either<Failure, CheckScanResult>> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   });
 
   /// Xuddi [checkIn] kabi, lekin bugungi ish kunini yakunlash
   /// (check-out) uchun.
   Future<Either<Failure, CheckScanResult>> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   });
 
   /// Joriy xodimning bugungi holati + so'nggi hafta tarixini bitta

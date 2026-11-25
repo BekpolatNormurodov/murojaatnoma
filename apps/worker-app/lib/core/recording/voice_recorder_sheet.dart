@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:record/record.dart';
+import 'package:worker_app/core/recording/media_limits.dart';
 import 'package:worker_app/core/recording/recorded_media.dart';
 import 'package:worker_app/core/recording/recording_format.dart';
 import 'package:worker_app/core/recording/recording_paths.dart';
@@ -23,18 +24,23 @@ import 'package:worker_app/core/recording/voice_playback_controller.dart';
 /// `null` qaytaradi. Backend MOCK yoki REAL bo'lishidan qat'i nazar
 /// yozib olishning o'zi doim haqiqiy qurilma darajasida — mock faqat
 /// keyingi tarmoq (`respond`/`sendMessage`) chaqiruviga tegishli.
-Future<RecordedMedia?> showVoiceRecorderSheet(BuildContext context) {
+Future<RecordedMedia?> showVoiceRecorderSheet(
+  BuildContext context, {
+  @visibleForTesting AudioRecorder Function()? createRecorder,
+}) {
   return showAppSheet<RecordedMedia>(
     context: context,
     title: context.l10n.voiceRecorderTitle,
-    child: const _VoiceRecorderBody(),
+    child: _VoiceRecorderBody(createRecorder: createRecorder),
   );
 }
 
 enum _Phase { idle, requesting, permissionDenied, recording, recorded, error }
 
 class _VoiceRecorderBody extends StatefulWidget {
-  const _VoiceRecorderBody();
+  const _VoiceRecorderBody({this.createRecorder});
+
+  final AudioRecorder Function()? createRecorder;
 
   @override
   State<_VoiceRecorderBody> createState() => _VoiceRecorderBodyState();
@@ -43,7 +49,13 @@ class _VoiceRecorderBody extends StatefulWidget {
 class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
   static const _maxBars = 32;
 
-  final _recorder = AudioRecorder();
+  late final AudioRecorder _recorder =
+      widget.createRecorder?.call() ?? AudioRecorder();
+
+  /// Yozuv "Biriktirish" bilan chaqiruvchiga topshirildi — `dispose()` uni
+  /// o'chirmasligi shart (aks holda yuklash boshlanmasdan fayl yo'qoladi).
+  bool _attached = false;
+  bool _stopping = false;
   StreamSubscription<Amplitude>? _amplitudeSub;
   VoicePlaybackController? _playback;
 
@@ -62,7 +74,7 @@ class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
     // — hali tugallanmagan sessiyani bekor qilib, yarim-faylni o'chiramiz.
     if (_phase == _Phase.recording) {
       unawaited(_recorder.cancel());
-    } else if (_phase == _Phase.recorded && _path != null) {
+    } else if (_phase == _Phase.recorded && _path != null && !_attached) {
       unawaited(_deleteQuietly(_path!));
     }
     unawaited(_recorder.dispose());
@@ -91,7 +103,10 @@ class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
 
     try {
       final path = await RecordingPaths.next(prefix: 'voice', extension: 'm4a');
-      await _recorder.start(const RecordConfig(), path: path);
+      await _recorder.start(
+        const RecordConfig(bitRate: kAudioBitrate),
+        path: path,
+      );
       if (!mounted) return;
       _startedAt = DateTime.now();
       _levelHistory.clear();
@@ -120,9 +135,21 @@ class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
       _levelHistory.add(normalized);
       if (_levelHistory.length > _maxBars) _levelHistory.removeAt(0);
     });
+    // Chegaraga yetdi — yozuv avtomatik to'xtaydi (yo'qolmaydi).
+    if (_elapsed >= kMaxVoiceRecording) unawaited(_stop());
   }
 
   Future<void> _stop() async {
+    if (_stopping) return;
+    _stopping = true;
+    try {
+      await _finishRecording();
+    } finally {
+      _stopping = false;
+    }
+  }
+
+  Future<void> _finishRecording() async {
     await _amplitudeSub?.cancel();
     _amplitudeSub = null;
 
@@ -186,6 +213,7 @@ class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
     final now = DateTime.now();
     final hh = now.hour.toString().padLeft(2, '0');
     final mm = now.minute.toString().padLeft(2, '0');
+    _attached = true;
     Navigator.of(context).pop(
       RecordedMedia(
         path: path,

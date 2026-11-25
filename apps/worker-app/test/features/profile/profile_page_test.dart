@@ -63,6 +63,9 @@ class _FakeFacePhotoStore implements FacePhotoStore {
   @override
   Future<String?> saveRgb(Uint8List rgbBytes, {required int size}) async =>
       path;
+
+  @override
+  Future<void> clear() async {}
 }
 
 const _session = AuthSession(
@@ -267,7 +270,11 @@ void main() {
         expect(find.text('Ha, chiqish'), findsOneWidget);
         await tester.tap(find.text('Ha, chiqish'));
         await tester.pump();
-        await tester.pump(const Duration(seconds: 1));
+        // Tozalash qadamlari (oflayn kesh — testda plagin javob bermaydi)
+        // har biri 3 s timeout bilan himoyalangan — shuncha suramiz.
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(seconds: 1));
+        }
 
         expect(tester.takeException(), isNull);
         expect(find.text('login-page'), findsOneWidget);

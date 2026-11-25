@@ -244,6 +244,7 @@ void main() {
                 embedding: testProbe,
                 latitude: fakePosition.latitude,
                 longitude: fakePosition.longitude,
+                accuracy: fakePosition.accuracy,
               ),
             ),
           ).thenAnswer((_) async => Right(validScanResult()));
@@ -284,6 +285,7 @@ void main() {
                 embedding: testProbe,
                 latitude: fakePosition.latitude,
                 longitude: fakePosition.longitude,
+                accuracy: fakePosition.accuracy,
               ),
             ),
           ).called(1);
@@ -415,6 +417,7 @@ void main() {
                 embedding: testProbe,
                 latitude: fakePosition.latitude,
                 longitude: fakePosition.longitude,
+                accuracy: fakePosition.accuracy,
               ),
             ),
           ).thenAnswer(
@@ -445,6 +448,7 @@ void main() {
                 embedding: testProbe,
                 latitude: fakePosition.latitude,
                 longitude: fakePosition.longitude,
+                accuracy: fakePosition.accuracy,
               ),
             ),
           ).called(1);

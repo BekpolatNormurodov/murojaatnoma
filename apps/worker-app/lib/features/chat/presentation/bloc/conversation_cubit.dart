@@ -13,6 +13,7 @@ import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/domain/usecases/get_messages.dart';
 import 'package:worker_app/features/chat/domain/usecases/send_message.dart';
 import 'package:worker_app/features/chat/presentation/widgets/sticker_catalog.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'conversation_state.dart';
 
@@ -114,7 +115,7 @@ class ConversationCubit extends Cubit<ConversationState> {
         unawaited(retryFailed(p.localId));
       }
     } on Object catch (e) {
-      emit(ConversationError('Kutilmagan xatolik: $e'));
+      emit(ConversationError(unexpectedError(e)));
     }
   }
 
@@ -387,7 +388,7 @@ class ConversationCubit extends Cubit<ConversationState> {
       );
     } on Object catch (e) {
       _removeLocal(localId);
-      return 'Kutilmagan xatolik: $e';
+      return unexpectedError(e);
     }
     // `fold` ATAYLAB `try` blokidan tashqarida — natijani qaytarish (uni
     // "await qilinmagan Future" deb noto'g'ri belgilamasligi uchun).
@@ -465,7 +466,7 @@ class ConversationCubit extends Cubit<ConversationState> {
       return e.message;
     } on Object catch (e) {
       _removeLocal(localId);
-      return 'Kutilmagan xatolik: $e';
+      return unexpectedError(e);
     }
   }
 
@@ -594,5 +595,13 @@ class ConversationCubit extends Cubit<ConversationState> {
     unawaited(_outboxSub?.cancel());
     _teardownSocket();
     return super.close();
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(ConversationState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

@@ -25,8 +25,15 @@ abstract class CitizenRequestsRepository {
 
   /// Yangi ariza/shikoyat yuboradi. [draft]ning `id`/`status`/`createdAt`
   /// maydonlari server (yoki mock) tomonidan almashtiriladi — chaqiruvchi
-  /// faqat `kind`/`category`/`title`/`body`/`attachments`ni to'ldiradi.
+  /// faqat `kind`/`category`/`title`/`body`ni to'ldiradi. Fayllar keyin
+  /// [uploadAttachment] bilan yuklanadi.
   Future<Either<Failure, CitizenRequest>> submit(CitizenRequest draft);
+
+  /// Qurilmadagi bitta faylni mavjud murojaatga yuklab biriktiradi.
+  Future<Either<Failure, Unit>> uploadAttachment(
+    String requestId,
+    RequestAttachment attachment,
+  );
 
   /// Bitta murojaat mavzusidagi barcha xabarlarni (fuqaro savollari + xodim
   /// javoblari) xronologik tartibda oladi.

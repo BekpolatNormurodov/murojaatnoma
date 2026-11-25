@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 
 /// FCM (masofaviy push) xizmati — `firebase_messaging` ustidan yupqa qatlam.
@@ -17,11 +19,17 @@ import 'package:worker_app/core/notifications/notification_service.dart';
 /// Har bir amal HIMOYALANGAN — push ishlamay qolsa (ruxsat rad etilsa,
 /// tarmoq yo'q, yoki sessiya hali yo'q bo'lsa) ilova HECH QACHON qulamaydi.
 class FcmService {
-  FcmService(this._dio, this._local);
+  FcmService(this._dio, this._local, {FirebaseMessaging? messaging})
+    : _injected = messaging;
 
   final Dio _dio;
   final NotificationService _local;
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  final FirebaseMessaging? _injected;
+  late final FirebaseMessaging _messaging =
+      _injected ?? FirebaseMessaging.instance;
+
+  /// Lokal tokenni o'chirish hali bajarilmagan (oflayn chiqish) belgisi.
+  static const pendingDeleteKey = 'fcm_token_pending_delete';
 
   bool _handlersReady = false;
 
@@ -53,6 +61,13 @@ class FcmService {
   /// chaqirish uchun ochiq — o'shanda sessiya mavjud, Dio auth header qo'yadi.
   Future<void> syncToken() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(pendingDeleteKey) ?? false) {
+        // Oldingi chiqishda o'chmay qolgan token — avval bekor qilamiz.
+        await _messaging.deleteToken();
+        await prefs.remove(pendingDeleteKey);
+      }
+      if (prefs.getString(AuthInterceptor.tokenKey) == null) return;
       final token = await _messaging.getToken();
       if (token != null) {
         await _sendToken(token);
@@ -92,7 +107,21 @@ class FcmService {
     }
   }
 
-  void _onForegroundMessage(RemoteMessage message) {
+  /// Qurilma tokenini FCM tomonda bekor qiladi (sessiyasiz ham ishlaydi).
+  /// O'tmasa keyingi [syncToken]da qayta uriniladi. `throw` qilmaydi.
+  Future<void> invalidateLocalToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(pendingDeleteKey, true);
+      await _messaging.deleteToken();
+      await prefs.remove(pendingDeleteKey);
+    } on Object {
+      // keyingi safar
+    }
+  }
+
+  Future<void> _onForegroundMessage(RemoteMessage message) async {
+    if (!await _hasSession()) return;
     // Kiruvchi qo'ng'iroq (data-push) — socket ulanmagan holat uchun
     // fallback: to'liq-ekran jiringlash bildirishnomasini ko'rsatamiz
     // (socket ulangan bo'lsa `call:incoming` allaqachon in-app ekranni
@@ -129,6 +158,17 @@ class FcmService {
   }
 }
 
+/// Qurilmada kirgan xodim bormi (aniqlab bo'lmasa `true`).
+Future<bool> _hasSession() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return prefs.getString(AuthInterceptor.tokenKey) != null;
+  } on Object {
+    return true;
+  }
+}
+
 /// Ilova FONDA/YOPIQ holatda kelgan push uchun top-level handler. Oddiy
 /// (notification) push'ni FCM tizim o'zi ko'rsatadi; lekin kiruvchi
 /// qo'ng'iroq DATA-push (`type == 'incoming_call'`) uchun bu yerda
@@ -144,7 +184,7 @@ class FcmService {
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (message.data['type'] == 'incoming_call') {
     final callId = message.data['callId'] as String?;
-    if (callId != null) {
+    if (callId != null && await _hasSession()) {
       await showIncomingCallNotificationBackground(
         callId: callId,
         callerName: (message.data['callerName'] as String?) ?? 'Nomaʼlum',

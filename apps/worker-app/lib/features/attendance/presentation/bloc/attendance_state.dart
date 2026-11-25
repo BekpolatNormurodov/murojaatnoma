@@ -31,19 +31,33 @@ class AttendanceLoading extends AttendanceState {
 /// [week] — tarixning oxirgi (sana bo'yicha o'sish tartibida) 7 tagacha
 /// yozuvi — `WeeklyMiniChart` shuni chizadi.
 class AttendanceLoaded extends AttendanceState {
-  const AttendanceLoaded({required this.today, required this.week});
+  const AttendanceLoaded({
+    required this.today,
+    required this.week,
+    this.faceRequired = true,
+  });
 
   final AttendanceDay? today;
   final List<AttendanceDay> week;
 
+  /// `false` — admin yuz skanerini o'chirgan: keldi/ketdi faqat joylashuv
+  /// bo'yicha ([AttendanceCubit.markByLocation]).
+  final bool faceRequired;
+
   @override
-  List<Object?> get props => [today, week];
+  List<Object?> get props => [today, week, faceRequired];
 }
 
 /// `AttendanceRepository.history()` bo'sh ro'yxat qaytardi — ishchida
 /// hali umuman davomat yozuvi yo'q (masalan yangi ishga qabul qilingan).
 class AttendanceEmpty extends AttendanceState {
-  const AttendanceEmpty();
+  const AttendanceEmpty({this.faceRequired = true});
+
+  /// Qarang: [AttendanceLoaded.faceRequired].
+  final bool faceRequired;
+
+  @override
+  List<Object?> get props => [faceRequired];
 }
 
 /// `history()` `Left(Failure)` qaytardi (yoki kutilmagan istisno) —

@@ -383,6 +383,16 @@ class MeetingCubit extends Cubit<MeetingState> {
     );
   }
 
+  /// Logout / sessiya tugashi: yig'ilishdan chiqadi, media yopiladi,
+  /// taklif tarixi tozalanadi.
+  void endSession() {
+    final id = state.meetingId;
+    if (id != null && _inMeeting) _socket.leaveMeeting(id);
+    _teardown();
+    _declined.clear();
+    if (state.phase != MeetingPhase.idle) emit(const MeetingState());
+  }
+
   /// Tugash ekranidan keyin — keyingi yig'ilishga tayyor.
   void reset() {
     if (state.phase == MeetingPhase.ended ||

@@ -60,6 +60,7 @@ void main() {
       return MapCubit(
         geofence: geofence,
         positionStream: () => controller.stream,
+        currentPosition: null,
         ensurePermission: ensurePermission ?? () async => true,
         // Default never reaches the real `Geolocator.checkPermission()`
         // (only consulted once `!granted`, and every test that denies
@@ -232,7 +233,11 @@ void main() {
           isA<MapError>().having(
             (s) => s.message,
             'message',
-            contains('joylashuv oqimi uzildi'),
+            // Xom istisno matni foydalanuvchiga ko'rsatilmaydi.
+            allOf(
+              contains('Kutilmagan xatolik'),
+              isNot(contains('joylashuv oqimi uzildi')),
+            ),
           ),
         ],
       );
@@ -525,6 +530,23 @@ void main() {
         expect: () => [const MapLoading(), const MapPermissionDenied()],
       );
     });
+
+    test(
+      'a standing employee is shown from a one-off fix when the shared stream '
+      'stays silent',
+      () async {
+        final cubit = MapCubit(
+          geofence: geofence,
+          positionStream: () => controller.stream,
+          ensurePermission: () async => true,
+          currentPosition: () async => _insidePosition,
+        );
+        await cubit.start();
+        await Future<void>.delayed(Duration.zero);
+        expect(cubit.state, isA<MapTracking>());
+        await cubit.close();
+      },
+    );
 
     test('close() never throws even mid-stream (cancels cleanly)', () async {
       final cubit = buildCubit();

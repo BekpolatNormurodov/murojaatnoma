@@ -7,6 +7,7 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
@@ -19,6 +20,7 @@ import 'package:worker_app/features/dashboard/my_dashboard.dart';
 import 'package:worker_app/features/dashboard/my_dashboard_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
 /// Bosh sahifa (davomat) dashboard — 5-tab shellning "home" branchi.
@@ -36,7 +38,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool _checkingGeofence = false;
 
   /// Real ko'rsatkichlar (`GET /me/dashboard`) — ilgari bosh sahifa MOCK
@@ -48,6 +50,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _dashboard = MyDashboardCubit(getIt<DioClient>());
     unawaited(_dashboard.load());
     // Internet qaytishi bilan ko'rsatkichlarni yangilaymiz.
@@ -57,7 +60,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Ilovaga qaytilganda: davomat, yangi hudud va admin "yuz majburiy"
+    // sozlamasi (`faceRequired`) jimgina yangilanadi.
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    unawaited(context.read<AttendanceCubit>().load(silent: true));
+    unawaited(_dashboard.load());
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_reconnectSub?.cancel());
     unawaited(_dashboard.close());
     super.dispose();
@@ -88,6 +101,42 @@ class _HomePageState extends State<HomePage> {
   /// tashqarida/aniqlanmasa mos `AppAlert`.
   Future<void> _onCheckInPressed() => _precheckThen('/face/checkin');
 
+  /// Admin yuz skanerini o'chirgan (`faceRequired == false`) bo'lsa — kamera
+  /// ochilmaydi: oldindan server qoidasi bilan tekshirib (precheck), so'ng
+  /// to'g'ridan-to'g'ri joylashuv bilan keldi/ketdi qilinadi.
+  Future<void> _markByLocation({required bool checkOut}) async {
+    if (_checkingGeofence) return;
+    final cubit = context.read<AttendanceCubit>();
+    setState(() => _checkingGeofence = true);
+    try {
+      final outcome = await cubit.precheckHere();
+      if (!mounted) return;
+      if (outcome.kind == PrecheckKind.blocked ||
+          outcome.kind == PrecheckKind.locationError) {
+        final l10n = context.l10n;
+        AppAlert.error(
+          context,
+          outcome.message.isNotEmpty
+              ? outcome.message
+              : outcome.kind == PrecheckKind.blocked
+              ? l10n.outsideGeofence
+              : l10n.locationCheckFailed,
+        );
+        return;
+      }
+      final result = await cubit.markByLocation(checkOut: checkOut);
+      if (!mounted) return;
+      if (result.success) {
+        AppAlert.success(context, result.message);
+        unawaited(_dashboard.load());
+      } else {
+        AppAlert.error(context, result.message);
+      }
+    } finally {
+      if (mounted) setState(() => _checkingGeofence = false);
+    }
+  }
+
   /// Server qoidasi bilan oldindan tekshiradi (xodimning o'z ofisi/radiusi
   /// yoki biriktirilgan mahallasi): ruxsat bo'lsa yoki server javob bermasa
   /// (oflayn — yakuniy qarorni server yuborishda qiladi) skanerga o'tadi,
@@ -107,7 +156,12 @@ class _HomePageState extends State<HomePage> {
     switch (outcome.kind) {
       case PrecheckKind.allowed:
       case PrecheckKind.unverified:
-        context.go(route);
+        // `push` — skanerdan har doim orqaga qaytish mumkin.
+        final cubit = context.read<AttendanceCubit>();
+        await context.push<void>(route);
+        if (!mounted || cubit.isClosed) return;
+        unawaited(cubit.load(silent: true));
+        unawaited(_dashboard.load());
       case PrecheckKind.blocked:
         AppAlert.error(
           context,
@@ -133,7 +187,19 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkCanvas : AppColors.canvas,
       body: SafeArea(
-        child: BlocBuilder<AttendanceCubit, AttendanceState>(
+        // Server `faceRequired`ni har yuklashda qaytaradi — router gate'i
+        // (`/face/enroll` majburiyligi) ham shunga moslashadi.
+        child: BlocConsumer<AttendanceCubit, AttendanceState>(
+          listenWhen: (_, state) =>
+              state is AttendanceLoaded || state is AttendanceEmpty,
+          listener: (context, state) {
+            final isRequired = switch (state) {
+              AttendanceLoaded(:final faceRequired) => faceRequired,
+              AttendanceEmpty(:final faceRequired) => faceRequired,
+              _ => true,
+            };
+            context.read<AuthCubit>().setFaceRequired(isRequired: isRequired);
+          },
           builder: (context, state) => switch (state) {
             AttendanceLoading() => const _HomeSkeleton(
               key: Key('home_skeleton'),
@@ -142,18 +208,21 @@ class _HomePageState extends State<HomePage> {
               message: message,
               onRetry: () => context.read<AttendanceCubit>().load(),
             ),
-            AttendanceEmpty() => _buildContent(
+            AttendanceEmpty(:final faceRequired) => _buildContent(
               context,
               today: null,
               week: const [],
               isEmpty: true,
+              faceRequired: faceRequired,
             ),
-            AttendanceLoaded(:final today, :final week) => _buildContent(
-              context,
-              today: today,
-              week: week,
-              isEmpty: false,
-            ),
+            AttendanceLoaded(:final today, :final week, :final faceRequired) =>
+              _buildContent(
+                context,
+                today: today,
+                week: week,
+                isEmpty: false,
+                faceRequired: faceRequired,
+              ),
           },
         ),
       ),
@@ -165,6 +234,7 @@ class _HomePageState extends State<HomePage> {
     required AttendanceDay? today,
     required List<AttendanceDay> week,
     required bool isEmpty,
+    required bool faceRequired,
   }) {
     final l10n = context.l10n;
     final session = context.watch<AuthCubit>().state.session;
@@ -190,14 +260,19 @@ class _HomePageState extends State<HomePage> {
             children: [
               _GreetingHeader(session: session),
               const SizedBox(height: 24),
+              const TrackingWarning(),
               TodayStatusCard(today: today),
               const SizedBox(height: 16),
               if (today?.checkIn == null)
                 AppButton(
-                      label: l10n.homeCheckinCta,
-                      icon: AppIcons.camera,
+                      label: faceRequired
+                          ? l10n.homeCheckinCta
+                          : 'Keldim — joylashuv bilan',
+                      icon: faceRequired ? AppIcons.camera : AppIcons.location,
                       loading: _checkingGeofence,
-                      onPressed: _onCheckInPressed,
+                      onPressed: faceRequired
+                          ? _onCheckInPressed
+                          : () => _markByLocation(checkOut: false),
                     )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 300.ms)
@@ -207,15 +282,23 @@ class _HomePageState extends State<HomePage> {
                 // hozircha uz; keyinroq app_core l10n `homeCheckoutCta`ga.
                 AppButton(
                       label: 'Ishdan chiqish',
-                      icon: AppIcons.camera,
+                      icon: faceRequired ? AppIcons.camera : AppIcons.location,
                       loading: _checkingGeofence,
-                      onPressed: _onCheckOutPressed,
+                      onPressed: faceRequired
+                          ? _onCheckOutPressed
+                          : () => _markByLocation(checkOut: true),
                     )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 300.ms)
                     .slideY(begin: 0.15, end: 0)
               else
                 const SizedBox.shrink(),
+              if (!faceRequired && today?.checkOut == null) ...[
+                const SizedBox(height: 10),
+                const _FaceOffHint(),
+              ],
+              const SizedBox(height: 16),
+              const _DailyReportCard(),
               const SizedBox(height: 24),
               const _QuickActions(),
               const SizedBox(height: 24),
@@ -421,6 +504,89 @@ class _NotificationBell extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Yuz skaneri o'chirilganda CTA ostidagi izoh — xodim nega kamera
+/// ochilmayotganini tushunsin.
+class _FaceOffHint extends StatelessWidget {
+  const _FaceOffHint();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    return Row(
+      key: const Key('face_off_hint'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(AppIcons.info, size: 16, color: muted),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            "Yuz skaneri talab qilinmaydi — joylashuv bo'yicha belgilanadi",
+            style: AppTextStyles.caption.copyWith(color: muted),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Kunlik hisobot" kirish kartasi — `/reports` sahifasiga PUSH qiladi.
+class _DailyReportCard extends StatelessWidget {
+  const _DailyReportCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    return AppCard(
+      key: const Key('daily_report_card'),
+      onTap: () => context.push('/reports'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+            child: const Icon(
+              AppIcons.documentUpload,
+              size: 22,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kunlik hisobot',
+                  style: AppTextStyles.bodyStrong,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  "Bugungi ishingiz va hududda bo'lgan vaqt",
+                  style: AppTextStyles.caption.copyWith(color: muted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(AppIcons.arrowRight, size: 18, color: muted),
+        ],
+      ),
+    ).animate(delay: 140.ms).fadeIn(duration: 300.ms);
   }
 }
 
@@ -1063,7 +1229,11 @@ class _HomeSkeleton extends StatelessWidget {
     final lineColor = isDark ? AppColors.darkLine : AppColors.line;
     final shimmerColor = isDark ? AppColors.darkSurface : AppColors.surface;
 
-    return Padding(
+    // Kichik ekran / katta shriftda skeleton balandligi ekrandan oshib
+    // RenderFlex overflow bermasin — skroll qilinmaydigan o'ram.
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1105,7 +1275,8 @@ class _HomeSkeleton extends StatelessWidget {
           ),
         )
         .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1200.ms, color: shimmerColor);
+        .shimmer(duration: 1200.ms, color: shimmerColor),
+    );
   }
 }
 
@@ -1128,6 +1299,71 @@ class _HomeErrorView extends StatelessWidget {
         message: message,
         action: AppButton(label: l10n.retry, expand: false, onPressed: onRetry),
       ),
+    );
+  }
+}
+
+/// Joylashuv kuzatuvi ishlamayotganda (ruxsat yo'q / GPS o'chiq) ko'rinadigan
+/// ogohlantirish — aks holda "hududda vaqt" jimgina 0 bo'lib qolardi.
+class TrackingWarning extends StatelessWidget {
+  const TrackingWarning({this.service, super.key});
+
+  /// Testlar uchun; standart — DI'dagi xizmat.
+  final LocationTrackingService? service;
+
+  Future<void> _fix(LocationTrackingService tracking) async {
+    if (await tracking.start()) return;
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      await Geolocator.openLocationSettings();
+    } else {
+      await Geolocator.openAppSettings();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tracking =
+        service ??
+        (getIt.isRegistered<LocationTrackingService>()
+            ? getIt<LocationTrackingService>()
+            : null);
+    if (tracking == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<TrackingStatus>(
+      valueListenable: tracking.status,
+      builder: (context, status, _) {
+        if (status != TrackingStatus.blocked) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: AppCard(
+            key: const Key('tracking_warning'),
+            onTap: () => unawaited(_fix(tracking)),
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                const Icon(AppIcons.location, color: AppColors.warning),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Joylashuv kuzatuvi ishlamayapti',
+                        style: AppTextStyles.bodyStrong,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Hududdagi vaqtingiz hisoblanmaydi. GPS va ruxsatni "
+                        'yoqish uchun bosing.',
+                        style: AppTextStyles.caption,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

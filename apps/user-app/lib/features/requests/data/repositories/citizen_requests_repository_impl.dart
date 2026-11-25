@@ -51,6 +51,22 @@ class CitizenRequestsRepositoryImpl implements CitizenRequestsRepository {
   }
 
   @override
+  Future<Either<Failure, Unit>> uploadAttachment(
+    String requestId,
+    RequestAttachment attachment,
+  ) async {
+    try {
+      await remote.uploadAttachment(requestId, attachment);
+      return const Right(unit);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message));
+    } on Exception catch (_) {
+      // Masalan fayl qurilmadan o'chib ketgan.
+      return const Left(ServerFailure("Faylni yuklab bo'lmadi"));
+    }
+  }
+
+  @override
   Future<Either<Failure, List<RequestMessage>>> getMessages(String id) async {
     try {
       return Right(await remote.getMessages(id));

@@ -119,7 +119,11 @@ class _PointsSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(AppRadii.lg);
-    return Padding(
+    // Kichik ekran / katta shriftda skeleton balandligi ekrandan oshib
+    // RenderFlex overflow bermasin — skroll qilinmaydigan o'ram.
+    return SingleChildScrollView(
+      physics: const NeverScrollableScrollPhysics(),
+      child: Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -150,6 +154,7 @@ class _PointsSkeleton extends StatelessWidget {
             borderRadius: radius,
           ),
         ],
+      ),
       ),
     );
   }

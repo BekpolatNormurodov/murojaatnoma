@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:dartz/dartz.dart';
@@ -276,11 +278,7 @@ void main() {
         ),
         act: (c) => c.markPinUnlocked(),
         expect: () => [
-          isA<AuthState>().having(
-            (s) => s.pinUnlocked,
-            'pinUnlocked',
-            isTrue,
-          ),
+          isA<AuthState>().having((s) => s.pinUnlocked, 'pinUnlocked', isTrue),
         ],
       );
 
@@ -299,6 +297,64 @@ void main() {
         act: (c) => c.reset(),
         expect: () => [const AuthState()],
       );
+    });
+    group('double-submit guards', () {
+      test('requestOtp: a second call while the first is in flight is '
+          'ignored (one SMS)', () async {
+        final gate = Completer<Either<Failure, Unit>>();
+        when(() => sendOtp(any())).thenAnswer((_) => gate.future);
+        final cubit = buildCubit();
+
+        final first = cubit.requestOtp(phone);
+        final second = cubit.requestOtp(phone);
+        gate.complete(const Right(unit));
+        await Future.wait([first, second]);
+
+        verify(() => sendOtp(any())).called(1);
+        expect(cubit.state.status, AuthStatus.otpSent);
+        await cubit.close();
+      });
+
+      test('verifyOtp: OtpInput.onCompleted + Confirm tap at once send the '
+          'code only once', () async {
+        final gate = Completer<Either<Failure, AuthSession>>();
+        when(() => verifyOtp(any())).thenAnswer((_) => gate.future);
+        final cubit = buildCubit();
+
+        final first = cubit.verifyOtp(phone, '123456');
+        final second = cubit.verifyOtp(phone, '123456');
+        gate.complete(const Right(session));
+        await Future.wait([first, second]);
+
+        verify(() => verifyOtp(any())).called(1);
+        expect(cubit.state.status, AuthStatus.authenticated);
+        await cubit.close();
+      });
+
+      test('after an error a retry is allowed', () async {
+        when(
+          () => verifyOtp(any()),
+        ).thenAnswer((_) async => const Left(ServerFailure("Kod noto'g'ri")));
+        final cubit = buildCubit();
+
+        await cubit.verifyOtp(phone, '000000');
+        expect(cubit.state.errorMessage, "Kod noto'g'ri");
+        await cubit.verifyOtp(phone, '000000');
+
+        verify(() => verifyOtp(any())).called(2);
+        await cubit.close();
+      });
+
+      test('a result arriving after close() does not throw', () async {
+        final gate = Completer<Either<Failure, Unit>>();
+        when(() => sendOtp(any())).thenAnswer((_) => gate.future);
+        final cubit = buildCubit();
+
+        final pending = cubit.requestOtp(phone);
+        await cubit.close();
+        gate.complete(const Right(unit));
+        await expectLater(pending, completes);
+      });
     });
   });
 }

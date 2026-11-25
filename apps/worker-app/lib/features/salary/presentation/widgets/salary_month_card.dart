@@ -42,7 +42,7 @@ String monthNameUz(int month) {
 /// parslab bo'lmasa `null` qaytaradi.
 String? _formatPaidAt(String? iso) {
   if (iso == null || iso.isEmpty) return null;
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   return parsed == null ? null : formatDate(parsed);
 }
 

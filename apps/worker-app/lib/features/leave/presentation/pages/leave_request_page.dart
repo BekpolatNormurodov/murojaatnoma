@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
+import 'package:dartz/dartz.dart' show Either;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +10,7 @@ import 'package:worker_app/features/leave/domain/leave_request_validation.dart';
 import 'package:worker_app/features/leave/domain/usecases/submit_leave.dart';
 import 'package:worker_app/features/leave/presentation/widgets/amount_stepper.dart';
 import 'package:worker_app/injection.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 /// "Javob so'rash" — xodim ish vaqtidan (soatlab yoki kunlab) ozod
 /// bo'lishni so'raydigan TO'LIQ EKRANLI sahifa.
@@ -72,6 +76,8 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
   }
 
   Future<void> _submit() async {
+    if (_submitting) return;
+    FocusScope.of(context).unfocus();
     final l10n = context.l10n;
     final reasonText = _reasonController.text;
     final valid = LeaveRequestValidation.isReasonValid(reasonText);
@@ -85,20 +91,30 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
         ? '${_startTime!.hour.toString().padLeft(2, '0')}:'
               '${_startTime!.minute.toString().padLeft(2, '0')}'
         : null;
-    final result = await getIt<SubmitLeave>()(
-      SubmitLeaveParams(
-        type: _type,
-        amount: _amount,
-        startDate: DateFormat('yyyy-MM-dd').format(_startDate),
-        startTime: startTime,
-        reason: reasonText.trim(),
-      ),
-    );
+    final Either<Failure, Object?> result;
+    try {
+      result = await getIt<SubmitLeave>()(
+        SubmitLeaveParams(
+          type: _type,
+          amount: _amount,
+          startDate: DateFormat('yyyy-MM-dd').format(_startDate),
+          startTime: startTime,
+          reason: reasonText.trim(),
+        ),
+      );
+    } on Object catch (e) {
+      // Kutilmagan xato (masalan javobni o'qishda) — tugma "osilib"
+      // qolmasin, sababi ko'rsatilsin.
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      AppAlert.error(context, unexpectedError(e));
+      return;
+    }
     if (!mounted) return;
     setState(() => _submitting = false);
 
-    result.fold(
-      (failure) => AppAlert.error(context, failure.message),
+    await result.fold<Future<void>>(
+      (failure) async => AppAlert.error(context, failure.message),
       (_) async {
         await AppDialog.success(
           context: context,
@@ -231,7 +247,7 @@ class _LeaveRequestPageState extends State<LeaveRequestPage> {
               label: l10n.leaveRequestSubmitCta,
               icon: AppIcons.send,
               loading: _submitting,
-              onPressed: _submitting ? null : _submit,
+              onPressed: _submitting ? null : () => unawaited(_submit()),
             ),
           ],
         ),

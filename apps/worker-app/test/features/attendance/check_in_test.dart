@@ -21,10 +21,11 @@ class _FakeAttendanceRepository implements AttendanceRepository {
 
   @override
   Future<Either<Failure, CheckScanResult>> checkIn({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     checkInCallCount++;
     lastPhotoUrl = photoUrl;
@@ -33,10 +34,11 @@ class _FakeAttendanceRepository implements AttendanceRepository {
 
   @override
   Future<Either<Failure, CheckScanResult>> checkOut({
-    required List<double> embedding,
     required double latitude,
     required double longitude,
+    List<double>? embedding,
     String? photoUrl,
+    double? accuracy,
   }) async {
     throw UnimplementedError('not used in these tests');
   }

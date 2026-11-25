@@ -8,6 +8,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:worker_app/core/session/session_bootstrap.dart';
+import 'package:worker_app/core/session/logout_flow.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/face/domain/entities/liveness_challenge.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
@@ -36,6 +38,9 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Admin yuz skanerini o'chirgan bo'lsa majburiy ekran yopiladi (router
+    // `faceRequired`ni kuzatadi).
+    unawaited(refreshFaceRequired());
     // Enrollment ham liveness bilan (check-in kabi): avval SOF challenge'ni
     // sozlaymiz (`startLiveness(forEnroll: true)` — real odamligini blink/
     // burilish + `smile` bilan tekshiradi), so'ng kamerani ishga tushiramiz.
@@ -61,6 +66,7 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
       case AppLifecycleState.hidden:
         unawaited(cubit.pauseCamera());
       case AppLifecycleState.resumed:
+        unawaited(refreshFaceRequired());
         unawaited(cubit.resumeCamera());
       case AppLifecycleState.detached:
         break;
@@ -92,7 +98,31 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
             unawaited(_navigateHomeAfterDelay());
           }
         },
-        builder: (context, state) => _FaceEnrollBody(state: state),
+        builder: (context, state) {
+          final canPop = GoRouter.maybeOf(context)?.canPop() ?? false;
+          // Kamera ko'rinishidan tashqari (ruxsat/xato) ekranlarda ham
+          // chiqish yo'li bo'lishi kerak.
+          final live =
+              state is FaceSearching ||
+              state is FaceLivenessPrompt ||
+              state is FacePoorQuality ||
+              state is FaceAligning ||
+              state is FaceCapturing ||
+              state is FaceEmbedding ||
+              state is FaceEnrolling;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              _FaceEnrollBody(state: state),
+              if (canPop && !live && state is! FaceSuccess)
+                const Positioned(top: 0, left: 0, child: _BackSlot()),
+              // Majburiy ro'yxat ekrani — noto'g'ri akkaunt yoki kamera
+              // ishlamasa xodim shu yerdan chiqa oladi.
+              if (!canPop && state is! FaceSuccess)
+                const Positioned(top: 0, right: 0, child: _LogoutSlot()),
+            ],
+          );
+        },
       ),
     );
   }
@@ -350,6 +380,57 @@ class _LiveGateView extends StatelessWidget {
       ],
     );
   }
+}
+
+class _BackSlot extends StatelessWidget {
+  const _BackSlot();
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.all(4),
+      child: AppBackButton(
+        onPressed: context.pop,
+        background: Colors.black.withValues(alpha: 0.28),
+        foreground: AppColors.surface,
+      ),
+    ),
+  );
+}
+
+class _LogoutSlot extends StatelessWidget {
+  const _LogoutSlot();
+
+  Future<void> _logout(BuildContext context) async {
+    final l10n = context.l10n;
+    final confirmed = await AppDialog.confirm(
+      context: Navigator.of(context, rootNavigator: true).context,
+      icon: AppIcons.logout,
+      title: l10n.logoutConfirmTitle,
+      message: l10n.logoutConfirmMessage,
+      confirmLabel: l10n.logoutConfirmCta,
+      cancelLabel: l10n.cancel,
+      danger: true,
+    );
+    if (confirmed && context.mounted) await logoutWithProgress(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.all(4),
+      child: IconButton(
+        key: const Key('face_enroll_logout'),
+        tooltip: context.l10n.logout,
+        style: IconButton.styleFrom(
+          backgroundColor: Colors.black.withValues(alpha: 0.28),
+          foregroundColor: AppColors.surface,
+        ),
+        icon: const Icon(AppIcons.logout, size: 20),
+        onPressed: () => unawaited(_logout(context)),
+      ),
+    ),
+  );
 }
 
 class _TopBar extends StatelessWidget {

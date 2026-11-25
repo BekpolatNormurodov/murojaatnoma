@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:app_core/app_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
 import 'package:worker_app/features/chat/domain/usecases/send_message.dart';
 
@@ -101,6 +102,17 @@ class ChatOutbox {
   final Set<String> _inFlight = {};
   bool _flushing = false;
 
+  /// Har bir [clear]da (logout) oshadi — davom etayotgan yuborish eski
+  /// xodimning xabarini qayta saqlamaydi/yubormaydi.
+  int _epoch = 0;
+
+  /// Logout: navbatni tozalaydi va davom etayotgan urinishlarni bekor qiladi.
+  Future<void> clear() async {
+    _epoch++;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(storageKey);
+  }
+
   /// Har bir yetkazish urinishining natijasi.
   Stream<OutboxResult> get results => _results.stream;
 
@@ -146,6 +158,12 @@ class ChatOutbox {
     if (!_inFlight.add(item.localId)) {
       return OutboxResult(item, null, null); // allaqachon yuborilmoqda
     }
+    final epoch = _epoch;
+    // Logout bo'lgan bo'lsa hech narsa yozilmaydi.
+    Future<void> keep() async {
+      if (epoch == _epoch) await _put(item);
+    }
+
     try {
       var attachment = item.attachment;
       if (attachment != null &&
@@ -159,12 +177,16 @@ class ChatOutbox {
           _results.add(r);
           return r;
         }
-        final uploaded = await _uploads.upload(
-          file,
-          durationSec: attachment.durationMs == null
-              ? null
-              : (attachment.durationMs! / 1000).round(),
-        );
+        // Hujjatlarni umumiy `/uploads` qabul qilmaydi (faqat media).
+        final uploaded = item.type == MessageType.file
+            ? await _uploads.uploadDocument(file)
+            : await _uploads.upload(
+                file,
+                durationSec: attachment.durationMs == null
+                    ? null
+                    : (attachment.durationMs! / 1000).round(),
+              );
+        if (epoch != _epoch) return OutboxResult(item, null, null);
         attachment = ChatAttachment(
           kind: attachment.kind,
           path: uploaded.url,
@@ -184,19 +206,28 @@ class ChatOutbox {
       );
       final out = await result.fold<Future<OutboxResult>>(
         (failure) async {
-          await _put(item);
+          await keep();
           return OutboxResult(item, null, failure.message);
         },
         (sent) async {
-          await _drop(item.localId);
+          if (epoch == _epoch) await _drop(item.localId);
           return OutboxResult(item, sent, null);
         },
       );
       _results.add(out);
       return out;
     } on Object catch (e) {
-      await _put(item);
-      final r = OutboxResult(item, null, e is ServerException ? e.message : '$e');
+      if (e is UploadException && e.isPermanent) {
+        // Server faylni qat'iyan rad etdi — har ulanishda qayta urinmaymiz.
+        await _drop(item.localId);
+      } else {
+        await keep();
+      }
+      final r = OutboxResult(
+        item,
+        null,
+        e is ServerException ? e.message : unexpectedError(e),
+      );
       _results.add(r);
       return r;
     } finally {
@@ -209,7 +240,9 @@ class ChatOutbox {
     if (_flushing) return;
     _flushing = true;
     try {
+      final epoch = _epoch;
       for (final item in await _load()) {
+        if (epoch != _epoch) break;
         final r = await deliver(item);
         if (r.sent == null && NetworkStatus.instance.isOffline) break;
       }

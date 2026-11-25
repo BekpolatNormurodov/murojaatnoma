@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart';
 import 'package:worker_app/features/chat/presentation/widgets/conversation_tile.dart';
+import 'package:worker_app/core/widgets/scrollable_empty_state.dart';
 
 /// "Chat" tabi — suhbatlar ro'yxati: tab (barchasi/shaxsiy/guruh) + qidiruv
 /// + suhbat qatorlari. `ChatListCubit`ning barcha holatlari
@@ -140,7 +141,7 @@ class _ChatEmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return EmptyState(
+    return ScrollableEmptyState(
       icon: AppIcons.chat,
       title: l10n.chatEmptyTitle,
       message: hasQuery ? l10n.chatEmptyFilteredMessage : l10n.chatEmptyMessage,
@@ -159,7 +160,7 @@ class _ChatErrorView extends StatelessWidget {
     final l10n = context.l10n;
     return Padding(
       padding: const EdgeInsets.all(24),
-      child: EmptyState(
+      child: ScrollableEmptyState(
         icon: AppIcons.close,
         title: l10n.chatErrorTitle,
         message: message,

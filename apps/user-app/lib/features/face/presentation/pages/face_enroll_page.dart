@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:user_app/core/session/confirm_logout.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/presentation/bloc/face_cubit.dart';
 import 'package:user_app/features/face/presentation/widgets/mirrored_camera_preview.dart';
@@ -99,7 +100,41 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
             unawaited(_proceedToPinSetup());
           }
         },
-        builder: (context, state) => _FaceEnrollBody(state: state),
+        builder: (context, state) => Stack(
+          fit: StackFit.expand,
+          children: [
+            _FaceEnrollBody(state: state),
+            // Onboarding'da orqaga yo'l yo'q: noto'g'ri raqam yoki kamera
+            // ruxsati berilmagan holatda ham chiqish mumkin bo'lsin.
+            if (state is! FaceSuccess && !context.canPop())
+              const _LogoutCorner(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LogoutCorner extends StatelessWidget {
+  const _LogoutCorner();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Padding(
+          padding: const EdgeInsets.all(4),
+          child: IconButton(
+            tooltip: context.l10n.logout,
+            onPressed: () => confirmLogout(context),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.black.withValues(alpha: 0.28),
+              foregroundColor: AppColors.surface,
+            ),
+            icon: const Icon(AppIcons.logout, size: 20),
+          ),
+        ),
       ),
     );
   }

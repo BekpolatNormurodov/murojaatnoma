@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/features/meetings/domain/entities/meeting.dart';
 import 'package:worker_app/features/meetings/domain/usecases/get_meeting.dart';
 import 'package:worker_app/features/meetings/domain/usecases/join_meeting.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 
 part 'meeting_detail_state.dart';
 
@@ -41,7 +42,7 @@ class MeetingDetailCubit extends Cubit<MeetingDetailState> {
         (meeting) => emit(MeetingDetailLoaded(meeting: meeting)),
       );
     } on Object catch (e) {
-      emit(MeetingDetailError('Kutilmagan xatolik: $e'));
+      emit(MeetingDetailError(unexpectedError(e)));
     }
   }
 
@@ -63,7 +64,7 @@ class MeetingDetailCubit extends Cubit<MeetingDetailState> {
     emit(current.copyWith(joining: true));
     try {
       final result = await _joinMeeting(JoinMeetingParams(current.meeting.id));
-      return result.fold(
+      return await result.fold(
         (failure) {
           emit(current.copyWith(joining: false));
           return failure.message;
@@ -75,7 +76,15 @@ class MeetingDetailCubit extends Cubit<MeetingDetailState> {
       );
     } on Object catch (e) {
       emit(current.copyWith(joining: false));
-      return 'Kutilmagan xatolik: $e';
+      return unexpectedError(e);
     }
+  }
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(MeetingDetailState state) {
+    if (isClosed) return;
+    super.emit(state);
   }
 }

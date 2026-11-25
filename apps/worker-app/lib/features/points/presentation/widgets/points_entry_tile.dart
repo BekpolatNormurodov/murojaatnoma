@@ -7,7 +7,7 @@ import 'package:worker_app/features/points/domain/entities/points.dart';
 /// o'giradi; parslab bo'lmasa xom satrni qaytaradi (`ApplicationCard.
 /// formatIsoDate` — `requests` moduli — bilan bir xil naqsh).
 String formatPointsDate(String iso) {
-  final parsed = DateTime.tryParse(iso);
+  final parsed = DateTime.tryParse(iso)?.toLocal();
   return parsed == null ? iso : formatDate(parsed);
 }
 

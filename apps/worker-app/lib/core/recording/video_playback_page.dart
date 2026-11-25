@@ -38,7 +38,12 @@ class _VideoPlaybackPageState extends State<_VideoPlaybackPage> {
   }
 
   Future<void> _init() async {
-    final controller = VideoPlayerController.file(File(widget.path));
+    // Serverdagi (http/https) video — tarmoqdan; aks holda lokal fayl.
+    final path = widget.path;
+    final controller =
+        path.startsWith('http://') || path.startsWith('https://')
+        ? VideoPlayerController.networkUrl(Uri.parse(path))
+        : VideoPlayerController.file(File(path));
     try {
       await controller.initialize();
       if (!mounted) {

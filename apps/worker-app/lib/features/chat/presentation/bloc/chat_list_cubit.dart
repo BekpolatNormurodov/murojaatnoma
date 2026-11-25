@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/domain/usecases/get_conversations.dart';
 
@@ -23,6 +24,9 @@ class ChatListCubit extends Cubit<ChatListState> {
   ConversationType? _type;
   String? _query;
 
+  /// Eskirgan javob yangi qidiruv/tab natijasini almashtirmasin.
+  int _loadSeq = 0;
+
   ConversationType? get type => _type;
   String? get query => _query;
 
@@ -33,16 +37,18 @@ class ChatListCubit extends Cubit<ChatListState> {
     _type = type;
     _query = query;
 
+    final seq = ++_loadSeq;
     emit(const ChatListLoading());
     try {
       final result = await _getConversations(
         GetConversationsParams(type: type, query: query),
       );
+      if (seq != _loadSeq) return;
       result.fold((failure) => emit(ChatListError(failure.message)), (items) {
         emit(items.isEmpty ? const ChatListEmpty() : ChatListLoaded(items));
       });
     } on Object catch (e) {
-      emit(ChatListError('Kutilmagan xatolik: $e'));
+      if (seq == _loadSeq) emit(ChatListError(unexpectedError(e)));
     }
   }
 
@@ -50,4 +56,12 @@ class ChatListCubit extends Cubit<ChatListState> {
   /// "Qayta urinish" tugmasi, yoki suhbatdan qaytgach — u yerda yuborilgan
   /// xabar ro'yxatdagi oxirgi xabar/vaqtga ta'sir qilgan bo'lishi mumkin).
   Future<void> reload() => load(type: _type, query: _query);
+
+  /// Sahifa yopilgach kechikkan async natija `emit` qilmasin — aks holda
+  /// "Cannot emit new states after calling close" (uncaught StateError).
+  @override
+  void emit(ChatListState state) {
+    if (isClosed) return;
+    super.emit(state);
+  }
 }

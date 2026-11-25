@@ -73,7 +73,7 @@ class NotificationItem extends Equatable {
       type: notificationTypeFromApi(json['type'] as String?),
       title: json['title'] as String,
       body: json['body'] as String,
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       read: json['isRead'] as bool? ?? false,
     );
   }

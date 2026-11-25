@@ -1,11 +1,18 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:worker_app/core/utils/error_text.dart';
 import 'package:worker_app/features/attendance/data/attendance_precheck.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
 import 'package:worker_app/features/attendance/domain/entities/my_attendance.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/attendance/domain/services/geofence_service.dart';
+import 'package:worker_app/features/attendance/domain/usecases/attendance_scan_params.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_in.dart';
+import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 
 part 'attendance_state.dart';
 
@@ -32,17 +39,93 @@ class AttendanceCubit extends Cubit<AttendanceState> {
     required AttendanceRepository repository,
     required GeofenceService geofence,
     AttendancePrecheck? precheck,
+    CheckIn? checkIn,
+    CheckOut? checkOut,
     Future<Position> Function() locate = _defaultLocate,
   }) : _repository = repository,
        _geofence = geofence,
        _precheck = precheck,
+       _checkIn = checkIn,
+       _checkOut = checkOut,
        _locate = locate,
        super(const AttendanceLoading());
 
   final AttendanceRepository _repository;
   final GeofenceService _geofence;
   final AttendancePrecheck? _precheck;
+  final CheckIn? _checkIn;
+  final CheckOut? _checkOut;
   final Future<Position> Function() _locate;
+
+  /// Oxirgi `GET /attendance/me` javobidagi `faceRequired` — `false`
+  /// bo'lsa keldi/ketdi kamerasiz, [markByLocation] orqali bajariladi.
+  /// Hali yuklanmagan/xato bo'lsa `true` (avvalgi xatti-harakat).
+  bool _faceRequired = true;
+  bool get faceRequired => _faceRequired;
+
+  /// Yuz skaneri O'CHIRILGAN (`faceRequired == false`) paytdagi keldi/ketdi:
+  /// kamera ochilmaydi — joriy GPS joylashuvi olinib, `CheckIn`/`CheckOut`
+  /// faqat `{latitude, longitude, accuracy}` bilan chaqiriladi (server joy
+  /// bo'yicha tekshiradi). Muvaffaqiyatda holat qayta yuklanadi.
+  ///
+  /// Hech qachon throw qilmaydi — natija [LocationMarkOutcome].
+  Future<LocationMarkOutcome> markByLocation({bool checkOut = false}) async {
+    final usecaseIn = _checkIn;
+    final usecaseOut = _checkOut;
+    if ((checkOut ? usecaseOut : usecaseIn) == null) {
+      return const LocationMarkOutcome.failure(
+        'Bu amal hozircha mavjud emas',
+      );
+    }
+    final Position position;
+    try {
+      position = await _locate();
+    } on Object catch (e) {
+      return LocationMarkOutcome.failure(_locationErrorText(e));
+    }
+    final params = AttendanceScanParams(
+      latitude: position.latitude,
+      longitude: position.longitude,
+      accuracy: position.accuracy,
+    );
+    try {
+      final result = checkOut
+          ? await usecaseOut!(params)
+          : await usecaseIn!(params);
+      final outcome = result.fold(
+        (failure) => LocationMarkOutcome.failure(
+          failure.message.isEmpty
+              ? 'Ish joyingizdan uzoqdasiz'
+              : failure.message,
+        ),
+        (scan) => scan.isValid
+            ? LocationMarkOutcome.success(
+                checkOut ? 'Ketganingiz belgilandi' : 'Kelganingiz belgilandi',
+              )
+            : LocationMarkOutcome.failure(
+                (scan.reason ?? '').isEmpty
+                    ? "Belgilab bo'lmadi — joylashuvni tekshiring"
+                    : humanizeScanReason(scan.reason),
+              ),
+      );
+      // Rad etilganda HAM qayta yuklaymiz: admin sozlamani (yuz majburiy)
+      // yoki hududni o'zgartirgan bo'lishi mumkin.
+      await load(silent: true);
+      return outcome;
+    } on Object catch (e) {
+      await load(silent: true);
+      return LocationMarkOutcome.failure(unexpectedError(e));
+    }
+  }
+
+  static String _locationErrorText(Object error) {
+    if (error is TimeoutException) {
+      return "Joylashuv aniqlanmadi — ochiqroq joyga chiqib qayta urining";
+    }
+    if (error is StateError) return error.message;
+    debugPrint('[attendance] locate: $error');
+    return "Joylashuvni aniqlab bo'lmadi";
+  }
 
   /// "Keldim/Ketdim" bosilganda: joylashuvni olib, SERVERdan so'raydi —
   /// xodimning o'z ofisi/radiusi yoki biriktirilgan mahallasi bo'yicha.
@@ -52,8 +135,7 @@ class AttendanceCubit extends Cubit<AttendanceState> {
     try {
       position = await _locate();
     } on Object catch (e) {
-      final text = '$e'.replaceFirst('Bad state: ', '');
-      return PrecheckOutcome.locationError(text);
+      return PrecheckOutcome.locationError(_locationErrorText(e));
     }
     final precheck = _precheck;
     if (precheck == null) {
@@ -77,16 +159,25 @@ class AttendanceCubit extends Cubit<AttendanceState> {
   /// refresh). Har doim [AttendanceLoading] bilan boshlanadi, shunda
   /// qayta yuklashda ham eski ma'lumot ustida "muzlab qolgan" holat
   /// ko'rinmaydi.
-  Future<void> load() async {
-    emit(const AttendanceLoading());
+  ///
+  /// [silent] — ekranda ma'lumot bo'lsa skeletonsiz yangilaydi va xatoda eski
+  /// ma'lumotni qoldiradi (ilovaga qaytish, belgilashdan keyin).
+  Future<void> load({bool silent = false}) async {
+    if (isClosed) return;
+    final keep =
+        silent && (state is AttendanceLoaded || state is AttendanceEmpty);
+    if (!keep) emit(const AttendanceLoading());
     try {
       final result = await _repository.myAttendance();
+      if (isClosed) return;
       result.fold(
-        (failure) => emit(AttendanceError(failure.message)),
+        (failure) {
+          if (!keep) emit(AttendanceError(failure.message));
+        },
         (attendance) => emit(_loadedStateFor(attendance)),
       );
     } on Object catch (e) {
-      emit(AttendanceError('Kutilmagan xatolik: $e'));
+      if (!isClosed && !keep) emit(AttendanceError(unexpectedError(e)));
     }
   }
 
@@ -102,7 +193,10 @@ class AttendanceCubit extends Cubit<AttendanceState> {
   /// `history()`-based oqimdagi bilan bir xil ajratish saqlanadi (qarang:
   /// `AttendanceState.AttendanceLoaded` hujjati).
   AttendanceState _loadedStateFor(MyAttendance attendance) {
-    if (attendance.week.isEmpty) return const AttendanceEmpty();
+    _faceRequired = attendance.faceRequired;
+    if (attendance.week.isEmpty) {
+      return AttendanceEmpty(faceRequired: attendance.faceRequired);
+    }
 
     // Ta'til / dam olish kuni — check-in bo'lmasa ham holat ko'rsatiladi.
     final status = attendance.today.status;
@@ -111,7 +205,11 @@ class AttendanceCubit extends Cubit<AttendanceState> {
     final today = attendance.today.checkIn == null && !informative
         ? null
         : attendance.today;
-    return AttendanceLoaded(today: today, week: attendance.week);
+    return AttendanceLoaded(
+      today: today,
+      week: attendance.week,
+      faceRequired: attendance.faceRequired,
+    );
   }
 
   /// "Yuz bilan tasdiqlash" CTA bosilganda chaqiriladi: joriy joylashuvni
@@ -149,7 +247,11 @@ class AttendanceCubit extends Cubit<AttendanceState> {
         permission == LocationPermission.deniedForever) {
       throw StateError('Joylashuvga ruxsat berilmagan');
     }
-    return Geolocator.getCurrentPosition();
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        timeLimit: Duration(seconds: 20),
+      ),
+    );
   }
 }
 
@@ -177,3 +279,16 @@ class PrecheckOutcome extends Equatable {
 }
 
 enum PrecheckKind { allowed, blocked, unverified, locationError }
+
+/// [AttendanceCubit.markByLocation] natijasi — UI tayyor o'zbekcha
+/// [message]ni ko'rsatadi.
+class LocationMarkOutcome extends Equatable {
+  const LocationMarkOutcome.success(this.message) : success = true;
+  const LocationMarkOutcome.failure(this.message) : success = false;
+
+  final bool success;
+  final String message;
+
+  @override
+  List<Object?> get props => [success, message];
+}

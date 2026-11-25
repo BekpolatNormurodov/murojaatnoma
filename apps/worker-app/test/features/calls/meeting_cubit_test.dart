@@ -288,6 +288,14 @@ void main() {
     expect(cubit.state.phase, MeetingPhase.idle);
   });
 
+  test('logout leaves the meeting, frees media and returns to idle', () async {
+    await cubit.join(meetingId: 'm1', title: 'T');
+    cubit.endSession();
+    expect(socket.leftMeetings, ['m1']);
+    expect(engine.disposed, isTrue);
+    expect(cubit.state.phase, MeetingPhase.idle);
+  });
+
   test('host ends the meeting → ended, everything released', () async {
     socket.joinAck = {
       'ok': true,

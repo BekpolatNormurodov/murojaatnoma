@@ -1,4 +1,5 @@
 import 'package:app_core/app_core.dart';
+import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -93,6 +94,99 @@ void main() {
 
         expect(await restored.currentSession(), isNull);
         expect(prefs.getString(AuthInterceptor.tokenKey), isNull);
+      });
+    });
+    group('currentSession without an access token', () {
+      test('a saved session with no token is cleared and null is '
+          'returned (an expired session must not restore a '
+          'half-logged-in state)', () async {
+        SharedPreferences.setMockInitialValues({
+          'user_session':
+              '{"token":"old","userId":"U-1","name":"A",'
+              '"phone":"9","region":"R"}',
+          'refresh_token': 'legacy-refresh',
+        });
+        prefs = await SharedPreferences.getInstance();
+        subject = AuthRepositoryImpl(remote: remote, prefs: prefs);
+
+        expect(await subject.currentSession(), isNull);
+        expect(prefs.getString('user_session'), isNull);
+        expect(prefs.getString('refresh_token'), isNull);
+      });
+    });
+
+    group('server and network errors keep their message', () {
+      test(
+        'sendOtp: ServerException -> ServerFailure with server text',
+        () async {
+          when(
+            () => remote.sendOtp(any()),
+          ).thenThrow(ServerException("Juda ko'p urinish"));
+
+          final result = await subject.sendOtp('901234567');
+
+          expect(
+            result,
+            const Left<Failure, Unit>(ServerFailure("Juda ko'p urinish")),
+          );
+        },
+      );
+
+      test('sendOtp: NetworkException -> NetworkFailure', () async {
+        when(
+          () => remote.sendOtp(any()),
+        ).thenThrow(NetworkException('Server yetib bo`lmadi'));
+
+        final result = await subject.sendOtp('901234567');
+
+        expect(
+          result,
+          const Left<Failure, Unit>(NetworkFailure('Server yetib bo`lmadi')),
+        );
+      });
+
+      test('verifyOtp: ServerException -> ServerFailure with server text, '
+          'nothing is persisted', () async {
+        SharedPreferences.setMockInitialValues({});
+        prefs = await SharedPreferences.getInstance();
+        subject = AuthRepositoryImpl(remote: remote, prefs: prefs);
+        when(
+          () => remote.verifyOtp(
+            phone: any(named: 'phone'),
+            code: any(named: 'code'),
+          ),
+        ).thenThrow(ServerException("Kod noto'g'ri"));
+
+        final result = await subject.verifyOtp(
+          phone: '901234567',
+          code: '000000',
+        );
+
+        expect(
+          result.fold((f) => f, (_) => null),
+          const ServerFailure("Kod noto'g'ri"),
+        );
+        expect(prefs.getString(AuthInterceptor.tokenKey), isNull);
+        expect(prefs.getString('user_session'), isNull);
+      });
+
+      test('verifyOtp: NetworkException -> NetworkFailure', () async {
+        when(
+          () => remote.verifyOtp(
+            phone: any(named: 'phone'),
+            code: any(named: 'code'),
+          ),
+        ).thenThrow(NetworkException('Ulanish uzildi'));
+
+        final result = await subject.verifyOtp(
+          phone: '901234567',
+          code: '000000',
+        );
+
+        expect(
+          result.fold((f) => f, (_) => null),
+          const NetworkFailure('Ulanish uzildi'),
+        );
       });
     });
   });

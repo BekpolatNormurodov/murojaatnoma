@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:app_core/app_core.dart';
@@ -7,13 +8,17 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/session/logout_service.dart';
 import 'package:user_app/core/widgets/app_shimmer.dart';
+import 'package:user_app/core/widgets/confirm_dialog.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
-import 'package:user_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:user_app/features/face/data/services/face_photo_store.dart';
 import 'package:user_app/features/face/domain/repositories/face_repository.dart';
 import 'package:user_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:user_app/features/registration/domain/repositories/registration_repository.dart';
+import 'package:user_app/features/registration/presentation/widgets/region_meta.dart';
+import 'package:user_app/features/requests/domain/citizen_requests_revision.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/domain/repositories/citizen_requests_repository.dart';
 import 'package:user_app/injection.dart';
@@ -68,6 +73,7 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
   // Bir marta (sahifa ochilishida) yuklanadi — tema/til almashganda
   // qayta so'ralmasligi uchun `Future` keshlanadi.
   late final Future<_EnrollInfo> _enrollInfo = _loadEnrollInfo();
+  late final Future<String?> _regionCode = _loadRegionCode();
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +81,7 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final name = widget.session?.name ?? '';
     final phone = widget.session?.phone ?? '';
-    final region = widget.session?.region ?? '';
+    final sessionRegion = widget.session?.region ?? '';
 
     return Column(
       children: [
@@ -113,32 +119,51 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
             );
           },
         ),
-        if (phone.isNotEmpty) ...[
+        // Ism hali yo'q bo'lsa u telefonning o'zi — ikki marta chiqmasin.
+        if (phone.isNotEmpty && phone != name) ...[
           const SizedBox(height: 4),
-          Text(
-            phone,
-            style: AppTextStyles.body.copyWith(color: inkMuted),
-          ),
+          Text(phone, style: AppTextStyles.body.copyWith(color: inkMuted)),
         ],
-        if (region.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              region,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.primaryDark,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
+        FutureBuilder<String?>(
+          future: _regionCode,
+          builder: (context, snapshot) {
+            final code = snapshot.data;
+            final region = code == null
+                ? sessionRegion
+                : RegionMeta.regionLabel(context.l10n, code);
+            if (region.isEmpty) return const SizedBox.shrink();
+            return _RegionChip(region);
+          },
+        ),
       ],
     ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.06, end: 0);
+  }
+}
+
+class _RegionChip extends StatelessWidget {
+  const _RegionChip(this.region);
+
+  final String region;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          region,
+          style: AppTextStyles.caption.copyWith(
+            color: AppColors.primaryDark,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -175,6 +200,17 @@ class _EnrollInfo {
 
   final DateTime? enrolledAt;
   final String? photoPath;
+}
+
+/// Ro'yxatdan o'tishda tanlangan viloyat kodi (ixtiyoriy maydon).
+Future<String?> _loadRegionCode() async {
+  if (!getIt.isRegistered<RegistrationRepository>()) return null;
+  try {
+    final result = await getIt<RegistrationRepository>().getProfile();
+    return result.fold<String?>((_) => null, (p) => p?.regionCode);
+  } on Object {
+    return null;
+  }
 }
 
 /// Saqlangan yuz shabloni (`enrolledAt`) va yuz-rasm yo'lini o'qiydi.
@@ -250,8 +286,16 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-class _LogoutButton extends StatelessWidget {
+class _LogoutButton extends StatefulWidget {
   const _LogoutButton();
+
+  @override
+  State<_LogoutButton> createState() => _LogoutButtonState();
+}
+
+class _LogoutButtonState extends State<_LogoutButton> {
+  /// Server javobi kutilayotganda (≤5 s) tugma loading holatida.
+  bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
@@ -260,10 +304,12 @@ class _LogoutButton extends StatelessWidget {
           label: l10n.logout,
           variant: AppButtonVariant.secondary,
           icon: AppIcons.logout,
+          loading: _busy,
           onPressed: () async {
+            if (_busy) return;
             // Tasodifiy chiqib ketishning oldini olish uchun tasdiqlash
             // modali — "Ha, chiqish" tanlanmasa hech narsa qilinmaydi.
-            final confirmed = await AppDialog.confirm(
+            final confirmed = await showConfirmDialog(
               context: context,
               icon: AppIcons.logout,
               title: l10n.logoutConfirmTitle,
@@ -273,28 +319,12 @@ class _LogoutButton extends StatelessWidget {
               danger: true,
             );
             if (!confirmed || !context.mounted) return;
-            // Saqlangan JWT/sessiyani ham tozalash kerak — aks holda
-            // `AuthInterceptor` keyingi so'rovlarga eskirgan tokenni
-            // qo'shib yuboraveradi.
-            // Chiqish HECH QACHON to'xtab qolmasin (masalan saqlash xatosi) —
-            // xato bo'lsa ham navigatsiya davom etadi.
-            try {
-              await getIt<AuthRepository>().logout();
-            } on Object {
-              // ignore
-            }
-            if (!context.mounted) return;
-            final auth = context.read<AuthCubit>();
-            final router = GoRouter.of(context);
-            final rootNav = Navigator.of(context, rootNavigator: true);
-            // QORA EKRAN tuzatildi (web-admin "hard redirect" bilan bir xil
-            // sabab): logout'da YOPILMAY qolgan popup/dialog/sheet barrier'i
-            // (0.45-qora) ekran ustida osilib qolardi — soft `go` uni olib
-            // tashlamaydi. Avval BARCHA popup route'larini tozalaymiz (GoRouter
-            // sahifalari PopupRoute EMAS — saqlanadi), keyin reset + `/login`.
-            auth.reset();
-            rootNav.popUntil((route) => route is! PopupRoute);
-            router.go('/login');
+            // Tokenlar/sessiya/kesh, bildirishnomalar, ochiq popuplar,
+            // `AuthCubit` va `/login` — barchasi bitta joyda (sessiya
+            // tugaganda ham aynan shu yo'l ishlaydi).
+            setState(() => _busy = true);
+            await getIt<LogoutService>().logout(router: GoRouter.of(context));
+            if (mounted) setState(() => _busy = false);
           },
         )
         .animate(delay: 200.ms)
@@ -338,18 +368,31 @@ class _MyRequestsStatsState extends State<_MyRequestsStats> {
   @override
   void initState() {
     super.initState();
-    if (getIt.isRegistered<CitizenRequestsRepository>()) {
+    citizenRequestsRevision.addListener(_load);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    citizenRequestsRevision.removeListener(_load);
+    super.dispose();
+  }
+
+  void _load() {
+    if (!getIt.isRegistered<CitizenRequestsRepository>()) return;
+    unawaited(
       getIt<CitizenRequestsRepository>().list().then((r) {
         if (mounted) r.fold((_) {}, (items) => setState(() => _items = items));
-      });
-    }
+      }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final items = _items;
     final total = items?.length ?? 0;
-    final working = items
+    final working =
+        items
             ?.where(
               (r) =>
                   r.status == RequestStatus.yuborilgan ||
@@ -395,8 +438,16 @@ class _MyRequestsStatsState extends State<_MyRequestsStats> {
           Row(
             children: [
               tile('$total', _t(context, 'jami', 'всего'), AppColors.info),
-              tile('$working', _t(context, "ko'rilmoqda", 'в работе'), AppColors.warning),
-              tile('$resolved', _t(context, 'hal qilingan', 'решено'), AppColors.success),
+              tile(
+                '$working',
+                _t(context, "ko'rilmoqda", 'в работе'),
+                AppColors.warning,
+              ),
+              tile(
+                '$resolved',
+                _t(context, 'hal qilingan', 'решено'),
+                AppColors.success,
+              ),
             ],
           ),
         ],
@@ -466,7 +517,11 @@ void _showHelp(BuildContext context) {
   final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
   final faq = <(String, String)>[
     (
-      _t(context, "Murojaat qancha vaqtda ko'rib chiqiladi?", 'За какой срок рассматривают?'),
+      _t(
+        context,
+        "Murojaat qancha vaqtda ko'rib chiqiladi?",
+        'За какой срок рассматривают?',
+      ),
       _t(
         context,
         "Ariza — odatda 5 kun ichida, shikoyat — 3 kun ichida (shoshilinchlari tezroq). "
@@ -476,7 +531,11 @@ void _showHelp(BuildContext context) {
       ),
     ),
     (
-      _t(context, "Natijadan norozi bo'lsam-chi?", 'Если я не согласен с результатом?'),
+      _t(
+        context,
+        "Natijadan norozi bo'lsam-chi?",
+        'Если я не согласен с результатом?',
+      ),
       _t(
         context,
         "Hal qilingan murojaatni 7 kun ichida «Hal bo'lmadi» deb qayta ochishingiz mumkin "
@@ -515,7 +574,10 @@ void _showHelp(BuildContext context) {
         for (final (q, a) in faq) ...[
           Text(q, style: AppTextStyles.bodyStrong),
           const SizedBox(height: 4),
-          Text(a, style: AppTextStyles.body.copyWith(color: inkSoft, height: 1.45)),
+          Text(
+            a,
+            style: AppTextStyles.body.copyWith(color: inkSoft, height: 1.45),
+          ),
           const SizedBox(height: 16),
         ],
       ],
