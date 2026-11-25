@@ -28,6 +28,9 @@ class RequestAttachmentPicker extends StatefulWidget {
   /// e'lon qilmasdan shu yerdan o'qishi uchun ochiq konstanta.
   static const defaultMaxCount = 5;
 
+  /// Server bitta fayl uchun qabul qiladigan eng katta hajm (25 MB).
+  static const maxFileBytes = 25 * 1024 * 1024;
+
   final List<RequestAttachment> attachments;
   final ValueChanged<List<RequestAttachment>> onChanged;
 
@@ -54,6 +57,16 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
     );
   }
 
+  void _showTooLarge() {
+    final ru = Localizations.localeOf(context).languageCode == 'ru';
+    AppAlert.error(
+      context,
+      ru
+          ? 'Размер файла не должен превышать 25 МБ'
+          : 'Fayl hajmi 25 MB dan oshmasligi kerak',
+    );
+  }
+
   Future<void> _addImage() async {
     if (_atLimit) {
       _showLimitReached();
@@ -74,6 +87,12 @@ class _RequestAttachmentPickerState extends State<RequestAttachmentPicker> {
       if (picked == null) return;
 
       final length = await picked.length();
+      if (!mounted) return;
+      // GIF kabi fayllar kichraytirilmaydi — server baribir rad etadi.
+      if (length > RequestAttachmentPicker.maxFileBytes) {
+        _showTooLarge();
+        return;
+      }
       final ref = RequestAttachment(
         type: RequestAttachmentType.image,
         path: picked.path,

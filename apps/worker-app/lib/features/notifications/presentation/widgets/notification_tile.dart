@@ -1,17 +1,14 @@
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:worker_app/features/notifications/domain/entities/notification_item.dart';
 
 /// Bitta bildirishnoma qatori — turga mos ikon/rang, sarlavha, matn,
 /// nisbiy vaqt va o'qilmagan holat belgisi (chap tomon fon tinti + nuqta).
 class NotificationTile extends StatelessWidget {
-  const NotificationTile({
-    required this.item,
-    required this.onTap,
-    super.key,
-  });
+  const NotificationTile({required this.item, required this.onTap, super.key});
 
   final NotificationItem item;
   final VoidCallback onTap;
@@ -31,10 +28,7 @@ class NotificationTile extends StatelessWidget {
       IconsaxPlusBold.notification,
       AppColors.accent,
     ),
-    NotificationType.locationAlert => (
-      AppIcons.locationBold,
-      AppColors.danger,
-    ),
+    NotificationType.locationAlert => (AppIcons.locationBold, AppColors.danger),
   };
 
   @override
@@ -55,34 +49,72 @@ class NotificationTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadii.md),
         border: Border.all(color: item.read ? line : unreadBorder),
       ),
-      child: AppListTile(
-        title: item.title,
-        subtitle: item.body,
-        titleMaxLines: 2,
-        onTap: onTap,
-        leading: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(AppRadii.sm),
-          ),
-          child: Icon(icon, size: 20, color: color),
-        ),
-        trailing: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (!item.read) const AppBadge(dot: true),
-            const SizedBox(height: 8),
-            Text(
-              relativeTime(context, item.createdAt),
-              style: AppTextStyles.caption.copyWith(
-                color: isDark ? AppColors.darkInkMuted : AppColors.inkMuted,
-              ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppRadii.md),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+          // Vaqt matn OSTIDA: yonida turganda tor ekran / katta shriftda
+          // sarlavha so'z o'rtasidan bo'linib kesilardi.
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                  ),
+                  child: Icon(icon, size: 20, color: color),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        style: AppTextStyles.bodyStrong,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        item.body,
+                        style: AppTextStyles.caption.copyWith(
+                          color: isDark
+                              ? AppColors.darkInkSoft
+                              : AppColors.inkSoft,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        relativeTime(context, item.createdAt),
+                        style: AppTextStyles.caption.copyWith(
+                          color: isDark
+                              ? AppColors.darkInkMuted
+                              : AppColors.inkMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!item.read) ...[
+                  const SizedBox(width: 10),
+                  const AppBadge(dot: true),
+                ],
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

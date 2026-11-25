@@ -44,7 +44,15 @@ class LocationTrackingService {
   static const String _ownerField = '_owner';
   static const int _batchSize = 100;
   static const int _distanceFilterMeters = 15;
-  static const int _maxBuffer = 500;
+
+  /// Oflayn buferda nuqtalar orasidagi eng kichik oraliq. 15 m filtr bilan
+  /// piyoda har ~11 soniyada nuqta keladi — siyraklashtirmasak 3 soatlik
+  /// oflayn yurishning boshi yo'qolardi. Server 15 daqiqagacha tanaffusni
+  /// uzluksiz deb hisoblaydi, shuning uchun 1 daqiqa vaqt hisobini buzmaydi.
+  static const Duration offlineSpacing = Duration(seconds: 60);
+
+  /// Daqiqada bitta nuqta bilan ~33 soat — butun ish kunidan ko'p.
+  static const int maxBuffer = 2000;
   static const Duration _flushInterval = Duration(seconds: 30);
 
   /// Oqim faqat 15 m yurganda nuqta beradi — joyida o'tirgan xodim umuman
@@ -316,15 +324,33 @@ class LocationTrackingService {
     };
   }
 
-  Future<void> _enqueue(Map<String, dynamic> report, String? owner) =>
-      _locked((prefs) async {
-        final buffer = (prefs.getStringList(outboxKey) ?? <String>[])
-          ..add(jsonEncode({...report, if (owner != null) _ownerField: owner}));
-        while (buffer.length > _maxBuffer) {
-          buffer.removeAt(0);
-        }
-        await prefs.setStringList(outboxKey, buffer);
-      });
+  Future<void> _enqueue(Map<String, dynamic> report, String? owner) => _locked((
+    prefs,
+  ) async {
+    final buffer = prefs.getStringList(outboxKey) ?? <String>[];
+    if (_tooClose(buffer, report, owner)) return;
+    buffer.add(jsonEncode({...report, if (owner != null) _ownerField: owner}));
+    while (buffer.length > maxBuffer) {
+      buffer.removeAt(0);
+    }
+    await prefs.setStringList(outboxKey, buffer);
+  });
+
+  /// Shu egasining oxirgi buferlangan nuqtasidan [offlineSpacing] o'tmaganmi.
+  static bool _tooClose(
+    List<String> buffer,
+    Map<String, dynamic> report,
+    String? owner,
+  ) {
+    final at = DateTime.tryParse('${report['recordedAt']}');
+    if (at == null || buffer.isEmpty) return false;
+    final last = _decode(buffer.last);
+    if (last == null || last[_ownerField] != owner) return false;
+    final lastAt = DateTime.tryParse('${last['recordedAt']}');
+    if (lastAt == null) return false;
+    final gap = at.difference(lastAt);
+    return !gap.isNegative && gap < offlineSpacing;
+  }
 
   Future<void>? _flushing;
 

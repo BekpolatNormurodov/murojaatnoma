@@ -3,6 +3,7 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:worker_app/features/attendance/domain/entities/attendance_day.dart';
+import 'package:worker_app/features/reports/domain/report_formatters.dart';
 
 /// Bugungi davomat holatini ko'rsatuvchi karta — status chip (rangli) +
 /// (mavjud bo'lsa) kelgan vaqt.
@@ -63,25 +64,12 @@ class TodayStatusCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (today?.checkIn case final checkIn?) ...[
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(l10n.checkInTimeLabel, style: AppTextStyles.caption),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(AppIcons.clock, size: 14, color: mutedColor),
-                        const SizedBox(width: 4),
-                        Text(checkIn, style: AppTextStyles.bodyStrong),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
             ],
           ),
+          if (day != null && day.checkIn != null) ...[
+            const SizedBox(height: 12),
+            _TimesRow(day: day),
+          ],
           // Yuz tekshiruvidan o'tgan kadrlar — serverda saqlangan isbot.
           if (hasScans) ...[
             const SizedBox(height: 12),
@@ -93,6 +81,7 @@ class TodayStatusCard extends StatelessWidget {
                       url: url,
                       label: _t(context, 'Keldi', 'Приход'),
                       time: day.checkIn,
+                      faceChecked: day.checkInFaceChecked,
                     ),
                   ),
                 if (day.checkInPhotoUrl != null && day.checkOutPhotoUrl != null)
@@ -103,6 +92,7 @@ class TodayStatusCard extends StatelessWidget {
                       url: url,
                       label: _t(context, 'Ketdi', 'Уход'),
                       time: day.checkOut,
+                      faceChecked: day.checkOutFaceChecked,
                     ),
                   ),
                 if (day.checkInPhotoUrl == null || day.checkOutPhotoUrl == null)
@@ -119,10 +109,92 @@ class TodayStatusCard extends StatelessWidget {
 String _t(BuildContext context, String uz, String ru) =>
     Localizations.localeOf(context).languageCode == 'ru' ? ru : uz;
 
+/// Keldi, ketdi va ishlangan vaqt — aniq qiymatlar.
+class _TimesRow extends StatelessWidget {
+  const _TimesRow({required this.day});
+
+  final AttendanceDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surfaceAlt = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
+    final muted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final worked = day.checkOut == null ? null : _workedMinutes(day);
+
+    final cells = <(String, String)>[
+      (context.l10n.checkInTimeLabel, day.checkIn!),
+      (_t(context, 'Ketgan vaqt', 'Время ухода'), day.checkOut ?? '—'),
+      if (worked != null)
+        (
+          _t(context, 'Ishladi', 'Отработано'),
+          _t(
+            context,
+            formatMinutes(worked),
+            '${worked ~/ 60} ч ${worked % 60} мин',
+          ),
+        ),
+    ];
+
+    return Container(
+      key: const Key('today_times'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: surfaceAlt,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+      ),
+      // Wrap — katta shriftda ustunlar pastga tushadi, kesilmaydi.
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        spacing: 16,
+        runSpacing: 8,
+        children: [
+          for (final (label, value) in cells)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: AppTextStyles.caption.copyWith(color: muted),
+                ),
+                const SizedBox(height: 2),
+                Text(value, style: AppTextStyles.bodyStrong),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  static int? _workedMinutes(AttendanceDay day) {
+    if (day.hours > 0) return (day.hours * 60).round();
+    int? of(String? hhmm) {
+      final parts = hhmm?.split(':');
+      if (parts == null || parts.length < 2) return null;
+      final h = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      return h == null || m == null ? null : h * 60 + m;
+    }
+
+    final from = of(day.checkIn);
+    final to = of(day.checkOut);
+    return from == null || to == null || to < from ? null : to - from;
+  }
+}
+
 /// Bitta skan kadri: kichik rasm + "Keldi 09:02 · yuz tasdiqlandi";
 /// bosilsa to'liq o'lchamda ochiladi.
 class _ScanShot extends StatelessWidget {
-  const _ScanShot({required this.url, required this.label, this.time});
+  const _ScanShot({
+    required this.url,
+    required this.label,
+    this.time,
+    this.faceChecked = true,
+  });
+
+  final bool faceChecked;
 
   final String url;
   final String label;
@@ -174,12 +246,18 @@ class _ScanShot extends StatelessWidget {
                       style: AppTextStyles.bodyStrong.copyWith(fontSize: 13),
                     ),
                     Text(
-                      _t(context, 'Yuz tasdiqlandi', 'Лицо подтверждено'),
+                      faceChecked
+                          ? _t(context, 'Yuz tasdiqlandi', 'Лицо подтверждено')
+                          : _t(
+                              context,
+                              'Yuz tekshirilmagan',
+                              'Лицо не проверялось',
+                            ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyles.caption.copyWith(
                         fontSize: 11.5,
-                        color: AppColors.success,
+                        color: faceChecked ? AppColors.success : inkMuted,
                       ),
                     ),
                   ],

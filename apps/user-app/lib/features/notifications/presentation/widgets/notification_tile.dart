@@ -6,11 +6,7 @@ import 'package:user_app/features/notifications/domain/entities/notification_ite
 /// Bitta bildirishnoma qatori — turga mos ikon/rang, sarlavha, matn,
 /// nisbiy vaqt va o'qilmagan holat belgisi (chap tomon fon tinti + nuqta).
 class NotificationTile extends StatelessWidget {
-  const NotificationTile({
-    required this.item,
-    required this.onTap,
-    super.key,
-  });
+  const NotificationTile({required this.item, required this.onTap, super.key});
 
   final NotificationItem item;
   final VoidCallback onTap;
@@ -25,34 +21,77 @@ class NotificationTile extends StatelessWidget {
         ? AppColors.primary.withValues(alpha: 0.08)
         : AppColors.primary.withValues(alpha: 0.05);
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
-      decoration: BoxDecoration(
-        color: item.read ? surface : unreadTint,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(
-          color: item.read ? line : AppColors.primary.withValues(alpha: 0.35),
-        ),
-      ),
-      child: AppListTile(
-        title: item.title,
-        subtitle: item.body,
-        titleMaxLines: 2,
+    final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
+    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+
+    // Vaqt matn ostida: o'ng ustunda turganda sarlavha so'z o'rtasidan
+    // bo'linib ketardi.
+    final radius = BorderRadius.circular(AppRadii.md);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
         onTap: onTap,
-        leading: NotificationIconBox(icon: icon, color: color),
-        trailing: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (!item.read) const AppBadge(dot: true),
-            const SizedBox(height: 8),
-            Text(
-              relativeTime(context, item.createdAt),
-              style: AppTextStyles.caption.copyWith(
-                color: isDark ? AppColors.darkInkMuted : AppColors.inkMuted,
-              ),
+        borderRadius: radius,
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: item.read ? surface : unreadTint,
+            borderRadius: radius,
+            border: Border.all(
+              color: item.read
+                  ? line
+                  : AppColors.primary.withValues(alpha: 0.35),
             ),
-          ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              NotificationIconBox(icon: icon, color: color),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.title,
+                            style: AppTextStyles.bodyStrong,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (!item.read) ...[
+                          const SizedBox(width: 8),
+                          const Padding(
+                            padding: EdgeInsets.only(top: 5),
+                            child: AppBadge(dot: true),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      item.body,
+                      style: AppTextStyles.caption.copyWith(color: inkSoft),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      relativeTime(context, item.createdAt),
+                      style: AppTextStyles.caption.copyWith(
+                        fontSize: 12,
+                        color: inkMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

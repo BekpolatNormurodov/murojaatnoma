@@ -19,8 +19,15 @@ import 'package:worker_app/core/notifications/notification_service.dart';
 /// Har bir amal HIMOYALANGAN — push ishlamay qolsa (ruxsat rad etilsa,
 /// tarmoq yo'q, yoki sessiya hali yo'q bo'lsa) ilova HECH QACHON qulamaydi.
 class FcmService {
-  FcmService(this._dio, this._local, {FirebaseMessaging? messaging})
-    : _injected = messaging;
+  FcmService(
+    this._dio,
+    this._local, {
+    FirebaseMessaging? messaging,
+    this.onTerritoryChanged,
+  }) : _injected = messaging;
+
+  /// Ilova ochiqligida "hududingiz o'zgartirildi" push'i keldi.
+  final void Function()? onTerritoryChanged;
 
   final Dio _dio;
   final NotificationService _local;
@@ -132,8 +139,7 @@ class FcmService {
         unawaited(
           _local.showIncomingCall(
             callId: callId,
-            callerName:
-                (message.data['callerName'] as String?) ?? 'Nomaʼlum',
+            callerName: (message.data['callerName'] as String?) ?? 'Nomaʼlum',
             media: (message.data['media'] as String?) ?? 'audio',
           ),
         );
@@ -147,14 +153,15 @@ class FcmService {
       return;
     }
 
+    if (message.data['event'] == 'territory_changed') {
+      onTerritoryChanged?.call();
+    }
+
     final notification = message.notification;
     if (notification == null) {
       return;
     }
-    _local.show(
-      title: notification.title ?? '',
-      body: notification.body ?? '',
-    );
+    _local.show(title: notification.title ?? '', body: notification.body ?? '');
   }
 }
 

@@ -32,8 +32,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
     // aks holda (xato/yuklanmagan) to'liq yuklash.
     final cubit = context.read<NotificationsCubit>();
     final state = cubit.state;
-    final silent =
-        state is NotificationsLoaded || state is NotificationsEmpty;
+    final silent = state is NotificationsLoaded || state is NotificationsEmpty;
     unawaited(cubit.load(silent: silent));
   }
 
@@ -48,14 +47,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
       backgroundColor: isDark ? AppColors.darkCanvas : AppColors.canvas,
       appBar: AppBar(
         leading: const AppBackButton(),
-        title: Text(l10n.notificationsTitle),
+        title: Text(l10n.notificationsTitle, style: AppTextStyles.h3),
         actions: [
           // Ixcham ikonka: uzun matnli tugma sarlavhani qisib qo'yardi
           // ("Bildiris…"). Matn tooltip sifatida qoladi.
           if (hasUnread)
             IconButton(
-              onPressed: () =>
-                  context.read<NotificationsCubit>().markAllRead(),
+              onPressed: () => context.read<NotificationsCubit>().markAllRead(),
               tooltip: l10n.notificationsMarkAllRead,
               icon: const Icon(Icons.done_all, color: AppColors.primary),
             ),
@@ -81,9 +79,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               builder: (context, constraints) => SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight,
-                  ),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: EmptyView(
                     icon: AppIcons.notification,
                     title: l10n.notificationsEmptyTitle,
@@ -155,9 +151,7 @@ void openNotification(BuildContext context, NotificationItem item) {
                       const SizedBox(height: 4),
                       Text(
                         _fullStamp(item.createdAt),
-                        style: AppTextStyles.caption.copyWith(
-                          color: inkMuted,
-                        ),
+                        style: AppTextStyles.caption.copyWith(color: inkMuted),
                       ),
                     ],
                   ),
@@ -211,14 +205,13 @@ String _dayLabel(BuildContext context, DateTime day) {
   final diff = today.difference(day).inDays;
   if (diff == 0) return _t(context, 'Bugun', 'Сегодня');
   if (diff == 1) return _t(context, 'Kecha', 'Вчера');
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(day.day)}.${two(day.month)}.${day.year}';
+  // Butun ilovadagi sana ko'rinishi: "21 Noy 2026".
+  return formatDate(day);
 }
 
 String _fullStamp(DateTime d) {
   String two(int n) => n.toString().padLeft(2, '0');
-  return '${two(d.day)}.${two(d.month)}.${d.year}, '
-      '${two(d.hour)}:${two(d.minute)}';
+  return '${formatDate(d)}, ${two(d.hour)}:${two(d.minute)}';
 }
 
 String _t(BuildContext context, String uz, String ru) =>

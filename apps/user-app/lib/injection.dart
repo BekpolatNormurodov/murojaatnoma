@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:user_app/app/router/app_router.dart';
 import 'package:user_app/core/cache/cache_service.dart';
 import 'package:user_app/core/monitoring/app_logger.dart';
+import 'package:user_app/core/network/session_auth_interceptor.dart';
 import 'package:user_app/core/notifications/notification_service.dart';
 import 'package:user_app/core/session/account_data_store.dart';
 import 'package:user_app/core/session/logout_service.dart';
@@ -78,7 +79,13 @@ Future<void> configureDependencies() async {
   getIt
     // ---- External ----
     ..registerSingleton<SharedPreferences>(prefs)
-    ..registerLazySingleton<DioClient>(DioClient.new)
+    // Umumiy `AuthInterceptor` o'rniga: refresh token bir martalik va
+    // aylanadi, eski sessiya so'rovi yangisini o'chirmasligi kerak.
+    ..registerLazySingleton<DioClient>(() {
+      final client = DioClient();
+      SessionAuthInterceptor.install(client);
+      return client;
+    })
     ..registerLazySingleton<FlutterSecureStorage>(
       () => const FlutterSecureStorage(),
     )
@@ -345,8 +352,8 @@ Future<void> configureDependencies() async {
     )
     // ---- E'lonlar/Yangiliklar (bosh sahifadagi "E'lonlar" bo'limi) ----
     // HAQIQIY, jonli backendga ulanadi (`GET https://murojaatnoma.uz/api
-    // /news`, `@Public` — tokensiz) — Auth/Murojaat kabi
-    // `AppConfig.useMock`dan MUSTAQIL.
+    // /news`, fuqaro tokeni bilan; faqat chop etilganlari) — Auth/Murojaat
+    // kabi `AppConfig.useMock`dan MUSTAQIL.
     ..registerLazySingleton<NewsRemoteDataSource>(
       () => NewsApiImpl(getIt<DioClient>()),
     )

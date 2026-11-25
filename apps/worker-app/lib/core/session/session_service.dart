@@ -10,6 +10,7 @@ import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
@@ -113,6 +114,9 @@ class SessionService {
       } on Object {
         // Hech qachon to'xtamasin.
       }
+    }
+    if (getIt.isRegistered<TerritoryService>()) {
+      getIt<TerritoryService>().clear();
     }
     if (getIt.isRegistered<AuthCubit>()) {
       final auth = getIt<AuthCubit>();

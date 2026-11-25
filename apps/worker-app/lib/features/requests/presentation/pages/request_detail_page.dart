@@ -100,6 +100,9 @@ class _DetailBottomBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final line = isDark ? AppColors.darkLine : AppColors.line;
+    // Katta shriftda ikonkalar olib tashlanadi — aks holda "Qo'ng'iroq" so'z
+    // o'rtasidan bo'linardi.
+    final large = MediaQuery.textScalerOf(context).scale(10) > 11.5;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: surface,
@@ -112,20 +115,20 @@ class _DetailBottomBar extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                flex: 2,
+                flex: large ? 1 : 2,
                 child: AppButton(
                   label: _t(context, "Qo'ng'iroq", 'Позвонить'),
                   variant: AppButtonVariant.secondary,
-                  icon: AppIcons.call,
+                  icon: large ? null : AppIcons.call,
                   onPressed: () => _call(context, application.citizenPhone),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                flex: 3,
+                flex: large ? 1 : 3,
                 child: AppButton(
                   label: _t(context, 'Hal qilish', 'Решить'),
-                  icon: AppIcons.tick,
+                  icon: large ? null : AppIcons.tick,
                   loading: submitting,
                   onPressed: submitting
                       ? null
@@ -502,11 +505,8 @@ class _CitizenCard extends StatelessWidget {
             leading: a.citizenPhotoUrl == null
                 ? null
                 : GestureDetector(
-                    onTap: () => _showPhoto(
-                      context,
-                      a.citizenPhotoUrl!,
-                      a.citizenName,
-                    ),
+                    onTap: () =>
+                        _showPhoto(context, a.citizenPhotoUrl!, a.citizenName),
                     child: AppAvatar(
                       name: a.citizenName,
                       photoUrl: a.citizenPhotoUrl,

@@ -9,8 +9,8 @@ import 'package:user_app/injection.dart';
 
 /// Fuqaro ilovasidan chiqishning YAGONA yo'li — "Chiqish" tugmasi
 /// (`ProfilePage`), "PIN kodni unutdim" (`PinUnlockPage`) VA server sessiyani
-/// rad etganda (`AuthInterceptor.sessionExpired`, `main.dart`) hammasi shuni
-/// chaqiradi.
+/// rad etganda (`SessionAuthInterceptor.sessionExpired`, `main.dart`)
+/// — hammasi shuni chaqiradi.
 ///
 /// Tartib:
 ///  1. `AuthRepository.logout()` — server/tokenlar/sessiya/oflayn kesh;

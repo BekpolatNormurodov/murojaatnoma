@@ -8,6 +8,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/format/phone_format.dart';
 import 'package:user_app/core/session/logout_service.dart';
 import 'package:user_app/core/widgets/app_shimmer.dart';
 import 'package:user_app/core/widgets/confirm_dialog.dart';
@@ -94,7 +95,11 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
           ),
         ),
         const SizedBox(height: 14),
-        Text(name, style: AppTextStyles.h2, textAlign: TextAlign.center),
+        Text(
+          formatPhone(name),
+          style: AppTextStyles.h2,
+          textAlign: TextAlign.center,
+        ),
         FutureBuilder<_EnrollInfo>(
           future: _enrollInfo,
           builder: (context, snapshot) {
@@ -122,7 +127,10 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
         // Ism hali yo'q bo'lsa u telefonning o'zi — ikki marta chiqmasin.
         if (phone.isNotEmpty && phone != name) ...[
           const SizedBox(height: 4),
-          Text(phone, style: AppTextStyles.body.copyWith(color: inkMuted)),
+          Text(
+            formatPhone(phone),
+            style: AppTextStyles.body.copyWith(color: inkMuted),
+          ),
         ],
         FutureBuilder<String?>(
           future: _regionCode,
@@ -238,8 +246,18 @@ class _SettingsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final locale = context.watch<LocaleCubit>().state;
-    final themeMode = context.watch<ThemeCubit>().state;
-    final isDark = themeMode == ThemeMode.dark;
+    context.watch<ThemeCubit>();
+    // Ko'rinib turgan mavzu: "tizim" rejimida ham yorliq to'g'ri bo'ladi.
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // Subtitle'li qatorda chevron tepada qolib ketmasin.
+    final chevron = SizedBox(
+      height: 44,
+      child: Icon(
+        IconsaxPlusLinear.arrow_right_3,
+        size: 18,
+        color: isDark ? AppColors.darkInkMuted : AppColors.inkMuted,
+      ),
+    );
 
     return AppCard(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -251,6 +269,7 @@ class _SettingsCard extends StatelessWidget {
                     ? l10n.profileLanguageRu
                     : l10n.profileLanguageUz,
                 leadingIcon: IconsaxPlusLinear.translate,
+                trailing: chevron,
                 onTap: () => context.read<LocaleCubit>().setLocale(
                   Locale(locale.languageCode == 'ru' ? 'uz' : 'ru'),
                 ),
@@ -261,6 +280,7 @@ class _SettingsCard extends StatelessWidget {
                     ? l10n.profileThemeDark
                     : l10n.profileThemeLight,
                 leadingIcon: IconsaxPlusLinear.moon,
+                trailing: chevron,
                 onTap: () => context.read<ThemeCubit>().setMode(
                   isDark ? ThemeMode.light : ThemeMode.dark,
                 ),

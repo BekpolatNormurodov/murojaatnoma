@@ -70,6 +70,12 @@ class RealtimeSocketService {
   final _meetingMedia = _EventController.broadcast();
   final _meetingEnded = _EventController.broadcast();
 
+  /// `territory:changed` — admin xodimning mahallalarini o'zgartirdi.
+  final _territoryChanged = _EventController.broadcast();
+
+  /// `{ assignedMahallas: [{code, name}], changedAt }`.
+  Stream<Map<String, dynamic>> get territoryChanged => _territoryChanged.stream;
+
   /// `presence:snapshot` — auth yakunlandi ("tayyor") signali. Payload
   /// e'tiborga olinmaydi; faqat "socket endi emit qabul qiladi" degani.
   final _presenceSnapshot = StreamController<void>.broadcast();
@@ -282,8 +288,8 @@ class RealtimeSocketService {
       _socket?.emit('chat:read', {'conversationId': conversationId});
 
   /// `chat:typing` — "yozmoqda" holatini yuboradi (saqlanmaydi).
-  void emitTyping(String conversationId, {required bool isTyping}) => _socket
-      ?.emit('chat:typing', {
+  void emitTyping(String conversationId, {required bool isTyping}) =>
+      _socket?.emit('chat:typing', {
         'conversationId': conversationId,
         'isTyping': isTyping,
       });
@@ -352,25 +358,20 @@ class RealtimeSocketService {
   void sendSdp({
     required String callId,
     required Map<String, dynamic> description,
-  }) =>
-      _runWhenReady(
-        () => _socket?.emit('call:sdp', {
-          'callId': callId,
-          'description': description,
-        }),
-      );
+  }) => _runWhenReady(
+    () => _socket?.emit('call:sdp', {
+      'callId': callId,
+      'description': description,
+    }),
+  );
 
   /// `call:ice` — ICE nomzodini boshqa peerga uzatadi (trickle).
   void sendIce({
     required String callId,
     required Map<String, dynamic> candidate,
-  }) =>
-      _runWhenReady(
-        () => _socket?.emit('call:ice', {
-          'callId': callId,
-          'candidate': candidate,
-        }),
-      );
+  }) => _runWhenReady(
+    () => _socket?.emit('call:ice', {'callId': callId, 'candidate': candidate}),
+  );
 
   /// `call:end` — qo'ng'iroqni tugatadi (har ikki tomon ham chaqira oladi).
   void endCall(String callId) =>
@@ -526,6 +527,8 @@ class RealtimeSocketService {
       ..on('meeting:ice', (d) => _add(_meetingIce, d))
       ..on('meeting:media', (d) => _add(_meetingMedia, d))
       ..on('meeting:ended', (d) => _add(_meetingEnded, d))
+      // HUDUD
+      ..on('territory:changed', (d) => _add(_territoryChanged, d))
       // TAYYOR / AUTH
       ..on('presence:snapshot', (_) => _onReady())
       ..on('auth:error', (Object? e) {

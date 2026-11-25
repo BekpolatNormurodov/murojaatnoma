@@ -25,8 +25,9 @@ class SavedCardCarousel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
+    // Katta shriftda karta matni bilan birga o'sadi.
     return SizedBox(
-      height: 128,
+      height: 54 + MediaQuery.textScalerOf(context).scale(74),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
@@ -69,7 +70,7 @@ class _SavedCardChip extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: 200,
+        width: 56 + MediaQuery.textScalerOf(context).scale(144),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: CardNetworkMeta.gradient(card.network),

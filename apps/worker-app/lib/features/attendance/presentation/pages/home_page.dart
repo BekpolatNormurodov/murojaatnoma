@@ -20,6 +20,8 @@ import 'package:worker_app/features/dashboard/my_dashboard.dart';
 import 'package:worker_app/features/dashboard/my_dashboard_cubit.dart';
 import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
+import 'package:worker_app/features/territory/territory_card.dart';
+import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
@@ -32,7 +34,10 @@ import 'package:worker_app/injection.dart';
 /// BARCHA holatlari (`loading`/`loaded`/`empty`/`error`) shu yerda
 /// ko'rsatiladi — hech qachon oq/bo'sh ekran YO'Q.
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({this.now = DateTime.now, super.key});
+
+  /// Testlar uchun soat.
+  final DateTime Function() now;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -46,6 +51,42 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// ko'rsatardi.
   late final MyDashboardCubit _dashboard;
   StreamSubscription<void>? _reconnectSub;
+  StreamSubscription<Territory>? _territorySub;
+  Timer? _dayTimer;
+  late DateTime _day = _today();
+
+  DateTime _today() {
+    final now = widget.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  TerritoryService? get _territory =>
+      getIt.isRegistered<TerritoryService>() ? getIt<TerritoryService>() : null;
+
+  /// Davomat, ko'rsatkichlar va hududni skeletonsiz yangilaydi.
+  void _refreshSilently() {
+    if (!mounted) return;
+    unawaited(context.read<AttendanceCubit>().load(silent: true));
+    unawaited(_dashboard.load());
+    unawaited(_territory?.refresh());
+  }
+
+  /// Ilova tun bo'yi ochiq qolsa (fon xizmati) yangi kun kechagi holatni
+  /// ko'rsatib turmasin.
+  void _checkDayChange() {
+    final today = _today();
+    if (today == _day || !mounted) return;
+    _day = today;
+    _refreshSilently();
+    setState(() {});
+  }
+
+  void _onTerritoryChanged(Territory _) {
+    if (!mounted) return;
+    AppAlert.info(context, "Hududingiz o'zgartirildi");
+    unawaited(context.read<AttendanceCubit>().load(silent: true));
+    unawaited(context.read<NotificationsCubit>().load());
+  }
 
   @override
   void initState() {
@@ -55,7 +96,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_dashboard.load());
     // Internet qaytishi bilan ko'rsatkichlarni yangilaymiz.
     _reconnectSub = NetworkStatus.instance.onReconnect.listen(
-      (_) => unawaited(_dashboard.load()),
+      (_) => _refreshSilently(),
+    );
+    _territorySub = _territory?.changed.listen(_onTerritoryChanged);
+    unawaited(_territory?.refresh());
+    _dayTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkDayChange(),
     );
   }
 
@@ -64,14 +111,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Ilovaga qaytilganda: davomat, yangi hudud va admin "yuz majburiy"
     // sozlamasi (`faceRequired`) jimgina yangilanadi.
     if (state != AppLifecycleState.resumed || !mounted) return;
-    unawaited(context.read<AttendanceCubit>().load(silent: true));
-    unawaited(_dashboard.load());
+    _day = _today();
+    _refreshSilently();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_reconnectSub?.cancel());
+    unawaited(_territorySub?.cancel());
+    _dayTimer?.cancel();
     unawaited(_dashboard.close());
     super.dispose();
   }
@@ -95,11 +144,62 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     );
   }
 
-  /// "Yuz bilan tasdiqlash" CTA bosilganda: joriy joylashuv + geofence
-  /// tekshiruvi (`AttendanceCubit.checkGeofence()` — hech qachon throw
-  /// qilmaydi), so'ng natijaga qarab ichkarida `/face/checkin`ga yoki
-  /// tashqarida/aniqlanmasa mos `AppAlert`.
-  Future<void> _onCheckInPressed() => _precheckThen('/face/checkin');
+  /// "Keldim" / "Ishdan chiqish": admin "yuz majburiy" sozlamasini istalgan
+  /// payt o'zgartirishi mumkin — kamera yoki joylashuv yo'li bosish paytidagi
+  /// YANGI qiymat bo'yicha tanlanadi.
+  Future<void> _onMarkPressed({required bool checkOut}) async {
+    if (_checkingGeofence) return;
+    final cubit = context.read<AttendanceCubit>();
+    setState(() => _checkingGeofence = true);
+    try {
+      await cubit
+          .load(silent: true)
+          .timeout(_freshSettingTimeout, onTimeout: () {});
+    } finally {
+      if (mounted) setState(() => _checkingGeofence = false);
+    }
+    if (!mounted) return;
+    final state = cubit.state;
+    // Yangi holatda bu amal endi kerak emas (boshqa joyda belgilangan, yangi
+    // kun boshlangan) — tugmaning o'zi yangilandi.
+    if (state is AttendanceLoaded) {
+      final today = state.today;
+      final stillNeeded = checkOut
+          ? today?.checkIn != null && today?.checkOut == null
+          : today?.checkIn == null;
+      if (!stillNeeded) return;
+    }
+    final faceRequired = switch (state) {
+      AttendanceLoaded(:final faceRequired) => faceRequired,
+      AttendanceEmpty(:final faceRequired) => faceRequired,
+      _ => true,
+    };
+    if (faceRequired) {
+      await _precheckThen(checkOut ? '/face/checkout' : '/face/checkin');
+    } else {
+      await _markByLocation(checkOut: checkOut);
+    }
+  }
+
+  static const _freshSettingTimeout = Duration(seconds: 4);
+
+  /// Kamerasiz yo'lda tasodifiy bosish ish kunini yakunlab qo'ymasin —
+  /// ketishni bekor qilib bo'lmaydi.
+  Future<bool> _confirmCheckOut() {
+    final now = widget.now();
+    final time =
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}';
+    return AppDialog.confirm(
+      context: context,
+      icon: AppIcons.logout,
+      title: 'Ishdan chiqasizmi?',
+      message:
+          "Ketish vaqti $time deb belgilanadi. Buni bekor qilib bo'lmaydi.",
+      confirmLabel: 'Ha, chiqaman',
+      cancelLabel: context.l10n.cancel,
+    );
+  }
 
   /// Admin yuz skanerini o'chirgan (`faceRequired == false`) bo'lsa — kamera
   /// ochilmaydi: oldindan server qoidasi bilan tekshirib (precheck), so'ng
@@ -123,6 +223,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               : l10n.locationCheckFailed,
         );
         return;
+      }
+      // So'rov faqat haqiqatan yoziladigan bo'lsa (rad sababini ko'rsatish
+      // uchun tasdiq so'ralmaydi).
+      if (checkOut) {
+        setState(() => _checkingGeofence = false);
+        if (!await _confirmCheckOut() || !mounted) return;
+        setState(() => _checkingGeofence = true);
       }
       final result = await cubit.markByLocation(checkOut: checkOut);
       if (!mounted) return;
@@ -175,11 +282,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         );
     }
   }
-
-  /// "Ishdan chiqish" (ketdi) CTA — check-in bilan bir xil geofence
-  /// tekshiruvi, so'ng `/face/checkout` (FaceCubit check-out rejimi, face
-  /// lane). Faqat bugun kelgan, lekin hali ketmagan xodimga ko'rsatiladi.
-  Future<void> _onCheckOutPressed() => _precheckThen('/face/checkout');
 
   @override
   Widget build(BuildContext context) {
@@ -270,9 +372,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           : 'Keldim — joylashuv bilan',
                       icon: faceRequired ? AppIcons.camera : AppIcons.location,
                       loading: _checkingGeofence,
-                      onPressed: faceRequired
-                          ? _onCheckInPressed
-                          : () => _markByLocation(checkOut: false),
+                      onPressed: () => _onMarkPressed(checkOut: false),
                     )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 300.ms)
@@ -284,21 +384,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       label: 'Ishdan chiqish',
                       icon: faceRequired ? AppIcons.camera : AppIcons.location,
                       loading: _checkingGeofence,
-                      onPressed: faceRequired
-                          ? _onCheckOutPressed
-                          : () => _markByLocation(checkOut: true),
+                      onPressed: () => _onMarkPressed(checkOut: true),
                     )
                     .animate(delay: 120.ms)
                     .fadeIn(duration: 300.ms)
-                    .slideY(begin: 0.15, end: 0)
-              else
-                const SizedBox.shrink(),
+                    .slideY(begin: 0.15, end: 0),
               if (!faceRequired && today?.checkOut == null) ...[
                 const SizedBox(height: 10),
                 const _FaceOffHint(),
               ],
-              const SizedBox(height: 16),
+              // Kun yakunlangan bo'lsa tugma yo'q — ikki baravar bo'shliq
+              // qolmasin.
+              if (today?.checkOut == null) const SizedBox(height: 16),
               const _DailyReportCard(),
+              const TerritoryCard(padding: EdgeInsets.only(top: 12)),
               const SizedBox(height: 24),
               const _QuickActions(),
               const SizedBox(height: 24),
@@ -423,7 +522,7 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
               Text(
                 name,
                 style: AppTextStyles.h2,
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
@@ -1233,49 +1332,59 @@ class _HomeSkeleton extends StatelessWidget {
     // RenderFlex overflow bermasin — skroll qilinmaydigan o'ram.
     return SingleChildScrollView(
       physics: const NeverScrollableScrollPhysics(),
-      child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _box(color: lineColor, height: 56, width: 56, radius: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+      child:
+          Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        _box(color: lineColor, height: 14, width: 100),
-                        const SizedBox(height: 8),
-                        _box(color: lineColor, height: 18, width: 160),
+                        _box(
+                          color: lineColor,
+                          height: 56,
+                          width: 56,
+                          radius: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _box(color: lineColor, height: 14, width: 100),
+                              const SizedBox(height: 8),
+                              _box(color: lineColor, height: 18, width: 160),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _box(color: lineColor, height: 84, radius: 20),
-              const SizedBox(height: 16),
-              _box(color: lineColor, height: 54, radius: 16),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  for (var i = 0; i < 3; i++) ...[
-                    if (i > 0) const SizedBox(width: 12),
-                    Expanded(
-                      child: _box(color: lineColor, height: 84, radius: 16),
+                    const SizedBox(height: 24),
+                    _box(color: lineColor, height: 84, radius: 20),
+                    const SizedBox(height: 16),
+                    _box(color: lineColor, height: 54, radius: 16),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        for (var i = 0; i < 3; i++) ...[
+                          if (i > 0) const SizedBox(width: 12),
+                          Expanded(
+                            child: _box(
+                              color: lineColor,
+                              height: 84,
+                              radius: 16,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
+                    const SizedBox(height: 24),
+                    _box(color: lineColor, height: 180, radius: 20),
                   ],
-                ],
-              ),
-              const SizedBox(height: 24),
-              _box(color: lineColor, height: 180, radius: 20),
-            ],
-          ),
-        )
-        .animate(onPlay: (c) => c.repeat())
-        .shimmer(duration: 1200.ms, color: shimmerColor),
+                ),
+              )
+              .animate(onPlay: (c) => c.repeat())
+              .shimmer(duration: 1200.ms, color: shimmerColor),
     );
   }
 }

@@ -29,8 +29,10 @@ class TestModeBanner extends StatelessWidget {
               message ??
                   "Test jarayonida — namoyish rejimi. Haqiqiy to'lov amalga "
                       'oshmaydi.',
+              // Sariq fonda sariq matn o'qilmasdi — rang faqat ikonka va
+              // fonda, matn asosiy "siyoh" rangida.
               style: AppTextStyles.caption.copyWith(
-                color: AppColors.warning,
+                color: isDark ? AppColors.darkInk : AppColors.ink,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -39,4 +41,19 @@ class TestModeBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Banner ekran tepasida, [child] qolgan joyda.
+class WithTestModeBanner extends StatelessWidget {
+  const WithTestModeBanner({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      const TestModeBanner(),
+      Expanded(child: child),
+    ],
+  );
 }

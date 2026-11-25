@@ -119,6 +119,52 @@ void main() {
     );
   });
 
+  test('a lost refresh answer is retried with the SAME key, even after '
+      'an app restart', () async {
+    var online = false;
+    final keys = <Object?>[];
+    ResponseBody refresh(RequestOptions o) {
+      keys.add(o.headers[IdempotencyInterceptor.header]);
+      if (!online) {
+        // The server rotated the token but the phone never heard back.
+        throw DioException.receiveTimeout(
+          timeout: const Duration(seconds: 1),
+          requestOptions: o,
+        );
+      }
+      return json({'accessToken': 'new', 'refreshToken': 'r2'});
+    }
+
+    final (first, _) = build(refresh);
+    await expectLater(first.get<dynamic>('/x'), throwsA(isA<DioException>()));
+    expect(prefs.getString(AuthInterceptor.refreshTokenKey), 'r1');
+    expect(expiries, 0);
+
+    // A fresh interceptor stands for the restarted app.
+    online = true;
+    final (second, _) = build(refresh);
+    final response = await second.get<dynamic>('/x');
+    expect(response.statusCode, 200);
+    expect(keys.length, greaterThan(1));
+    expect(keys.toSet(), hasLength(1));
+    expect(
+      prefs.getStringList(WorkerAuthInterceptor.refreshAttemptKey),
+      isNull,
+    );
+  });
+
+  test('another refresh token gets another key', () async {
+    final keys = <Object?>[];
+    final (dio, _) = build((o) {
+      keys.add(o.headers[IdempotencyInterceptor.header]);
+      return json({'message': 'busy'}, 503);
+    });
+    await expectLater(dio.get<dynamic>('/x'), throwsA(isA<DioException>()));
+    await prefs.setString(AuthInterceptor.refreshTokenKey, 'r9');
+    await expectLater(dio.get<dynamic>('/x'), throwsA(isA<DioException>()));
+    expect(keys.toSet(), hasLength(2));
+  });
+
   test('install replaces the shared AuthInterceptor in place', () {
     final dio = Dio()..interceptors.add(AuthInterceptor());
     WorkerAuthInterceptor.install(dio);

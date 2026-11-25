@@ -43,33 +43,65 @@ class _RequestsPageState extends State<RequestsPage> {
     final l10n = context.l10n;
     var draftStatus = cubit.statusFilter;
 
-    await showAppFilterSheet(
+    // `showAppFilterSheet` tugmalarni 1:2 bo'ladi — katta shriftda
+    // "Tozalash" so'z o'rtasidan sinardi, shuning uchun teng ikkiga.
+    final apply = await showAppSheet<bool>(
       context: context,
       title: l10n.requestsFilterTitle,
-      sections: [
-        StatefulBuilder(
-          builder: (sheetContext, setSheetState) => AppSelect<RequestStatus?>(
-            label: l10n.requestsFilterStatusLabel,
-            hint: l10n.requestsFilterAll,
-            searchable: false,
-            value: draftStatus,
-            options: [
-              AppSelectOption(value: null, label: l10n.requestsFilterAll),
-              for (final status in RequestStatus.values)
-                AppSelectOption(
-                  value: status,
-                  label: RequestStatusChip.labelOf(context, status),
+      child: Builder(
+        builder: (sheetContext) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StatefulBuilder(
+              builder: (_, setSheetState) => AppSelect<RequestStatus?>(
+                label: l10n.requestsFilterStatusLabel,
+                hint: l10n.requestsFilterAll,
+                searchable: false,
+                value: draftStatus,
+                options: [
+                  AppSelectOption(value: null, label: l10n.requestsFilterAll),
+                  for (final status in RequestStatus.values)
+                    AppSelectOption(
+                      value: status,
+                      label: RequestStatusChip.labelOf(context, status),
+                    ),
+                ],
+                onChanged: (value) => setSheetState(() => draftStatus = value),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    label: _isRu(context) ? 'Сброс' : 'Tozalash',
+                    variant: AppButtonVariant.secondary,
+                    onPressed: () => Navigator.of(sheetContext).pop(false),
+                  ),
                 ),
-            ],
-            onChanged: (value) => setSheetState(() => draftStatus = value),
-          ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: AppButton(
+                    label: _isRu(context) ? 'Применить' : "Qo'llash",
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
-      onApply: () =>
-          cubit.load(kind: cubit.kind, status: draftStatus, query: cubit.query),
-      onReset: () => cubit.load(kind: cubit.kind, query: cubit.query),
+      ),
+    );
+    if (apply == null) return;
+    await cubit.load(
+      kind: cubit.kind,
+      status: apply ? draftStatus : null,
+      query: cubit.query,
     );
   }
+
+  bool _isRu(BuildContext context) =>
+      Localizations.localeOf(context).languageCode == 'ru';
 
   @override
   Widget build(BuildContext context) {

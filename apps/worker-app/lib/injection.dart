@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -24,6 +26,7 @@ import 'package:worker_app/features/attendance/domain/usecases/check_out.dart';
 import 'package:worker_app/features/attendance/domain/usecases/get_my_attendance.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/auth/data/datasources/auth_remote_data_source.dart';
+import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/features/reports/data/report_draft_store.dart';
 import 'package:worker_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:worker_app/features/auth/domain/repositories/auth_repository.dart';
@@ -170,7 +173,12 @@ Future<void> configureDependencies() async {
     // foreground push'ni `NotificationService` orqali ko'rsatadi. Prod'da
     // `bootstrap()`da ishga tushadi (mock rejimda o'tkazib yuboriladi).
     ..registerLazySingleton<FcmService>(
-      () => FcmService(getIt<DioClient>().dio, getIt<NotificationService>()),
+      () => FcmService(
+        getIt<DioClient>().dio,
+        getIt<NotificationService>(),
+        onTerritoryChanged: () =>
+            unawaited(getIt<TerritoryService>().refresh()),
+      ),
     )
     // `RealtimeSocketService` — jonli chat transporti (Socket.IO). Butun
     // ilova davomida BITTA ulanish (lazy singleton): `bootstrap()`dagi auth
@@ -181,8 +189,21 @@ Future<void> configureDependencies() async {
         getIt<SharedPreferences>(),
         // Socket token rad etilsa: oddiy so'rov 401 oladi va interceptor
         // tokenni yangilaydi.
-        refreshSession: () =>
-            getIt<DioClient>().dio.get<dynamic>('/auth/me'),
+        refreshSession: () => getIt<DioClient>().dio.get<dynamic>('/auth/me'),
+      ),
+    )
+    // Ish hududi (mahalla nomlari) — soket `territory:changed` bilan jonli.
+    ..registerLazySingleton<TerritoryService>(
+      () => TerritoryService(
+        load: AppConfig.useMock
+            ? () async => const Territory([
+                AssignedMahalla(code: '1', name: 'Olmazor'),
+                AssignedMahalla(code: '2', name: 'Bodomzor'),
+              ])
+            : TerritoryService.apiLoader(getIt<DioClient>().dio),
+        events: AppConfig.useMock
+            ? null
+            : getIt<RealtimeSocketService>().territoryChanged,
       ),
     )
     // `UploadsService` — chat media biriktirmalarini (`POST /uploads`)
@@ -377,7 +398,11 @@ Future<void> configureDependencies() async {
     // Mavjud `GeofenceService` singletonini qayta ishlatadi (Vazifa 15) —
     // geofence matematikasi ikki marta amalga oshirilmaydi.
     ..registerFactory<MapCubit>(
-      () => MapCubit(geofence: getIt<GeofenceService>()),
+      () => MapCubit(
+        geofence: getIt<GeofenceService>(),
+        beforeSubscribe: () =>
+            getIt<LocationTrackingService>().start(prompt: false),
+      ),
     )
     // ---- Requests/Arizalar (fuqarolar murojaatlari) ----
     ..registerLazySingleton<ApplicationsRemoteDataSource>(
@@ -563,8 +588,7 @@ Future<void> configureDependencies() async {
           : DocumentsRemoteDataSourceApiImpl(getIt<DioClient>()),
     )
     ..registerLazySingleton<DocumentsRepository>(
-      () =>
-          DocumentsRepositoryImpl(remote: getIt<DocumentsRemoteDataSource>()),
+      () => DocumentsRepositoryImpl(remote: getIt<DocumentsRemoteDataSource>()),
     )
     ..registerLazySingleton<GetDocuments>(
       () => GetDocuments(getIt<DocumentsRepository>()),

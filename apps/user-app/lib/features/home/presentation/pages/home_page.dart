@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:user_app/core/format/phone_format.dart';
 import 'package:user_app/core/widgets/app_shimmer.dart';
 import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
@@ -138,8 +139,9 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final name = widget.session?.name ?? '';
     final phone = widget.session?.phone ?? '';
+    // Ism hali yo'q bo'lsa u telefonning o'zi — ikki marta chiqmasin.
     final subtitleParts = <String>[
-      if (phone.isNotEmpty) phone,
+      if (phone.isNotEmpty && phone != name) formatPhone(phone),
       formatDate(DateTime.now()),
     ];
 
@@ -163,16 +165,16 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
                 style: AppTextStyles.body.copyWith(color: inkMuted),
               ),
               Text(
-                name,
-                style: AppTextStyles.h2,
-                maxLines: 1,
+                formatPhone(name),
+                style: AppTextStyles.h3.copyWith(height: 1.25),
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
               Text(
-                subtitleParts.join(' • '),
+                subtitleParts.join('\n'),
                 style: AppTextStyles.caption.copyWith(color: inkMuted),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
@@ -423,18 +425,24 @@ class _QuickActionsGrid extends StatelessWidget {
       ),
     ];
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      // 1.6 edi — ikki qatorli (2-line) yorliq (masalan uzun ruscha matn)
-      // uchun katak balandligi yetarli emas edi va kartani "toshib"
-      // (overflow) ketkazardi. 1.25 icon+2 qatorli matn+karta bo'shlig'i
-      // uchun yetarli balandlik beradi.
-      childAspectRatio: 1.25,
-      children: actions,
+    // Katak balandligi matnga moslashadi (qat'iy nisbat katta shriftda
+    // nomni kesib tashlardi); juftlik doim bir xil balandlikda.
+    return Column(
+      children: [
+        for (var i = 0; i < actions.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: 12),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: actions[i]),
+                const SizedBox(width: 12),
+                Expanded(child: actions[i + 1]),
+              ],
+            ),
+          ),
+        ],
+      ],
     ).animate(delay: 220.ms).fadeIn(duration: 300.ms);
   }
 }
@@ -458,8 +466,10 @@ class _QuickAction extends StatelessWidget {
       onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        // Yuqoridan: juft kartaning biri ikki qatorli bo'lsa ham ikonkalar
+        // bir chiziqda turadi.
         children: [
+          const SizedBox(width: double.infinity, height: 6),
           Container(
             width: 38,
             height: 38,
@@ -471,16 +481,13 @@ class _QuickAction extends StatelessWidget {
             child: Icon(icon, color: color, size: 19),
           ),
           const SizedBox(height: 10),
-          // Katakcha balandligi qat'iy (aspect ratio) — katta shriftda ham
-          // sig'ishi uchun nom qolgan joyga moslashadi.
-          Flexible(
-            child: Text(
-              label,
-              style: AppTextStyles.bodyStrong,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
+          Text(
+            label,
+            style: AppTextStyles.bodyStrong,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 6),
         ],
       ),
     );

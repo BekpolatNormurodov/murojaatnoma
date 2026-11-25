@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:user_app/core/network/session_auth_interceptor.dart';
 import 'package:user_app/features/auth/data/datasources/auth_remote_data_source.dart';
 import 'package:user_app/features/auth/data/models/auth_session_model.dart';
 import 'package:user_app/features/auth/domain/entities/auth_session.dart';
@@ -30,6 +31,11 @@ class AuthRepositoryImpl implements AuthRepository {
   /// bilan ishlaydi.
   static const _refreshTokenKey = 'refresh_token';
 
+  void _newSession() {
+    final client = _client;
+    if (client != null) SessionAuthInterceptor.of(client)?.newSession();
+  }
+
   @override
   Future<Either<Failure, Unit>> sendOtp(String phone) async {
     try {
@@ -55,6 +61,7 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     try {
       final session = await remote.verifyOtp(phone: phone, code: code);
+      _newSession();
       // `AuthInterceptor` har bir so'rovga shu kalitdan JWT o'qib qo'shadi.
       await prefs.setString(AuthInterceptor.tokenKey, session.token);
       final refreshToken = session.refreshToken;
@@ -63,6 +70,8 @@ class AuthRepositoryImpl implements AuthRepository {
         // faqat 'refresh_token'ga yozilardi, shu sabab avto-yangilanish hech
         // ishlamas va fuqaro har 15 daqiqada "Unauthorized" olardi.
         await prefs.setString(AuthInterceptor.refreshTokenKey, refreshToken);
+      } else {
+        await prefs.remove(AuthInterceptor.refreshTokenKey);
       }
       await prefs.setString(_sessionKey, jsonEncode(session.toJson()));
       return Right(session);
@@ -107,8 +116,13 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<void> logout() async {
     // Serverda refresh tokenni bekor qiladi (best-effort, ≤5 s), tokenlar va
-    // oflayn keshni tozalaydi.
-    await AuthInterceptor.endSession(_client?.dio);
+    // oflayn keshni tozalaydi. Shu paytgacha boshlangan so'rovlar eskiradi.
+    Future<void> signOut() => AuthInterceptor.endSession(_client?.dio);
+    final client = _client;
+    final interceptor = client == null
+        ? null
+        : SessionAuthInterceptor.of(client);
+    await (interceptor?.endSession(signOut) ?? signOut());
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_sessionKey);
   }

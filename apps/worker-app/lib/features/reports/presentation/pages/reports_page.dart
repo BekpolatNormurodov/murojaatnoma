@@ -271,8 +271,14 @@ class _ZoneTimeTabState extends State<_ZoneTimeTab>
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
               children: [
-                _ZoneSummary(days: report.days, gapMinutes: report.gapMinutes),
-                const SizedBox(height: 14),
+                // Kun yo'q bo'lsa "So'nggi 0 kun" xulosasi ko'rsatilmaydi.
+                if (report.days.isNotEmpty) ...[
+                  _ZoneSummary(
+                    days: report.days,
+                    gapMinutes: report.gapMinutes,
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 if (report.days.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 24),
@@ -306,9 +312,11 @@ class _ZoneSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     var inside = 0;
     var outside = 0;
+    var office = 0;
     for (final d in days) {
       inside += d.zoneMinutes;
       outside += d.outsideMinutes;
+      office += d.officeMinutes;
     }
     return Container(
       padding: const EdgeInsets.all(16),
@@ -332,6 +340,13 @@ class _ZoneSummary extends StatelessWidget {
             style: AppTextStyles.h3.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 2),
+          if (office > 0)
+            Text(
+              'Ofisda: ${formatMinutes(office)}',
+              style: AppTextStyles.body.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
           Text(
             'Tashqarida: ${formatMinutes(outside)}',
             style: AppTextStyles.body.copyWith(

@@ -140,144 +140,147 @@ class _PayPageState extends State<PayPage> {
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
-        title: Text(l10n.payPageTitle),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(40),
-          child: TestModeBanner(),
-        ),
+        title: Text(l10n.payPageTitle, style: AppTextStyles.h3),
       ),
       body: SafeArea(
-        child: BlocConsumer<PayCubit, PayState>(
-          listener: (context, state) async {
-            if (state is PayAwaitingOtp) {
-              await _openOtpSheet(context, state.demoCode);
-            } else if (state is PaySuccess) {
-              _closeOtpSheet();
-              // To'lov muvaffaqiyatli bo'lgach bosh sahifa va kommunalka
-              // ro'yxatini (ular lazy-singleton — qarang: injection.dart)
-              // to'g'ridan-to'g'ri yangilaymiz, chunki bu sahifa ular bilan
-              // bir xil widget subtree'da emas (ildiz navigatorida ochilgan).
-              unawaited(getIt<HomeCubit>().load());
-              unawaited(getIt<UtilitiesCubit>().load());
-              // Haqiqiy (on-device) mahalliy bildirishnoma — to'lov
-              // muvaffaqiyatli bo'lganini tasdiqlaydi. `NotificationService`
-              // DI'da ro'yxatdan o'tmagan bo'lsa (masalan widget testda)
-              // yoki ruxsat rad etilgan bo'lsa `show()` xotirjam hech
-              // narsa qilmaydi — bu yerda hech qachon uncaught bo'lmaydi.
-              if (getIt.isRegistered<NotificationService>()) {
-                unawaited(
-                  getIt<NotificationService>().show(
-                    title: "To'lov muvaffaqiyatli",
-                    body:
-                        '${formatSom(state.payment.amount)} miqdorida '
-                        "to'lov muvaffaqiyatli amalga oshirildi.",
-                  ),
-                );
-              }
-              await AppDialog.success(
-                context: context,
-                title: l10n.paySuccessTitle,
-                message: l10n.paySuccessMessage,
-                buttonLabel: l10n.closeLabel,
-              );
-              // Tugma ham, fon bosilishi ham sahifani yopadi.
-              if (context.mounted) context.pop();
-            } else if (state is PayFailure) {
-              _closeOtpSheet();
-              AppAlert.error(context, state.message);
-            }
-          },
-          builder: (context, state) {
-            final submitting =
-                state is PaySubmitting || state is PayAwaitingOtp;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _UtilitySummary(
-                    utility: widget.utility,
-                  ).animate().fadeIn(duration: 250.ms),
-                  const SizedBox(height: 28),
-                  AppTextField(
-                    label: l10n.amountLabel,
-                    hint: l10n.amountHint,
-                    controller: _amountController,
-                    keyboardType: TextInputType.number,
-                    // 12 xona — 999 999 999 999 so'mgacha (real to'lov
-                    // summalari uchun yetarli, tasodifiy cheksiz kiritishni
-                    // cheklaydi).
-                    inputFormatters: const [
-                      ThousandsAmountFormatter(maxDigits: 12),
-                    ],
-                    suffix: Padding(
-                      padding: const EdgeInsets.only(right: 14),
-                      child: Text(
-                        l10n.amountSuffix,
-                        style: AppTextStyles.bodyStrong.copyWith(
-                          color: inkMuted,
-                        ),
-                      ),
+        child: WithTestModeBanner(
+          child: BlocConsumer<PayCubit, PayState>(
+            listener: (context, state) async {
+              if (state is PayAwaitingOtp) {
+                await _openOtpSheet(context, state.demoCode);
+              } else if (state is PaySuccess) {
+                _closeOtpSheet();
+                // To'lov muvaffaqiyatli bo'lgach bosh sahifa va kommunalka
+                // ro'yxatini (ular lazy-singleton — qarang: injection.dart)
+                // to'g'ridan-to'g'ri yangilaymiz, chunki bu sahifa ular bilan
+                // bir xil widget subtree'da emas (ildiz navigatorida ochilgan).
+                unawaited(getIt<HomeCubit>().load());
+                unawaited(getIt<UtilitiesCubit>().load());
+                // Haqiqiy (on-device) mahalliy bildirishnoma — to'lov
+                // muvaffaqiyatli bo'lganini tasdiqlaydi. `NotificationService`
+                // DI'da ro'yxatdan o'tmagan bo'lsa (masalan widget testda)
+                // yoki ruxsat rad etilgan bo'lsa `show()` xotirjam hech
+                // narsa qilmaydi — bu yerda hech qachon uncaught bo'lmaydi.
+                if (getIt.isRegistered<NotificationService>()) {
+                  unawaited(
+                    getIt<NotificationService>().show(
+                      title: "To'lov muvaffaqiyatli",
+                      body:
+                          '${formatSom(state.payment.amount)} miqdorida '
+                          "to'lov muvaffaqiyatli amalga oshirildi.",
                     ),
-                    errorText: _insufficientFunds
-                        ? l10n.insufficientFundsMessage
-                        : null,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const SizedBox(height: 28),
-                  Text(
-                    l10n.savedCardsSectionLabel,
-                    style: AppTextStyles.label.copyWith(color: inkMuted),
-                  ),
-                  const SizedBox(height: 12),
-                  SavedCardCarousel(
-                    cards: mockSavedCards,
-                    selected: _selectedCard,
-                    onSelect: _selectCard,
-                  ),
-                  const SizedBox(height: 20),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    child: _isManualCard
-                        ? _ManualCardFields(
-                            key: const ValueKey('manual-card'),
-                            cardController: _cardController,
-                            expiryController: _expiryController,
-                            onChanged: () => setState(() {}),
-                          )
-                        : _SelectedCardSummary(
-                            key: const ValueKey('selected-card'),
-                            card: _selectedCard!,
-                          ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(AppIcons.info, size: 14, color: inkMuted),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          l10n.cardMockNotice,
-                          style: AppTextStyles.caption.copyWith(
-                            color: inkMuted,
+                  );
+                }
+                await AppDialog.success(
+                  context: context,
+                  title: l10n.paySuccessTitle,
+                  message: l10n.paySuccessMessage,
+                  buttonLabel: l10n.closeLabel,
+                );
+                // Tugma ham, fon bosilishi ham sahifani yopadi.
+                if (context.mounted) context.pop();
+              } else if (state is PayFailure) {
+                _closeOtpSheet();
+                AppAlert.error(context, state.message);
+              }
+            },
+            builder: (context, state) {
+              final submitting =
+                  state is PaySubmitting || state is PayAwaitingOtp;
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _UtilitySummary(
+                      utility: widget.utility,
+                    ).animate().fadeIn(duration: 250.ms),
+                    const SizedBox(height: 28),
+                    AppTextField(
+                      label: l10n.amountLabel,
+                      hint: l10n.amountHint,
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      // 12 xona — 999 999 999 999 so'mgacha (real to'lov
+                      // summalari uchun yetarli, tasodifiy cheksiz kiritishni
+                      // cheklaydi).
+                      inputFormatters: const [
+                        ThousandsAmountFormatter(maxDigits: 12),
+                      ],
+                      // Center: aks holda "so'm" maydon tepasiga yopishardi.
+                      suffix: Center(
+                        widthFactor: 1,
+                        heightFactor: 1,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 14),
+                          child: Text(
+                            l10n.amountSuffix,
+                            style: AppTextStyles.bodyStrong.copyWith(
+                              color: inkMuted,
+                            ),
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  AppButton(
-                    label: l10n.payConfirmButton,
-                    icon: AppIcons.tick,
-                    loading: submitting,
-                    onPressed: _canSubmit && !submitting ? _submit : null,
-                  ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            );
-          },
+                      errorText: _insufficientFunds
+                          ? l10n.insufficientFundsMessage
+                          : null,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 28),
+                    Text(
+                      l10n.savedCardsSectionLabel,
+                      style: AppTextStyles.label.copyWith(color: inkMuted),
+                    ),
+                    const SizedBox(height: 12),
+                    SavedCardCarousel(
+                      cards: mockSavedCards,
+                      selected: _selectedCard,
+                      onSelect: _selectCard,
+                    ),
+                    const SizedBox(height: 20),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: _isManualCard
+                          ? _ManualCardFields(
+                              key: const ValueKey('manual-card'),
+                              cardController: _cardController,
+                              expiryController: _expiryController,
+                              onChanged: () => setState(() {}),
+                            )
+                          : _SelectedCardSummary(
+                              key: const ValueKey('selected-card'),
+                              card: _selectedCard!,
+                            ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(AppIcons.info, size: 14, color: inkMuted),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            l10n.cardMockNotice,
+                            style: AppTextStyles.caption.copyWith(
+                              color: inkMuted,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    AppButton(
+                      label: l10n.payConfirmButton,
+                      icon: AppIcons.tick,
+                      loading: submitting,
+                      onPressed: _canSubmit && !submitting ? _submit : null,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -316,7 +319,7 @@ class _UtilitySummary extends StatelessWidget {
                 Text(
                   utility.provider,
                   style: AppTextStyles.bodyStrong,
-                  maxLines: 2,
+                  maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
@@ -324,14 +327,16 @@ class _UtilitySummary extends StatelessWidget {
                   '${l10n.accountNumberLabel}: ${utility.accountNumber}',
                   style: AppTextStyles.caption.copyWith(color: inkMuted),
                 ),
+                if (utility.balanceDue > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    formatSom(utility.balanceDue),
+                    style: AppTextStyles.h3.copyWith(color: AppColors.danger),
+                  ),
+                ],
               ],
             ),
           ),
-          if (utility.balanceDue > 0)
-            Text(
-              formatSom(utility.balanceDue),
-              style: AppTextStyles.bodyStrong.copyWith(color: AppColors.danger),
-            ),
         ],
       ),
     );

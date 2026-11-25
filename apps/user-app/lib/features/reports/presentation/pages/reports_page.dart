@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
+import 'package:user_app/core/widgets/error_view.dart';
 import 'package:user_app/features/reports/presentation/bloc/reports_cubit.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/features/requests/presentation/widgets/request_status_chip.dart';
@@ -34,18 +35,11 @@ class ReportsPage extends StatelessWidget {
             ReportsLoading() => const _ReportsSkeleton(
               key: Key('reports_skeleton'),
             ),
-            ReportsError(:final message) => Padding(
-              padding: const EdgeInsets.all(24),
-              child: EmptyState(
-                icon: AppIcons.close,
-                title: l10n.dataLoadErrorTitle,
-                message: message,
-                action: AppButton(
-                  label: l10n.retry,
-                  expand: false,
-                  onPressed: () => context.read<ReportsCubit>().load(),
-                ),
-              ),
+            // Boshqa ekranlar bilan bir xil xato ko'rinishi.
+            ReportsError(:final message) => ErrorView(
+              message: '${l10n.dataLoadErrorTitle}\n$message',
+              retryLabel: l10n.retry,
+              onRetry: () => context.read<ReportsCubit>().load(),
             ),
             ReportsLoaded(:final summary) => _ReportsContent(summary: summary),
           },
@@ -275,25 +269,17 @@ class _ReportsSkeleton extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: AppSkeleton(height: 110, borderRadius: radius),
-              ),
+              Expanded(child: AppSkeleton(height: 110, borderRadius: radius)),
               const SizedBox(width: 12),
-              Expanded(
-                child: AppSkeleton(height: 110, borderRadius: radius),
-              ),
+              Expanded(child: AppSkeleton(height: 110, borderRadius: radius)),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(
-                child: AppSkeleton(height: 110, borderRadius: radius),
-              ),
+              Expanded(child: AppSkeleton(height: 110, borderRadius: radius)),
               const SizedBox(width: 12),
-              Expanded(
-                child: AppSkeleton(height: 110, borderRadius: radius),
-              ),
+              Expanded(child: AppSkeleton(height: 110, borderRadius: radius)),
             ],
           ),
           const SizedBox(height: 24),

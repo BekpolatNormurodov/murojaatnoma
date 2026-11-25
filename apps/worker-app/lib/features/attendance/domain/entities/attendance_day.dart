@@ -15,6 +15,8 @@ class AttendanceDay extends Equatable {
     required this.confirmedAt,
     this.checkInPhotoUrl,
     this.checkOutPhotoUrl,
+    this.checkInFaceChecked = true,
+    this.checkOutFaceChecked = true,
   });
 
   factory AttendanceDay.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,8 @@ class AttendanceDay extends Equatable {
       confirmedAt: json['confirmed_at'] as String?,
       checkInPhotoUrl: json['check_in_photo'] as String?,
       checkOutPhotoUrl: json['check_out_photo'] as String?,
+      checkInFaceChecked: json['check_in_face_checked'] as bool? ?? true,
+      checkOutFaceChecked: json['check_out_face_checked'] as bool? ?? true,
     );
   }
 
@@ -45,6 +49,10 @@ class AttendanceDay extends Equatable {
   final String? checkInPhotoUrl;
   final String? checkOutPhotoUrl;
 
+  /// `false` — yuz tekshirilmagan (faqat joylashuv bo'yicha belgilangan).
+  final bool checkInFaceChecked;
+  final bool checkOutFaceChecked;
+
   @override
   List<Object?> get props => [
     date,
@@ -57,6 +65,8 @@ class AttendanceDay extends Equatable {
     confirmedAt,
     checkInPhotoUrl,
     checkOutPhotoUrl,
+    checkInFaceChecked,
+    checkOutFaceChecked,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -70,5 +80,7 @@ class AttendanceDay extends Equatable {
     'confirmed_at': confirmedAt,
     'check_in_photo': checkInPhotoUrl,
     'check_out_photo': checkOutPhotoUrl,
+    'check_in_face_checked': checkInFaceChecked,
+    'check_out_face_checked': checkOutFaceChecked,
   };
 }

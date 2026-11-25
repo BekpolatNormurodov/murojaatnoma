@@ -31,7 +31,9 @@ class MapCubit extends Cubit<MapState> {
     Future<bool> Function() isPermanentlyDenied = _defaultIsPermanentlyDenied,
     Future<bool> Function() hasPermission = _defaultHasPermission,
     Future<Position> Function()? currentPosition = _defaultCurrentPosition,
+    Future<void> Function()? beforeSubscribe,
   }) : _geofence = geofence,
+       _beforeSubscribe = beforeSubscribe,
        _currentPosition = currentPosition,
        _positionStream = positionStream,
        _ensurePermission = ensurePermission,
@@ -52,6 +54,11 @@ class MapCubit extends Cubit<MapState> {
 
   /// Bir martalik joriy fiks ([_seedPosition]); `null` — ishlatilmaydi.
   final Future<Position> Function()? _currentPosition;
+
+  /// Oqimga ulanishdan OLDIN. `geolocator` birinchi obunachining
+  /// sozlamalari bilan bitta umumiy oqim ochadi — serverga yuboruvchi (fon
+  /// xizmatli) kuzatuv birinchi bo'lishi shart.
+  final Future<void> Function()? _beforeSubscribe;
 
   /// Ruxsatni SO'RAMASDAN tekshirish ([resumeIfPermitted]).
   final Future<bool> Function() _hasPermission;
@@ -103,6 +110,13 @@ class MapCubit extends Cubit<MapState> {
       emit(MapPermissionDenied(permanentlyDenied: permanentlyDenied));
       return;
     }
+
+    try {
+      await _beforeSubscribe?.call();
+    } on Object {
+      // Kuzatuv ishga tushmasa ham xarita ishlaydi.
+    }
+    if (isClosed || generation != _generation) return;
 
     _trail = const [];
     await _subscription?.cancel();
@@ -259,6 +273,13 @@ class MapCubit extends Cubit<MapState> {
 
   void _onStreamError(Object error) {
     if (isClosed) return;
+    if (error is LocationServiceDisabledException ||
+        error is PermissionDeniedException) {
+      // Umumiy GPS oqimi o'lgan: obuna qolsa `geolocator` uni keshda ushlab
+      // turadi va qayta ishga tushgan kuzatuv ham shu o'lik oqimni oladi.
+      unawaited(_subscription?.cancel());
+      _subscription = null;
+    }
     emit(MapError(_unexpectedErrorMessage(error)));
   }
 

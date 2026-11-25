@@ -10,11 +10,14 @@ import 'package:iconsax_plus/iconsax_plus.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
+import 'package:worker_app/features/attendance/domain/entities/work_hours.dart';
+import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/map/data/offline_tiles.dart';
 import 'package:worker_app/features/map/data/yandex_map.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 import 'package:worker_app/features/map/data/zone_refresher.dart';
 import 'package:worker_app/features/map/presentation/bloc/map_cubit.dart';
+import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
@@ -33,19 +36,6 @@ const _workplaceCenter = LatLng(kWorkplaceLat, kWorkplaceLng);
 // Tuman miqyosidagi ish hududi (2 km radius) doirasi to'liq ko'rinishi uchun
 // pastroq zoom (ilgari 16 — ko'cha darajasi, katta doira sig'masdi).
 const _defaultZoom = 13.5;
-
-/// Ish kuni boshlanish/tugash soati (24 soatlik) — Dushanba–Shanba
-/// 09:00–18:00 (qarang: `WorkSchedulePage` — bosh sahifadagi haftalik
-/// jadval BIR XIL soatlarni ko'rsatadi). Yakshanba dam olish kuni.
-const _workDayStartHour = 9;
-const _workDayEndHour = 18;
-
-/// Hozir (`DateTime.now()`) ish vaqtimi — Dushanba–Shanba, 09:00–18:00
-/// oralig'ida. MOCK/dizayn qoidasi — real backend jadvaliga bog'liq emas.
-bool _isWithinWorkHours(DateTime now) {
-  if (now.weekday == DateTime.sunday) return false;
-  return now.hour >= _workDayStartHour && now.hour < _workDayEndHour;
-}
 
 /// "Xarita" (hudud kuzatuvi) tabi — jonli joylashuv, "breadcrumb" izi va
 /// geofence vizualizatsiyasi.
@@ -67,6 +57,43 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   final _mapController = MapController();
   final _loader = ZoneBoundaryLoader(getIt<DioClient>().dio);
   Timer? _zoneRefreshTimer;
+  Timer? _clockTimer;
+  StreamSubscription<Territory>? _territorySub;
+
+  /// Xodimning ish vaqti (serverdan; kelguncha standart).
+  WorkHours _hours = const WorkHours();
+
+  /// Ofis nuqtasi va radiusi — hududdan tashqaridagi ofis alohida holat.
+  ({LatLng center, int radiusM})? _office;
+
+  Future<void> _loadSchedule() async {
+    if (!getIt.isRegistered<AttendanceRepository>()) return;
+    final result = await getIt<AttendanceRepository>().myAttendance();
+    if (!mounted) return;
+    result.fold((_) {}, (me) {
+      final lat = me.officeLat;
+      final lng = me.officeLng;
+      final radius = me.officeRadiusM;
+      setState(() {
+        _hours = WorkHours.of(me);
+        _office = lat == null || lng == null || radius == null
+            ? null
+            : (center: LatLng(lat, lng), radiusM: radius);
+      });
+    });
+  }
+
+  bool _atOffice(MapState state) {
+    final office = _office;
+    final snapshot = _mapSnapshot(state);
+    if (office == null || snapshot == null) return false;
+    return const Distance().as(
+          LengthUnit.Meter,
+          office.center,
+          LatLng(snapshot.position.latitude, snapshot.position.longitude),
+        ) <=
+        office.radiusM;
+  }
 
   /// Biriktirilgan mahallalar + chegaralarni yangilovchi.
   late final _zones = ZoneRefresher(
@@ -126,18 +153,31 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     // boshlanadi va Map tabidan chiqilsa ham butun ilova davomida ishlaydi.
     unawaited(getIt<LocationTrackingService>().start());
     unawaited(_loadBoundaries());
+    unawaited(_loadSchedule());
     WidgetsBinding.instance.addObserver(this);
+    if (getIt.isRegistered<TerritoryService>()) {
+      _territorySub = getIt<TerritoryService>().changed.listen(
+        (_) => unawaited(_loadBoundaries()),
+      );
+    }
+    // Ish vaqti boshlanishi/tugashi banner'da o'z vaqtida ko'rinsin.
+    _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
     // Admin hududni o'zgartirsa — ilovani qayta ochmasdan ham ko'rinsin.
-    _zoneRefreshTimer = Timer.periodic(
-      _zoneRefreshInterval,
-      (_) => unawaited(_loadBoundaries()),
-    );
+    _zoneRefreshTimer = Timer.periodic(_zoneRefreshInterval, (_) {
+      unawaited(_loadBoundaries());
+      if (getIt.isRegistered<TerritoryService>()) {
+        unawaited(getIt<TerritoryService>().refresh());
+      }
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
     unawaited(_loadBoundaries());
+    unawaited(_loadSchedule());
     // Sozlamalardan ruxsat berib qaytgan bo'lsa — xarita o'zi tiklanadi.
     unawaited(context.read<MapCubit>().resumeIfPermitted());
   }
@@ -296,6 +336,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _zoneRefreshTimer?.cancel();
+    _clockTimer?.cancel();
+    unawaited(_territorySub?.cancel());
     _mapController.dispose();
     super.dispose();
   }
@@ -347,7 +389,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
         }
         // Ruxsat endi bor (masalan "Ruxsat berish"dan keyin) — serverga
         // yuboruvchi kuzatuv ham ishga tushsin.
-        if (state is MapTracking && getIt.isRegistered<LocationTrackingService>()) {
+        if (state is MapTracking &&
+            getIt.isRegistered<LocationTrackingService>()) {
           final tracking = getIt<LocationTrackingService>();
           if (!tracking.isRunning) unawaited(tracking.start());
         }
@@ -390,7 +433,10 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             mapController: _mapController,
             boundaries: _boundaries.polygons,
             currentMahalla: _currentMahalla,
+            mahallasKnown: _boundaries.mahallas.isNotEmpty,
             insideZone: _insideZone,
+            hours: _hours,
+            atOffice: _atOffice(state),
             onRecenter: () => _onRecenterPressed(cubit),
             onMapReady: _onMapReady,
             onSaveOffline: _boundaries.bounds == null ? null : _saveOffline,
@@ -452,11 +498,17 @@ class _TrackingScaffold extends StatelessWidget {
     required this.mapController,
     required this.boundaries,
     required this.currentMahalla,
+    required this.mahallasKnown,
     required this.insideZone,
     required this.onRecenter,
     required this.onMapReady,
+    required this.hours,
+    required this.atOffice,
     this.onSaveOffline,
   });
+
+  final WorkHours hours;
+  final bool atOffice;
 
   /// `FlutterMap` birinchi marta chizilib, `MapController` tayyor bo'lganda.
   final VoidCallback onMapReady;
@@ -471,6 +523,9 @@ class _TrackingScaffold extends StatelessWidget {
   /// Foydalanuvchi hozir ichida bo'lgan mahalla — yengil urg'u (faint fill) va
   /// yuqoridagi chip uchun. `null` bo'lsa tuman tashqarisida.
   final MahallaArea? currentMahalla;
+
+  /// Mahalla chegaralari yuklanganmi ([currentMahalla] ma'noli).
+  final bool mahallasKnown;
 
   /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — marker
   /// rangi va pastdagi banner shu bo'yicha. `null` — hali aniqlanmagan.
@@ -546,12 +601,9 @@ class _TrackingScaffold extends StatelessWidget {
                         ),
                         width: 44,
                         height: 44,
-                        child: _PositionMarker(
-                          // Marker rangi ish hududi (mahalla poligonlari)
-                          // bo'yicha; lokal hisob hali kelmagan bo'lsa
-                          // (null) doira-asosli qiymatga qaytadi.
-                          insideGeofence: insideZone ?? snapshot.insideGeofence,
-                        ),
+                        // Rang faqat ish hududi (mahalla poligonlari)
+                        // bo'yicha; hali noma'lum bo'lsa neytral.
+                        child: _PositionMarker(insideZone: insideZone),
                       ),
                     ],
                   ),
@@ -575,7 +627,9 @@ class _TrackingScaffold extends StatelessWidget {
                       const SizedBox(height: 8),
                       _MahallaChip(
                         mahalla: currentMahalla,
-                        locating: snapshot == null,
+                        // Chegaralar hali yuklanmagan (oflayn birinchi
+                        // ochilish) — "tashqarida" deb aytib bo'lmaydi.
+                        locating: snapshot == null || !mahallasKnown,
                       ),
                     ],
                   ),
@@ -626,6 +680,8 @@ class _TrackingScaffold extends StatelessWidget {
                     // biriktirilgan mahalla poligonlari (insideZone) bo'yicha —
                     // ilgarigi ofis doirasi (insideGeofence) o'rniga.
                     insideZone: insideZone,
+                    hours: hours,
+                    atOffice: atOffice,
                   ),
                 ),
               ),
@@ -649,13 +705,17 @@ class _TrackingScaffold extends StatelessWidget {
 /// yashil/qizil, oq halqa bilan (kichik xarita fonida ham ajralib turishi
 /// uchun).
 class _PositionMarker extends StatelessWidget {
-  const _PositionMarker({required this.insideGeofence});
+  const _PositionMarker({required this.insideZone});
 
-  final bool insideGeofence;
+  final bool? insideZone;
 
   @override
   Widget build(BuildContext context) {
-    final color = insideGeofence ? AppColors.success : AppColors.danger;
+    final color = switch (insideZone) {
+      true => AppColors.success,
+      false => AppColors.danger,
+      null => AppColors.info,
+    };
     return Container(
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -776,9 +836,7 @@ class _WorkZoneLegendChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: isDark ? AppColors.darkSurface : AppColors.surface,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: isDark ? AppColors.darkLine : AppColors.line,
-        ),
+        border: Border.all(color: isDark ? AppColors.darkLine : AppColors.line),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -892,8 +950,10 @@ class _MahallaChip extends StatelessWidget {
 ({Color color, IconData icon, String message}) _presenceInfo(
   AppLocalizations l10n, {
   required bool? insideZone,
+  required WorkHours hours,
+  required bool atOffice,
 }) {
-  if (!_isWithinWorkHours(DateTime.now())) {
+  if (!hours.contains(DateTime.now())) {
     return (
       color: AppColors.inkMuted,
       icon: AppIcons.clock,
@@ -914,6 +974,16 @@ class _MahallaChip extends StatelessWidget {
       message: l10n.mapWorkHourInsideMessage,
     );
   }
+  // Ofis hududdan alohida baholanadi (server ham shunday hisoblaydi).
+  if (atOffice) {
+    return (
+      color: AppColors.info,
+      icon: AppIcons.building,
+      message: l10n.localeName == 'ru'
+          ? 'Вы в офисе (вне вашей территории)'
+          : 'Ofisdasiz (hududingizdan tashqarida)',
+    );
+  }
   return (
     color: AppColors.danger,
     icon: AppIcons.close,
@@ -927,7 +997,14 @@ class _MahallaChip extends StatelessWidget {
 /// Standart holatda YIG'ILGAN (faqat bitta qator) — "wall of text" emas,
 /// foydalanuvchi qoidani o'qishni xohlasa o'zi kengaytiradi.
 class _WorkZoneInfoCard extends StatefulWidget {
-  const _WorkZoneInfoCard({required this.insideZone});
+  const _WorkZoneInfoCard({
+    required this.insideZone,
+    required this.hours,
+    required this.atOffice,
+  });
+
+  final WorkHours hours;
+  final bool atOffice;
 
   /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — banner
   /// rangi/matni shu bo'yicha. `null` — hali aniqlanmagan ("aniqlanmoqda").
@@ -946,7 +1023,16 @@ class _WorkZoneInfoCardState extends State<_WorkZoneInfoCard> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
-    final info = _presenceInfo(l10n, insideZone: widget.insideZone);
+    final info = _presenceInfo(
+      l10n,
+      insideZone: widget.insideZone,
+      hours: widget.hours,
+      atOffice: widget.atOffice,
+    );
+    final ru = l10n.localeName == 'ru';
+    final territory = getIt.isRegistered<TerritoryService>()
+        ? getIt<TerritoryService>().territory.value
+        : null;
 
     return AppCard(
       shadow: true,
@@ -1004,6 +1090,22 @@ class _WorkZoneInfoCardState extends State<_WorkZoneInfoCard> {
                     l10n.mapWorkZoneRuleText,
                     style: AppTextStyles.caption.copyWith(color: mutedColor),
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${ru ? 'Рабочее время' : 'Ish vaqti'}: '
+                    '${widget.hours.label}',
+                    style: AppTextStyles.caption.copyWith(color: ink),
+                  ),
+                  if (territory != null && !territory.wholeDistrict) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '${ru ? 'Мои махалли' : 'Mahallalarim'}: '
+                      '${territory.mahallas.map((m) => m.name).join(', ')}',
+                      style: AppTextStyles.caption.copyWith(color: ink),
+                      maxLines: 5,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ],
               ),
             ),

@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:worker_app/features/attendance/domain/entities/my_attendance.dart';
+import 'package:worker_app/features/attendance/domain/entities/work_hours.dart';
 import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/territory/territory_card.dart';
+import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/injection.dart';
 
 /// "Shaxsiy ma'lumotlar" — xodim o'zi haqida tizimda nima saqlanganini
@@ -20,12 +25,19 @@ class PersonalInfoPage extends StatefulWidget {
 class _PersonalInfoPageState extends State<PersonalInfoPage> {
   MyAttendance? _work;
 
+  /// So'rov xato tugadi — "…" (yuklanmoqda) abadiy turib qolmasin.
+  bool _failed = false;
+
   @override
   void initState() {
     super.initState();
+    if (getIt.isRegistered<TerritoryService>()) {
+      unawaited(getIt<TerritoryService>().refresh());
+    }
     if (getIt.isRegistered<AttendanceRepository>()) {
       getIt<AttendanceRepository>().myAttendance().then((r) {
-        if (mounted) r.fold((_) {}, (w) => setState(() => _work = w));
+        if (!mounted) return;
+        setState(() => r.fold((_) => _failed = true, (w) => _work = w));
       });
     }
   }
@@ -38,8 +50,12 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final name = session?.name ?? '';
     final phone = session?.phone ?? '';
     final radius = w?.officeRadiusM;
+    final pending = _failed ? '—' : '…';
+    final territoryKnown =
+        getIt.isRegistered<TerritoryService>() &&
+        getIt<TerritoryService>().territory.value != null;
     final hours = w != null && w.workStartTime.isNotEmpty
-        ? '${w.workStartTime}–${w.workEndTime.isEmpty ? '18:00' : w.workEndTime}'
+        ? WorkHours.of(w).label
         : null;
 
     return Scaffold(
@@ -105,21 +121,23 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                 _Row(
                   AppIcons.timer,
                   _t(context, 'Ish vaqti', 'Рабочее время'),
-                  hours ?? '…',
+                  hours ?? pending,
                 ),
-                _Row(
-                  AppIcons.map,
-                  _t(context, 'Ish hududi', 'Рабочая зона'),
-                  w == null
-                      ? '…'
-                      : w.zonesCount > 0
-                      ? _t(
-                          context,
-                          '${w.zonesCount} ta mahalla',
-                          '${w.zonesCount} махалли',
-                        )
-                      : _t(context, 'Butun tuman', 'Весь район'),
-                ),
+                // Mahalla nomlari ma'lum bo'lsa pastdagi kartada.
+                if (!territoryKnown)
+                  _Row(
+                    AppIcons.map,
+                    _t(context, 'Ish hududi', 'Рабочая зона'),
+                    w == null
+                        ? pending
+                        : w.zonesCount > 0
+                        ? _t(
+                            context,
+                            '${w.zonesCount} ta mahalla',
+                            '${w.zonesCount} махалли',
+                          )
+                        : _t(context, 'Butun tuman', 'Весь район'),
+                  ),
                 _Row(
                   AppIcons.building,
                   _t(context, 'Keldi-ketdi', 'Отметка'),
@@ -137,6 +155,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                 ),
               ],
             ),
+            const TerritoryCard(padding: EdgeInsets.only(top: 12)),
             const SizedBox(height: 16),
             _Group(
               title: _t(context, 'Yuz tasdiqlash', 'Подтверждение лица'),
@@ -205,6 +224,7 @@ class _Group extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final large = MediaQuery.textScalerOf(context).scale(10) > 11.5;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -223,21 +243,45 @@ class _Group extends StatelessWidget {
                     children: [
                       Icon(rows[i].icon, size: 20, color: AppColors.primary),
                       const SizedBox(width: 12),
-                      SizedBox(
-                        width: 96,
-                        child: Text(
-                          rows[i].label,
-                          style: AppTextStyles.body.copyWith(color: inkMuted),
+                      // Katta shriftda yorliq va qiymat ustma-ust — yonma-yon
+                      // turganda ism so'z o'rtasidan bo'linardi.
+                      if (large)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                rows[i].label,
+                                style: AppTextStyles.caption.copyWith(
+                                  color: inkMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                rows[i].value,
+                                style: AppTextStyles.bodyStrong,
+                              ),
+                            ],
+                          ),
+                        )
+                      else ...[
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            rows[i].label,
+                            style: AppTextStyles.body.copyWith(color: inkMuted),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          rows[i].value,
-                          textAlign: TextAlign.right,
-                          style: AppTextStyles.bodyStrong,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            rows[i].value,
+                            textAlign: TextAlign.right,
+                            style: AppTextStyles.bodyStrong,
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),

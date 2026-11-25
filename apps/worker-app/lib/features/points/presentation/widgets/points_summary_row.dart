@@ -90,11 +90,15 @@ class _SummaryStat extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(
-                  label,
-                  style: AppTextStyles.caption.copyWith(color: mutedColor),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                // Bitta so'zli yorliq kesilmasin — sig'masa kichrayadi.
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    style: AppTextStyles.caption.copyWith(color: mutedColor),
+                    maxLines: 1,
+                  ),
                 ),
               ],
             ),

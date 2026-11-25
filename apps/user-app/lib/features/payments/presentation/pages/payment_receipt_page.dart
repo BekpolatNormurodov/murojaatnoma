@@ -68,7 +68,7 @@ class _PaymentReceiptPageState extends State<PaymentReceiptPage> {
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
-        title: Text(l10n.receiptPageTitle),
+        title: Text(l10n.receiptPageTitle, style: AppTextStyles.h3),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -205,19 +205,22 @@ class _ReceiptRow extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
     final ink = isDark ? AppColors.darkInk : AppColors.ink;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.caption.copyWith(color: inkMuted)),
-        const Spacer(),
-        Flexible(
-          child: Text(
+    // Sig'masa qiymat yorliq ostiga tushadi (siqilib 4 qatorga bo'linmaydi).
+    return SizedBox(
+      width: double.infinity,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 16,
+        runSpacing: 2,
+        children: [
+          Text(label, style: AppTextStyles.caption.copyWith(color: inkMuted)),
+          Text(
             value,
-            textAlign: TextAlign.right,
             style: AppTextStyles.bodyStrong.copyWith(color: valueColor ?? ink),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

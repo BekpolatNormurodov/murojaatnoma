@@ -144,6 +144,7 @@ class CitizenRequest extends Equatable {
     this.history = const [],
     this.reopenCount = 0,
     this.attachmentsFailed = false,
+    this.assignedName,
   });
 
   factory CitizenRequest.fromJson(Map<String, dynamic> json) {
@@ -174,6 +175,7 @@ class CitizenRequest extends Equatable {
           .map((e) => RequestHistoryEvent.fromJson(e as Map<String, dynamic>))
           .toList(),
       reopenCount: (json['reopen_count'] as num?)?.toInt() ?? 0,
+      assignedName: json['assigned_name'] as String?,
     );
   }
 
@@ -223,6 +225,9 @@ class CitizenRequest extends Equatable {
   /// bo'shligi "fayl yo'q" degani emas). Keshga yozilmaydi.
   final bool attachmentsFailed;
 
+  /// Server qaytargan joriy mas'ul xodim (ro'yxat javobida).
+  final String? assignedName;
+
   CitizenRequest copyWith({
     List<RequestAttachment>? attachments,
     bool? attachmentsFailed,
@@ -246,10 +251,12 @@ class CitizenRequest extends Equatable {
     history: history,
     reopenCount: reopenCount,
     attachmentsFailed: attachmentsFailed ?? this.attachmentsFailed,
+    assignedName: assignedName,
   );
 
-  /// So'nggi biriktirilgan mas'ul xodim (tarixdan).
+  /// So'nggi biriktirilgan mas'ul xodim ([assignedName], bo'lmasa tarixdan).
   String? get assigneeName {
+    if (assignedName != null) return assignedName;
     for (final e in history.reversed) {
       if (e.type == 'ASSIGNED' && e.employeeName != null) return e.employeeName;
     }
@@ -277,6 +284,7 @@ class CitizenRequest extends Equatable {
     history,
     reopenCount,
     attachmentsFailed,
+    assignedName,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -298,5 +306,6 @@ class CitizenRequest extends Equatable {
     'resolved_at': resolvedAt,
     'history': history.map((h) => h.toJson()).toList(),
     'reopen_count': reopenCount,
+    'assigned_name': assignedName,
   };
 }

@@ -1,4 +1,3 @@
-import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:user_app/features/news/domain/entities/news_item.dart';
@@ -22,9 +21,7 @@ class NewsDetailPage extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final canvas = isDark ? AppColors.darkCanvas : AppColors.canvas;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
-    final surfaceAlt = isDark
-        ? AppColors.darkSurfaceAlt
-        : AppColors.surfaceAlt;
+    final surfaceAlt = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
     final publishedAtDate = item.publishedAtDate;
 
     return Scaffold(
@@ -70,7 +67,7 @@ class NewsDetailPage extends StatelessWidget {
                 const Spacer(),
                 if (publishedAtDate != null)
                   Text(
-                    timeAgo(publishedAtDate),
+                    newsDateLabel(publishedAtDate),
                     style: AppTextStyles.caption.copyWith(color: inkMuted),
                   ),
               ],
@@ -80,10 +77,7 @@ class NewsDetailPage extends StatelessWidget {
             const SizedBox(height: 14),
             if (item.author.isNotEmpty) ...[
               AppCard(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 4,
-                  horizontal: 8,
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                 child: AppListTile(
                   title: item.author,
                   subtitle: 'Muallif',

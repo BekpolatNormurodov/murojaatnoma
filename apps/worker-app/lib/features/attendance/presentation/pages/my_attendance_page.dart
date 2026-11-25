@@ -2,6 +2,7 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:worker_app/features/attendance/data/attendance_history.dart';
+import 'package:worker_app/features/reports/domain/report_formatters.dart';
 import 'package:worker_app/injection.dart';
 
 /// "Mening davomatim" — xodimning o'z keldi-ketdi tarixi: bu oy xulosasi,
@@ -82,6 +83,15 @@ class _MyAttendancePageState extends State<MyAttendancePage> {
                   const SizedBox(height: 22),
                   _SectionLabel(_t(context, 'Kunlar', 'Дни')),
                   const SizedBox(height: 8),
+                  if (days.every((d) => d.status == 'dayoff'))
+                    Text(
+                      _t(
+                        context,
+                        "Hozircha davomat yozuvlari yo'q",
+                        'Записей о посещаемости пока нет',
+                      ),
+                      style: AppTextStyles.body,
+                    ),
                   for (final d in days.where((d) => d.status != 'dayoff'))
                     _DayTile(day: d),
                 ],
@@ -112,7 +122,7 @@ class _MonthSummary extends StatelessWidget {
     );
     final came = month.where((d) => d.came).length;
     final late = month.where((d) => d.isLate).length;
-    final hours = month.fold<double>(0, (s, d) => s + (d.hours ?? 0));
+    final minutes = month.fold<int>(0, (s, d) => s + (d.workedMinutes ?? 0));
     final rate = workdays.isEmpty ? 0 : (came / workdays.length * 100).round();
 
     return Container(
@@ -164,8 +174,10 @@ class _MonthSummary extends StatelessWidget {
                 label: _t(context, 'kechikish', 'опозданий'),
               ),
               _Stat(
-                value: hours.toStringAsFixed(hours >= 100 ? 0 : 1),
-                label: _t(context, 'soat', 'часов'),
+                value:
+                    '${minutes ~/ 60}:'
+                    '${(minutes % 60).toString().padLeft(2, '0')}',
+                label: _t(context, 'ish soati', 'часы работы'),
               ),
             ],
           ),
@@ -194,13 +206,21 @@ class _Stat extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(value, style: AppTextStyles.h3.copyWith(color: Colors.white)),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.caption.copyWith(
-                color: Colors.white.withValues(alpha: 0.85),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: AppTextStyles.h3.copyWith(color: Colors.white),
+              ),
+            ),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: AppTextStyles.caption.copyWith(
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
               ),
             ),
           ],
@@ -413,10 +433,7 @@ class _DayTile extends StatelessWidget {
                       AppChip(label: _statusLabel(context, day), color: color),
                       const SizedBox(height: 6),
                       Text(
-                        day.came
-                            ? '${_hm(day.checkIn)} → ${_hm(day.checkOut)}'
-                                  '${day.hours != null ? ' · ${day.hours!.toStringAsFixed(1)} soat' : ''}'
-                            : '—',
+                        _timesLine(context, day),
                         style: AppTextStyles.caption.copyWith(
                           color: isDark
                               ? AppColors.darkInkSoft
@@ -471,6 +488,7 @@ void _showDay(BuildContext context, AttendanceHistoryDay d) {
                 title: _t(context, 'Keldi', 'Приход'),
                 time: d.checkIn,
                 photo: d.checkInPhoto,
+                faceChecked: d.checkInFaceChecked,
                 note: d.isLate
                     ? _t(
                         context,
@@ -487,15 +505,9 @@ void _showDay(BuildContext context, AttendanceHistoryDay d) {
                 title: _t(context, 'Ketdi', 'Уход'),
                 time: d.checkOut,
                 photo: d.checkOutPhoto,
-                note: d.hours != null
-                    ? _t(
-                        context,
-                        '${d.hours!.toStringAsFixed(1)} soat ishladi',
-                        '${d.hours!.toStringAsFixed(1)} ч работы',
-                      )
-                    : (d.came
-                          ? _t(context, 'Hali ishda', 'Ещё на работе')
-                          : null),
+                faceChecked: d.checkOutFaceChecked,
+                note: _checkOutNote(context, d),
+                warn: d.came && d.checkOut == null && !_isToday(d.date),
               ),
             ),
           ],
@@ -513,7 +525,10 @@ class _ScanCard extends StatelessWidget {
     this.photo,
     this.note,
     this.warn = false,
+    this.faceChecked = true,
   });
+
+  final bool faceChecked;
 
   final String title;
   final DateTime? time;
@@ -565,9 +580,11 @@ class _ScanCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-          if (photo == null && time != null)
+          if (time != null && (photo == null || !faceChecked))
             Text(
-              _t(context, 'Rasm saqlanmagan', 'Фото нет'),
+              faceChecked
+                  ? _t(context, 'Rasm saqlanmagan', 'Фото нет')
+                  : _t(context, 'Yuz tekshirilmagan', 'Лицо не проверялось'),
               style: AppTextStyles.caption.copyWith(
                 color: inkMuted,
                 fontSize: 11,
@@ -635,6 +652,45 @@ String _statusLabel(BuildContext context, AttendanceHistoryDay d) =>
             ? _t(context, 'Kechikkan', 'Опоздание')
             : _t(context, "O'z vaqtida", 'Вовремя'),
     };
+
+bool _isToday(DateTime d) {
+  final now = DateTime.now();
+  return d.year == now.year && d.month == now.month && d.day == now.day;
+}
+
+String _duration(BuildContext context, int minutes) => _t(
+  context,
+  formatMinutes(minutes),
+  '${minutes ~/ 60} ч ${minutes % 60} мин',
+);
+
+String? _checkOutNote(BuildContext context, AttendanceHistoryDay d) {
+  if (!d.came) return null;
+  if (d.checkOut == null) {
+    return _isToday(d.date)
+        ? _t(context, 'Hali ishda', 'Ещё на работе')
+        : _t(context, 'Ketish belgilanmagan', 'Уход не отмечен');
+  }
+  final minutes = d.workedMinutes;
+  if (minutes == null) return null;
+  final worked = _duration(context, minutes);
+  return _t(context, '$worked ishladi', 'Отработано $worked');
+}
+
+/// `08:55 → 18:04 · 9 soat 9 daq`; ketish belgilanmagan o'tgan kun —
+/// `08:55 → ketish belgilanmagan`.
+String _timesLine(BuildContext context, AttendanceHistoryDay day) {
+  if (!day.came) return '—';
+  if (day.checkOut == null) {
+    final tail = _isToday(day.date)
+        ? '—'
+        : _t(context, 'ketish belgilanmagan', 'уход не отмечен');
+    return '${_hm(day.checkIn)} → $tail';
+  }
+  final minutes = day.workedMinutes;
+  final worked = minutes == null ? '' : ' · ${_duration(context, minutes)}';
+  return '${_hm(day.checkIn)} → ${_hm(day.checkOut)}$worked';
+}
 
 String _hm(DateTime? t) => t == null
     ? '—'

@@ -87,7 +87,7 @@ void main() {
     router.go('/profile');
     await settle(tester);
     expect(find.text('Aliyev Bekzod'), findsOneWidget);
-    expect(find.text('+998901111111'), findsOneWidget);
+    expect(find.text('+998 90 111 11 11'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await drainFonts(tester);

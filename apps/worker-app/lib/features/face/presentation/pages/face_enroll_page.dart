@@ -34,6 +34,8 @@ class FaceEnrollPage extends StatefulWidget {
 
 class _FaceEnrollPageState extends State<FaceEnrollPage>
     with WidgetsBindingObserver {
+  Timer? _settingRetry;
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +43,18 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
     // Admin yuz skanerini o'chirgan bo'lsa majburiy ekran yopiladi (router
     // `faceRequired`ni kuzatadi).
     unawaited(refreshFaceRequired());
+    // Sozlama hali bir marta ham o'qilmagan (login paytida server javob
+    // bermagan) bo'lsa — javob kelguncha qayta so'raymiz, aks holda xodim
+    // majburiy ekranda qolib ketardi.
+    if (cachedFaceRequired() == null) {
+      _settingRetry = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (cachedFaceRequired() != null) {
+          timer.cancel();
+          return;
+        }
+        unawaited(refreshFaceRequired());
+      });
+    }
     // Enrollment ham liveness bilan (check-in kabi): avval SOF challenge'ni
     // sozlaymiz (`startLiveness(forEnroll: true)` — real odamligini blink/
     // burilish + `smile` bilan tekshiradi), so'ng kamerani ishga tushiramiz.
@@ -54,6 +68,7 @@ class _FaceEnrollPageState extends State<FaceEnrollPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _settingRetry?.cancel();
     super.dispose();
   }
 

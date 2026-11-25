@@ -2,6 +2,9 @@ import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:worker_app/features/attendance/domain/entities/work_hours.dart';
+import 'package:worker_app/features/attendance/domain/repositories/attendance_repository.dart';
+import 'package:worker_app/injection.dart';
 
 /// Bitta hafta kunining ish jadvalidagi qatori — nomi (`DateTime.weekday`
 /// qiymati bilan) va ko'rsatiladigan matn/rasm holatini quruvchi
@@ -26,8 +29,26 @@ class _ScheduleDay {
 /// ko'rar edi, endi har bir kun aniq ko'rinadi. Joriy kun (`DateTime.now()
 /// .weekday`) alohida ajratib ko'rsatiladi ("Bugun" belgisi + brend rangli
 /// chegara).
-class WorkSchedulePage extends StatelessWidget {
+class WorkSchedulePage extends StatefulWidget {
   const WorkSchedulePage({super.key});
+
+  @override
+  State<WorkSchedulePage> createState() => _WorkSchedulePageState();
+}
+
+class _WorkSchedulePageState extends State<WorkSchedulePage> {
+  /// Server ish vaqti; kelguncha (yoki xatoda) standart.
+  WorkHours? _hours;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!getIt.isRegistered<AttendanceRepository>()) return;
+    getIt<AttendanceRepository>().myAttendance().then((result) {
+      if (!mounted) return;
+      result.fold((_) {}, (me) => setState(() => _hours = WorkHours.of(me)));
+    });
+  }
 
   static const List<int> _weekdayOrder = [
     DateTime.monday,
@@ -116,6 +137,7 @@ class WorkSchedulePage extends StatelessWidget {
                           ),
                         _ScheduleRow(
                               day: rows[i],
+                              hours: _hours?.label,
                               isToday: rows[i].weekday == today,
                             )
                             .animate(delay: (40 * i).ms)
@@ -138,7 +160,10 @@ class WorkSchedulePage extends StatelessWidget {
 /// (mavjud bo'lsa) va o'ng tomonda soat oralig'i yoki "Dam olish" matni.
 /// Bugungi kun brend rangli chap chegara + yumshoq fon bilan ajratiladi.
 class _ScheduleRow extends StatelessWidget {
-  const _ScheduleRow({required this.day, required this.isToday});
+  const _ScheduleRow({required this.day, required this.isToday, this.hours});
+
+  /// Serverdagi ish vaqti (`09:00–18:00`).
+  final String? hours;
 
   final _ScheduleDay day;
   final bool isToday;
@@ -153,7 +178,7 @@ class _ScheduleRow extends StatelessWidget {
     final valueColor = day.isRestDay ? AppColors.warning : AppColors.primary;
     final valueText = day.isRestDay
         ? l10n.workScheduleRestDay
-        : l10n.workScheduleHours;
+        : hours ?? l10n.workScheduleHours;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
@@ -175,21 +200,19 @@ class _ScheduleRow extends StatelessWidget {
             color: day.isRestDay ? mutedColor : valueColor,
           ),
           const SizedBox(width: 12),
+          // Wrap — katta shriftda "Bugun" belgisi kun nomi ostiga tushadi
+          // (Row'da nom "Cho..." bo'lib kesilardi).
           Expanded(
-            child: Row(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Flexible(
-                  child: Text(
-                    day.label,
-                    style: AppTextStyles.bodyStrong.copyWith(color: ink),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  day.label,
+                  style: AppTextStyles.bodyStrong.copyWith(color: ink),
                 ),
-                if (isToday) ...[
-                  const SizedBox(width: 8),
-                  AppBadge(label: l10n.workScheduleTodayBadge),
-                ],
+                if (isToday) AppBadge(label: l10n.workScheduleTodayBadge),
               ],
             ),
           ),

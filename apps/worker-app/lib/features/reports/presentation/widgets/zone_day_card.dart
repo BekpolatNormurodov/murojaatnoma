@@ -47,24 +47,37 @@ class ZoneDayCard extends StatelessWidget {
               style: AppTextStyles.caption.copyWith(color: muted),
             )
           else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: _Metric(
-                    label: 'Hududda',
-                    value: formatMinutes(day.zoneMinutes),
-                    color: AppColors.success,
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: _Metric(
+                      label: 'Hududda',
+                      value: formatMinutes(day.zoneMinutes),
+                      color: AppColors.success,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _Metric(
-                    label: 'Tashqarida',
-                    value: formatMinutes(day.outsideMinutes),
-                    color: AppColors.warning,
+                  if (day.officeMinutes > 0) ...[
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _Metric(
+                        label: 'Ofisda',
+                        value: formatMinutes(day.officeMinutes),
+                        color: AppColors.info,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _Metric(
+                      label: 'Tashqarida',
+                      value: formatMinutes(day.outsideMinutes),
+                      color: AppColors.warning,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             if (day.byMahalla.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -95,7 +108,11 @@ class _MahallaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = item.inside ? AppColors.success : AppColors.danger;
+    final color = item.inside
+        ? AppColors.success
+        : item.office
+        ? AppColors.info
+        : AppColors.danger;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -138,11 +155,15 @@ class _Metric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: AppTextStyles.caption.copyWith(color: color),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          // Uch ustunda "Tashqarida" kesilmasin — sig'masa kichrayadi.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              label,
+              style: AppTextStyles.caption.copyWith(color: color),
+              maxLines: 1,
+            ),
           ),
           const SizedBox(height: 2),
           Text(
@@ -166,10 +187,19 @@ class _StretchRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final ink = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
-    final color = stretch.inside ? AppColors.success : AppColors.warning;
+    final color = stretch.inside
+        ? AppColors.success
+        : stretch.office
+        ? AppColors.info
+        : AppColors.warning;
     final parts = <String>[
       '${formatClock(stretch.from)} – ${formatClock(stretch.to)}',
-      if (stretch.inside) 'Hududda' else 'Tashqarida',
+      if (stretch.inside)
+        'Hududda'
+      else if (stretch.office)
+        'Ofisda'
+      else
+        'Tashqarida',
       if (stretch.mahallaName != null) stretch.mahallaName!,
     ];
     return Padding(

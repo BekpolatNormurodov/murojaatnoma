@@ -141,24 +141,29 @@ class _BottomNav extends StatelessWidget {
     final background = isDark ? AppColors.darkSurface : AppColors.surface;
     final line = isDark ? AppColors.darkLine : AppColors.line;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        border: Border(top: BorderSide(color: line)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 64,
-          child: Row(
-            children: [
-              for (var i = 0; i < items.length; i++)
-                _TabButton(
-                  item: items[i],
-                  isActive: i == currentIndex,
-                  onTap: () => onTap(i),
-                ),
-            ],
+    // Besh ustunli panelda katta tizim shrifti har bir tabni HAR XIL
+    // kichraytirib yuborardi — yorliqlar bitta o'lchamda qoladi.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          border: Border(top: BorderSide(color: line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 64,
+            child: Row(
+              children: [
+                for (var i = 0; i < items.length; i++)
+                  _TabButton(
+                    item: items[i],
+                    isActive: i == currentIndex,
+                    onTap: () => onTap(i),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

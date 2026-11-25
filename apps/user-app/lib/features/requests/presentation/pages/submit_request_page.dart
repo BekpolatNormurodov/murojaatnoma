@@ -42,6 +42,9 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
   String? _regionCode;
   String? _districtCode;
   List<RequestAttachment> _attachments = const [];
+  final _titleKey = GlobalKey();
+  final _categoryKey = GlobalKey();
+  final _bodyKey = GlobalKey();
   String? _titleError;
   String? _categoryError;
   String? _bodyError;
@@ -124,8 +127,31 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
     return _titleError == null && _categoryError == null && _bodyError == null;
   }
 
+  /// Birinchi xato maydonni ko'rinadigan joyga olib keladi — tugma pastda,
+  /// xato esa ekran tashqarisida qolishi mumkin.
+  void _revealFirstError() {
+    final key = _titleError != null
+        ? _titleKey
+        : _categoryError != null
+        ? _categoryKey
+        : _bodyKey;
+    final target = key.currentContext;
+    if (target == null) return;
+    FocusScope.of(context).unfocus();
+    unawaited(
+      Scrollable.ensureVisible(
+        target,
+        alignment: 0.1,
+        duration: const Duration(milliseconds: 250),
+      ),
+    );
+  }
+
   void _submit() {
-    if (!_validate()) return;
+    if (!_validate()) {
+      _revealFirstError();
+      return;
+    }
     final category = _category;
     if (category == null) return;
     final l10n = context.l10n;
@@ -237,6 +263,7 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
                           ),
                           const SizedBox(height: 16),
                           AppTextField(
+                            key: _titleKey,
                             label: l10n.createRequestTitleLabel,
                             hint: l10n.createRequestTitleHint,
                             controller: _titleController,
@@ -253,6 +280,7 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
                           ),
                           const SizedBox(height: 16),
                           AppSelect<String>(
+                            key: _categoryKey,
                             label: l10n.createRequestCategoryLabel,
                             hint: l10n.createRequestCategoryHint,
                             searchHint: l10n.searchHint,
@@ -285,60 +313,58 @@ class _SubmitRequestPageState extends State<SubmitRequestPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          // Ustma-ust: yonma-yon turganda "Viloy..." /
+                          // "Avval..." bo'lib kesilardi.
+                          Column(
                             children: [
-                              Expanded(
-                                child: AppSelect<String>(
-                                  hint: l10n.registrationRegionHint,
-                                  searchHint: l10n.searchHint,
-                                  icon: AppIcons.location,
-                                  value: _regionCode,
-                                  options: [
-                                    for (final region in kUzbekistanRegions)
-                                      AppSelectOption(
-                                        value: region.code,
-                                        label: RegionMeta.regionLabel(
-                                          l10n,
-                                          region.code,
-                                        ),
+                              AppSelect<String>(
+                                hint: l10n.registrationRegionHint,
+                                searchHint: l10n.searchHint,
+                                icon: AppIcons.location,
+                                value: _regionCode,
+                                options: [
+                                  for (final region in kUzbekistanRegions)
+                                    AppSelectOption(
+                                      value: region.code,
+                                      label: RegionMeta.regionLabel(
+                                        l10n,
+                                        region.code,
                                       ),
-                                  ],
-                                  onChanged: (value) => setState(() {
-                                    _regionCode = value;
-                                    _districtCode = null;
-                                  }),
-                                  enabled: !submitting,
-                                ),
+                                    ),
+                                ],
+                                onChanged: (value) => setState(() {
+                                  _regionCode = value;
+                                  _districtCode = null;
+                                }),
+                                enabled: !submitting,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: AppSelect<String>(
-                                  hint: _regionCode == null
-                                      ? l10n.registrationDistrictHintNoRegion
-                                      : l10n.registrationDistrictHint,
-                                  searchHint: l10n.searchHint,
-                                  icon: AppIcons.location,
-                                  value: _districtCode,
-                                  options: [
-                                    for (final district in _districtOptions)
-                                      AppSelectOption(
-                                        value: district,
-                                        label: RegionMeta.districtLabel(
-                                          l10n,
-                                          district,
-                                        ),
+                              const SizedBox(height: 12),
+                              AppSelect<String>(
+                                hint: _regionCode == null
+                                    ? l10n.registrationDistrictHintNoRegion
+                                    : l10n.registrationDistrictHint,
+                                searchHint: l10n.searchHint,
+                                icon: AppIcons.location,
+                                value: _districtCode,
+                                options: [
+                                  for (final district in _districtOptions)
+                                    AppSelectOption(
+                                      value: district,
+                                      label: RegionMeta.districtLabel(
+                                        l10n,
+                                        district,
                                       ),
-                                  ],
-                                  onChanged: (value) =>
-                                      setState(() => _districtCode = value),
-                                  enabled: !submitting && _regionCode != null,
-                                ),
+                                    ),
+                                ],
+                                onChanged: (value) =>
+                                    setState(() => _districtCode = value),
+                                enabled: !submitting && _regionCode != null,
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
                           AppTextField(
+                            key: _bodyKey,
                             label: l10n.createRequestDescriptionLabel,
                             hint: l10n.createRequestDescriptionHint,
                             controller: _bodyController,

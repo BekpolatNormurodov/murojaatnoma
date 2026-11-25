@@ -49,6 +49,20 @@ Color newsCategoryColor(String category) {
   }
 }
 
+/// Nashr vaqti: bir haftagacha nisbiy ("3 soat oldin"), keyin aniq sana —
+/// "53 kun oldin" fuqaroga hech narsa demaydi.
+String newsDateLabel(DateTime publishedAt) {
+  final local = publishedAt.toLocal();
+  return DateTime.now().difference(local).inDays < 7
+      ? timeAgo(local)
+      : formatDate(local);
+}
+
+/// Karta balandligi: muqova (16:9) + bo'shliqlar + shrift bilan o'sadigan
+/// matn qismi (aks holda katta shriftda "overflow").
+double _cardHeight(BuildContext context) =>
+    _kCardWidth * 9 / 16 + 26 + MediaQuery.textScalerOf(context).scale(104);
+
 /// Bosh sahifadagi "E'lonlar" bo'limi — so'nggi bir necha (standart 5) ta
 /// e'lon/yangilikni gorizontal kartalar qatorida ko'rsatadi.
 ///
@@ -138,23 +152,24 @@ class _NewsSkeletonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
-      height: _kCardHeight,
+    final height = _cardHeight(context);
+    return SizedBox(
+      height: height,
       child: Row(
         children: [
           Expanded(
             child: ShimmerBox(
               width: double.infinity,
               radius: 20,
-              height: _kCardHeight,
+              height: height,
             ),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: ShimmerBox(
               width: double.infinity,
               radius: 20,
-              height: _kCardHeight,
+              height: height,
             ),
           ),
         ],
@@ -163,7 +178,6 @@ class _NewsSkeletonRow extends StatelessWidget {
   }
 }
 
-const double _kCardHeight = 250;
 const double _kCardWidth = 220;
 
 class _NewsRow extends StatelessWidget {
@@ -174,7 +188,7 @@ class _NewsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: _kCardHeight,
+      height: _cardHeight(context),
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -197,8 +211,8 @@ class _NewsRow extends StatelessWidget {
 }
 
 /// Bitta e'lon kartasi — muqova rasmi ([Image.network], errorBuilder bilan
-/// himoyalangan), sarlavha, qisqa tavsif va nisbiy nashr sanasi
-/// ([timeAgo]).
+/// himoyalangan), sarlavha, qisqa tavsif va nashr sanasi
+/// ([newsDateLabel]).
 class _NewsMiniCard extends StatelessWidget {
   const _NewsMiniCard({required this.item, this.onTap});
 
@@ -210,9 +224,7 @@ class _NewsMiniCard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final inkSoft = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
-    final surfaceAlt = isDark
-        ? AppColors.darkSurfaceAlt
-        : AppColors.surfaceAlt;
+    final surfaceAlt = isDark ? AppColors.darkSurfaceAlt : AppColors.surfaceAlt;
 
     final publishedAtDate = item.publishedAtDate;
 
@@ -245,10 +257,7 @@ class _NewsMiniCard extends StatelessWidget {
                         errorBuilder: (context, error, stackTrace) =>
                             ColoredBox(
                               color: surfaceAlt,
-                              child: Icon(
-                                AppIcons.imageIcon,
-                                color: inkMuted,
-                              ),
+                              child: Icon(AppIcons.imageIcon, color: inkMuted),
                             ),
                       ),
               ),
@@ -275,10 +284,8 @@ class _NewsMiniCard extends StatelessWidget {
                     Text(
                       publishedAtDate == null
                           ? ''
-                          : timeAgo(publishedAtDate),
-                      style: AppTextStyles.caption.copyWith(
-                        color: inkMuted,
-                      ),
+                          : newsDateLabel(publishedAtDate),
+                      style: AppTextStyles.caption.copyWith(color: inkMuted),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),

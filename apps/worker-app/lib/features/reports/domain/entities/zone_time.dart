@@ -33,6 +33,7 @@ class ZoneDay extends Equatable {
     required this.date,
     this.zoneMinutes = 0,
     this.outsideMinutes = 0,
+    this.officeMinutes = 0,
     this.activeMinutes = 0,
     this.firstAt,
     this.lastAt,
@@ -47,6 +48,7 @@ class ZoneDay extends Equatable {
       date: _day(json['date']),
       zoneMinutes: _int(json['zoneMinutes']),
       outsideMinutes: _int(json['outsideMinutes']),
+      officeMinutes: _int(json['officeMinutes']),
       activeMinutes: _int(json['activeMinutes']),
       firstAt: _time(json['firstAt']),
       lastAt: _time(json['lastAt']),
@@ -70,6 +72,9 @@ class ZoneDay extends Equatable {
   final int outsideMinutes;
   final int activeMinutes;
 
+  /// Hududdan tashqaridagi ofisda o'tgan vaqt (hududda/tashqarida'ga kirmaydi).
+  final int officeMinutes;
+
   /// Kunning birinchi/oxirgi joylashuv nuqtasi (mahalliy vaqt).
   final DateTime? firstAt;
   final DateTime? lastAt;
@@ -86,6 +91,7 @@ class ZoneDay extends Equatable {
     date,
     zoneMinutes,
     outsideMinutes,
+    officeMinutes,
     activeMinutes,
     firstAt,
     lastAt,
@@ -97,7 +103,12 @@ class ZoneDay extends Equatable {
 /// Bir kunda bitta mahallada (yoki `name == null` — hech bir mahallada
 /// emas, "Tuman tashqarisi") o'tkazilgan jami vaqt.
 class MahallaTime extends Equatable {
-  const MahallaTime({required this.minutes, required this.inside, this.name});
+  const MahallaTime({
+    required this.minutes,
+    required this.inside,
+    this.name,
+    this.office = false,
+  });
 
   factory MahallaTime.fromJson(Map<String, dynamic> json) {
     final name = (json['name'] as String?)?.trim();
@@ -105,18 +116,23 @@ class MahallaTime extends Equatable {
       name: (name == null || name.isEmpty) ? null : name,
       minutes: _int(json['minutes']),
       inside: json['inside'] == true,
+      office: json['office'] == true,
     );
   }
 
   final String? name;
   final int minutes;
   final bool inside;
+  final bool office;
 
   /// Ko'rsatiladigan nom.
-  String get label => name ?? 'Tuman tashqarisi';
+  String get label {
+    if (office) return name == null ? 'Ofis' : 'Ofis ($name)';
+    return name ?? 'Tuman tashqarisi';
+  }
 
   @override
-  List<Object?> get props => [name, minutes, inside];
+  List<Object?> get props => [name, minutes, inside, office];
 }
 
 /// Uzluksiz oraliq — hududda yoki tashqarida.
@@ -127,6 +143,7 @@ class ZoneStretch extends Equatable {
     required this.inside,
     this.minutes = 0,
     this.mahallaName,
+    this.office = false,
   });
 
   factory ZoneStretch.fromJson(Map<String, dynamic> json) {
@@ -138,6 +155,7 @@ class ZoneStretch extends Equatable {
       to: to,
       minutes: _int(json['minutes']),
       inside: json['inside'] == true,
+      office: json['office'] == true,
       mahallaName: (name == null || name.isEmpty) ? null : name,
     );
   }
@@ -148,8 +166,11 @@ class ZoneStretch extends Equatable {
   final bool inside;
   final String? mahallaName;
 
+  /// Ofisda (faqat [inside] `false` bo'lganda).
+  final bool office;
+
   @override
-  List<Object?> get props => [from, to, minutes, inside, mahallaName];
+  List<Object?> get props => [from, to, minutes, inside, mahallaName, office];
 }
 
 String _day(Object? raw) {

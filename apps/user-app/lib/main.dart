@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:user_app/app/app.dart';
 import 'package:user_app/core/constants/api_constants.dart';
+import 'package:user_app/core/network/session_auth_interceptor.dart';
 import 'package:user_app/core/notifications/notification_service.dart';
 import 'package:user_app/core/session/logout_service.dart';
 import 'package:user_app/features/auth/presentation/bloc/auth_cubit.dart';
@@ -28,9 +29,9 @@ Future<void> bootstrap({bool systemServices = true}) async {
   // bir xil to'liq chiqish: saqlangan sessiya, bildirishnomalar, popuplar
   // tozalanadi va `/login`ga o'tiladi (ilgari faqat `reset()` edi — keyingi
   // ishga tushishda fuqaro tokensiz "kirgan" holatda qotib qolardi).
-  AuthInterceptor.sessionExpired.listen(
-    (_) => unawaited(getIt<LogoutService>().logout()),
-  );
+  SessionAuthInterceptor.of(
+    getIt<DioClient>(),
+  )?.sessionExpired.listen((_) => unawaited(getIt<LogoutService>().logout()));
   runApp(const UserApp());
 }
 

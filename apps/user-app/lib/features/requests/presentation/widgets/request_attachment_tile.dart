@@ -42,7 +42,15 @@ class RequestAttachmentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ru = Localizations.localeOf(context).languageCode == 'ru';
     final parts = <String>[
+      // Fayl nomidan turi ko'rinmaydi (masalan server nomlagan audio).
+      switch (attachment.type) {
+        RequestAttachmentType.image => ru ? 'Фото' : 'Rasm',
+        RequestAttachmentType.video => 'Video',
+        RequestAttachmentType.voice => ru ? 'Аудио' : 'Ovozli xabar',
+        RequestAttachmentType.file => ru ? 'Файл' : 'Fayl',
+      },
       if (attachment.sizeBytes != null) _formatSize(attachment.sizeBytes!),
       if (attachment.durationMs != null && attachment.durationMs! > 0)
         _formatDuration(attachment.durationMs!),
@@ -50,16 +58,18 @@ class RequestAttachmentTile extends StatelessWidget {
 
     return AppListTile(
       title: attachment.name,
-      subtitle: parts.isEmpty ? null : parts.join(' • '),
+      subtitle: parts.join(' • '),
       leadingIcon: _iconFor(attachment.type),
       filled: true,
       onTap: onTap,
       showChevron: onTap != null,
       trailing: onRemove == null
           ? null
-          : GestureDetector(
-              onTap: onRemove,
-              child: const Icon(
+          // 48 px bosish maydoni (20 px ikonka barmoqqa kichik edi).
+          : IconButton(
+              tooltip: ru ? 'Удалить' : "O'chirish",
+              onPressed: onRemove,
+              icon: const Icon(
                 IconsaxPlusLinear.close_circle,
                 size: 20,
                 color: AppColors.danger,

@@ -810,6 +810,7 @@ void main() {
       await e.resumeApp();
       await openTab('Bosh sahifa');
       await e.tap(button('Ishdan chiqish'));
+      await e.tap(button('Ha, chiqaman'));
       await e.gone(button('Ishdan chiqish'), seconds: 40);
       final today =
           (await apiOk('GET', '/attendance/today', token: admin)) as Map;

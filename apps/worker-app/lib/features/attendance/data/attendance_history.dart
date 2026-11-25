@@ -15,6 +15,8 @@ class AttendanceHistoryDay {
     this.checkInPhoto,
     this.checkOutPhoto,
     this.hours,
+    this.checkInFaceChecked = true,
+    this.checkOutFaceChecked = true,
   });
 
   factory AttendanceHistoryDay.fromJson(Map<String, dynamic> json) {
@@ -30,6 +32,8 @@ class AttendanceHistoryDay {
       checkInPhoto: _absolute(inJson?['photoUrl'] as String?),
       checkOutPhoto: _absolute(outJson?['photoUrl'] as String?),
       hours: (json['hoursWorked'] as num?)?.toDouble(),
+      checkInFaceChecked: inJson?['faceChecked'] as bool? ?? true,
+      checkOutFaceChecked: outJson?['faceChecked'] as bool? ?? true,
     );
   }
 
@@ -46,7 +50,19 @@ class AttendanceHistoryDay {
   final String? checkOutPhoto;
   final double? hours;
 
+  final bool checkInFaceChecked;
+  final bool checkOutFaceChecked;
+
   bool get came => checkIn != null;
+
+  /// Ishlagan daqiqalar: server soati, bo'lmasa keldi–ketdi farqi.
+  int? get workedMinutes {
+    final h = hours;
+    if (h != null) return (h * 60).round();
+    final from = checkIn;
+    final to = checkOut;
+    return from == null || to == null ? null : to.difference(from).inMinutes;
+  }
 }
 
 // Seam: demo rejim va testlarda soxta manba bilan almashtiriladi.

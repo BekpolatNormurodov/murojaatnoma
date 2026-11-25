@@ -397,7 +397,7 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                 Text(
                   name,
                   style: AppTextStyles.h2,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
@@ -651,11 +651,11 @@ class _MonthStatsRowState extends State<_MonthStatsRow> {
               loading ? '—' : value,
               style: AppTextStyles.h3.copyWith(color: color),
             ),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.caption,
+            // Sig'masa kichrayadi — so'z kesilmaydi va bo'linmaydi.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(label, maxLines: 1, style: AppTextStyles.caption),
             ),
           ],
         ),

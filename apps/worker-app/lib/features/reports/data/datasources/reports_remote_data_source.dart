@@ -254,20 +254,29 @@ class ReportsRemoteDataSourceMockImpl implements ReportsRemoteDataSource {
           inside: true,
           mahallaName: 'Bodomzor',
         ),
+        ZoneStretch(
+          from: at(15, 17),
+          to: at(16, 0),
+          minutes: 43,
+          inside: false,
+          office: true,
+        ),
       ];
       result.add(
         ZoneDay(
           date: ymd(d),
           zoneMinutes: 320,
           outsideMinutes: 45,
-          activeMinutes: 365,
+          officeMinutes: 43,
+          activeMinutes: 408,
           firstAt: at(9, 12),
-          lastAt: at(15, 17),
+          lastAt: at(16, 0),
           stretches: stretches,
           byMahalla: const [
             MahallaTime(name: 'Bodomzor', minutes: 172, inside: true),
             MahallaTime(name: 'Olmazor', minutes: 148, inside: true),
             MahallaTime(minutes: 45, inside: false),
+            MahallaTime(minutes: 43, inside: false, office: true),
           ],
         ),
       );

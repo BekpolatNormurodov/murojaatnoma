@@ -52,6 +52,8 @@ class NewsCubit extends Cubit<NewsState> {
     }
 
     final result = await _getNews(GetNewsParams(limit: limit));
+    // Bo'lim (bosh sahifa) yopilib ketgan bo'lsa — emit qilinmaydi.
+    if (isClosed) return;
     result.fold(
       (failure) {
         if (cached != null && cached.isNotEmpty) {

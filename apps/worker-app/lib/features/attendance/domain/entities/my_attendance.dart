@@ -23,6 +23,9 @@ class MyAttendance extends Equatable {
     this.zonesCount = 0,
     this.officeRadiusM,
     this.faceRequired = true,
+    this.officeLat,
+    this.officeLng,
+    this.isWorkday,
   });
 
   factory MyAttendance.fromJson(Map<String, dynamic> json) {
@@ -40,6 +43,13 @@ class MyAttendance extends Equatable {
       officeRadiusM:
           ((json['workplace'] as Map<String, dynamic>?)?['radiusM'] as num?)
               ?.toInt(),
+      officeLat:
+          ((json['workplace'] as Map<String, dynamic>?)?['officeLat'] as num?)
+              ?.toDouble(),
+      officeLng:
+          ((json['workplace'] as Map<String, dynamic>?)?['officeLng'] as num?)
+              ?.toDouble(),
+      isWorkday: json['isWorkday'] as bool?,
       // Eski backend bu maydonni bermaydi — yuz skaneri majburiy deb
       // hisoblanadi (avvalgi xatti-harakat).
       faceRequired: json['faceRequired'] as bool? ?? true,
@@ -86,6 +96,13 @@ class MyAttendance extends Equatable {
   /// belgilanadi (kamera ochilmaydi).
   final bool faceRequired;
 
+  /// Ofis nuqtasi (`workplace`); `null` — server bermagan.
+  final double? officeLat;
+  final double? officeLng;
+
+  /// Bugun ish kunimi (server); `null` — noma'lum.
+  final bool? isWorkday;
+
   @override
   List<Object?> get props => [
     employeeId,
@@ -98,6 +115,9 @@ class MyAttendance extends Equatable {
     zonesCount,
     officeRadiusM,
     faceRequired,
+    officeLat,
+    officeLng,
+    isWorkday,
   ];
 }
 
@@ -132,6 +152,8 @@ AttendanceDay dayFromMyAttendanceJson(Map<String, dynamic> json) {
     confirmedAt: checkInTime == null ? null : _hhmm(checkInTime),
     checkInPhotoUrl: checkInJson?['photoUrl'] as String?,
     checkOutPhotoUrl: checkOutJson?['photoUrl'] as String?,
+    checkInFaceChecked: checkInJson?['faceChecked'] as bool? ?? true,
+    checkOutFaceChecked: checkOutJson?['faceChecked'] as bool? ?? true,
   );
 }
 

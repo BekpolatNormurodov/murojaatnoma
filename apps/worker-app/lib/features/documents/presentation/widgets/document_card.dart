@@ -48,30 +48,26 @@ class DocumentCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Holat chipi kod qatorida — sarlavha butun enni oladi (tor
+          // ekranda chip sarlavhani siqib, kesib qo'yardi).
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      document.code,
-                      style: AppTextStyles.caption.copyWith(color: inkSoft),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      document.title,
-                      style: AppTextStyles.bodyStrong,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                child: Text(
+                  document.code,
+                  style: AppTextStyles.caption.copyWith(color: inkSoft),
                 ),
               ),
               const SizedBox(width: 10),
               DocumentStatusChip(status: document.status),
             ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            document.title,
+            style: AppTextStyles.bodyStrong,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 10),
           Wrap(

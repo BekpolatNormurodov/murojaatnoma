@@ -93,28 +93,38 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      if (_phase != _Phase.live) return;
-      _wasLiveBeforeBackground = true;
-      final controller = _controller;
-      if (controller != null) {
-        if (controller.value.isRecordingVideo) {
-          _ticker?.cancel();
-          unawaited(controller.stopVideoRecording());
-        }
-        unawaited(controller.dispose());
+      if (_phase != _Phase.live || _stopping) return;
+      if (_controller?.value.isRecordingVideo ?? false) {
+        // Qo'ng'iroq / bildirishnoma paneli: yozilgan qism YO'QOLMAYDI —
+        // to'xtatilib, ko'rib chiqishga o'tadi.
+        unawaited(_stopRecording().then((_) => _releaseCamera()));
+        return;
       }
-      _controller = null;
-      if (mounted) {
-        setState(() {
-          _recording = false;
-          _phase = _Phase.initializing;
-        });
-      }
+      _releaseCamera();
     } else if (state == AppLifecycleState.resumed) {
       if (_wasLiveBeforeBackground) {
         _wasLiveBeforeBackground = false;
         unawaited(_initCamera());
       }
+    }
+  }
+
+  /// Kamerani bo'shatadi (fon). Yozib olingan klip bo'lsa u ekranda qoladi.
+  void _releaseCamera() {
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) unawaited(controller.dispose());
+    if (_phase != _Phase.live) return;
+    _wasLiveBeforeBackground = true;
+    if (!mounted) return;
+    setState(() {
+      _recording = false;
+      _phase = _Phase.initializing;
+    });
+    // Ilova allaqachon qaytgan bo'lsa `resumed` boshqa kelmaydi.
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      _wasLiveBeforeBackground = false;
+      unawaited(_initCamera());
     }
   }
 
@@ -294,6 +304,8 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
       _recordedSizeBytes = null;
       _elapsed = Duration.zero;
     });
+    // Uzilishdan keyin kamera bo'shatilgan bo'lishi mumkin.
+    if (_controller == null) await _initCamera();
   }
 
   void _attach() {

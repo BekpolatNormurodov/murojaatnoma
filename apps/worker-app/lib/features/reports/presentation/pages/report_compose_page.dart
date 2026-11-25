@@ -5,6 +5,7 @@ import 'package:app_ui/app_ui.dart';
 import 'package:file_picker/file_picker.dart';
 // Butun ilova hali `material_ui`ga ko'chirilmagan (Flutter 3.47+ deprecation).
 // ignore: deprecated_member_use
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
@@ -41,7 +42,10 @@ const List<String> kReportDocumentExtensions = [
 ///
 /// [ReportComposeCubit] router'da (`/reports/new`) ta'minlanadi.
 class ReportComposePage extends StatefulWidget {
-  const ReportComposePage({super.key});
+  const ReportComposePage({this.picker, super.key});
+
+  /// Testlar uchun.
+  final ImagePicker? picker;
 
   @override
   State<ReportComposePage> createState() => _ReportComposePageState();
@@ -49,7 +53,7 @@ class ReportComposePage extends StatefulWidget {
 
 class _ReportComposePageState extends State<ReportComposePage> {
   final _textController = TextEditingController();
-  final _picker = ImagePicker();
+  late final ImagePicker _picker = widget.picker ?? ImagePicker();
   bool _picking = false;
 
   @override
@@ -59,6 +63,32 @@ class _ReportComposePageState extends State<ReportComposePage> {
     _textController
       ..text = context.read<ReportComposeCubit>().state.text
       ..addListener(_onTextChanged);
+    unawaited(_recoverLostMedia());
+  }
+
+  /// Android kam xotirada kamera/galereya ochiqligida ilovani o'ldirishi
+  /// mumkin: tanlangan fayl qayta ochilganda shu yerda tiklanadi (matn va
+  /// avvalgi fayllar qoralamada saqlangan).
+  Future<void> _recoverLostMedia() async {
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final lost = await _picker.retrieveLostData();
+      final files = lost.files ?? [if (lost.file != null) lost.file!];
+      for (final file in files) {
+        final length = await file.length();
+        if (!mounted) return;
+        _add(
+          kind: lost.type == RetrieveType.video
+              ? ReportAttachmentKind.video
+              : ReportAttachmentKind.image,
+          path: file.path,
+          name: file.name,
+          sizeBytes: length,
+        );
+      }
+    } on Object catch (error) {
+      debugPrint('[reports] lost media: $error');
+    }
   }
 
   void _onTextChanged() {
@@ -305,9 +335,7 @@ class _ReportComposePageState extends State<ReportComposePage> {
                           child: Text(
                             '${state.text.length} / '
                             '${SubmitReport.maxTextLength}',
-                            style: AppTextStyles.caption.copyWith(
-                              color: muted,
-                            ),
+                            style: AppTextStyles.caption.copyWith(color: muted),
                           ),
                         ),
                         const SizedBox(height: 12),

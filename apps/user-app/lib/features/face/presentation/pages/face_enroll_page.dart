@@ -199,7 +199,7 @@ class _FaceEnrollBody extends StatelessWidget {
           onAction: () => unawaited(context.read<FaceCubit>().startCamera()),
         ),
         FaceError(:final message) => _MessageView(
-          icon: AppIcons.close,
+          icon: AppIcons.info,
           title: l10n.faceErrorTitle,
           message: message,
           actionLabel: l10n.retry,

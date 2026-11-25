@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
+import 'package:worker_app/core/recording/media_limits.dart';
 
 /// `POST /uploads` javobi — serverda saqlangan media haqidagi ma'lumot.
 ///
@@ -43,6 +44,39 @@ class UploadedMedia {
   final int? durationSec;
 }
 
+/// Server fayl turini KENGAYTMADAN aniqlaydi (oq ro'yxat). Ba'zi
+/// galereyalar `.jfif` yoki kengaytmasiz nom beradi — bunday JPEG/PNG rad
+/// etilmasligi uchun nom to'g'rilanadi. Boshqa nomlar o'zgarmaydi.
+String uploadFileName(String name, List<int> head) {
+  final dot = name.lastIndexOf('.');
+  final ext = dot <= 0 ? '' : name.substring(dot + 1).toLowerCase();
+  if (const {'jfif', 'jpe', 'pjpeg', 'pjp'}.contains(ext)) {
+    return '${name.substring(0, dot)}.jpg';
+  }
+  if (ext.isNotEmpty) return name;
+  bool starts(List<int> magic, [int at = 0]) =>
+      head.length >= at + magic.length &&
+      Iterable<int>.generate(
+        magic.length,
+      ).every((i) => head[at + i] == magic[i]);
+  if (starts(const [0xFF, 0xD8, 0xFF])) return '$name.jpg';
+  if (starts(const [0x89, 0x50, 0x4E, 0x47])) return '$name.png';
+  if (starts(const [0x25, 0x50, 0x44, 0x46])) return '$name.pdf';
+  // ISO-BMFF (`....ftyp<brand>`): video ham, HEIC rasm ham, ovoz ham shu
+  // konteynerda — turini brend aytadi.
+  if (starts(const [0x66, 0x74, 0x79, 0x70], 4) && head.length >= 12) {
+    final brand = String.fromCharCodes(head, 8, 12);
+    final isoExt = switch (brand) {
+      'heic' || 'heix' || 'heim' || 'heis' || 'mif1' || 'msf1' => 'heic',
+      'M4A ' || 'M4B ' => 'm4a',
+      'qt  ' => 'mov',
+      _ => brand.startsWith('3gp') ? '3gp' : 'mp4',
+    };
+    return '$name.$isoExt';
+  }
+  return name;
+}
+
 /// Yuklash xatosi — HTTP status bilan (qayta urinish ma'nolimi aniqlash uchun).
 class UploadException extends ServerException {
   UploadException(super.message, {this.statusCode});
@@ -75,12 +109,8 @@ class UploadsService {
     File file, {
     int? durationSec,
     void Function(double progress)? onProgress,
-  }) => _post(
-    '/uploads',
-    file,
-    durationSec: durationSec,
-    onProgress: onProgress,
-  );
+  }) =>
+      _post('/uploads', file, durationSec: durationSec, onProgress: onProgress);
 
   /// Hujjatni (pdf/doc/docx/xls/xlsx/ppt/pptx/txt/csv/rtf/odt/ods/zip —
   /// shuningdek rasm/video/audio) `POST /uploads/document` orqali yuklaydi
@@ -98,7 +128,10 @@ class UploadsService {
   }) async {
     try {
       final segments = file.uri.pathSegments;
-      final filename = segments.isEmpty ? 'file' : segments.last;
+      final filename = uploadFileName(
+        segments.isEmpty ? 'file' : segments.last,
+        await _head(file),
+      );
 
       final formData = FormData.fromMap({
         'file': await MultipartFile.fromFile(file.path, filename: filename),
@@ -119,7 +152,11 @@ class UploadsService {
     } on DioException catch (e) {
       final message = _messageFrom(e.response?.data);
       throw UploadException(
-        message ?? e.message ?? 'Yuklashda xatolik',
+        // nginx 413 javobi HTML bo'ladi — matnni o'zimiz beramiz.
+        message ??
+            (e.response?.statusCode == 413
+                ? kFileTooLargeMessage
+                : e.message ?? 'Yuklashda xatolik'),
         statusCode: e.response?.statusCode,
       );
     }
@@ -135,6 +172,14 @@ class UploadsService {
   );
 
   static const int largeFileBytes = 5 * 1024 * 1024;
+
+  static Future<List<int>> _head(File file) async {
+    final bytes = <int>[];
+    await for (final chunk in file.openRead(0, 12)) {
+      bytes.addAll(chunk);
+    }
+    return bytes;
+  }
 
   /// Backend xato javobi tanasidan (`{message: "..."}`) matnni ajratadi —
   /// topilmasa `null`.

@@ -142,8 +142,12 @@ class _PinUnlockPageState extends State<PinUnlockPage> {
                       child: Column(
                         children: [
                           const SizedBox(height: 24),
-                          const _HeaderIcon(icon: AppIcons.lock),
-                          const SizedBox(height: 24),
+                          // Past ekran/katta shriftda bezak yashiriladi —
+                          // klaviatura va pastdagi tugma ekranga sig'sin.
+                          if (!_isCramped(context, constraints)) ...[
+                            const _HeaderIcon(icon: AppIcons.lock),
+                            const SizedBox(height: 24),
+                          ],
                           Text(
                             l10n.pinUnlockTitle,
                             style: AppTextStyles.h2,
@@ -242,3 +246,6 @@ class _HeaderIcon extends StatelessWidget {
         .fadeIn();
   }
 }
+
+bool _isCramped(BuildContext context, BoxConstraints constraints) =>
+    constraints.maxHeight < MediaQuery.textScalerOf(context).scale(560);

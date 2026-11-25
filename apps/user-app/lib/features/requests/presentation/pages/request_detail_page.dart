@@ -95,38 +95,31 @@ class _DetailContent extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          // Sarlavha butun kenglikda; holat, tur va sana uning ostida —
+          // yonma-yon turganda sarlavha 8 qatorga cho'zilardi.
+          Text(request.title, style: AppTextStyles.h2),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(child: Text(request.title, style: AppTextStyles.h2)),
-              const SizedBox(width: 10),
               RequestStatusChip(status: request.status),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
               AppBadge(
                 label: RequestKindMeta.label(l10n, request.kind),
                 variant: request.kind == RequestKind.ariza
                     ? AppBadgeVariant.info
                     : AppBadgeVariant.warning,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  request.category,
-                  style: AppTextStyles.caption.copyWith(color: inkSoft),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                formatIsoDate(request.createdAt),
-                style: AppTextStyles.caption.copyWith(color: inkMuted),
-              ),
             ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            [
+              if (request.category.isNotEmpty) request.category,
+              formatIsoDate(request.createdAt),
+            ].join(' • '),
+            style: AppTextStyles.caption.copyWith(color: inkSoft),
           ),
           const SizedBox(height: 24),
           AppCard(child: _StatusTimeline(request: request)),
@@ -164,7 +157,8 @@ class _DetailContent extends StatelessWidget {
               const SizedBox(height: 8),
             ],
           const SizedBox(height: 20),
-          _SectionTitle(l10n.requestResponseTitle),
+          // Bo'limda fuqaroning o'z xabarlari ham bor — "Xodim javobi" emas.
+          _SectionTitle(_t(context, 'Yozishmalar', 'Переписка')),
           const SizedBox(height: 8),
           if (messagesFailed) ...[
             _InlineLoadError(
@@ -842,7 +836,11 @@ class _HistoryList extends StatelessWidget {
                       height: 10,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: i == items.length - 1 ? AppColors.primary : line,
+                        color: i < items.length - 1
+                            ? line
+                            : items[i].$1.toStatus == 'REJECTED'
+                            ? AppColors.danger
+                            : AppColors.primary,
                       ),
                     ),
                     if (i < items.length - 1)
@@ -914,9 +912,8 @@ class _DetailSkeleton extends StatelessWidget {
   }
 }
 
-/// Murojaatni yuklashda xatolik — `ErrorView` ustida quriladi, faqat
-/// murojaat topilmadi sarlavhasini `message` oldiga qo'shadi (`ErrorView`ning
-/// o'zi faqat bitta matn qatorini qabul qiladi).
+/// Murojaatni yuklashda xatolik. Faqat server/tarmoq xabari: ilgari har
+/// qanday xato (hatto internet yo'qligi) "Murojaat topilmadi" deb chiqardi.
 class _DetailErrorView extends StatelessWidget {
   const _DetailErrorView({required this.message});
 
@@ -924,10 +921,9 @@ class _DetailErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = context.l10n;
     return ErrorView(
-      message: '${l10n.requestNotFoundTitle}\n$message',
-      retryLabel: l10n.retry,
+      message: message,
+      retryLabel: context.l10n.retry,
       onRetry: () => context.read<RequestDetailCubit>().retry(),
     );
   }

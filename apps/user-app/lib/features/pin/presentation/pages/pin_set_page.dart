@@ -149,8 +149,12 @@ class _PinEntryBody extends StatelessWidget {
                               label: Text(l10n.logout),
                             ),
                     ),
-                    const _HeaderIcon(icon: AppIcons.shield),
-                    const SizedBox(height: 24),
+                    // Past ekran/katta shriftda bezak yashiriladi —
+                    // klaviatura va pastdagi tugma ekranga sig'sin.
+                    if (!_isCramped(context, constraints)) ...[
+                      const _HeaderIcon(icon: AppIcons.shield),
+                      const SizedBox(height: 24),
+                    ],
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 220),
                       child: Text(
@@ -289,3 +293,6 @@ class _PinSetSuccessView extends StatelessWidget {
     );
   }
 }
+
+bool _isCramped(BuildContext context, BoxConstraints constraints) =>
+    constraints.maxHeight < MediaQuery.textScalerOf(context).scale(560);

@@ -28,6 +28,9 @@ class WorkerAuthInterceptor extends Interceptor {
 
   static const String _retriedFlag = '__auth_retried__';
 
+  /// Tugallanmagan refresh'ning idempotentlik kaliti: `[token izi, kalit]`.
+  static const String refreshAttemptKey = 'auth_refresh_attempt_v1';
+
   static final StreamController<void> _expired =
       StreamController<void>.broadcast();
 
@@ -140,7 +143,7 @@ class WorkerAuthInterceptor extends Interceptor {
     final bare = _bareDio(baseUrl);
     // Bir xil kalit bilan qayta urinish: javob yo'qolsa server o'sha yangi
     // juftlikni qaytaradi.
-    final key = IdempotencyInterceptor.newKey();
+    final key = await _attemptKey(refreshToken);
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         final res = await bare.post<dynamic>(
@@ -164,6 +167,7 @@ class WorkerAuthInterceptor extends Interceptor {
         if (next is String && next.isNotEmpty) {
           await prefs.setString(AuthInterceptor.refreshTokenKey, next);
         }
+        await prefs.remove(refreshAttemptKey);
         return _Refresh.refreshed;
       } on DioException catch (e) {
         final status = e.response?.statusCode;
@@ -179,6 +183,25 @@ class WorkerAuthInterceptor extends Interceptor {
       }
     }
     return _Refresh.unavailable;
+  }
+
+  /// Shu refresh token uchun saqlangan kalit (bo'lmasa yangisi). Javob
+  /// yo'qolib, urinishlar tugasa yoki ilova yopilsa ham keyingi urinish
+  /// AYNAN shu kalit bilan ketadi — aks holda server allaqachon almashtirilgan
+  /// tokenni rad etib, xodim tizimdan chiqib qolardi.
+  Future<String> _attemptKey(String refreshToken) async {
+    final prefs = await SharedPreferences.getInstance();
+    // JWT imzosining oxiri — tokenning o'zini ikkinchi marta saqlamaymiz.
+    final mark = refreshToken.length > 24
+        ? refreshToken.substring(refreshToken.length - 24)
+        : refreshToken;
+    final saved = prefs.getStringList(refreshAttemptKey);
+    if (saved != null && saved.length == 2 && saved[0] == mark) {
+      return saved[1];
+    }
+    final key = IdempotencyInterceptor.newKey();
+    await prefs.setStringList(refreshAttemptKey, [mark, key]);
+    return key;
   }
 
   Future<void> _revoke(Dio bare, String refreshToken) async {
@@ -199,6 +222,7 @@ class WorkerAuthInterceptor extends Interceptor {
         prefs.getString(AuthInterceptor.refreshTokenKey) != null;
     await prefs.remove(AuthInterceptor.tokenKey);
     await prefs.remove(AuthInterceptor.refreshTokenKey);
+    await prefs.remove(refreshAttemptKey);
     if (had) _expired.add(null);
   }
 }

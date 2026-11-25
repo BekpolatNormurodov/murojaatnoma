@@ -25,7 +25,7 @@ class PaymentHistoryPage extends StatelessWidget {
       backgroundColor: isDark ? AppColors.darkCanvas : AppColors.canvas,
       appBar: AppBar(
         leading: const AppBackButton(),
-        title: Text(l10n.paymentHistoryPageTitle),
+        title: Text(l10n.paymentHistoryPageTitle, style: AppTextStyles.h3),
       ),
       body: SafeArea(
         child: BlocBuilder<PaymentHistoryCubit, PaymentHistoryState>(

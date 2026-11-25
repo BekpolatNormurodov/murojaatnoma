@@ -282,8 +282,11 @@ CitizenRequest _requestFromApplicationJson(
 }) {
   final decoded = _decodeSubject(json['subject'] as String? ?? '');
   final category = (json['category'] as String?)?.trim();
+  // Ro'yxat javobi mas'ul xodimni o'zi beradi (tarixsiz).
+  final assignee = json['assignedEmployee'];
   return CitizenRequest(
     id: json['id'] as String? ?? '',
+    assignedName: assignee is Map ? assignee['fullName'] as String? : null,
     // Server endi turini o'zi saqlaydi; eski yozuvlar uchun mavzu prefiksi.
     kind: switch (json['kind']) {
       'SHIKOYAT' => RequestKind.shikoyat,
@@ -316,8 +319,13 @@ CitizenRequest _requestFromApplicationJson(
             createdAt: raw['createdAt'] as String,
             toStatus: raw['toStatus'] as String?,
             note: raw['note'] as String?,
+            // Biriktirishda faqat BIRIKTIRILGAN xodim: bo'limga
+            // yo'naltirilganda amalni bajargan admin "mas'ul" emas.
             employeeName:
-                (raw['toEmployeeName'] ?? raw['actorName']) as String?,
+                (raw['type'] == 'ASSIGNED'
+                        ? raw['toEmployeeName']
+                        : raw['toEmployeeName'] ?? raw['actorName'])
+                    as String?,
           ),
     ],
   );
@@ -534,7 +542,12 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
         return request.copyWith(attachmentsFailed: true);
       }
     } on DioException catch (e) {
-      throw ServerException(_extractErrorMessage(e));
+      // Server 404 matni inglizcha ("Application … not found").
+      throw ServerException(
+        e.response?.statusCode == 404
+            ? 'Murojaat topilmadi'
+            : _extractErrorMessage(e),
+      );
     }
   }
 
@@ -542,6 +555,12 @@ class CitizenRequestsApiImpl implements CitizenRequestsRemoteDataSource {
   Future<CitizenRequest> submit(CitizenRequest draft) async {
     try {
       final phone = await _currentPhone();
+      // `POST /applications` token talab qiladi (telefon ham tokendan
+      // olinadi) — sessiyasiz so'rov umuman yuborilmaydi. `currentSession`
+      // access token bo'lmasa `null` qaytaradi.
+      if (phone.isEmpty) {
+        throw ServerException('Sessiya tugagan. Iltimos, qaytadan kiring');
+      }
       final fullName = await _currentFullName(phone);
       final photoUrl = await _faceSync?.ensureUploaded();
 

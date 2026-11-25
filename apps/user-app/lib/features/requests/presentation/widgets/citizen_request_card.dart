@@ -124,6 +124,7 @@ class CitizenRequestCard extends StatelessWidget {
                 child: Wrap(
                   spacing: 8,
                   runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     AppBadge(
                       label: RequestKindMeta.label(l10n, request.kind),
@@ -149,7 +150,6 @@ class CitizenRequestCard extends StatelessWidget {
     );
   }
 }
-
 
 /// Stepper bilan bir xil bosqichlar: 1 qabul · 2 biriktirildi · 3 jarayonda ·
 /// 4 hal qilindi · 5 baholandi (rad etilsa — o'sha joygacha qizil).
