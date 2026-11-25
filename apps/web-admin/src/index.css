@@ -410,3 +410,10 @@ svg[fill="none"] polygon:not([stroke-width]):not([fill]) {
 .leaflet-container path.leaflet-interactive:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* Live map: employees glide to their new position (class is off while zooming). */
+@media (prefers-reduced-motion: no-preference) {
+  .map-glide .leaflet-marker-icon {
+    transition: transform 0.9s ease-out;
+  }
+}

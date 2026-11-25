@@ -119,7 +119,19 @@ function besidePanel(map: L.Map, pos: [number, number], zoom: number): L.LatLng 
  * live position — otherwise every 15 s poll would re-center and fight the
  * admin's manual pan).
  */
-function FlyTo({ pos, flyKey }: { pos: [number, number] | null; flyKey: string | null }) {
+function FlyTo({
+  pos,
+  flyKey,
+  wait,
+  routed,
+}: {
+  pos: [number, number] | null;
+  flyKey: string | null;
+  /** The route is still loading — moving now would make the camera jump twice. */
+  wait: boolean;
+  /** There is a route to frame instead ({@link FitTrack} moves the camera). */
+  routed: boolean;
+}) {
   const map = useMap();
   const lastKey = useRef<string | null>(null);
   useEffect(() => {
@@ -127,12 +139,41 @@ function FlyTo({ pos, flyKey }: { pos: [number, number] | null; flyKey: string |
       lastKey.current = null;
       return;
     }
-    if (pos && flyKey !== lastKey.current) {
+    if (pos && !wait && flyKey !== lastKey.current) {
       lastKey.current = flyKey;
+      if (routed) return;
       const zoom = Math.max(map.getZoom(), 15);
       map.flyTo(besidePanel(map, pos, zoom), zoom, { duration: 0.8 });
     }
-  }, [pos, flyKey, map]);
+  }, [pos, flyKey, wait, routed, map]);
+  return null;
+}
+
+/**
+ * Markers slide to a new position instead of teleporting. Off while the map
+ * zooms: Leaflet re-places every marker then and a slide would lag behind.
+ */
+function GlidingMarkers() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    let frame = 0;
+    const on = () => {
+      frame = requestAnimationFrame(() => el.classList.add('map-glide'));
+    };
+    const off = () => {
+      cancelAnimationFrame(frame);
+      el.classList.remove('map-glide');
+    };
+    on();
+    map.on('zoomstart', off);
+    map.on('zoomend', on);
+    return () => {
+      off();
+      map.off('zoomstart', off);
+      map.off('zoomend', on);
+    };
+  }, [map]);
   return null;
 }
 
@@ -407,6 +448,9 @@ export function MapPage() {
   const setTrackWindow = (window: TrackWindow) => setTrackChoice({ id: selectedId, window });
   const trackQ = useQuery({
     queryKey: ['track', selectedId, trackWindow],
+    // Another window of the same employee keeps the old route up until it arrives.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === selectedId ? previous : undefined,
     queryFn: () => {
       const { from, to } = trackRange(trackWindow);
       return fetchTrack(selectedId as string, { from, to, limit: 1500 });
@@ -881,11 +925,21 @@ export function MapPage() {
           />
 
           <FitHome mahallas={mahallaQ.data} skip={!!selectedId} />
-          <FlyTo pos={selectedPos} flyKey={selectedId} />
+          <GlidingMarkers />
+          <FlyTo
+            pos={selectedPos}
+            flyKey={selectedId}
+            wait={!!selectedId && (trackQ.isLoading || trackQ.isPlaceholderData || locationsQ.isLoading)}
+            routed={(track?.points.length ?? 0) > 1}
+          />
           {/* After FlyTo: once the route is here it wins over the single point. */}
           <FitTrack
             points={track?.points ?? NO_POINTS}
-            fitKey={selectedId && track?.employee.id === selectedId ? `${selectedId}:${trackWindow}` : null}
+            fitKey={
+              selectedId && !trackQ.isPlaceholderData && track?.employee.id === selectedId
+                ? `${selectedId}:${trackWindow}`
+                : null
+            }
             skip={follow}
           />
           <Follow pos={selectedPos} on={follow} onStop={() => setFollow(false)} />
