@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -18,8 +19,8 @@ import { AppConfig } from '../../common/config/configuration';
 import { optimizeImageUpload } from '../../common/media/image-optimizer';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AllowCitizen } from '../../common/decorators/allow-citizen.decorator';
-import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminWriterGuard } from '../../common/guards/admin-writer.guard';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { ApplicationStats, ApplicationsService } from './applications.service';
@@ -57,10 +58,24 @@ export class ApplicationsController {
     private readonly configService: ConfigService<AppConfig, true>,
   ) {}
 
-  @Public()
+  @ApiBearerAuth()
+  @AllowCitizen()
   @Post()
-  @ApiOperation({ summary: 'Submit a new citizen application/complaint (Murojaat)' })
-  create(@Body() dto: CreateApplicationDto): Promise<Application> {
+  @ApiOperation({
+    summary:
+      'Submit a new citizen application/complaint (Murojaat). A CITIZEN always files ' +
+      'under their own OTP-proven phone; staff may file for a given phone.',
+  })
+  create(
+    @Body() dto: CreateApplicationDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Application> {
+    if (user.scope === 'citizen') {
+      return this.applicationsService.create({ ...dto, applicantPhone: user.phone });
+    }
+    if (user.scope === 'admin' && !new AdminWriterGuard().allows(user)) {
+      throw new ForbiddenException('Faqat ko‘rish huquqi: murojaat yarata olmaysiz');
+    }
     return this.applicationsService.create(dto);
   }
 

@@ -148,8 +148,11 @@ export class CatalogService {
     return meeting;
   }
 
-  findNews(): Promise<NewsItem[]> {
-    return this.prisma.newsItem.findMany({ orderBy: { publishedAt: 'desc' } });
+  findNews(publishedOnly = false): Promise<NewsItem[]> {
+    return this.prisma.newsItem.findMany({
+      ...(publishedOnly ? { where: { status: NewsStatus.published } } : {}),
+      orderBy: { publishedAt: 'desc' },
+    });
   }
 
   /**

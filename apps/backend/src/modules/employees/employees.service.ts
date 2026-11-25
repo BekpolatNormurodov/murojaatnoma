@@ -90,6 +90,16 @@ export class EmployeesService {
       data,
       include: { _count: { select: { faceTemplates: true } } },
     });
+    // Deactivation ends the sessions and stops pushes to the person's devices.
+    if (dto.isActive === false) {
+      await this.prisma.$transaction([
+        this.prisma.refreshToken.updateMany({
+          where: { employeeId: id, revoked: false },
+          data: { revoked: true },
+        }),
+        this.prisma.deviceToken.deleteMany({ where: { employeeId: id } }),
+      ]);
+    }
     // Territory reassignment must re-evaluate the in-zone flags against the
     // LAST known position (and today's fixes) immediately — otherwise the admin
     // keeps seeing a stale "Hududda/Tashqarida" until the next GPS report.

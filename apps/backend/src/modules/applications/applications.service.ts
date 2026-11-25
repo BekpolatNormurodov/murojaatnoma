@@ -171,8 +171,7 @@ export class ApplicationsService implements OnModuleInit {
   }
 
   /**
-   * POST /applications is public, so the phone in the body is unproven. A
-   * face URL is kept only when it is exactly the face that phone's owner
+   * A face URL is kept only when it is exactly the face that phone's owner
    * enrolled (set through their own token) — anything else is dropped.
    */
   private async provenFace(phone: string, photoUrl?: string): Promise<string | null> {

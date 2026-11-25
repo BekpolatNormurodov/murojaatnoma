@@ -422,6 +422,20 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+/// A citizen's refresh token. Citizens have no Employee row, so their sessions
+/// are keyed by the OTP-proven phone.
+model CitizenRefreshToken {
+  id        String   @id @default(uuid())
+  phone     String
+  tokenHash String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([phone, tokenHash])
+  @@map("citizen_refresh_tokens")
+}
+
 // ---------------------------------------------------------------------------
 // Admin panel users (web-admin login/password auth — separate from employees)
 // ---------------------------------------------------------------------------

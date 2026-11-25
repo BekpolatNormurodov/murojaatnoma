@@ -11,6 +11,7 @@ function build(emp: { id: string; isActive: boolean } | null = { id: 'e1', isAct
       delete: rec('employee.delete'),
     },
     refreshToken: { updateMany: rec('refreshToken.updateMany') },
+    deviceToken: { deleteMany: rec('deviceToken.deleteMany') },
     application: { updateMany: rec('application.updateMany'), findMany: jest.fn().mockResolvedValue([]) },
     applicationEvent: {
       findMany: jest.fn().mockResolvedValue([
@@ -30,6 +31,7 @@ describe('xodim CRUD — arxiv, tiklash, o‘chirish', () => {
   it('ishdan bo‘shatish: login yopiladi, sessiyalar bekor, ochiq murojaatlar bo‘shatiladi', async () => {
     const { svc, calls } = build();
     const res = await svc.archive('e1', '  O‘z xohishi bilan ');
+    expect(calls['deviceToken.deleteMany'][0]).toEqual({ where: { employeeId: 'e1' } });
     expect(calls['employee.update'][0]).toMatchObject({
       where: { id: 'e1' },
       data: { isActive: false, archiveReason: 'O‘z xohishi bilan' },

@@ -494,6 +494,7 @@ export class OversightService {
         where: { assignedEmployeeId: id, status: { in: [ApplicationStatus.NEW, ApplicationStatus.IN_PROGRESS] } },
         data: { assignedEmployeeId: null, status: ApplicationStatus.NEW },
       }),
+      this.prisma.deviceToken.deleteMany({ where: { employeeId: id } }),
     ]);
     return { id, releasedMurojaats: released.count };
   }

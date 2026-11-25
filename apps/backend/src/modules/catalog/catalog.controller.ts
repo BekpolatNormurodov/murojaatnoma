@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminNotification, Camera, GovDocument, Meeting, NewsItem } from '@prisma/client';
+import { AllowCitizen } from '../../common/decorators/allow-citizen.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { CatalogService, DistrictDto } from './catalog.service';
 import { CreateCameraDto } from './dto/create-camera.dto';
@@ -82,11 +85,12 @@ export class CatalogController {
     return this.catalogService.removeMeeting(id);
   }
 
-  @RequireScope('admin', 'employee')
+  @AllowCitizen()
+  @RequireScope('admin', 'employee', 'citizen')
   @Get('news')
-  @ApiOperation({ summary: "Yangiliklar va e'lonlar ro'yxati" })
-  findNews(): Promise<NewsItem[]> {
-    return this.catalogService.findNews();
+  @ApiOperation({ summary: "Yangiliklar va e'lonlar ro'yxati (fuqaroga faqat chop etilganlari)" })
+  findNews(@CurrentUser() user: AuthenticatedUser): Promise<NewsItem[]> {
+    return this.catalogService.findNews(user.scope === 'citizen');
   }
 
   @RequireScope('admin')

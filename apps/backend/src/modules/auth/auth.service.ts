@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { AppConfig } from '../../common/config/configuration';
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -70,11 +70,9 @@ export class AuthService {
    * (in that case the person is signing into the citizen app as a citizen).
    * This enforces the product rule "citizens: SMS only; employees: password".
    *
-   * Access-token-only (no refresh row — a citizen has no employee FK to
-   * persist against); the short-lived access token is re-minted by requesting
-   * a fresh OTP. Phone ownership is proven by the consumed challenge below, and
-   * the global CitizenAccessGuard confines scope:'citizen' to @AllowCitizen
-   * routes (secure-by-default).
+   * Phone ownership is proven by the consumed challenge below, and the global
+   * CitizenAccessGuard confines scope:'citizen' to @AllowCitizen routes
+   * (secure-by-default). The session lives on through {@link refresh}.
    */
   async verifyOtp(dto: VerifyOtpDto): Promise<TokenPairDto> {
     const challenge = await this.prisma.otpChallenge.findFirst({
@@ -169,7 +167,11 @@ export class AuthService {
     };
   }
 
-  /** Rotates a refresh token: validates it, revokes it, and issues a new pair. */
+  /**
+   * Rotates a refresh token: validates it, revokes it, and issues a new pair of
+   * the same kind (citizen stays citizen). The stored row is claimed in one
+   * UPDATE, so a token can be spent only once even under concurrent requests.
+   */
   async refresh(refreshToken: string): Promise<TokenPairDto> {
     const { refreshSecret } = this.configService.get('jwt', { infer: true });
 
@@ -182,28 +184,53 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    const tokenHash = this.hashToken(refreshToken);
-    const storedToken = await this.prisma.refreshToken.findFirst({
-      where: { employeeId: payload.sub, tokenHash, revoked: false },
-    });
+    const live = {
+      tokenHash: this.hashToken(refreshToken),
+      revoked: false,
+      expiresAt: { gt: new Date() },
+    };
 
-    if (!storedToken || storedToken.expiresAt < new Date()) {
+    if (payload.scope === 'citizen') {
+      const claimed = await this.prisma.citizenRefreshToken.updateMany({
+        where: { ...live, phone: payload.sub },
+        data: { revoked: true },
+      });
+      if (claimed.count === 0) {
+        throw new UnauthorizedException('Refresh token is no longer valid');
+      }
+      // Claims are rebuilt, never copied: the decoded token carries `iat`/`exp`,
+      // which jsonwebtoken refuses to sign together with `expiresIn`.
+      return this.issueTokenPair({
+        sub: payload.sub,
+        phone: payload.sub,
+        role: 'CITIZEN',
+        scope: 'citizen',
+      });
+    }
+
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { ...live, employeeId: payload.sub },
+      data: { revoked: true },
+    });
+    if (claimed.count === 0) {
       throw new UnauthorizedException('Refresh token is no longer valid');
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revoked: true },
+    // Read the employee again: a deactivated account must not renew its session,
+    // and a changed role or phone takes effect here.
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, phone: true, role: true, isActive: true },
     });
+    if (!employee || !employee.isActive) {
+      throw new UnauthorizedException('Refresh token is no longer valid');
+    }
 
-    // Strip the decoded token's `iat`/`exp` before re-signing: handing a
-    // payload that already carries `exp` together with `expiresIn` makes
-    // jsonwebtoken throw ("Bad options.expiresIn ... already has 'exp'"),
-    // which broke every refresh. Rebuild a clean claim set instead.
     return this.issueTokenPair({
-      sub: payload.sub,
-      phone: payload.phone,
-      role: payload.role,
+      sub: employee.id,
+      phone: employee.phone,
+      role: employee.role,
+      scope: 'employee',
     });
   }
 
@@ -213,10 +240,14 @@ export class AuthService {
    * silent — an unknown/expired token is simply a no-op.
    */
   async logout(refreshToken: string): Promise<{ ok: true }> {
-    await this.prisma.refreshToken.updateMany({
+    const args = {
       where: { tokenHash: this.hashToken(refreshToken), revoked: false },
       data: { revoked: true },
-    });
+    };
+    await Promise.all([
+      this.prisma.refreshToken.updateMany(args),
+      this.prisma.citizenRefreshToken.updateMany(args),
+    ]);
     return { ok: true };
   }
 
@@ -235,23 +266,24 @@ export class AuthService {
         secret: accessSecret,
         expiresIn: this.ttlToSeconds(accessTtl),
       }),
-      this.jwtService.signAsync(payload, {
-        secret: refreshSecret,
-        expiresIn: this.ttlToSeconds(refreshTtl),
-      }),
+      // `jti` keeps two refresh tokens issued within the same second distinct.
+      this.jwtService.signAsync(
+        { ...payload, jti: randomUUID() },
+        { secret: refreshSecret, expiresIn: this.ttlToSeconds(refreshTtl) },
+      ),
     ]);
 
-    // Citizens have no employee row, so a refresh token cannot be persisted
-    // (refreshToken.employeeId is a required FK to employee). A citizen simply
-    // re-requests an OTP when the short-lived access token expires — acceptable
-    // for the citizen flow; long citizen sessions would need a schema change.
-    if (payload.role !== 'CITIZEN') {
+    const row = {
+      tokenHash: this.hashToken(refreshToken),
+      expiresAt: this.addDuration(refreshTtl),
+    };
+    if (payload.role === 'CITIZEN') {
+      await this.prisma.citizenRefreshToken.create({
+        data: { ...row, phone: payload.sub },
+      });
+    } else {
       await this.prisma.refreshToken.create({
-        data: {
-          employeeId: payload.sub,
-          tokenHash: this.hashToken(refreshToken),
-          expiresAt: this.addDuration(refreshTtl),
-        },
+        data: { ...row, employeeId: payload.sub },
       });
     }
 
