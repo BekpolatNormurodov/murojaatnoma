@@ -25,7 +25,6 @@ import {
   initials,
   isOnline,
   isPastDayWindow,
-  MAX_DRAW_ACCURACY_M,
   OFFICE_CENTER,
   OFFLINE_COLOR,
   ONLINE_COLOR,
@@ -38,6 +37,7 @@ import {
   type TrackSummary,
   type TrackWindow,
 } from './mapShared';
+import { routeStops } from './routeStops';
 
 /**
  * Auto-generated phones for employees added without one (`+99800…`, and the
@@ -48,9 +48,6 @@ function isPlaceholderPhone(phone: string): boolean {
   return /^\+99800\d{7}$/.test(phone) || /^\+99890000\d{4}$/.test(phone);
 }
 
-// Track gaps ≥ this long are flagged as a "lokatsiya uzilgan" break in the route
-// list (GPS off / no signal / app closed) — monitoring cue between two points.
-const GAP_MIN_MS = 15 * 60 * 1000;
 
 /** Human duration for a track gap: "45 daqiqa" / "4 soat 32 daqiqa". */
 function fmtGap(ms: number): string {
@@ -150,11 +147,8 @@ export function EmployeeDetailDrawer({
     noloc: t.noLocShort,
   };
 
-  // Newest points first for the scroll list.
-  const points = useMemo(
-    () => (track?.points ? [...track.points].reverse() : []),
-    [track],
-  );
+  // Where they were, from when to when — newest first.
+  const stops = useMemo(() => routeStops(track?.points ?? []).reverse(), [track]);
 
   return (
     // The layer itself ignores the pointer: the map beside the panel stays draggable.
@@ -421,49 +415,46 @@ export function EmployeeDetailDrawer({
             <p className="px-3 py-6 text-center text-xs text-ink-muted">
               {t.loadingTrack}
             </p>
-          ) : points.length === 0 ? (
+          ) : stops.length === 0 || !track ? (
             <p className="px-3 py-6 text-center text-xs text-ink-muted">{t.noTrack}</p>
           ) : (
-            points.map((p, i) => {
-              const older = points[i + 1];
-              const gapMs = older
-                ? new Date(p.recordedAt).getTime() - new Date(older.recordedAt).getTime()
-                : 0;
-              const coarse = p.accuracy != null && p.accuracy > MAX_DRAW_ACCURACY_M;
-              const inZone = fixInZone(p);
+            stops.map((stop, i) => {
+              const fix = track.points[stop.endIdx];
+              const inZone = fixInZone(fix);
+              const away = !noZone && !inZone && !fix.insideOffice;
+              const older = stops[i + 1];
+              const gapMs = stop.afterGap && older ? Date.parse(stop.from) - Date.parse(older.to) : 0;
               // "Jonli" only when the newest fix really is current (not hours old).
               const isLive = i === 0 && online && !pastDay;
+              const minutesMs = Date.parse(stop.to) - Date.parse(stop.from);
               return (
-                <Fragment key={`${p.recordedAt}-${i}`}>
+                <Fragment key={stop.startIdx}>
                   <button
-                    onClick={() => onFocusPoint(p)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors hover:bg-surface-2"
+                    onClick={() => onFocusPoint(fix)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-2"
                   >
-                    <span className="w-11 shrink-0 font-mono text-[11px] font-semibold text-ink-soft">
-                      {clockTime(p.recordedAt)}
+                    <span className="w-[76px] shrink-0 font-mono text-[11px] font-semibold text-ink-soft">
+                      {clockTime(stop.from)}–{clockTime(stop.to)}
                     </span>
                     <LocationTick
                       size={13}
                       variant="Bulk"
                       className={
-                        p.insideOffice
-                          ? 'text-emerald-600'
+                        fix.insideOffice
+                          ? 'shrink-0 text-emerald-600'
                           : noZone
-                            ? 'text-ink-muted'
+                            ? 'shrink-0 text-ink-muted'
                             : inZone
-                              ? 'text-blue-600'
-                              : 'text-amber-500'
+                              ? 'shrink-0 text-blue-600'
+                              : 'shrink-0 text-amber-500'
                       }
                     />
-                    <span
-                      className={cn(
-                        'min-w-0 flex-1 truncate text-xs',
-                        coarse ? 'text-ink-muted' : noZone || inZone || p.insideOffice ? 'text-ink' : 'text-amber-700',
-                      )}
-                    >
-                      {p.mahallaName ?? '—'}
-                      {p.insideOffice && !inZone && ` · ${t.office}`}
-                      {coarse && ` · ${t.lowAccuracy}`}
+                    <span className="min-w-0 flex-1">
+                      <span className={cn('block truncate text-xs', away ? 'text-amber-700' : 'text-ink')}>
+                        {stop.mahallaName ?? t.outDistrict}
+                        {fix.insideOffice && !inZone && ` · ${t.office}`}
+                      </span>
+                      <span className="block text-[10.5px] text-ink-muted">{fmtGap(minutesMs)}</span>
                     </span>
                     {isLive && (
                       <span className="shrink-0 rounded-full bg-primary-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary-700">
@@ -471,7 +462,7 @@ export function EmployeeDetailDrawer({
                       </span>
                     )}
                   </button>
-                  {older && gapMs >= GAP_MIN_MS && (
+                  {gapMs > 0 && (
                     <div className="my-0.5 flex items-center gap-2 px-3 py-1" aria-label={`${fmtGap(gapMs)} lokatsiya uzilgan`}>
                       <span className="h-px flex-1 bg-amber-200 dark:bg-amber-500/30" />
                       <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/10">

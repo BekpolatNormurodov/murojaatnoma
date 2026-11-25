@@ -34,6 +34,7 @@ import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
 import { EmployeeDetailDrawer } from './EmployeeDetailDrawer';
 import {
   agoShort,
+  clockTime,
   DISTRICT_CENTER,
   FILTER_ORDER,
   initials,
@@ -156,18 +157,48 @@ function Follow({
   return null;
 }
 
+const NO_POINTS: TrackPoint[] = [];
+
+/**
+ * Frames the whole route once per selection and window, beside the detail panel.
+ * Live refreshes leave the view alone; "follow" mode keeps its own centre.
+ */
+function FitTrack({ points, fitKey, skip }: { points: TrackPoint[]; fitKey: string | null; skip: boolean }) {
+  const map = useMap();
+  const fitted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!fitKey) {
+      fitted.current = null;
+      return;
+    }
+    if (skip || points.length < 2 || fitted.current === fitKey) return;
+    fitted.current = fitKey;
+    const size = map.getSize();
+    const phone = window.innerWidth < 640;
+    map.flyToBounds(L.latLngBounds(points.map((p) => [p.latitude, p.longitude] as [number, number])), {
+      paddingTopLeft: [32, 72],
+      paddingBottomRight: phone ? [32, size.y * 0.62 + 16] : [Math.min(360, size.x * 0.6) + 32, 48],
+      maxZoom: 17,
+      duration: 0.8,
+    });
+  }, [points, fitKey, skip, map]);
+  return null;
+}
+
 /** Frames the district's mahallas once they load (the district polygon has a far exclave). */
-function FitHome({ mahallas }: { mahallas: ZoneCollection | undefined }) {
+function FitHome({ mahallas, skip }: { mahallas: ZoneCollection | undefined; skip: boolean }) {
   const map = useMap();
   const done = useRef(false);
   useEffect(() => {
+    // Opened straight on an employee: the route's own framing must not be undone.
+    if (skip) done.current = true;
     if (done.current || !mahallas?.features.length) return;
     const b = L.geoJSON(mahallas).getBounds();
     if (b.isValid()) {
       map.fitBounds(b, { padding: [16, 16] });
       done.current = true;
     }
-  }, [mahallas, map]);
+  }, [mahallas, skip, map]);
   return null;
 }
 
@@ -833,10 +864,10 @@ export function MapPage() {
           {trackStart && (
             <CircleMarker
               center={[trackStart.latitude, trackStart.longitude]}
-              radius={5}
-              pathOptions={{ color: '#fff', weight: 2, fillColor: '#6366f1', fillOpacity: 1 }}
+              radius={7}
+              pathOptions={{ color: '#fff', weight: 2, fillColor: '#059669', fillOpacity: 1 }}
             >
-              <Tooltip direction="top">Boshlanish</Tooltip>
+              <Tooltip direction="top">Boshlanish · {clockTime(trackStart.recordedAt)}</Tooltip>
             </CircleMarker>
           )}
 
@@ -849,8 +880,14 @@ export function MapPage() {
             t={t}
           />
 
-          <FitHome mahallas={mahallaQ.data} />
+          <FitHome mahallas={mahallaQ.data} skip={!!selectedId} />
           <FlyTo pos={selectedPos} flyKey={selectedId} />
+          {/* After FlyTo: once the route is here it wins over the single point. */}
+          <FitTrack
+            points={track?.points ?? NO_POINTS}
+            fitKey={selectedId && track?.employee.id === selectedId ? `${selectedId}:${trackWindow}` : null}
+            skip={follow}
+          />
           <Follow pos={selectedPos} on={follow} onStop={() => setFollow(false)} />
           <FlyToTarget target={flyTarget} />
         </MapContainer>

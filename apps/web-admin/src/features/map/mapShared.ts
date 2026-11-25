@@ -452,6 +452,11 @@ type TrackFix = {
   battery?: number | null;
 };
 
+/** Two fixes a split second apart can "move" fast within GPS noise — that is not a jump. */
+const MIN_JUMP_M = 100;
+const isJump = (metres: number, ms: number) =>
+  ms > 0 && metres > MIN_JUMP_M && metres / (ms / 1000) > MAX_SPEED_MPS;
+
 const accurate = (p: TrackFix) => p.accuracy == null || p.accuracy <= MAX_DRAW_ACCURACY_M;
 const atMs = (p: TrackFix) => new Date(p.recordedAt).getTime();
 /** Inside the employee's territory at this fix (the office does not count; old backends: district). */
@@ -480,7 +485,7 @@ export function trackSegments(points: TrackFix[]): {
         if (run.length) runs.push(run);
         gaps.push([prevPos, pos]);
         run = [];
-      } else if (dt > 0 && haversineM(prevPos, pos) / (dt / 1000) > MAX_SPEED_MPS) {
+      } else if (isJump(haversineM(prevPos, pos), dt)) {
         continue; // jump — keep `prev`, drop this fix
       }
     }
@@ -520,7 +525,7 @@ export function summarizeTrack(points: TrackFix[]): TrackSummary {
         if (fixInZone(prev)) inZoneMs += dt;
         if (accurate(p) && accurate(prev)) {
           const d = haversineM([prev.latitude, prev.longitude], [p.latitude, p.longitude]);
-          if (d / (dt / 1000) <= MAX_SPEED_MPS) distanceM += d;
+          if (!isJump(d, dt)) distanceM += d;
         }
       }
     }
