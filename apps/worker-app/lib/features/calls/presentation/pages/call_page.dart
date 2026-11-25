@@ -38,8 +38,7 @@ class CallPage extends StatelessWidget {
         builder: (context, state) {
           return PopScope(
             canPop:
-                state.phase == CallPhase.ended ||
-                state.phase == CallPhase.idle,
+                state.phase == CallPhase.ended || state.phase == CallPhase.idle,
             onPopInvokedWithResult: (didPop, _) {
               if (didPop) return;
               _leave(context, state);
@@ -198,36 +197,40 @@ class _RingingView extends StatelessWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
-        child: Column(
-          children: [
-            const Spacer(),
-            AppAvatar(
-              name: peer?.name ?? '',
-              photoUrl: peer?.avatar,
-              color: AppColors.primary,
-              size: 128,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              peer?.name ?? '',
-              style: AppTextStyles.h1.copyWith(color: AppColors.surface),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '${_mediaLabel(state.media)} • $label',
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.surface.withValues(alpha: 0.6),
+        // Kenglik cheklanmasa ustun chapga yopishib qolardi.
+        child: SizedBox(
+          width: double.infinity,
+          child: Column(
+            children: [
+              const Spacer(),
+              AppAvatar(
+                name: peer?.name ?? '',
+                photoUrl: peer?.avatar,
+                color: AppColors.primary,
+                size: 128,
               ),
-            ),
-            const Spacer(),
-            _CallActionButton(
-              icon: IconsaxPlusBold.call_slash,
-              color: AppColors.danger,
-              label: 'Bekor qilish',
-              onTap: onCancel,
-            ),
-          ],
+              const SizedBox(height: 24),
+              Text(
+                peer?.name ?? '',
+                style: AppTextStyles.h1.copyWith(color: AppColors.surface),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${_mediaLabel(state.media)} • $label',
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.surface.withValues(alpha: 0.6),
+                ),
+              ),
+              const Spacer(),
+              _CallActionButton(
+                icon: IconsaxPlusBold.call_slash,
+                color: AppColors.danger,
+                label: 'Bekor qilish',
+                onTap: onCancel,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -465,7 +468,8 @@ class _RoundControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = background ??
+    final bg =
+        background ??
         (active
             ? AppColors.surface
             : AppColors.surface.withValues(alpha: 0.16));

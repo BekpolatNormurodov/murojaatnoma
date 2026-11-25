@@ -2,16 +2,16 @@ import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 
 /// Biriktirilgan hudud va chegaralarni yangilab turadi. So'rov muvaffaqiyatsiz
 /// bo'lsa avvalgi hudud SAQLANADI — vaqtinchalik server xatosi
-/// "mahalla biriktirilmagan" (butun tuman ish hududi) bo'lib ko'rinmasin.
+/// "hudud biriktirilmagan" bo'lib ko'rinmasin.
 class ZoneRefresher {
   ZoneRefresher({
     required Future<MyZone?> Function() loadZone,
-    required Future<ZoneBoundaries> Function(Set<String> codes) loadBoundaries,
+    required Future<ZoneBoundaries> Function(Set<String>? codes) loadBoundaries,
   }) : _loadZone = loadZone,
        _loadBoundaries = loadBoundaries;
 
   final Future<MyZone?> Function() _loadZone;
-  final Future<ZoneBoundaries> Function(Set<String> codes) _loadBoundaries;
+  final Future<ZoneBoundaries> Function(Set<String>? codes) _loadBoundaries;
 
   ZoneBoundaries boundaries = ZoneBoundaries.empty;
 
@@ -41,7 +41,7 @@ class ZoneRefresher {
         known.containsAll(codes)) {
       return false;
     }
-    final next = await _loadBoundaries(codes ?? const {});
+    final next = await _loadBoundaries(codes);
     final lostMahallas =
         boundaries.mahallas.isNotEmpty && next.mahallas.isEmpty;
     if (!firstLoad && (next.polygons.isEmpty || lostMahallas)) return false;

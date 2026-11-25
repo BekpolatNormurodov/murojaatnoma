@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 
 import '../../support/fake_http.dart';
@@ -41,7 +42,32 @@ void main() {
       http.dio(),
     ).load(assignedCodes: {'1090095'});
 
-    expect(result.workZoneIsAssigned, isTrue);
+    expect(result.unassigned, isFalse);
     expect(result.workZone.map((m) => m.code), ['1090095']);
   });
+
+  test(
+    'no assigned mahalla is no territory, never the whole district',
+    () async {
+      final http = FakeHttp(
+        (options) => json(
+          options.queryParameters['kind'] == 'mahalla'
+              ? _collection([('1090106', 69.30)])
+              : _collection([('1726269', 69.30)]),
+        ),
+      );
+      final loader = ZoneBoundaryLoader(http.dio());
+      const insideDistrict = LatLng(41.003, 69.308);
+
+      final none = await loader.load(assignedCodes: const {});
+      expect(none.unassigned, isTrue);
+      expect(none.workZone, isEmpty);
+      expect(insideWorkZone(insideDistrict, none), isFalse);
+
+      // An unknown assignment (offline) is not reported as "none assigned".
+      final unknown = await loader.load();
+      expect(unknown.unassigned, isFalse);
+      expect(unknown.workZone, isEmpty);
+    },
+  );
 }

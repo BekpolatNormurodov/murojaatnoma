@@ -230,6 +230,9 @@ class FaceCubit extends Cubit<FaceState> {
   var _bindAttempts = 0;
   static const _maxBindAttempts = 5;
 
+  /// [startCamera] davom etayotgan paytda `true`.
+  var _starting = false;
+
   /// `onFrame` ichida bitta `detect()` faol bo'lganda `true` — kadrlarni
   /// ketma-ket qayta ishlash uchun (ML Kit `processImage`ni parallel
   /// chaqirib bo'lmaydi — qarang: `onFrame` izohi).
@@ -285,6 +288,18 @@ class FaceCubit extends Cubit<FaceState> {
   /// boshlaydi. Har bir bosqich xatosi mos `FaceState`ga aylantiriladi —
   /// hech qachon uncaught qolmaydi.
   Future<void> startCamera() async {
+    // Ruxsat dialogi `inactive` -> `resumed` beradi: birinchi ishga tushirish
+    // tugamasdan ikkinchisini boshlamaymiz (ikki kontroller, ikki so'rov).
+    if (_starting || isClosed) return;
+    _starting = true;
+    try {
+      await _startCameraOnce();
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _startCameraOnce() async {
     _finished = false;
     _busy = false;
     _stableSince = null;
@@ -306,6 +321,8 @@ class FaceCubit extends Cubit<FaceState> {
       );
       return;
     }
+
+    if (isClosed) return;
 
     try {
       final cameras = await availableCameras();
@@ -360,6 +377,11 @@ class FaceCubit extends Cubit<FaceState> {
       // Ekran DOIM portret — jonli, beqaror `deviceOrientation`ga
       // tayanmaslik uchun aylanishni qattiq portretga mahkamlaymiz.
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      // Sahifa shu orada yopilgan — kamerani egasiz qoldirmaymiz.
+      if (isClosed || _finished) {
+        await controller.dispose();
+        return;
+      }
       _controller = controller;
       emit(const FaceSearching());
       _streaming = true;
@@ -417,7 +439,20 @@ class FaceCubit extends Cubit<FaceState> {
   /// yo'qolgan bo'lsa (masalan uzoq fon rejimidan keyin OS uni tozalagan
   /// bo'lsa), to'liq qayta ishga tushiradi.
   Future<void> resumeCamera() async {
-    if (_finished) return;
+    if (_finished || _starting || isClosed) return;
+    if (state is FacePermissionDenied) {
+      // Rad etilgandan keyin dialogni qayta ochmaymiz (ruxsat oynasining
+      // o'zi `resumed` beradi — cheksiz tsikl bo'lardi). Faqat holatni
+      // tekshiramiz: foydalanuvchi sozlamalarda yoqqan bo'lishi mumkin.
+      final PermissionStatus status;
+      try {
+        status = await Permission.camera.status;
+      } on Object {
+        return;
+      }
+      if (status.isGranted && !isClosed) await startCamera();
+      return;
+    }
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) {
       await startCamera();
@@ -907,11 +942,8 @@ class FaceCubit extends Cubit<FaceState> {
       );
       await matchEither.fold<Future<void>>(
         (failure) async => emit(FaceError(failure.message)),
-        (match) => _afterMatch(
-          match,
-          probe: probe,
-          screenshotPath: screenshotPath,
-        ),
+        (match) =>
+            _afterMatch(match, probe: probe, screenshotPath: screenshotPath),
       );
     } on Object catch (e) {
       emit(FaceError(unexpectedError(e)));

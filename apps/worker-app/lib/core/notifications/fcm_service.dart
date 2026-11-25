@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 
@@ -44,7 +45,12 @@ class FcmService {
   /// mavjud bo'lsa) tokenni backendga yuboradi. `throw` qilmaydi.
   Future<void> init() async {
     try {
-      await _messaging.requestPermission();
+      // Android'da ruxsatni [NotificationService] so'raydi — bu yerda ham
+      // so'ralsa, rad etgan xodimga oyna darhol IKKINCHI marta chiqardi
+      // (ikkinchi rad — doimiy taqiq).
+      if (defaultTargetPlatform != TargetPlatform.android) {
+        await _messaging.requestPermission();
+      }
       // iOS'da ilova ochiqligida ham banner/sound chiqishi uchun.
       await _messaging.setForegroundNotificationPresentationOptions(
         alert: true,

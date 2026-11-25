@@ -91,6 +91,9 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
   /// holatini qayta tekshirishga arziydi.
   bool _wasBackgrounded = false;
 
+  /// [_initCamera] davom etayotgan paytda `true`.
+  bool _initializing = false;
+
   /// `_initCamera` orqali topilgan barcha kameralar — old/orqa almashtirish
   /// (flip) tugmasi shu ro'yxat asosida ishlaydi. 1 tadan kam bo'lsa
   /// tugma butunlay yashiriladi (masalan emulyator yoki bitta kamerali
@@ -168,17 +171,39 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
       if (_wasLiveBeforeBackground) {
         _wasLiveBeforeBackground = false;
         unawaited(_initCamera());
+      } else if (_camPhase == _CamPhase.permissionDenied) {
+        // Ruxsat oynasining o'zi ham `resumed` beradi — qayta SO'RAMAYMIZ
+        // (cheksiz tsikl bo'lardi), faqat holatni tekshiramiz.
+        unawaited(_initCameraIfGranted());
       } else if (_camPhase != _CamPhase.live) {
-        // Fonga o'tishdan oldin kamera hali jonlanmagan edi — masalan
-        // ruxsat rad etilgan (foydalanuvchi Sozlamalar'ga o'tib qaytgan
-        // bo'lishi mumkin), xatolik yuz bergan yoki `initialize()` hali
-        // davom etayotgan edi. Har uch holatda ham qayta urinib ko'ramiz.
+        // Fonga o'tishdan oldin kamera hali jonlanmagan edi — xatolik yuz
+        // bergan yoki `initialize()` fonda yakunlangan. Qayta urinamiz.
         unawaited(_initCamera());
       }
     }
   }
 
+  Future<void> _initCameraIfGranted() async {
+    final PermissionStatus status;
+    try {
+      status = await Permission.camera.status;
+    } on Object {
+      return;
+    }
+    if (status.isGranted && mounted) await _initCamera();
+  }
+
   Future<void> _initCamera() async {
+    if (_initializing) return;
+    _initializing = true;
+    try {
+      await _initCameraOnce();
+    } finally {
+      _initializing = false;
+    }
+  }
+
+  Future<void> _initCameraOnce() async {
     setState(() => _camPhase = _CamPhase.initializing);
 
     final Map<Permission, PermissionStatus> statuses;
@@ -219,7 +244,13 @@ class _MeetingCallPageState extends State<_MeetingCallPage>
   }
 
   Future<void> _openController(CameraDescription description) async {
-    final controller = CameraController(description, ResolutionPreset.high);
+    // Ovoz yozilmaydi: `enableAudio: true` mikrofon rad etilganda kamerani
+    // ham ochilmaydigan qilib qo'yardi.
+    final controller = CameraController(
+      description,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
     try {
       await controller.initialize();
     } on Object {

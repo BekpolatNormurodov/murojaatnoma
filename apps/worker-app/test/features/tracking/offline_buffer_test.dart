@@ -30,7 +30,7 @@ Future<List<String>> _outbox() async =>
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('an offline walk is thinned to one point a minute', () async {
+  test('an offline walk keeps a point every 15 seconds', () async {
     final positions = StreamController<Position>();
     final service = LocationTrackingService(
       FakeHttp(offline).dio(),
@@ -41,27 +41,59 @@ void main() {
     );
     await service.start();
     final start = DateTime.utc(2026, 11, 25, 5);
-    // Ten minutes of walking, a fix every 10 seconds.
-    for (var i = 0; i < 60; i++) {
-      positions.add(_at(start.add(Duration(seconds: 10 * i))));
+    // Ten minutes of walking, a fix every 5 seconds.
+    for (var i = 0; i < 120; i++) {
+      positions.add(_at(start.add(Duration(seconds: 5 * i))));
       await pumpEventQueue(times: 20);
     }
     final buffered = await _outbox();
-    expect(buffered, hasLength(10));
+    expect(buffered, hasLength(40));
     expect(
       (jsonDecode(buffered.last) as Map)['recordedAt'],
-      '2026-11-25T05:09:00.000Z',
+      '2026-11-25T05:09:45.000Z',
     );
     await service.stop();
     await positions.close();
   });
 
-  test('the buffer holds more than a working day', () {
-    expect(
-      LocationTrackingService.offlineSpacing *
-          LocationTrackingService.maxBuffer,
-      greaterThan(const Duration(hours: 24)),
+  test('a full buffer is thinned and keeps the start of the day', () async {
+    final start = DateTime.utc(2026, 11, 25, 3);
+    DateTime at(int i) => start.add(LocationTrackingService.offlineSpacing * i);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(LocationTrackingService.outboxKey, [
+      for (var i = 0; i < LocationTrackingService.maxBuffer; i++)
+        jsonEncode({'recordedAt': at(i).toIso8601String(), '_owner': 'A'}),
+    ]);
+    final positions = StreamController<Position>();
+    final service = LocationTrackingService(
+      FakeHttp(offline).dio(),
+      ownerId: () => 'A',
+      ensurePermission: () async => true,
+      positions: () => positions.stream,
+      currentPosition: () => Completer<Position>().future,
     );
+    await service.start();
+    positions.add(_at(at(LocationTrackingService.maxBuffer)));
+    await pumpEventQueue(times: 50);
+
+    final times = [
+      for (final raw in await _outbox())
+        DateTime.parse((jsonDecode(raw) as Map)['recordedAt'] as String),
+    ];
+    expect(
+      times.length,
+      lessThanOrEqualTo(LocationTrackingService.maxBuffer * 9 ~/ 10),
+    );
+    expect(times.first, start);
+    expect(times.last, at(LocationTrackingService.maxBuffer));
+    for (var i = 1; i < times.length; i++) {
+      expect(
+        times[i].difference(times[i - 1]),
+        lessThanOrEqualTo(const Duration(seconds: 30)),
+      );
+    }
+    await service.stop();
+    await positions.close();
   });
 
   test(

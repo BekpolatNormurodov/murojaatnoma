@@ -51,9 +51,13 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final phone = session?.phone ?? '';
     final radius = w?.officeRadiusM;
     final pending = _failed ? '—' : '…';
-    final territoryKnown =
-        getIt.isRegistered<TerritoryService>() &&
-        getIt<TerritoryService>().territory.value != null;
+    final territory = getIt.isRegistered<TerritoryService>()
+        ? getIt<TerritoryService>().territory.value
+        : null;
+    final territoryKnown = territory != null;
+    // Mahalla yo'q — "keldi-ketdi" faqat ofisdan.
+    final officeOnly =
+        territory?.unassigned ?? (w != null && w.zonesCount == 0);
     final hours = w != null && w.workStartTime.isNotEmpty
         ? WorkHours.of(w).label
         : null;
@@ -136,12 +140,24 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                             '${w.zonesCount} ta mahalla',
                             '${w.zonesCount} махалли',
                           )
-                        : _t(context, 'Butun tuman', 'Весь район'),
+                        : _t(
+                            context,
+                            'Hudud biriktirilmagan',
+                            'Территория не назначена',
+                          ),
                   ),
                 _Row(
                   AppIcons.building,
                   _t(context, 'Keldi-ketdi', 'Отметка'),
-                  radius == null
+                  officeOnly
+                      ? (radius == null
+                            ? _t(context, 'Faqat ofisdan', 'Только из офиса')
+                            : _t(
+                                context,
+                                'Ofisdan $radius m ichida',
+                                'В пределах $radius м от офиса',
+                              ))
+                      : radius == null
                       ? _t(
                           context,
                           'Ofis yoki mahallangizdan',

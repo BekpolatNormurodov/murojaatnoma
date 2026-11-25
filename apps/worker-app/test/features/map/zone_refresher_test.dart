@@ -4,13 +4,13 @@ import 'package:latlong2/latlong.dart';
 import 'package:worker_app/features/map/data/zone_boundary_loader.dart';
 import 'package:worker_app/features/map/data/zone_refresher.dart';
 
-ZoneBoundaries _boundaries(Set<String> codes) => ZoneBoundaries(
+ZoneBoundaries _boundaries(Set<String>? codes) => ZoneBoundaries(
   polygons: [
     Polygon(points: const [LatLng(0, 0), LatLng(0, 1), LatLng(1, 1)]),
   ],
   mahallas: const [MahallaArea(name: 'M', code: '1', parts: [])],
   workZone: const [],
-  workZoneIsAssigned: codes.isNotEmpty,
+  unassigned: codes != null && codes.isEmpty,
   bounds: null,
 );
 
@@ -20,7 +20,7 @@ void main() {
       assignedMahallaCodes: ['1'],
       insideAssignedZone: false,
     );
-    final loaded = <Set<String>>[];
+    final loaded = <Set<String>?>[];
     final refresher = ZoneRefresher(
       loadZone: () async => answer,
       loadBoundaries: (codes) async {
@@ -48,7 +48,7 @@ void main() {
     answer = MyZone.empty;
     expect(await refresher.refresh(), isTrue);
     expect(refresher.assignedCodes, isEmpty);
-    expect(refresher.boundaries.workZoneIsAssigned, isFalse);
+    expect(refresher.boundaries.unassigned, isTrue);
   });
 
   test('a failed geojson load does not erase drawn boundaries', () async {

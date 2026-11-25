@@ -77,9 +77,9 @@ class _TerritoryCardState extends State<TerritoryCard> {
             ],
           ),
           const SizedBox(height: 10),
-          if (territory.wholeDistrict)
+          if (territory.unassigned)
             Text(
-              ru ? 'Весь район' : 'Butun tuman',
+              ru ? 'Территория не назначена' : 'Hudud biriktirilmagan',
               style: AppTextStyles.body.copyWith(color: ink),
             )
           else

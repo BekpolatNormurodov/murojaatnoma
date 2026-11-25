@@ -15,12 +15,12 @@ class AssignedMahalla extends Equatable {
   List<Object?> get props => [code, name];
 }
 
-/// Xodimning ish hududi. Bo'sh ro'yxat — butun tuman.
+/// Xodimning ish hududi. Bo'sh ro'yxat — hudud biriktirilmagan.
 class Territory extends Equatable {
   const Territory(this.mahallas);
 
   /// `GET /locations/me` yoki `territory:changed` yuki. Hudud maydonlari
-  /// umuman bo'lmasa `null` (noma'lum — "butun tuman" EMAS).
+  /// umuman bo'lmasa `null` (noma'lum — "biriktirilmagan" EMAS).
   static Territory? tryParse(Object? json) {
     if (json is! Map) return null;
     final named = json['assignedMahallas'];
@@ -45,7 +45,7 @@ class Territory extends Equatable {
 
   final List<AssignedMahalla> mahallas;
 
-  bool get wholeDistrict => mahallas.isEmpty;
+  bool get unassigned => mahallas.isEmpty;
 
   Set<String> get codes => {for (final m in mahallas) m.code};
 

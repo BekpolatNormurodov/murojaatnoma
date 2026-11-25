@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:worker_app/core/permissions/permission_queue.dart';
 
 /// Xodim joylashuvini serverga UZLUKSIZ yuboradi (`POST /locations`) va
 /// internet yo'q paytda hisobotlarni qurilmada saqlab turadi (outbox), aloqa
@@ -45,14 +46,17 @@ class LocationTrackingService {
   static const int _batchSize = 100;
   static const int _distanceFilterMeters = 15;
 
-  /// Oflayn buferda nuqtalar orasidagi eng kichik oraliq. 15 m filtr bilan
-  /// piyoda har ~11 soniyada nuqta keladi — siyraklashtirmasak 3 soatlik
-  /// oflayn yurishning boshi yo'qolardi. Server 15 daqiqagacha tanaffusni
-  /// uzluksiz deb hisoblaydi, shuning uchun 1 daqiqa vaqt hisobini buzmaydi.
-  static const Duration offlineSpacing = Duration(seconds: 60);
+  /// Oflayn buferda nuqtalar orasidagi eng kichik oraliq — mahallaga kirish
+  /// va chiqish vaqti shu aniqlikda saqlanadi.
+  static const Duration offlineSpacing = Duration(seconds: 15);
 
-  /// Daqiqada bitta nuqta bilan ~33 soat — butun ish kunidan ko'p.
+  /// 15 soniyada bitta nuqta bilan ~8 soat uzluksiz yurish. To'lsa boshi
+  /// o'chirilmaydi — butun bufer siyraklashtiriladi (qarang: [_compact]).
   static const int maxBuffer = 2000;
+
+  /// Siyraklashtirishning eng katta oralig'i. Server 15 daqiqagacha tanaffusni
+  /// uzluksiz deb hisoblaydi — undan ancha kichik.
+  static const Duration _maxThinning = Duration(minutes: 8);
   static const Duration _flushInterval = Duration(seconds: 30);
 
   /// Oqim faqat 15 m yurganda nuqta beradi — joyida o'tirgan xodim umuman
@@ -108,9 +112,12 @@ class LocationTrackingService {
     final generation = _generation;
     var granted = false;
     try {
-      granted = await (prompt
-          ? (_permissionOverride ?? _requestPermission)()
-          : (_hasPermissionOverride ?? _checkPermission)());
+      // Javobsiz qolgan so'rov [_starting]ni abadiy band qilib qo'ymasin.
+      granted =
+          await (prompt
+                  ? (_permissionOverride ?? _requestPermission)()
+                  : (_hasPermissionOverride ?? _checkPermission)())
+              .timeout(permissionRequestTimeout);
     } on Object catch (error) {
       // Masalan boshqa ruxsat dialogi ochiq (PermissionRequestInProgress).
       _lastError = error;
@@ -221,6 +228,7 @@ class LocationTrackingService {
           foregroundNotificationConfig: const ForegroundNotificationConfig(
             notificationTitle: 'Joylashuv kuzatuvi',
             notificationText: 'Ish vaqtida joylashuvingiz yuborilmoqda',
+            notificationIcon: AndroidResource(name: 'ic_stat_notify'),
             enableWakeLock: true,
             setOngoing: true,
           ),
@@ -290,7 +298,7 @@ class LocationTrackingService {
     if (!await Geolocator.isLocationServiceEnabled()) return false;
     var permission = await Geolocator.checkPermission();
     if (request && permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+      permission = await queuedPermissionRequest(Geolocator.requestPermission);
     }
     return permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse;
@@ -330,11 +338,53 @@ class LocationTrackingService {
     final buffer = prefs.getStringList(outboxKey) ?? <String>[];
     if (_tooClose(buffer, report, owner)) return;
     buffer.add(jsonEncode({...report, if (owner != null) _ownerField: owner}));
-    while (buffer.length > maxBuffer) {
-      buffer.removeAt(0);
-    }
-    await prefs.setStringList(outboxKey, buffer);
+    await prefs.setStringList(outboxKey, _compact(buffer));
   });
+
+  /// Bufer to'lsa oraliqni ikki baravar oshirib siyraklashtiradi (10% bo'sh
+  /// joy qolguncha) — uzoq oflayn kunning boshi ham, oxiri ham saqlanadi.
+  /// Shundan keyin ham sig'masa (bir necha kunlik oflayn) eng eskisi ketadi.
+  static List<String> _compact(List<String> buffer) {
+    if (buffer.length <= maxBuffer) return buffer;
+    const target = maxBuffer - maxBuffer ~/ 10;
+    var kept = buffer;
+    for (
+      var spacing = offlineSpacing * 2;
+      kept.length > target && spacing <= _maxThinning;
+      spacing *= 2
+    ) {
+      kept = _thin(kept, spacing);
+    }
+    return kept.length > maxBuffer
+        ? kept.sublist(kept.length - maxBuffer)
+        : kept;
+  }
+
+  /// Har egasining ketma-ket nuqtalari orasida kamida [spacing] qoldiradi;
+  /// buzilgan yozuvlar tashlanadi, eng oxirgi nuqta doim qoladi.
+  static List<String> _thin(List<String> buffer, Duration spacing) {
+    final kept = <String>[];
+    Object? owner;
+    DateTime? keptAt;
+    for (var i = 0; i < buffer.length; i++) {
+      final map = _decode(buffer[i]);
+      if (map == null) continue;
+      final at = DateTime.tryParse('${map['recordedAt']}');
+      final previous = keptAt;
+      final redundant =
+          i < buffer.length - 1 &&
+          at != null &&
+          previous != null &&
+          map[_ownerField] == owner &&
+          !at.difference(previous).isNegative &&
+          at.difference(previous) < spacing;
+      if (redundant) continue;
+      kept.add(buffer[i]);
+      owner = map[_ownerField];
+      keptAt = at;
+    }
+    return kept;
+  }
 
   /// Shu egasining oxirgi buferlangan nuqtasidan [offlineSpacing] o'tmaganmi.
   static bool _tooClose(

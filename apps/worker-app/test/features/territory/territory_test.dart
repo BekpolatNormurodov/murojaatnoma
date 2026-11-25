@@ -28,10 +28,10 @@ void main() {
       {'7'},
     );
     expect(
-      Territory.tryParse({'assignedMahallas': <Object>[]})!.wholeDistrict,
+      Territory.tryParse({'assignedMahallas': <Object>[]})!.unassigned,
       isTrue,
     );
-    // Unknown is NOT the whole district.
+    // Unknown is NOT "nothing assigned".
     expect(Territory.tryParse(<String, Object>{}), isNull);
   });
 
@@ -155,6 +155,7 @@ void main() {
 
     service.territory.value = const Territory([]);
     await tester.pump();
-    expect(find.text('Butun tuman'), findsOneWidget);
+    expect(find.text('Hudud biriktirilmagan'), findsOneWidget);
+    expect(find.text('Butun tuman'), findsNothing);
   });
 }

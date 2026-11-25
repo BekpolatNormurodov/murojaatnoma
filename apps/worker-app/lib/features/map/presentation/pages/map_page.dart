@@ -132,8 +132,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   /// [_maybeUpdateMahalla]) — har build'da EMAS.
   MahallaArea? _currentMahalla;
 
-  /// Xodim HOZIR ish hududi (biriktirilgan mahallalar, aks holda tuman)
-  /// ichidami — lokal jonli GPS ray-casting natijasi (`_boundaries.workZone`
+  /// Xodim HOZIR ish hududi (biriktirilgan mahallalar) ichidami — lokal jonli GPS ray-casting natijasi (`_boundaries.workZone`
   /// bo'yicha). `null` — hali hisoblanmagan; bunday holatda `/locations/me`
   /// dan kelgan server qiymati (`insideAssignedZone`) zaxira sifatida
   /// ishlatiladi (banner/marker shu bo'yicha yashil/qizil bo'ladi). Ilgarigi
@@ -190,7 +189,8 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     setState(() {
       _boundaries = _zones.boundaries;
       // Jonli GPS hisobi kelguncha banner server qiymati bilan boshlanadi.
-      _insideZone = _zones.serverInside;
+      // Hudud biriktirilmagan — "ichida/tashqarida" degan savol yo'q.
+      _insideZone = _boundaries.unassigned ? null : _zones.serverInside;
     });
     // Xarita ochilishida BUTUN Mirzo Ulug'bek tumani ko'rinsin (bir marta).
     _fitToDistrictIfReady();
@@ -316,12 +316,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     }
     _lastMahallaFix = point;
     final match = mahallaAt(point, _boundaries.mahallas);
-    // Ish hududi ichidami — biriktirilgan mahallalar (aks holda tuman) bo'yicha
-    // lokal ray-casting. Ilgarigi ofis DOIRASIGA (insideGeofence) bog'liq emas.
+    // Ish hududi ichidami — biriktirilgan mahallalar bo'yicha lokal
+    // ray-casting. Ilgarigi ofis DOIRASIGA (insideGeofence) bog'liq emas.
     // workZone bo'sh bo'lsa (offline geojson) server qiymatini saqlab qolamiz.
     // Server bilan bir xil qoida (chegara tolerantligi) — aks holda
     // chegarada turgan xodim ilovada "tashqarida", admin'da "ichida" bo'lardi.
-    final inside = _boundaries.workZone.isEmpty
+    final inside = _boundaries.unassigned
+        ? null
+        : _boundaries.workZone.isEmpty
         ? _insideZone
         : insideWorkZone(point, _boundaries, accuracyMeters: _lastAccuracy);
     if (!identical(match, _currentMahalla) || inside != _insideZone) {
@@ -437,6 +439,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             insideZone: _insideZone,
             hours: _hours,
             atOffice: _atOffice(state),
+            unassigned: _boundaries.unassigned,
             onRecenter: () => _onRecenterPressed(cubit),
             onMapReady: _onMapReady,
             onSaveOffline: _boundaries.bounds == null ? null : _saveOffline,
@@ -504,11 +507,15 @@ class _TrackingScaffold extends StatelessWidget {
     required this.onMapReady,
     required this.hours,
     required this.atOffice,
+    required this.unassigned,
     this.onSaveOffline,
   });
 
   final WorkHours hours;
   final bool atOffice;
+
+  /// Mahalla biriktirilmagan — ish hududi yo'q.
+  final bool unassigned;
 
   /// `FlutterMap` birinchi marta chizilib, `MapController` tayyor bo'lganda.
   final VoidCallback onMapReady;
@@ -527,7 +534,7 @@ class _TrackingScaffold extends StatelessWidget {
   /// Mahalla chegaralari yuklanganmi ([currentMahalla] ma'noli).
   final bool mahallasKnown;
 
-  /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — marker
+  /// Xodim ish hududi (biriktirilgan mahallalar) ichidami — marker
   /// rangi va pastdagi banner shu bo'yicha. `null` — hali aniqlanmagan.
   final bool? insideZone;
 
@@ -623,8 +630,10 @@ class _TrackingScaffold extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const _WorkZoneLegendChip(),
-                      const SizedBox(height: 8),
+                      if (!unassigned) ...[
+                        const _WorkZoneLegendChip(),
+                        const SizedBox(height: 8),
+                      ],
                       _MahallaChip(
                         mahalla: currentMahalla,
                         // Chegaralar hali yuklanmagan (oflayn birinchi
@@ -682,6 +691,7 @@ class _TrackingScaffold extends StatelessWidget {
                     insideZone: insideZone,
                     hours: hours,
                     atOffice: atOffice,
+                    unassigned: unassigned,
                   ),
                 ),
               ),
@@ -952,6 +962,7 @@ class _MahallaChip extends StatelessWidget {
   required bool? insideZone,
   required WorkHours hours,
   required bool atOffice,
+  bool unassigned = false,
 }) {
   if (!hours.contains(DateTime.now())) {
     return (
@@ -959,6 +970,20 @@ class _MahallaChip extends StatelessWidget {
       icon: AppIcons.clock,
       message: l10n.mapOffWorkHoursMessage,
     );
+  }
+  if (unassigned) {
+    final ru = l10n.localeName == 'ru';
+    return atOffice
+        ? (
+            color: AppColors.info,
+            icon: AppIcons.building,
+            message: ru ? 'Вы в офисе' : 'Ofisdasiz',
+          )
+        : (
+            color: AppColors.inkMuted,
+            icon: AppIcons.map,
+            message: ru ? 'Территория не назначена' : 'Hudud biriktirilmagan',
+          );
   }
   if (insideZone == null) {
     return (
@@ -1001,12 +1026,16 @@ class _WorkZoneInfoCard extends StatefulWidget {
     required this.insideZone,
     required this.hours,
     required this.atOffice,
+    required this.unassigned,
   });
 
   final WorkHours hours;
   final bool atOffice;
 
-  /// Xodim ish hududi (biriktirilgan mahallalar / tuman) ichidami — banner
+  /// Mahalla biriktirilmagan.
+  final bool unassigned;
+
+  /// Xodim ish hududi (biriktirilgan mahallalar) ichidami — banner
   /// rangi/matni shu bo'yicha. `null` — hali aniqlanmagan ("aniqlanmoqda").
   final bool? insideZone;
 
@@ -1028,6 +1057,7 @@ class _WorkZoneInfoCardState extends State<_WorkZoneInfoCard> {
       insideZone: widget.insideZone,
       hours: widget.hours,
       atOffice: widget.atOffice,
+      unassigned: widget.unassigned,
     );
     final ru = l10n.localeName == 'ru';
     final territory = getIt.isRegistered<TerritoryService>()
@@ -1096,7 +1126,7 @@ class _WorkZoneInfoCardState extends State<_WorkZoneInfoCard> {
                     '${widget.hours.label}',
                     style: AppTextStyles.caption.copyWith(color: ink),
                   ),
-                  if (territory != null && !territory.wholeDistrict) ...[
+                  if (territory != null && !territory.unassigned) ...[
                     const SizedBox(height: 4),
                     Text(
                       '${ru ? 'Мои махалли' : 'Mahallalarim'}: '

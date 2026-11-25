@@ -142,16 +142,24 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         routerConfig: GoRouter(
           routes: [
-            GoRoute(
-              path: '/',
-              builder: (_, _) => MultiBlocProvider(
-                providers: [
-                  BlocProvider<AuthCubit>.value(value: auth),
-                  BlocProvider<AttendanceCubit>.value(value: cubit),
-                  BlocProvider<NotificationsCubit>.value(value: notifications),
-                ],
-                child: HomePage(now: () => now),
-              ),
+            // Haqiqiy ilovadagidek: bosh sahifa tab (shell) navigatorida.
+            ShellRoute(
+              builder: (_, _, child) => child,
+              routes: [
+                GoRoute(
+                  path: '/',
+                  builder: (_, _) => MultiBlocProvider(
+                    providers: [
+                      BlocProvider<AuthCubit>.value(value: auth),
+                      BlocProvider<AttendanceCubit>.value(value: cubit),
+                      BlocProvider<NotificationsCubit>.value(
+                        value: notifications,
+                      ),
+                    ],
+                    child: HomePage(now: () => now),
+                  ),
+                ),
+              ],
             ),
             GoRoute(
               path: '/face/checkout',
@@ -193,6 +201,30 @@ void main() {
         accuracy: any(named: 'accuracy'),
       ),
     );
+    await finish(tester);
+  });
+
+  testWidgets('confirming check-out records it and keeps the home page', (
+    tester,
+  ) async {
+    answer(() => _me(_day(checkIn: '09:00')));
+    await pumpHome(tester);
+    await tapCheckOut(tester);
+    await tester.tap(find.text('Ha, chiqaman'));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('Ishdan chiqasizmi?'), findsNothing);
+    expect(find.byType(HomePage), findsOneWidget);
+    verify(
+      () => repo.checkOut(
+        latitude: any(named: 'latitude'),
+        longitude: any(named: 'longitude'),
+        accuracy: any(named: 'accuracy'),
+      ),
+    ).called(1);
     await finish(tester);
   });
 

@@ -812,6 +812,8 @@ void main() {
       await e.tap(button('Ishdan chiqish'));
       await e.tap(button('Ha, chiqaman'));
       await e.gone(button('Ishdan chiqish'), seconds: 40);
+      // The home page itself must survive the confirmation dialog.
+      await e.see(find.byKey(const Key('daily_report_card')).hitTestable());
       final today =
           (await apiOk('GET', '/attendance/today', token: admin)) as Map;
       final row = (today['roster'] as List)

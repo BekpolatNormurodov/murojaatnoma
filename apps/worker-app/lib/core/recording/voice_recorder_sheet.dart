@@ -46,7 +46,8 @@ class _VoiceRecorderBody extends StatefulWidget {
   State<_VoiceRecorderBody> createState() => _VoiceRecorderBodyState();
 }
 
-class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
+class _VoiceRecorderBodyState extends State<_VoiceRecorderBody>
+    with WidgetsBindingObserver {
   static const _maxBars = 32;
 
   late final AudioRecorder _recorder =
@@ -68,7 +69,36 @@ class _VoiceRecorderBodyState extends State<_VoiceRecorderBody> {
   int? _lastSizeBytes;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _phase == _Phase.permissionDenied) {
+      unawaited(_recheckPermission());
+    }
+  }
+
+  /// Sozlamalarda ruxsat berib qaytilgan bo'lsa — yozishga tayyor holatga
+  /// o'tamiz. Faqat tekshiradi, ruxsat SO'RAMAYDI.
+  Future<void> _recheckPermission() async {
+    final PermissionStatus status;
+    try {
+      status = await Permission.microphone.status;
+    } on Object {
+      return;
+    }
+    if (status.isGranted && mounted && _phase == _Phase.permissionDenied) {
+      setState(() => _phase = _Phase.idle);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_amplitudeSub?.cancel());
     // Varaq yozib olish davomida yopilsa (orqaga surish/tashqariga bosish)
     // — hali tugallanmagan sessiyani bekor qilib, yarim-faylni o'chiramiz.

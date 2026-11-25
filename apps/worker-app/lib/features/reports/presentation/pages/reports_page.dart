@@ -313,11 +313,15 @@ class _ZoneSummary extends StatelessWidget {
     var inside = 0;
     var outside = 0;
     var office = 0;
+    var unassigned = 0;
     for (final d in days) {
       inside += d.zoneMinutes;
       outside += d.outsideMinutes;
       office += d.officeMinutes;
+      unassigned += d.unassignedMinutes;
     }
+    // Hudud umuman bo'lmagan bo'lsa "Hududda/Tashqarida 0" ko'rsatilmaydi.
+    final onlyUnassigned = unassigned > 0 && inside == 0 && outside == 0;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -336,7 +340,9 @@ class _ZoneSummary extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Hududda: ${formatMinutes(inside)}',
+            onlyUnassigned
+                ? 'Hudud biriktirilmagan: ${formatMinutes(unassigned)}'
+                : 'Hududda: ${formatMinutes(inside)}',
             style: AppTextStyles.h3.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 2),
@@ -347,12 +353,20 @@ class _ZoneSummary extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.9),
               ),
             ),
-          Text(
-            'Tashqarida: ${formatMinutes(outside)}',
-            style: AppTextStyles.body.copyWith(
-              color: Colors.white.withValues(alpha: 0.9),
+          if (!onlyUnassigned)
+            Text(
+              'Tashqarida: ${formatMinutes(outside)}',
+              style: AppTextStyles.body.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
             ),
-          ),
+          if (!onlyUnassigned && unassigned > 0)
+            Text(
+              'Hudud biriktirilmagan: ${formatMinutes(unassigned)}',
+              style: AppTextStyles.body.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            ),
           const SizedBox(height: 8),
           Text(
             '$gapMinutes daqiqadan uzun GPS uzilishlari hisobga olinmaydi.',

@@ -22,6 +22,7 @@ import 'package:worker_app/features/face/data/services/face_photo_store.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
 import 'package:worker_app/features/territory/territory_card.dart';
 import 'package:worker_app/features/territory/territory_service.dart';
+import 'package:worker_app/features/tracking/battery_exemption_card.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
 import 'package:worker_app/injection.dart';
 
@@ -191,7 +192,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         '${now.hour.toString().padLeft(2, '0')}:'
         '${now.minute.toString().padLeft(2, '0')}';
     return AppDialog.confirm(
-      context: context,
+      // ROOT navigator konteksti: `AppDialog.confirm` tugmalari berilgan
+      // kontekstning navigatorini `pop` qiladi. Bosh sahifa tab ichida —
+      // sahifa kontekstida dialog emas, SAHIFA yopilardi (qora ekran,
+      // ketish qayd etilmasdi).
+      context: Navigator.of(context, rootNavigator: true).context,
       icon: AppIcons.logout,
       title: 'Ishdan chiqasizmi?',
       message:
@@ -363,6 +368,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               _GreetingHeader(session: session),
               const SizedBox(height: 24),
               const TrackingWarning(),
+              const BatteryExemptionCard(),
               TodayStatusCard(today: today),
               const SizedBox(height: 16),
               if (today?.checkIn == null)

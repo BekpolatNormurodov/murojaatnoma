@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:worker_app/core/permissions/permission_queue.dart';
 
 /// Odatiy (umumiy) bildirishnoma kanali IDsi.
 const String kDefaultChannelId = 'hokimiyat_default';
@@ -51,7 +52,9 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
     try {
-      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidInit = AndroidInitializationSettings(
+        '@drawable/ic_stat_notify',
+      );
       const darwinInit = DarwinInitializationSettings();
       const settings = InitializationSettings(
         android: androidInit,
@@ -81,7 +84,13 @@ class NotificationService {
           importance: Importance.max,
         ),
       );
-      await androidImpl?.requestNotificationsPermission();
+      try {
+        await queuedPermissionRequest(
+          () async => androidImpl?.requestNotificationsPermission(),
+        );
+      } on Object {
+        // So'rov yuborilmasa ham xizmat ishlayveradi.
+      }
 
       final iosImpl = _plugin
           .resolvePlatformSpecificImplementation<
@@ -243,7 +252,9 @@ Future<void> showIncomingCallNotificationBackground({
 }) async {
   try {
     final plugin = FlutterLocalNotificationsPlugin();
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings(
+      '@drawable/ic_stat_notify',
+    );
     const settings = InitializationSettings(android: androidInit);
     await plugin.initialize(settings);
     await plugin
@@ -283,7 +294,9 @@ Future<void> showIncomingCallNotificationBackground({
 Future<void> cancelIncomingCallNotificationBackground() async {
   try {
     final plugin = FlutterLocalNotificationsPlugin();
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings(
+      '@drawable/ic_stat_notify',
+    );
     const settings = InitializationSettings(android: androidInit);
     await plugin.initialize(settings);
     await plugin.cancel(kCallNotificationId);

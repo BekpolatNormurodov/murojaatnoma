@@ -12,6 +12,11 @@ class ZoneDayCard extends StatelessWidget {
 
   final ZoneDay day;
 
+  bool get _onlyUnassigned =>
+      day.unassignedMinutes > 0 &&
+      day.zoneMinutes == 0 &&
+      day.outsideMinutes == 0;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -47,38 +52,55 @@ class ZoneDayCard extends StatelessWidget {
               style: AppTextStyles.caption.copyWith(color: muted),
             )
           else ...[
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: _Metric(
-                      label: 'Hududda',
-                      value: formatMinutes(day.zoneMinutes),
-                      color: AppColors.success,
+            // Butun kun hududsiz o'tgan bo'lsa "Hududda 0 / Tashqarida 0"
+            // chalg'itadi — ular ko'rsatilmaydi.
+            if (!_onlyUnassigned) ...[
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _Metric(
+                        label: 'Hududda',
+                        value: formatMinutes(day.zoneMinutes),
+                        color: AppColors.success,
+                      ),
                     ),
-                  ),
-                  if (day.officeMinutes > 0) ...[
+                    if (day.officeMinutes > 0) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _Metric(
+                          label: 'Ofisda',
+                          value: formatMinutes(day.officeMinutes),
+                          color: AppColors.info,
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 8),
                     Expanded(
                       child: _Metric(
-                        label: 'Ofisda',
-                        value: formatMinutes(day.officeMinutes),
-                        color: AppColors.info,
+                        label: 'Tashqarida',
+                        value: formatMinutes(day.outsideMinutes),
+                        color: AppColors.warning,
                       ),
                     ),
                   ],
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _Metric(
-                      label: 'Tashqarida',
-                      value: formatMinutes(day.outsideMinutes),
-                      color: AppColors.warning,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ] else if (day.officeMinutes > 0)
+              _Metric(
+                label: 'Ofisda',
+                value: formatMinutes(day.officeMinutes),
+                color: AppColors.info,
+              ),
+            if (day.unassignedMinutes > 0) ...[
+              const SizedBox(height: 8),
+              _Metric(
+                label: 'Hudud biriktirilmagan',
+                value: formatMinutes(day.unassignedMinutes),
+                color: AppColors.inkMuted,
+              ),
+            ],
             if (day.byMahalla.isNotEmpty) ...[
               const SizedBox(height: 10),
               // Wrap — 360 px'da ham toshmaydi; ko'pi bilan 8 ta.
@@ -112,7 +134,9 @@ class _MahallaChip extends StatelessWidget {
         ? AppColors.success
         : item.office
         ? AppColors.info
-        : AppColors.danger;
+        : item.assigned
+        ? AppColors.danger
+        : AppColors.inkMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -191,15 +215,19 @@ class _StretchRow extends StatelessWidget {
         ? AppColors.success
         : stretch.office
         ? AppColors.info
-        : AppColors.warning;
+        : stretch.assigned
+        ? AppColors.warning
+        : AppColors.inkMuted;
     final parts = <String>[
       '${formatClock(stretch.from)} – ${formatClock(stretch.to)}',
       if (stretch.inside)
         'Hududda'
       else if (stretch.office)
         'Ofisda'
+      else if (stretch.assigned)
+        'Tashqarida'
       else
-        'Tashqarida',
+        'Hudud biriktirilmagan',
       if (stretch.mahallaName != null) stretch.mahallaName!,
     ];
     return Padding(

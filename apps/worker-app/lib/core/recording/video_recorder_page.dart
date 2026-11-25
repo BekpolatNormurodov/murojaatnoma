@@ -44,6 +44,7 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
   CameraController? _controller;
   List<CameraDescription> _cameras = const [];
   int _cameraIndex = 0;
+  bool _withAudio = false;
   bool _switching = false;
   bool _wasLiveBeforeBackground = false;
 
@@ -102,7 +103,9 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
       }
       _releaseCamera();
     } else if (state == AppLifecycleState.resumed) {
-      if (_wasLiveBeforeBackground) {
+      if (_phase == _Phase.permissionDenied) {
+        unawaited(_initCameraIfGranted());
+      } else if (_wasLiveBeforeBackground) {
         _wasLiveBeforeBackground = false;
         unawaited(_initCamera());
       }
@@ -128,6 +131,20 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
     }
   }
 
+  /// Sozlamalarda ruxsat berib qaytilgan bo'lsa — kamerani ochamiz. Faqat
+  /// tekshiradi: rad etilgan holatda qayta SO'RASH cheksiz tsikl bo'lardi.
+  Future<void> _initCameraIfGranted() async {
+    final PermissionStatus status;
+    try {
+      status = await Permission.camera.status;
+    } on Object {
+      return;
+    }
+    if (status.isGranted && mounted && _phase == _Phase.permissionDenied) {
+      await _initCamera();
+    }
+  }
+
   Future<void> _initCamera() async {
     setState(() => _phase = _Phase.initializing);
 
@@ -150,7 +167,8 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
       return;
     }
     // Mikrofon rad etilsa ham video yozib bo'lish davom etadi — faqat
-    // ovozsiz (kamera pluginining o'zi buni ichkarida boshqaradi).
+    // ovozsiz. Ovoz yoqiq kontroller ruxsatsiz umuman ochilmaydi.
+    _withAudio = statuses[Permission.microphone]?.isGranted ?? false;
 
     try {
       final cameras = await availableCameras();
@@ -176,6 +194,7 @@ class _VideoRecorderPageState extends State<_VideoRecorderPage>
     final controller = CameraController(
       description,
       ResolutionPreset.medium,
+      enableAudio: _withAudio,
       videoBitrate: kVideoBitrate,
       audioBitrate: kAudioBitrate,
     );

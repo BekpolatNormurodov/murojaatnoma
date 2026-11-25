@@ -35,8 +35,9 @@ class ZoneBoundaryLoader {
   // tuman chegarasi va joriy mahalla urg'usi ustidan ustunlik qiladi.
   static const double _mahallaBorderWidth = 0.8;
   // Muted slate token (app_ui) + ~55% alpha (avvalgi 0x8C bilan bir xil).
-  static final Color _mahallaBorderColor =
-      AppColors.inkMuted.withValues(alpha: 0.55);
+  static final Color _mahallaBorderColor = AppColors.inkMuted.withValues(
+    alpha: 0.55,
+  );
 
   // Biriktirilgan mahallalar ("Ish hududi") — brend yashil to'ldirish +
   // aniq chegara. Bu xodimning HAQIQIY ish hududi (ilgarigi 2 km ofis
@@ -46,14 +47,14 @@ class ZoneBoundaryLoader {
   static const double _workZoneFillAlpha = 0.16;
 
   /// [assignedCodes] — xodim biriktirilgan mahalla kodlari
-  /// (`properties.code`). Bo'sh bo'lsa (biriktirilmagan / offline) faqat tuman
-  /// chegarasi ish hududi bo'lib qoladi (fallback).
+  /// (`properties.code`). Bo'sh — biriktirilmagan, ya'ni ish hududi YO'Q
+  /// (butun tuman EMAS); `null` — hali noma'lum (offline / so'rov xatosi).
   // GeoJSON is static for the whole session — fetched once per loader, so a
   // zone re-assignment only re-filters/re-colours, never re-downloads.
   List<_ZoneFeature>? _mahallaCache;
   List<_ZoneFeature>? _districtCache;
 
-  Future<ZoneBoundaries> load({Set<String> assignedCodes = const {}}) async {
+  Future<ZoneBoundaries> load({Set<String>? assignedCodes}) async {
     final mahallaFeatures = _mahallaCache ??= await _load('mahalla');
     final districtFeatures = _districtCache ??= await _load('district');
     // Don't cache an empty (failed/offline) fetch — retry next time.
@@ -62,7 +63,7 @@ class ZoneBoundaryLoader {
 
     // Biriktirilgan mahalla feature'lari (kodi bo'yicha) — "Ish hududi"
     // sifatida yashil chiziladi va lokal "ichidami" hisobiga ishlatiladi.
-    final assignedFeatures = assignedCodes.isEmpty
+    final assignedFeatures = assignedCodes == null || assignedCodes.isEmpty
         ? const <_ZoneFeature>[]
         : <_ZoneFeature>[
             for (final f in mahallaFeatures)
@@ -105,28 +106,23 @@ class ZoneBoundaryLoader {
     // (bounding box). Tuman feature'idan (Mirzo Ulug'bek to'liq) hisoblanadi;
     // tuman bo'lmasa (offline) mahallalar bo'yicha zaxira. Bo'sh bo'lsa null —
     // u holda kamera boshlang'ich markazda qoladi.
-    final boundsSource =
-        districtFeatures.isNotEmpty ? districtFeatures : mahallaFeatures;
+    final boundsSource = districtFeatures.isNotEmpty
+        ? districtFeatures
+        : mahallaFeatures;
     final bounds = _boundsOf(boundsSource);
 
-    // Ish hududi hisobi uchun hududlar: biriktirilgan mahallalar bo'lsa —
-    // o'shalar; aks holda (biriktirilmagan) — tuman (fallback). Lokal
-    // ray-casting orqali "xodim ish hududi ichidami" tekshiriladi.
-    final workZone = assignedFeatures.isNotEmpty
-        ? <MahallaArea>[
-            for (final f in assignedFeatures)
-              MahallaArea(name: f.name, code: f.code, parts: f.parts),
-          ]
-        : <MahallaArea>[
-            for (final f in districtFeatures)
-              MahallaArea(name: f.name, code: f.code, parts: f.parts),
-          ];
+    // Ish hududi hisobi — FAQAT biriktirilgan mahallalar (lokal ray-casting).
+    // Tuman hech qachon ish hududi o'rnini bosmaydi.
+    final workZone = <MahallaArea>[
+      for (final f in assignedFeatures)
+        MahallaArea(name: f.name, code: f.code, parts: f.parts),
+    ];
 
     return ZoneBoundaries(
       polygons: polygons,
       mahallas: mahallas,
       workZone: workZone,
-      workZoneIsAssigned: assignedFeatures.isNotEmpty,
+      unassigned: assignedCodes != null && assignedCodes.isEmpty,
       bounds: bounds,
     );
   }
@@ -273,14 +269,13 @@ class ZoneBoundaries {
     required this.polygons,
     required this.mahallas,
     this.workZone = const [],
-    this.workZoneIsAssigned = false,
+    this.unassigned = false,
     this.bounds,
   });
 
-  /// [workZone] — biriktirilgan mahallalarmi (true) yoki tuman fallback'i
-  /// (false). GPS chegarasi tolerantligi faqat biriktirilgan mahallalarga
-  /// qo'llanadi (server bilan bir xil qoida).
-  final bool workZoneIsAssigned;
+  /// Xodimga mahalla biriktirilmagani ANIQ — u hududda ham, hududdan
+  /// tashqarida ham emas. Noma'lum holatda `false`.
+  final bool unassigned;
 
   /// Xaritada chiziladigan tuman + mahalla poligonlari (tartibda).
   final List<Polygon> polygons;
@@ -289,9 +284,9 @@ class ZoneBoundaries {
   /// halqalar) — joriy mahalla chipi uchun.
   final List<MahallaArea> mahallas;
 
-  /// "Ish hududi" hududlari — biriktirilgan mahallalar (bo'lsa), aks holda
-  /// tuman (fallback). Lokal "xodim ish hududi ichidami" hisobiga ishlatiladi
-  /// (banner/marker shu bo'yicha yashil/qizil bo'ladi).
+  /// "Ish hududi" hududlari — biriktirilgan mahallalar. Bo'sh — biriktirilmagan
+  /// yoki chegaralar yuklanmagan. Lokal "xodim ish hududi ichidami" hisobiga
+  /// ishlatiladi (banner/marker shu bo'yicha yashil/qizil bo'ladi).
   final List<MahallaArea> workZone;
 
   /// Butun tuman (Mirzo Ulug'bek) chegara qutisi — xarita ochilishida kamera
@@ -299,13 +294,15 @@ class ZoneBoundaries {
   /// `null` bo'lsa (offline/URL yo'q) kamera boshlang'ich markazda qoladi.
   final LatLngBounds? bounds;
 
-  static const ZoneBoundaries empty =
-      ZoneBoundaries(polygons: [], mahallas: []);
+  static const ZoneBoundaries empty = ZoneBoundaries(
+    polygons: [],
+    mahallas: [],
+  );
 }
 
 /// `/locations/me` javobining ish-hududiga oid qismi — xodim biriktirilgan
 /// mahalla kodlari + (server hisoblagan) ish hududi ichida/tashqarisida
-/// holati. Bo'sh kodlar = butun tuman (biriktirilmagan).
+/// holati. Bo'sh kodlar = biriktirilmagan (ish hududi yo'q).
 class MyZone {
   const MyZone({
     required this.assignedMahallaCodes,
@@ -313,7 +310,7 @@ class MyZone {
   });
 
   /// Biriktirilgan mahalla kodlari (`properties.code` bilan mos). Bo'sh bo'lsa —
-  /// biriktirilmagan (butun tuman ish hududi).
+  /// biriktirilmagan (ish hududi yo'q).
   final List<String> assignedMahallaCodes;
 
   /// Server tomonidan hisoblangan "ish hududi ichidami" (oxirgi yuborilgan
@@ -321,8 +318,10 @@ class MyZone {
   /// (`ZoneBoundaries.workZone`) mavjud bo'lguncha boshlang'ich/zaxira qiymat.
   final bool? insideAssignedZone;
 
-  static const MyZone empty =
-      MyZone(assignedMahallaCodes: [], insideAssignedZone: null);
+  static const MyZone empty = MyZone(
+    assignedMahallaCodes: [],
+    insideAssignedZone: null,
+  );
 }
 
 /// Bitta mahalla hududi — ko'rsatiladigan [name] + bir yoki bir nechta poligon
@@ -330,11 +329,7 @@ class MyZone {
 /// ([contains]) tekshiruvi lokal ray-casting orqali bajariladi — hech qanday
 /// tarmoq murojaati yo'q.
 class MahallaArea {
-  const MahallaArea({
-    required this.name,
-    required this.parts,
-    this.code = '',
-  });
+  const MahallaArea({required this.name, required this.parts, this.code = ''});
 
   final String name;
 
@@ -409,8 +404,8 @@ bool _rayCastInside(LatLng point, List<LatLng> ring) {
     final yi = ring[i].latitude;
     final xj = ring[j].longitude;
     final yj = ring[j].latitude;
-    final intersects = (yi > y) != (yj > y) &&
-        x < (xj - xi) * (y - yi) / (yj - yi) + xi;
+    final intersects =
+        (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi;
     if (intersects) inside = !inside;
   }
   return inside;
@@ -454,9 +449,8 @@ double _distanceToRingMeters(LatLng p, List<LatLng> ring) {
   return best;
 }
 
-/// Server bilan BIR XIL ish hududi qoidasi: qat'iy "ichida" YOKI (faqat
-/// biriktirilgan mahallalar uchun) chegaradan `35 m + min(aniqlik, 75 m)`
-/// ichida — GPS titrashi chegarada turgan xodimni "tashqarida" qilmasin
+/// Server bilan BIR XIL ish hududi qoidasi: biriktirilgan mahalla qat'iy
+/// ichida YOKI chegarasidan `35 m + min(aniqlik, 75 m)` ichida — GPS titrashi chegarada turgan xodimni "tashqarida" qilmasin
 /// (qarang: backend `locations.service.ts`, ZONE_TOLERANCE_*).
 bool insideWorkZone(
   LatLng point,
@@ -464,7 +458,6 @@ bool insideWorkZone(
   double accuracyMeters = 0,
 }) {
   if (mahallaAt(point, boundaries.workZone) != null) return true;
-  if (!boundaries.workZoneIsAssigned) return false;
   final tolerance = 35 + math.min(math.max(accuracyMeters, 0), 75);
   for (final area in boundaries.workZone) {
     if (area.distanceToEdgeMeters(point) <= tolerance) return true;
