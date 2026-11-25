@@ -143,10 +143,10 @@ export function periodDelta(current: number, previous: number): number | undefin
   return Math.round(((current - previous) / previous) * 1000) / 10;
 }
 
-/** 125.5 soat -> "5.2 kun"; 14 -> "14 soat"; 0.5 -> "30 daq". */
+/** 125.5 soat -> "5.2 kun"; 14 -> "14 soat"; 0.5 -> "30 daqiqa". */
 export function formatDuration(hours: number | null): string {
   if (hours == null) return '—';
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} daq`;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} daqiqa`;
   if (hours < 48) return `${Math.round(hours * 10) / 10} soat`;
   return `${Math.round((hours / 24) * 10) / 10} kun`;
 }

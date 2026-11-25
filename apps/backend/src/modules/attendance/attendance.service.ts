@@ -107,6 +107,8 @@ export interface TodayCheckIn {
   insideGeofence: boolean;
   /** Face match score of the accepted scan (0..1). */
   faceScore: number;
+  /** false — no face was scored (scan accepted on location alone). */
+  faceChecked: boolean;
   /** Metres from the office point when the scan was made. */
   distanceM: number;
   /** Face frame of the accepted scan (null for older scans / upload failed). */
@@ -117,6 +119,7 @@ export interface TodayCheckOut {
   time: Date;
   insideGeofence: boolean;
   faceScore: number;
+  faceChecked: boolean;
   distanceM: number;
   photoUrl: string | null;
 }
@@ -127,6 +130,7 @@ export interface TodayFailedScan {
   time: Date;
   reason: string | null;
   faceScore: number;
+  faceChecked: boolean;
   distanceM: number;
   /** Who actually stood in front of the camera on the rejected scan. */
   photoUrl: string | null;
@@ -136,7 +140,9 @@ export interface TodayFailedScan {
 export interface TodayLiveLocation {
   at: Date;
   mahallaName: string | null;
+  /** Inside the assigned territory (the office does not count). */
   insideZone: boolean;
+  insideOffice: boolean;
   stale: boolean;
 }
 
@@ -256,6 +262,7 @@ export interface MeWeekCheckIn {
   time: Date;
   isLate: boolean;
   lateMinutes: number;
+  faceChecked: boolean;
   photoUrl: string | null;
 }
 
@@ -599,6 +606,7 @@ export class AttendanceService {
           time: record.recordedAt,
           reason: record.reason,
           faceScore: record.faceScore,
+          faceChecked: record.faceScore > 0,
           distanceM: Math.round(
             distanceInMeters(record.latitude, record.longitude, wp.officeLat, wp.officeLng),
           ),
@@ -611,6 +619,7 @@ export class AttendanceService {
               at: employee.lastLocationAt,
               mahallaName: employee.lastMahallaName ?? null,
               insideZone: employee.lastInsideAssignedZone,
+              insideOffice: employee.lastInsideOffice,
               stale: employee.lastLocationAt.getTime() < staleBefore,
             }
           : null;
@@ -727,6 +736,7 @@ export class AttendanceService {
               time: checkIn.time,
               isLate: checkIn.isLate,
               lateMinutes: checkIn.lateMinutes,
+              faceChecked: checkIn.faceChecked,
               photoUrl: checkIn.photoUrl,
             }
           : null,
@@ -952,6 +962,7 @@ export class AttendanceService {
               time: checkIn.time,
               isLate: checkIn.isLate,
               lateMinutes: checkIn.lateMinutes,
+              faceChecked: checkIn.faceChecked,
               photoUrl: checkIn.photoUrl,
             }
           : null,
@@ -991,6 +1002,7 @@ export class AttendanceService {
           lateMinutes: checkInRecord.lateMinutes,
           insideGeofence: atWork(checkInRecord, checkInDistance),
           faceScore: checkInRecord.faceScore,
+          faceChecked: checkInRecord.faceScore > 0,
           distanceM: checkInDistance,
           photoUrl: checkInRecord.photoUrl ?? null,
         }
@@ -1002,6 +1014,7 @@ export class AttendanceService {
           time: checkOutRecord.recordedAt,
           insideGeofence: atWork(checkOutRecord, checkOutDistance),
           faceScore: checkOutRecord.faceScore,
+          faceChecked: checkOutRecord.faceScore > 0,
           distanceM: checkOutDistance,
           photoUrl: checkOutRecord.photoUrl ?? null,
         }

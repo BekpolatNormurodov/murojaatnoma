@@ -42,7 +42,9 @@ export interface OversightRow {
   };
   location: {
     hasLocation: boolean;
+    /** Territory only — the office does not count; see `insideOffice`. */
     insideAssignedZone: boolean;
+    insideOffice: boolean;
     mahallaName: string | null;
     isStale: boolean;
   };
@@ -115,7 +117,13 @@ export interface EmployeeProfile {
   office: { lat: number; lng: number; radiusM: number } | null;
   assignedMahallas: { code: string; name: string }[];
   face: { enrolled: boolean; templates: number; lastAt: Date | null };
-  live: { at: Date; mahallaName: string | null; insideZone: boolean; stale: boolean } | null;
+  live: {
+    at: Date;
+    mahallaName: string | null;
+    insideZone: boolean;
+    insideOffice: boolean;
+    stale: boolean;
+  } | null;
   month: {
     year: number;
     month: number;
@@ -258,6 +266,7 @@ export class OversightService {
         location: {
           hasLocation: loc?.hasLocation ?? false,
           insideAssignedZone: loc?.insideAssignedZone ?? true,
+          insideOffice: loc?.insideOffice ?? false,
           mahallaName: loc?.mahallaName ?? null,
           isStale: loc?.isStale ?? true,
         },
@@ -273,7 +282,13 @@ export class OversightService {
       faceEnrolled: rows.filter((r) => r.hasFace).length,
       presentNow: rows.filter((r) => r.attendance.status === 'present').length,
       lateNow: rows.filter((r) => r.attendance.status === 'late').length,
-      outsideZone: rows.filter((r) => r.location.hasLocation && !r.location.insideAssignedZone).length,
+      // Someone at the office is not "outside" even though it is not their territory.
+      outsideZone: rows.filter(
+        (r) =>
+          r.location.hasLocation &&
+          !r.location.insideAssignedZone &&
+          !r.location.insideOffice,
+      ).length,
       salaryTotalNet: roster.totalNet,
     };
 
@@ -331,19 +346,24 @@ export class OversightService {
 
   /** Edit an existing employee (name/position/photo/password/salary/territory). */
   async updateEmployee(id: string, dto: UpsertEmployeeDto): Promise<{ id: string; fullName: string }> {
-    const existing = await this.prisma.employee.findUnique({ where: { id }, select: { id: true } });
+    const existing = await this.prisma.employee.findUnique({
+      where: { id },
+      select: { id: true, assignedMahallaCodes: true },
+    });
     if (!existing) {
       throw new NotFoundException('Xodim topilmadi');
     }
+    const codes =
+      dto.assignedMahallaCodes === undefined
+        ? undefined
+        : await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes);
     const data: Prisma.EmployeeUncheckedUpdateInput = {
       fullName: dto.fullName,
       position: dto.position,
       ...(dto.phone ? { phone: dto.phone.trim() } : {}),
       ...(dto.username ? { username: dto.username } : {}),
       ...(dto.avatarUrl !== undefined ? { avatarUrl: dto.avatarUrl } : {}),
-      ...(dto.assignedMahallaCodes !== undefined
-        ? { assignedMahallaCodes: await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes) }
-        : {}),
+      ...(codes !== undefined ? { assignedMahallaCodes: codes } : {}),
       ...(dto.department !== undefined ? { departmentId: await this.departmentIdFor(dto.department) } : {}),
       ...(dto.workStartTime ? { workStartTime: dto.workStartTime } : {}),
       ...(dto.workEndTime ? { workEndTime: dto.workEndTime } : {}),
@@ -366,12 +386,15 @@ export class OversightService {
     // Hudud yoki ofis nuqtasi o'zgardi — "Hududda/Tashqarida" va bugungi
     // hudud vaqti yangi qoidalar bilan darhol qayta hisoblanadi.
     if (
-      dto.assignedMahallaCodes !== undefined ||
+      codes !== undefined ||
       dto.officeLat !== undefined ||
       dto.officeLng !== undefined ||
       dto.officeRadiusM !== undefined
     ) {
       await this.locations.reevaluateTerritory(id);
+    }
+    if (codes !== undefined) {
+      await this.locations.territoryChanged(id, existing.assignedMahallaCodes, codes);
     }
     if (dto.salary != null) {
       await this.setSalary(id, dto.salary, dto.salaryYear, dto.salaryMonth);
@@ -577,6 +600,7 @@ export class OversightService {
             at: emp.lastLocationAt,
             mahallaName: emp.lastMahallaName,
             insideZone: emp.lastInsideAssignedZone,
+            insideOffice: emp.lastInsideOffice,
             stale: now.getTime() - emp.lastLocationAt.getTime() > staleMs,
           }
         : null,

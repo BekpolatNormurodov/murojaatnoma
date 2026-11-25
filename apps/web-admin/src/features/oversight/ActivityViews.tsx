@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Clock,
   CloseCircle,
+  DocumentDownload,
   DocumentText1,
   Gallery,
   Location,
@@ -12,11 +13,18 @@ import {
 import { Card } from '@/shared/ui/Card';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Button } from '@/shared/ui/Button';
+import { PhotoLightbox, SmartImage } from '@/shared/ui/SmartImage';
 import { cn } from '@/shared/lib/cn';
+import { sameOriginUploadUrl } from '@/shared/lib/media';
+import { TERRITORY_LABEL, territoryOf, type Territory } from '@/shared/lib/territory';
+import { matchesSearch } from '@/shared/lib/translit';
+import { mergeReportPages } from './reportPages';
+import { dmy, stretchEnd } from './period';
 import {
   clock,
   durationText,
   fileSizeText,
+  localDay,
   mediaLength,
   useDailyReports,
   useZoneTime,
@@ -49,21 +57,63 @@ function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }
 
 /* ═══════════════════════ Hududda bo'lgan vaqt ═══════════════════════ */
 
+const TERRITORY_STYLE: Record<Territory, { badge: string; dot: string; chip: string; hint: string }> = {
+  zone: {
+    badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    dot: 'bg-emerald-500',
+    chip: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300',
+    hint: 'Biriktirilgan hudud',
+  },
+  office: {
+    badge: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
+    dot: 'bg-sky-500',
+    chip: 'border-sky-200 bg-sky-50 text-sky-800 dark:bg-sky-500/10 dark:text-sky-300',
+    hint: 'Ofisda (hududdan tashqarida)',
+  },
+  outside: {
+    badge: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400',
+    dot: 'bg-red-500',
+    chip: 'border-red-200 bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+    hint: 'Hududdan tashqari',
+  },
+};
+
 /**
- * Oxirgi 7 (yoki 14) kun: har kuni hududda / tashqarida necha soat va aniq
- * vaqt oraliqlari ("09:12 – 11:40 · Hududda · Olmazor"). Lokatsiya kelmagan
- * vaqt hech kimga hisoblanmaydi — raqamlar faqat kuzatilgan vaqt.
+ * Oxirgi 8 (bugun + 7) yoki 14 kun: har kuni hududda / ofisda / tashqarida
+ * necha soat va aniq vaqt oraliqlari ("09:12 – 11:40 · Hududda · Olmazor").
+ * Ish vaqtidagi raqamlar 24 soatlikdan alohida. Lokatsiya kelmagan vaqt hech
+ * kimga hisoblanmaydi — raqamlar faqat kuzatilgan vaqt.
  */
 export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: string; assignedCount: number }) {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(8);
   const { data, isLoading, isError, error, refetch, isFetching } = useZoneTime(employeeId, days);
   const list = useMemo(() => data?.days ?? [], [data]);
   const total = useMemo(
-    () => list.reduce((a, d) => ({ zone: a.zone + d.zoneMinutes, active: a.active + d.activeMinutes }), { zone: 0, active: 0 }),
+    () =>
+      list.reduce(
+        (a, d) => ({
+          zone: a.zone + d.zoneMinutes,
+          office: a.office + (d.officeMinutes ?? 0),
+          outside: a.outside + d.outsideMinutes,
+          active: a.active + d.activeMinutes,
+          workZone: a.workZone + (d.workZoneMinutes ?? 0),
+          workActive: a.workActive + (d.workActiveMinutes ?? 0),
+        }),
+        { zone: 0, office: 0, outside: 0, active: 0, workZone: 0, workActive: 0 },
+      ),
     [list],
   );
+  // Eski backend bu maydonlarni bermaydi — "0" deb ko'rsatmaymiz.
+  const hasOffice = list.some((d) => d.officeMinutes != null);
+  const hasWork = list.some((d) => d.workActiveMinutes != null);
+  const schedule =
+    data?.workStartTime && data?.workEndTime ? `${data.workStartTime}–${data.workEndTime}` : null;
+  const shown = (minutes: number) => (isLoading ? '…' : durationText(minutes));
+  // Yangi davr yuklanguncha eski ma'lumot turadi — sarlavha ham o'shaniki bo'lsin.
+  const shownDays = list.length || days;
 
-  if (isError) {
+  // Fon yangilanishi yiqilsa, yuklangan kunlar ekranda qoladi.
+  if (isError && !data) {
     return <ErrorBox message={error instanceof Error ? error.message : "Ma'lumotni yuklab bo'lmadi"} onRetry={() => refetch()} />;
   }
 
@@ -77,12 +127,12 @@ export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: strin
               {isFetching && <RotateRight size={14} className="animate-spin text-ink-muted" />}
             </h3>
             <p className="mt-0.5 text-[12px] text-ink-muted">
-              {assignedCount > 0 ? `${assignedCount} ta biriktirilgan mahalla` : 'Butun tuman hudud hisoblanadi'} · ofisda
-              bo'lish ham hudud · {data?.gapMinutes ?? 15} daqiqadan uzun uzilish hisoblanmaydi
+              {assignedCount > 0 ? `${assignedCount} ta biriktirilgan mahalla` : 'Butun tuman hudud hisoblanadi'} ·{' '}
+              {data?.gapMinutes ?? 15} daqiqadan uzun uzilish hisoblanmaydi
             </p>
           </div>
           <div className="inline-flex rounded-xl border border-line bg-surface-2 p-1" role="tablist" aria-label="Davr">
-            {[7, 14].map((n) => (
+            {[8, 14].map((n) => (
               <button
                 key={n}
                 role="tab"
@@ -98,9 +148,23 @@ export function ZoneTimePanel({ employeeId, assignedCount }: { employeeId: strin
             ))}
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Stat label={`${days} kunda hududda`} value={isLoading ? '…' : durationText(total.zone)} tone="text-emerald-600" />
-          <Stat label="Faol (lokatsiya kelgan)" value={isLoading ? '…' : durationText(total.active)} tone="text-ink" />
+        {hasWork && (
+          <>
+            <p className="mt-4 text-[12px] font-semibold text-ink-soft">
+              {shownDays} kunda ish vaqtida{schedule ? ` (${schedule})` : ''}
+            </p>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <Stat label="Hududda" value={shown(total.workZone)} tone="text-emerald-600" />
+              <Stat label="Faol (lokatsiya kelgan)" value={shown(total.workActive)} tone="text-ink" />
+            </div>
+          </>
+        )}
+        <p className="mt-4 text-[12px] font-semibold text-ink-soft">{shownDays} kunda, kun bo'yi (24 soat)</p>
+        <div className={cn('mt-2 grid grid-cols-2 gap-3', hasOffice ? 'sm:grid-cols-4' : 'sm:grid-cols-3')}>
+          <Stat label="Hududda" value={shown(total.zone)} tone="text-emerald-600" />
+          {hasOffice && <Stat label="Ofisda" value={shown(total.office)} tone="text-sky-600" />}
+          <Stat label="Tashqarida" value={shown(total.outside)} tone="text-red-500" />
+          <Stat label="Faol (lokatsiya kelgan)" value={shown(total.active)} tone="text-ink" />
         </div>
       </Card>
 
@@ -125,14 +189,16 @@ function Stat({ label, value, tone }: { label: string; value: string; tone: stri
   return (
     <div className="rounded-xl bg-surface-2 px-3.5 py-3">
       <div className={cn('text-lg font-bold tabular-nums leading-tight', tone)}>{value}</div>
-      <div className="mt-0.5 truncate text-[12px] text-ink-muted">{label}</div>
+      <div className="mt-0.5 text-[12px] leading-tight text-ink-muted">{label}</div>
     </div>
   );
 }
 
 function ZoneDayCard({ d }: { d: ZoneDay }) {
   const empty = d.activeMinutes === 0;
-  const share = d.activeMinutes > 0 ? Math.round((d.zoneMinutes / d.activeMinutes) * 100) : 0;
+  const percent = (minutes: number) => (d.activeMinutes > 0 ? Math.round((minutes / d.activeMinutes) * 100) : 0);
+  const share = percent(d.zoneMinutes);
+  const officeShare = percent(d.officeMinutes ?? 0);
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3.5 sm:px-5">
@@ -143,11 +209,18 @@ function ZoneDayCard({ d }: { d: ZoneDay }) {
           </div>
         </div>
         {!empty && (
-          <div className="flex shrink-0 items-center gap-3 text-right">
+          // Telefonda alohida qatorda, teng ustunlarda — uzun davomiylik sig'adi.
+          <div className="grid w-full auto-cols-fr grid-flow-col gap-3 sm:flex sm:w-auto sm:shrink-0 sm:items-start sm:text-right">
             <div>
               <div className="text-[15px] font-bold tabular-nums text-emerald-600">{durationText(d.zoneMinutes)}</div>
               <div className="text-[11px] text-ink-muted">hududda</div>
             </div>
+            {(d.officeMinutes ?? 0) > 0 && (
+              <div>
+                <div className="text-[15px] font-semibold tabular-nums text-sky-600">{durationText(d.officeMinutes!)}</div>
+                <div className="text-[11px] text-ink-muted">ofisda</div>
+              </div>
+            )}
             <div>
               <div className="text-[15px] font-semibold tabular-nums text-red-500">{durationText(d.outsideMinutes)}</div>
               <div className="text-[11px] text-ink-muted">tashqarida</div>
@@ -157,53 +230,80 @@ function ZoneDayCard({ d }: { d: ZoneDay }) {
       </div>
 
       {!empty && (
-        <div className="mx-4 mt-3 h-2 overflow-hidden rounded-full bg-red-100 sm:mx-5" title={`${share}% vaqt hududda`}>
-          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${share}%` }} />
+        <div
+          className="mx-4 mt-3 flex h-2 overflow-hidden rounded-full bg-red-100 dark:bg-red-500/25 sm:mx-5"
+          title={`${share}% vaqt hududda${officeShare ? `, ${officeShare}% ofisda` : ''}`}
+        >
+          <div className="h-full bg-emerald-500" style={{ width: `${share}%` }} />
+          <div className="h-full bg-sky-400" style={{ width: `${officeShare}%` }} />
         </div>
+      )}
+
+      {!empty && d.workActiveMinutes != null && (
+        <p className="px-4 pt-2 text-[12px] text-ink-soft sm:px-5">
+          Ish vaqtida: hududda{' '}
+          <span className="font-semibold tabular-nums text-ink">{durationText(d.workZoneMinutes ?? 0)}</span> · faol{' '}
+          <span className="font-semibold tabular-nums text-ink">{durationText(d.workActiveMinutes)}</span>
+          <span className="text-ink-muted"> · yuqoridagi raqamlar kun bo'yi (24 soat)</span>
+        </p>
       )}
 
       {!empty && (d.byMahalla?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1.5 px-4 pt-3 sm:px-5" aria-label="Mahallalar bo'yicha">
-          {d.byMahalla!.slice(0, 8).map((m) => (
-            <span
-              key={`${m.inside ? 1 : 0}-${m.name ?? '-'}`}
-              title={m.inside ? 'Biriktirilgan hudud' : 'Hududdan tashqari'}
-              className={cn(
-                'inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px]',
-                m.inside ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-700',
-              )}
-            >
-              <Location size={12} variant="Bulk" className="shrink-0" />
-              <span className="truncate">{m.name ?? 'Tuman tashqarisi'}</span>
-              <span className="shrink-0 font-semibold tabular-nums">{durationText(m.minutes)}</span>
-            </span>
-          ))}
+          {d.byMahalla!.slice(0, 8).map((m) => {
+            const at = territoryOf(m.inside, m.office);
+            return (
+              <span
+                key={`${at}-${m.name ?? '-'}`}
+                title={TERRITORY_STYLE[at].hint}
+                className={cn(
+                  'inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2 py-1 text-[12px]',
+                  TERRITORY_STYLE[at].chip,
+                )}
+              >
+                <Location size={12} variant="Bulk" className="shrink-0" />
+                <span className="truncate">{m.name ?? (at === 'office' ? 'Ofis' : 'Tuman tashqarisi')}</span>
+                {at === 'office' && m.name && <span className="shrink-0 text-[10.5px] font-semibold uppercase">ofis</span>}
+                <span className="shrink-0 font-semibold tabular-nums">{durationText(m.minutes)}</span>
+              </span>
+            );
+          })}
         </div>
       )}
 
       <div className="px-4 pb-3.5 pt-2 sm:px-5">
         {empty ? (
-          <p className="py-1 text-[12.5px] text-ink-muted">Bu kuni hududda bo'lgani qayd etilmagan.</p>
+          <p className="py-1 text-[12.5px] text-ink-muted">Bu kuni faol vaqt qayd etilmagan.</p>
         ) : (
           <ul className="divide-y divide-line/60">
-            {d.stretches.map((s, i) => (
-              <li key={`${s.from}-${i}`} className="flex items-center gap-3 py-1.5 text-[13px]">
-                <span className="w-[104px] shrink-0 font-medium tabular-nums text-ink">
-                  {clock(s.from)} – {clock(s.to)}
-                </span>
-                <span
-                  className={cn(
-                    'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium',
-                    s.inside ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600',
-                  )}
+            {d.stretches.map((s, i) => {
+              const at = territoryOf(s.inside, s.office);
+              return (
+                <li
+                  key={`${s.from}-${i}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5 text-[13px] sm:flex-nowrap"
                 >
-                  <span className={cn('h-1.5 w-1.5 rounded-full', s.inside ? 'bg-emerald-500' : 'bg-red-500')} />
-                  {s.inside ? 'Hududda' : 'Tashqarida'}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-ink-muted">{s.mahallaName ?? ''}</span>
-                <span className="shrink-0 tabular-nums text-ink-soft">{durationText(s.minutes)}</span>
-              </li>
-            ))}
+                  <span className="w-[104px] shrink-0 whitespace-nowrap font-medium tabular-nums text-ink">
+                    {clock(s.from)} – {stretchEnd(s.from, s.to)}
+                  </span>
+                  <span
+                    className={cn(
+                      'order-3 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] font-medium sm:order-none',
+                      TERRITORY_STYLE[at].badge,
+                    )}
+                  >
+                    <span className={cn('h-1.5 w-1.5 rounded-full', TERRITORY_STYLE[at].dot)} />
+                    {TERRITORY_LABEL[at]}
+                  </span>
+                  <span className="order-4 min-w-0 flex-1 truncate text-ink-muted sm:order-none">{s.mahallaName ?? ''}</span>
+                  <span className="order-2 ml-auto shrink-0 whitespace-nowrap tabular-nums text-ink-soft sm:order-none sm:ml-0">
+                    {durationText(s.minutes)}
+                  </span>
+                  {/* Telefonda qatorni bo'ladi: holat va mahalla pastga tushadi. */}
+                  <span className="order-2 h-0 w-full sm:hidden" aria-hidden />
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -236,20 +336,35 @@ export function ReportList({
   query?: string;
   onOpenEmployee?: (id: string) => void;
 }) {
-  const { data, isLoading, isError, error, refetch } = useDailyReports({ from, to, employeeId });
-  const [zoom, setZoom] = useState<string | null>(null);
+  const { data, isLoading, isError, error, refetch, hasNextPage, fetchNextPage, isFetchingNextPage, isFetchNextPageError } =
+    useDailyReports({ from, to, employeeId });
+  const [zoom, setZoom] = useState<{ photos: string[]; index: number } | null>(null);
 
+  const loaded = useMemo(() => mergeReportPages(data?.pages ?? []), [data]);
   const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const rows = (Array.isArray(data) ? data : []).filter(
-      (r) => !q || (r.employee?.fullName ?? '').toLowerCase().includes(q) || (r.text ?? '').toLowerCase().includes(q),
-    );
+    // Kirill/lotin farqisiz qidiruv.
+    const rows = loaded.filter((r) => matchesSearch(query, r.employee?.fullName, r.text));
     const map = new Map<string, DailyReport[]>();
     for (const r of rows) map.set(r.day, [...(map.get(r.day) ?? []), r]);
     return [...map.entries()];
-  }, [data, query]);
+  }, [loaded, query]);
 
-  if (isError) {
+  const more = hasNextPage && (
+    <div className="flex flex-col items-center gap-2">
+      {isFetchNextPageError && (
+        <p role="alert" className="text-[12.5px] font-medium text-red-600">
+          Keyingi hisobotlarni yuklab bo'lmadi
+        </p>
+      )}
+      <Button variant="secondary" onClick={() => void fetchNextPage()} disabled={isFetchingNextPage}>
+        {isFetchingNextPage && <RotateRight size={16} className="animate-spin" />}
+        {isFetchingNextPage ? 'Yuklanmoqda...' : 'Yana yuklash'}
+      </Button>
+    </div>
+  );
+
+  // Fon yangilanishi yiqilsa, yuklangan hisobotlar ekranda qoladi.
+  if (isError && !data) {
     return <ErrorBox message={error instanceof Error ? error.message : "Hisobotlarni yuklab bo'lmadi"} onRetry={() => refetch()} />;
   }
   if (isLoading) {
@@ -258,6 +373,22 @@ export function ReportList({
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-32 animate-pulse rounded-2xl bg-surface-2" />
         ))}
+      </div>
+    );
+  }
+  if (groups.length === 0 && loaded.length > 0 && query.trim()) {
+    return (
+      <div className="space-y-4">
+        <Card className="flex flex-col items-center gap-2 p-12 text-center">
+          <DocumentText1 size={40} variant="Bulk" className="text-ink-muted" />
+          <p className="font-semibold text-ink">«{query.trim()}» bo'yicha hisobot topilmadi</p>
+          <p className="max-w-sm text-sm text-ink-muted">
+            {hasNextPage
+              ? `Faqat yuklangan ${loaded.length} ta hisobot ichidan qidirildi — davomini yuklab ko'ring.`
+              : "Boshqa ism yoki so'z bilan qidiring yoki davrni o'zgartiring."}
+          </p>
+        </Card>
+        {more}
       </div>
     );
   }
@@ -288,17 +419,14 @@ export function ReportList({
           </div>
         </section>
       ))}
+      {more}
 
-      {zoom && (
-        <button
-          type="button"
-          onClick={() => setZoom(null)}
-          aria-label="Yopish"
-          className="fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4"
-        >
-          <img src={zoom} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
-        </button>
-      )}
+      <PhotoLightbox
+        photos={zoom?.photos ?? []}
+        index={zoom?.index ?? null}
+        onClose={() => setZoom(null)}
+        onIndex={(index) => setZoom((z) => (z ? { ...z, index } : z))}
+      />
     </div>
   );
 }
@@ -311,13 +439,14 @@ function ReportCard({
 }: {
   r: DailyReport;
   showEmployee?: boolean;
-  onZoom: (url: string) => void;
+  onZoom: (zoom: { photos: string[]; index: number }) => void;
   onOpenEmployee?: (id: string) => void;
 }) {
-  const images = r.attachments.filter((a) => a.kind === 'image');
-  const others = r.attachments.filter((a) => a.kind !== 'image');
+  const files = r.attachments.map((a) => ({ ...a, url: sameOriginUploadUrl(a.url, window.location.hostname) }));
+  const images = files.filter((a) => a.kind === 'image');
+  const others = files.filter((a) => a.kind !== 'image');
   const sent = new Date(r.createdAt);
-  const late = r.day !== `${sent.getFullYear()}-${String(sent.getMonth() + 1).padStart(2, '0')}-${String(sent.getDate()).padStart(2, '0')}`;
+  const late = r.day !== localDay(0, sent);
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-start gap-3">
@@ -332,16 +461,18 @@ function ReportCard({
               <button
                 type="button"
                 onClick={() => onOpenEmployee?.(r.employeeId)}
-                className="min-w-0 truncate text-left text-[14px] font-semibold text-ink hover:text-primary-700"
+                className="min-w-0 max-w-full text-left text-[14px] font-semibold text-ink hover:text-primary-700"
               >
-                {r.employee.fullName}
-                <span className="ml-1.5 text-[12px] font-normal text-ink-muted">{r.employee.position}</span>
+                <span className="break-words">{r.employee.fullName}</span>
+                <span className="block text-[12px] font-normal text-ink-muted sm:ml-1.5 sm:inline">{r.employee.position}</span>
               </button>
             ) : (
               <span />
             )}
             <span className="flex shrink-0 items-center gap-1 text-[12px] text-ink-muted">
-              <Clock size={13} /> {clock(r.createdAt)}
+              {/* Kechikib yuborilgan bo'lsa — qaysi kuni ekani ham ko'rinadi. */}
+              <Clock size={13} /> {late ? `${dmy(localDay(0, sent))} ` : ''}
+              {clock(r.createdAt)}
               {late && <span className="ml-1 rounded bg-warning-soft px-1.5 text-[11px] text-amber-700">keyin yuborilgan</span>}
             </span>
           </div>
@@ -350,15 +481,14 @@ function ReportCard({
 
           {images.length > 0 && (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
-              {images.map((a) => (
-                <button
+              {images.map((a, index) => (
+                <SmartImage
                   key={a.url}
-                  type="button"
-                  onClick={() => onZoom(a.url)}
-                  className="aspect-square overflow-hidden rounded-xl border border-line bg-surface-2"
-                >
-                  <img src={a.url} alt={a.fileName ?? ''} loading="lazy" className="h-full w-full object-cover" />
-                </button>
+                  src={a.url}
+                  alt={a.fileName ?? 'Hisobot rasmi'}
+                  onClick={() => onZoom({ photos: images.map((i) => i.url), index })}
+                  className="aspect-square rounded-xl border border-line bg-surface-2"
+                />
               ))}
             </div>
           )}
@@ -376,20 +506,74 @@ function ReportCard({
   );
 }
 
+/** Pleyer ostidagi qator: fayl nomi, hajmi, davomiyligi va yuklab olish. */
+function MediaFooter({ a, durationSec }: { a: ReportAttachment; durationSec: number | null }) {
+  const facts = [fileSizeText(a.fileSize), mediaLength(durationSec)].filter(Boolean).join(' · ');
+  return (
+    <div className="flex items-center gap-3 text-[12px]">
+      <span className="min-w-0 flex-1 truncate text-ink-muted">
+        <span className="font-medium text-ink-soft">{a.fileName ?? KIND_META[a.kind].label}</span>
+        {facts && <span className="tabular-nums"> · {facts}</span>}
+      </span>
+      <a
+        href={a.url}
+        download={a.fileName ?? ''}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex shrink-0 items-center gap-1 font-medium text-primary-600 hover:underline"
+      >
+        <DocumentDownload size={14} /> Yuklab olish
+      </a>
+    </div>
+  );
+}
+
+function PlaybackError({ text }: { text: string }) {
+  return (
+    <p role="alert" className="rounded-lg bg-warning-soft px-2.5 py-1.5 text-[12px] text-amber-700">
+      {text}
+    </p>
+  );
+}
+
 function AttachmentRow({ a }: { a: ReportAttachment }) {
   const meta = KIND_META[a.kind];
+  const [broken, setBroken] = useState(false);
+  // Ilova davomiylikni yubormagan bo'lsa — videoning o'zidan.
+  const [measured, setMeasured] = useState<number | null>(null);
   if (a.kind === 'voice') {
     return (
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-        <Microphone2 size={18} variant="Bulk" className="shrink-0 text-primary-600" />
-        <audio controls preload="none" src={a.url} className="h-9 min-w-0 flex-1" />
-        {a.durationSec != null && <span className="text-[12px] tabular-nums text-ink-muted">{mediaLength(a.durationSec)}</span>}
+      <div className="space-y-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Microphone2 size={18} variant="Bulk" className="shrink-0 text-primary-600" />
+          <audio controls preload="none" src={a.url} onError={() => setBroken(true)} className="h-9 min-w-0 flex-1" />
+        </div>
+        {broken && <PlaybackError text="Brauzer bu ovozli xabarni o'ynata olmadi — faylni yuklab oching." />}
+        <MediaFooter a={a} durationSec={a.durationSec} />
       </div>
     );
   }
   if (a.kind === 'video') {
     return (
-      <video controls preload="metadata" src={a.url} className="max-h-80 w-full rounded-xl border border-line bg-black" />
+      <div className="space-y-2">
+        <video
+          controls
+          preload="metadata"
+          src={a.url}
+          onError={() => setBroken(true)}
+          // HEVC: ba'zi brauzerlar faqat ovozni ochadi — tasvir eni 0 bo'lib qoladi.
+          onLoadedMetadata={(e) => {
+            const { videoWidth, duration } = e.currentTarget;
+            setBroken(videoWidth === 0);
+            if (Number.isFinite(duration)) setMeasured(Math.round(duration));
+          }}
+          className="max-h-80 w-full rounded-xl border border-line bg-black"
+        />
+        {broken && (
+          <PlaybackError text="Brauzer bu videoni o'ynata olmadi (masalan, iPhone'dagi HEVC .mov) — faylni yuklab oching." />
+        )}
+        <MediaFooter a={a} durationSec={a.durationSec ?? measured} />
+      </div>
     );
   }
   return (
@@ -408,7 +592,9 @@ function AttachmentRow({ a }: { a: ReportAttachment }) {
           {a.fileSize ? ` · ${fileSizeText(a.fileSize)}` : ''}
         </span>
       </span>
-      <span className="shrink-0 text-[12px] font-medium text-primary-600">Ochish</span>
+      <span className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium text-primary-600">
+        <DocumentDownload size={14} /> Yuklab olish
+      </span>
     </a>
   );
 }

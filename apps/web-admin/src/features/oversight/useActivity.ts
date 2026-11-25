@@ -1,14 +1,19 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
+import { nextReportOffset, REPORT_PAGE_SIZE } from './reportPages';
+
+export { clock, localDay } from './period';
 
 /* ───────────── Hududda yurgan vaqt ───────────── */
 
-/** Bir xil holatdagi uzluksiz oraliq (hududda yoki tashqarida). */
+/** Bir xil holatdagi uzluksiz oraliq (hududda, ofisda yoki tashqarida). */
 export interface ZoneStretch {
   from: string;
   to: string;
   minutes: number;
   inside: boolean;
+  /** Hududda emas, lekin ofisda (eski backend'da yo'q). */
+  office?: boolean;
   mahallaName: string | null;
 }
 
@@ -19,15 +24,22 @@ export interface MahallaTime {
   minutes: number;
   /** Shu vaqt biriktirilgan hudud hisoblanganmi. */
   inside: boolean;
+  /** Hududda emas, lekin ofisda (eski backend'da yo'q). */
+  office?: boolean;
 }
 
 export interface ZoneDay {
   /** "YYYY-MM-DD" */
   date: string;
   zoneMinutes: number;
+  /** Hududdan tashqarida, lekin ofisda (eski backend'da yo'q). */
+  officeMinutes?: number;
   outsideMinutes: number;
-  /** Lokatsiya kelib turgan jami vaqt (hududda + tashqarida). */
+  /** Lokatsiya kelib turgan jami vaqt (hududda + ofisda + tashqarida). */
   activeMinutes: number;
+  /** Faqat ish jadvali oralig'idagi qismi (eski backend'da yo'q). */
+  workZoneMinutes?: number;
+  workActiveMinutes?: number;
   firstAt: string | null;
   lastAt: string | null;
   stretches: ZoneStretch[];
@@ -38,6 +50,8 @@ export interface ZoneDay {
 export interface ZoneTime {
   /** Shuncha daqiqadan uzun sukunat "uzilish" hisoblanadi. */
   gapMinutes: number;
+  workStartTime?: string;
+  workEndTime?: string;
   /** Yangi kun birinchi; so'ralgan har bir kun bor (bo'sh kunlar ham). */
   days: ZoneDay[];
 }
@@ -77,16 +91,23 @@ export interface DailyReport {
   employee?: { fullName: string; position: string; avatarUrl: string | null };
 }
 
-/** GET /daily-reports — davr (va ixtiyoriy bitta xodim) bo'yicha, yangi birinchi. */
+/**
+ * GET /daily-reports — davr (va ixtiyoriy bitta xodim) bo'yicha, yangi birinchi.
+ * Sahifalab yuklanadi (limit/offset); yangi hisobotlar har daqiqada keladi.
+ */
 export function useDailyReports(q: { from: string; to: string; employeeId?: string }, enabled = true) {
   const qs = new URLSearchParams({ from: q.from, to: q.to });
   if (q.employeeId) qs.set('employeeId', q.employeeId);
-  return useQuery({
+  qs.set('limit', String(REPORT_PAGE_SIZE));
+  return useInfiniteQuery({
     queryKey: ['daily-reports', q.from, q.to, q.employeeId ?? 'all'],
-    queryFn: () => api.get<DailyReport[]>(`/daily-reports?${qs}`),
+    queryFn: ({ pageParam }) => api.get<DailyReport[]>(`/daily-reports?${qs}&offset=${pageParam}`),
+    initialPageParam: 0,
+    getNextPageParam: (_last, pages) => nextReportOffset(pages),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -109,6 +130,13 @@ export interface ActivityRow {
   /** Davomat bo'yicha ish vaqti (keldi → ketdi), daqiqa. */
   workMinutes: number;
   daysWorked: number;
+  // Quyidagilar yangi backend'da; eskisida yo'q.
+  officeMinutes?: number;
+  workZoneMinutes?: number;
+  workActiveMinutes?: number;
+  /** Kelgan, lekin "ketdi" belgilanmagan kunlar (bugun hisoblanmaydi). */
+  missingCheckOutDays?: number;
+  archived?: boolean;
 }
 
 export interface Activity {
@@ -119,6 +147,47 @@ export interface Activity {
 
 export const fetchActivity = (from: string, to: string) =>
   api.get<Activity>(`/daily-reports/activity?from=${from}&to=${to}`);
+
+export interface ActivityDailyDay {
+  date: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  workMinutes: number;
+  reportCount: number;
+  zoneMinutes: number;
+  officeMinutes: number;
+  outsideMinutes: number;
+  activeMinutes: number;
+  workZoneMinutes: number;
+  workActiveMinutes: number;
+  firstAt: string | null;
+  lastAt: string | null;
+  stretches: ZoneStretch[];
+}
+
+export interface ActivityDailyRow {
+  employeeId: string;
+  fullName: string;
+  position: string;
+  department: string | null;
+  mahallas: string[];
+  workStartTime: string;
+  workEndTime: string;
+  archived: boolean;
+  /** Eski kun birinchi; davrdagi har bir kun bor. */
+  days: ActivityDailyDay[];
+}
+
+export interface ActivityDaily {
+  from: string;
+  to: string;
+  gapMinutes: number;
+  rows: ActivityDailyRow[];
+}
+
+/** GET /daily-reports/activity/daily — xodim × kun (ko'pi bilan 31 kun). */
+export const fetchActivityDaily = (from: string, to: string) =>
+  api.get<ActivityDaily>(`/daily-reports/activity/daily?from=${from}&to=${to}`);
 
 /** GET /daily-reports/activity — har bir xodim bo'yicha davr yakuni. */
 export function useActivity(from: string, to: string, enabled = true) {
@@ -157,44 +226,15 @@ export function useUpdateAttendanceSettings() {
   });
 }
 
-/* ───────────── Sana / vaqt yordamchilari ───────────── */
+/* ───────────── Vaqt / fayl yordamchilari ───────────── */
 
-/** Mahalliy kun "YYYY-MM-DD" (bugundan `offset` kun). */
-export function localDay(offset = 0, base = new Date()): string {
-  const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/** Tanlangan oyning davri; joriy oy bo'lsa — bugungacha, kelajak oy — bo'sh emas, 1-kun. */
-export function monthRange(year: number, month: number): { from: string; to: string } {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const from = `${year}-${pad(month)}-01`;
-  const last = new Date(year, month, 0).getDate();
-  const end = `${year}-${pad(month)}-${pad(last)}`;
-  const today = localDay();
-  return { from, to: end > today ? (today < from ? from : today) : end };
-}
-
-/** 135 → "2 soat 15 daq"; 0 → "0 daq". */
+/** 135 → "2 soat 15 daqiqa"; 0 → "0 daqiqa". */
 export function durationText(minutes: number): string {
   const m = Math.max(0, Math.round(minutes));
-  if (m < 60) return `${m} daq`;
+  if (m < 60) return `${m} daqiqa`;
   const h = Math.floor(m / 60);
   const rest = m % 60;
-  return rest ? `${h} soat ${rest} daq` : `${h} soat`;
-}
-
-/** Excel uchun: daqiqa → soat, bitta kasr (135 → 2.3). */
-export function hoursOf(minutes: number): number {
-  return Math.round((minutes / 60) * 10) / 10;
-}
-
-/** ISO → "09:12" (mahalliy). */
-export function clock(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return rest ? `${h} soat ${rest} daqiqa` : `${h} soat`;
 }
 
 /** 1536 → "1,5 KB". */

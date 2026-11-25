@@ -24,6 +24,8 @@ export interface TodayCheckIn {
   insideGeofence: boolean;
   /** Face match score of the accepted scan, 0..1. */
   faceScore?: number;
+  /** false — location-only record, the face was not checked (absent on older backends). */
+  faceChecked?: boolean;
   /** Metres from the office point at scan time. */
   distanceM?: number;
   /** Face frame of the scan ("kim keldi" isboti); null on older scans. */
@@ -34,6 +36,7 @@ export interface TodayCheckOut {
   time: string; // ISO datetime
   insideGeofence?: boolean;
   faceScore?: number;
+  faceChecked?: boolean;
   distanceM?: number;
   photoUrl?: string | null;
 }
@@ -44,6 +47,7 @@ export interface TodayFailedScan {
   time: string;
   reason: string | null;
   faceScore: number;
+  faceChecked?: boolean;
   distanceM: number;
   photoUrl?: string | null;
 }
@@ -51,7 +55,10 @@ export interface TodayFailedScan {
 export interface TodayLiveLocation {
   at: string;
   mahallaName: string | null;
+  /** Assigned territory only — the office does not count. */
   insideZone: boolean;
+  /** At the office (absent on older backends). */
+  insideOffice?: boolean;
   stale: boolean;
 }
 

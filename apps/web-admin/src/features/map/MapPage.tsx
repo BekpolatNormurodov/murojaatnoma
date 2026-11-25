@@ -49,6 +49,7 @@ import {
   statusLabel,
   summarizeTrack,
   trackRange,
+  isPastDayWindow,
   trackSegments,
   type FilterKey,
   type Labels,
@@ -356,8 +357,9 @@ export function MapPage() {
       return fetchTrack(selectedId as string, { from, to, limit: 1500 });
     },
     enabled: !!selectedId,
-    // The window always ends "now" — keep the route growing while it's open.
-    refetchInterval: 30_000,
+    // A live window ends "now" — keep the route growing while it's open.
+    // A past day is finished, so there is nothing to poll for.
+    refetchInterval: isPastDayWindow(trackWindow) ? false : 30_000,
   });
   const track = trackQ.data;
 
@@ -422,7 +424,8 @@ export function MapPage() {
     for (const l of locations) {
       const k = statusKey(l);
       if (isOnline(l)) online++;
-      if (k === 'office' || k === 'zone') inZone++;
+      // "Hududida" is the territory only — being at the office alone does not count.
+      if (k === 'zone') inZone++;
       if (isProblem(l)) problems++;
     }
     return { total: locations.length, online, inZone, problems };

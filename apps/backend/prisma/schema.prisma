@@ -173,6 +173,7 @@ model Employee {
   bonusRequests        BonusRequest[]
   salaries             EmployeeSalary[]
   dailyReports         DailyReport[]
+  territoryChanges     TerritoryChange[]
 
   @@map("employees")
 }
@@ -513,7 +514,25 @@ model EmployeeLocation {
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, recordedAt])
+  // Period reports over every employee (daily-reports activity).
+  @@index([recordedAt])
   @@map("employee_locations")
+}
+
+// Territory (assigned mahallas) history: one row per real change. A GPS fix
+// flushed late, taken before the day of a change, is judged by the territory
+// that was in force then.
+model TerritoryChange {
+  id            String   @id @default(uuid())
+  employeeId    String
+  previousCodes String[]
+  codes         String[]
+  changedAt     DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, changedAt])
+  @@map("territory_changes")
 }
 
 // ---------------------------------------------------------------------------

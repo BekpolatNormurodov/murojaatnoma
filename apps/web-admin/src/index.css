@@ -164,6 +164,9 @@
    Tungi rejim (Dark mode) — semantik tokenlarni qayta belgilash
    ============================================================ */
 .dark {
+  /* Native select / date / checkbox controls follow the theme. */
+  color-scheme: dark;
+
   /* Surfaces */
   --color-canvas: #0b1220;
   --color-surface: #141c2b;

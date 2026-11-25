@@ -23,6 +23,7 @@ import { exportWorkbook, type ExportColumn } from '@/shared/lib/export';
 import { useTimesheet, type TimesheetCell, type TimesheetRow } from './useTimesheet';
 import { useAttendanceToday } from './useAttendanceToday';
 import { AttendanceDayDetail } from './AttendanceDayDetail';
+import { hoursText, minutesText } from './attendanceMeta';
 
 const WD = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
 const MONTHS = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
@@ -35,7 +36,7 @@ function monthRange(value: string) {
   return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) };
 }
 
-const fmtMin = (m: number) => (m <= 0 ? '—' : m >= 60 ? `${Math.floor(m / 60)} s ${m % 60} d` : `${m} d`);
+const fmtMin = (m: number) => (m <= 0 ? '—' : minutesText(m));
 const fmtHours = (h: number) => (Number.isInteger(h) ? String(h) : h.toFixed(1));
 
 type Mode = 'hours' | 'times';
@@ -61,9 +62,9 @@ function cellLook(c: TimesheetCell, mode: Mode) {
       const text =
         mode === 'times' ? c.in ?? '' : c.hours != null ? fmtHours(c.hours) : c.in ? `${c.in}` : '';
       const title = [
-        `Keldi ${c.in ?? '—'}${late ? ` (${c.lateMinutes} daq kechikdi)` : ''}`,
-        `Ketdi ${c.out ?? '— (hali ishda yoki belgilamagan)'}${c.earlyMinutes ? ` (${c.earlyMinutes} daq erta)` : ''}`,
-        c.hours != null ? `${fmtHours(c.hours)} soat ishladi` : '',
+        `Keldi ${c.in ?? '—'}${late ? ` (${minutesText(c.lateMinutes)} kechikdi)` : ''}`,
+        `Ketdi ${c.out ?? '— (hali ishda yoki belgilamagan)'}${c.earlyMinutes ? ` (${minutesText(c.earlyMinutes)} erta)` : ''}`,
+        c.hours != null ? `${hoursText(c.hours)} ishladi` : '',
         c.excused ? 'Soatlik ruxsat bilan' : '',
       ]
         .filter(Boolean)
@@ -294,7 +295,7 @@ export function AttendanceTimesheet() {
             <table className="border-separate border-spacing-0 text-[12px]">
               <thead>
                 <tr>
-                  <th className="sticky left-0 top-0 z-30 min-w-[230px] border-b border-r border-line bg-surface px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  <th className="sticky left-0 top-0 z-30 min-w-[132px] border-b border-r border-line bg-surface px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted sm:min-w-[230px]">
                     Xodim
                   </th>
                   {data.days.map((d) => (
@@ -334,12 +335,14 @@ export function AttendanceTimesheet() {
                   <tr key={r.employeeId} className="group">
                     <td className="sticky left-0 z-10 border-b border-r border-line bg-surface px-3 py-1.5 group-hover:bg-surface-2">
                       <div className="flex items-center gap-2.5">
-                        <Avatar name={r.fullName} src={r.avatarUrl ?? undefined} size={30} />
+                        <span className="hidden shrink-0 sm:block">
+                          <Avatar name={r.fullName} src={r.avatarUrl ?? undefined} size={30} />
+                        </span>
                         <div className="min-w-0">
-                          <div className="max-w-[170px] truncate text-[13px] font-semibold text-ink" title={r.fullName}>
+                          <div className="max-w-[108px] truncate text-[12.5px] font-semibold text-ink sm:max-w-[170px] sm:text-[13px]" title={r.fullName}>
                             {r.fullName}
                           </div>
-                          <div className="max-w-[170px] truncate text-[11px] text-ink-muted">
+                          <div className="max-w-[108px] truncate text-[11px] text-ink-muted sm:max-w-[170px]">
                             {r.position} · {r.workStartTime}–{r.workEndTime}
                           </div>
                         </div>
@@ -382,7 +385,7 @@ export function AttendanceTimesheet() {
                       <span className={cn(r.totals.absent ? 'font-semibold text-red-600' : 'text-ink-muted')}>{r.totals.absent}</span>
                     </td>
                     <td className="border-b border-line px-2 text-center tabular-nums text-sky-600">{r.totals.leave || '—'}</td>
-                    <td className="border-b border-line px-2 text-center tabular-nums" title={`Norma: ${fmtHours(r.totals.normHours)} soat`}>
+                    <td className="border-b border-line px-2 text-center tabular-nums" title={`Ishladi: ${hoursText(r.totals.hours)} · norma: ${hoursText(r.totals.normHours)}`}>
                       <div className="font-semibold text-ink">{fmtHours(r.totals.hours)}</div>
                       {r.totals.normHours > 0 && (
                         <div className="mx-auto mt-0.5 h-1 w-10 overflow-hidden rounded-full bg-surface-2">

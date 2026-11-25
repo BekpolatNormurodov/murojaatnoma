@@ -83,6 +83,7 @@ export interface Worker {
   specialization: RequestCategory[];
   status: WorkerStatus;
   insideRegion: boolean; // hozir o'z hududidami
+  atOffice?: boolean; // hududidan tashqarida, lekin ofisda
   rating: number; // 0..5
   points: number;
   completedTasks: number;

@@ -21,6 +21,7 @@ import {
   ChatMessageEditedEvent,
   ChatReadEvent,
   RT_EVENTS,
+  TerritoryChangedEvent,
 } from '../../common/events/realtime-events';
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -327,6 +328,15 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent(RT_EVENTS.adminNotification)
   broadcastAdminNotification(n: unknown): void {
     this.server.to(`user:${ADMIN_ID}`).emit('admin:notification', n);
+  }
+
+  /** The admin changed an employee's mahallas → their app refreshes at once. */
+  @OnEvent(RT_EVENTS.territoryChanged)
+  broadcastTerritoryChanged(e: TerritoryChangedEvent): void {
+    this.server.to(`user:${e.employeeId}`).emit('territory:changed', {
+      assignedMahallas: e.assignedMahallas,
+      changedAt: e.changedAt,
+    });
   }
 
   @OnEvent(RT_EVENTS.conversation)

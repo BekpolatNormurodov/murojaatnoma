@@ -37,7 +37,8 @@ export interface UploadedMediaResult {
  * stateless: file in, URL out.
  *
  * Reuses the MulterModule storage configured in applications.module.ts
- * (diskStorage → UPLOADS_DIR, 25MB cap, image/video/audio mimetypes only).
+ * (diskStorage → UPLOADS_DIR, 25MB cap, whitelisted media types — see
+ * common/upload/upload-policy.ts).
  * Requires a valid staff token (no @Public) — chat is admin↔employee only,
  * so citizens are denied by the global CitizenAccessGuard.
  */
@@ -138,7 +139,13 @@ export class UploadsController {
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
-          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+          // Files go straight to disk, so there is no buffer for the magic-number
+          // check — left on, it refused every image. The declared type is checked;
+          // the stored extension comes from the upload whitelist.
+          new FileTypeValidator({
+            fileType: /^image\/(jpeg|png|webp)$/,
+            skipMagicNumbersValidation: true,
+          }),
         ],
       }),
     )

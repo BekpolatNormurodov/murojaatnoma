@@ -17,7 +17,17 @@ export const RT_EVENTS = {
   conversation: 'chat.conversation',
   /** A new admin-panel notification (bell) — pushed live to every admin socket. */
   adminNotification: 'admin.notification',
+  /** An employee's assigned mahallas changed — pushed live to that employee. */
+  territoryChanged: 'territory.changed',
 } as const;
+
+export interface TerritoryChangedEvent {
+  employeeId: string;
+  /** The territory now in force; empty = the whole district. */
+  assignedMahallas: { code: string; name: string }[];
+  /** ISO-8601. */
+  changedAt: string;
+}
 
 export interface ChatMessageCreatedEvent {
   conversationId: string;

@@ -12,6 +12,7 @@ import { Card } from '@/shared/ui/Card';
 import { Avatar } from '@/shared/ui/Avatar';
 import { Skeleton, SkeletonRow } from '@/shared/ui/Skeleton';
 import { cn } from '@/shared/lib/cn';
+import { territoryOf } from '@/shared/lib/territory';
 import { useAttendanceToday, todayIso } from '@/features/attendance/useAttendanceToday';
 import {
   attendanceEvents,
@@ -21,6 +22,7 @@ import {
 } from '@/features/attendance/attendanceMeta';
 import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
 import { EmployeeStatsDrawer } from '@/features/oversight/EmployeeStatsDrawer';
+import { useAttendanceSettings } from '@/features/oversight/useActivity';
 
 type Tab = 'late' | 'absent' | 'issues';
 
@@ -32,6 +34,7 @@ type Tab = 'late' | 'absent' | 'issues';
  */
 export function AttendanceBoard() {
   const { data, isLoading, isError, refetch } = useAttendanceToday(todayIso());
+  const faceRequired = useAttendanceSettings().data?.faceRequired ?? true;
   const [tab, setTab] = useState<Tab>('late');
   const [selected, setSelected] = useState<EmployeeTodayEntry | null>(null);
 
@@ -60,7 +63,7 @@ export function AttendanceBoard() {
           (r) =>
             (r.failedScans?.length ?? 0) > 0 ||
             (r.earlyLeaveMinutes ?? 0) > 0 ||
-            (!!r.checkIn && !r.checkOut && !!r.live && !r.live.stale && !r.live.insideZone),
+            (!r.checkOut && !!r.checkIn && isOutside(r)),
         ),
       } satisfies Record<Tab, EmployeeTodayEntry[]>,
     };
@@ -88,7 +91,7 @@ export function AttendanceBoard() {
             <p className="text-xs text-ink-muted">
               {data?.isWorkday === false
                 ? 'Bugun dam olish kuni — kelmaganlar hisoblanmaydi'
-                : `${schedule ? `Ish vaqti ${schedule} · ` : ''}kelish/ketish yuz va joy bilan tasdiqlanadi`}
+                : `${schedule ? `Ish vaqti ${schedule} · ` : ''}kelish/ketish ${faceRequired ? 'yuz va joy' : 'joylashuv'} bilan tasdiqlanadi`}
             </p>
           </div>
         </div>
@@ -264,6 +267,11 @@ export function AttendanceBoard() {
   );
 }
 
+/** Yangi signal bor va u na hududda, na ofisda. */
+function isOutside(r: EmployeeTodayEntry): boolean {
+  return !!r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice) === 'outside';
+}
+
 function IssueText({ r, tab }: { r: EmployeeTodayEntry; tab: Tab }) {
   if (tab === 'late' && r.checkIn) {
     return (
@@ -285,7 +293,7 @@ function IssueText({ r, tab }: { r: EmployeeTodayEntry; tab: Tab }) {
     <span className="flex flex-col items-end text-red-600">
       {failed > 0 && <span>{failed} rad etilgan</span>}
       {early > 0 && <span>{minutesText(early)} erta</span>}
-      {r.live && !r.live.stale && !r.live.insideZone && !r.checkOut && <span>Hududdan tashqarida</span>}
+      {isOutside(r) && !r.checkOut && <span>Hududdan tashqarida</span>}
     </span>
   );
 }

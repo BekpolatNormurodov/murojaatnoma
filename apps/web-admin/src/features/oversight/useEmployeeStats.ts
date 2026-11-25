@@ -31,7 +31,8 @@ export function periodRange(period: StatsPeriod): { from: string; to: string; la
   const now = new Date();
   if (period === 'last7') {
     const from = new Date(now);
-    from.setDate(now.getDate() - 6);
+    // Bugun + oldingi 7 kun (hisobotlar va tarix bilan bir xil).
+    from.setDate(now.getDate() - 7);
     from.setHours(0, 0, 0, 0);
     return { from: from.toISOString(), to: now.toISOString(), label: "Oxirgi 7 kun" };
   }

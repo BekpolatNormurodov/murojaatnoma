@@ -40,7 +40,14 @@ export interface EmployeeProfile {
   office: { lat: number; lng: number; radiusM: number } | null;
   assignedMahallas: { code: string; name: string }[];
   face: { enrolled: boolean; templates: number; lastAt: string | null };
-  live: { at: string; mahallaName: string | null; insideZone: boolean; stale: boolean } | null;
+  live: {
+    at: string;
+    mahallaName: string | null;
+    insideZone: boolean;
+    /** Ofisda (eski backend'da yo'q). */
+    insideOffice?: boolean;
+    stale: boolean;
+  } | null;
   month: {
     year: number;
     month: number;

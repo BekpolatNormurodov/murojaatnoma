@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CloseCircle, Location, RotateRight, SearchNormal1, TickCircle, TickSquare } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
+import { territoryOf } from '@/shared/lib/territory';
 import { useMahallas, useAssignZones } from './useZones';
 import type { OversightRow } from './useOversight';
 
@@ -25,21 +26,25 @@ export function AssignZonesModal({
   /** Saqlangandan keyingi xabar (toast). */
   onDone?: (msg: string) => void;
 }) {
-  const { data: mahallas, isLoading } = useMahallas();
+  const { data: mahallas, isLoading, isError, error: loadError, refetch, isFetching } = useMahallas();
   const assign = useAssignZones();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [q, setQ] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Modal ochilganda joriy biriktirilgan mahallalar bilan to'ldiriladi.
-  useEffect(() => {
+  // Faqat modal ochilganda (yoki boshqa xodimga o'tilganda) joriy mahallalar
+  // bilan to'ldiriladi — sahifa qayta chizilsa saqlanmagan belgilar o'chmaydi.
+  const openFor = row?.employeeId ?? null;
+  const [filledFor, setFilledFor] = useState<string | null>(null);
+  if (openFor !== filledFor) {
+    setFilledFor(openFor);
     if (row) {
       setSelected(new Set(row.assignedMahallaCodes));
       setQ('');
       setError(null);
     }
-  }, [row]);
+  }
 
   const list = useMemo(() => {
     // Defensive: never assume the API returned an array (a transient error page
@@ -82,9 +87,13 @@ export function AssignZonesModal({
     try {
       const res = await assign.mutateAsync({ employeeId: row.employeeId, mahallaCodes: [...selected] });
       const where = res?.lastLocationAt
-        ? res.lastInsideAssignedZone
-          ? ' — hozir hududda'
-          : ' — hozir hududdan tashqarida'
+        ? ` — oxirgi lokatsiya bo'yicha: ${
+            {
+              zone: 'hududda',
+              office: 'ofisda',
+              outside: 'hududdan tashqarida',
+            }[territoryOf(res.lastInsideAssignedZone, res.lastInsideOffice)]
+          }`
         : '';
       onDone?.(
         `${row.fullName}: ${selected.size ? `${selected.size} ta mahalla biriktirildi` : 'butun tuman hudud qilindi'}${where}`,
@@ -98,7 +107,8 @@ export function AssignZonesModal({
   return (
     <Modal
       open={!!row}
-      onClose={onClose}
+      // Saqlanayotganda fon / Esc / × yopmaydi — xato xabari yo'qolmasin.
+      onClose={() => (assign.isPending ? undefined : onClose())}
       title="Hudud biriktirish"
       subtitle={row ? `${row.fullName} — qaysi mahallalarda bo'lishi kerak` : undefined}
       width={560}
@@ -117,7 +127,11 @@ export function AssignZonesModal({
             Tanlangan: <span className="font-semibold text-ink">{selected.size}</span> ta mahalla
           </span>
           {selected.size > 0 && (
-            <button onClick={() => setSelected(new Set())} className="text-[12.5px] font-medium text-ink-muted hover:text-danger">
+            <button
+              onClick={() => setSelected(new Set())}
+              disabled={assign.isPending}
+              className="text-[12.5px] font-medium text-ink-muted hover:text-danger disabled:opacity-50"
+            >
               Tozalash
             </button>
           )}
@@ -137,6 +151,7 @@ export function AssignZonesModal({
                 key={code}
                 type="button"
                 onClick={() => toggle(code)}
+                disabled={assign.isPending}
                 title="Olib tashlash"
                 className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-[12px] font-medium text-primary-700 hover:bg-danger-soft hover:text-red-700"
               >
@@ -167,6 +182,7 @@ export function AssignZonesModal({
               <button
                 type="button"
                 onClick={toggleVisible}
+                disabled={assign.isPending}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-[12px] font-medium text-primary-600 hover:bg-primary-50"
               >
                 {allVisibleSelected ? 'Bekor qilish' : q.trim() ? `Topilganlar (${list.length})` : 'Hammasi'}
@@ -180,6 +196,18 @@ export function AssignZonesModal({
                   <div key={i} className="h-10 animate-pulse rounded-lg bg-surface-2" />
                 ))}
               </div>
+            ) : isError && !Array.isArray(mahallas) ? (
+              <div role="alert" className="flex flex-col items-center gap-2.5 px-3 py-8 text-center">
+                <p className="text-[13px] font-medium text-red-700">
+                  Mahallalar ro'yxatini yuklab bo'lmadi
+                  {loadError instanceof Error && (
+                    <span className="mt-0.5 block font-normal text-ink-muted">{loadError.message}</span>
+                  )}
+                </p>
+                <Button variant="secondary" onClick={() => void refetch()} disabled={isFetching}>
+                  <RotateRight size={16} className={cn(isFetching && 'animate-spin')} /> Qayta urinish
+                </Button>
+              </div>
             ) : list.length === 0 ? (
               <p className="px-3 py-8 text-center text-[13px] text-ink-muted">Mahalla topilmadi</p>
             ) : (
@@ -190,6 +218,8 @@ export function AssignZonesModal({
                     key={m.code}
                     type="button"
                     onClick={() => toggle(m.code)}
+                    aria-pressed={active}
+                    disabled={assign.isPending}
                     className={cn(
                       'flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
                       active ? 'bg-primary-50' : 'hover:bg-surface-2',

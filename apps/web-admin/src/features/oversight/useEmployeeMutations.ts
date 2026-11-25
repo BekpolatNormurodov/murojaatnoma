@@ -34,34 +34,36 @@ export async function uploadPhoto(file: File): Promise<string> {
 }
 
 export function useCreateEmployee() {
-  const qc = useQueryClient();
+  const done = useEmployeeInvalidate();
   return useMutation({
     mutationFn: (input: EmployeeInput) =>
       api.post<{ id: string; fullName: string; username: string | null }>('/oversight/employee', input),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['oversight'] });
-    },
+    onSuccess: done,
   });
 }
 
 export function useUpdateEmployee() {
-  const qc = useQueryClient();
+  const done = useEmployeeInvalidate();
   return useMutation({
     mutationFn: ({ id, ...input }: EmployeeInput & { id: string }) =>
       api.patch<{ id: string; fullName: string }>(`/oversight/employee/${id}`, input),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['oversight'] });
-      void qc.invalidateQueries({ queryKey: ['employee-profile'] });
-    },
+    onSuccess: done,
   });
 }
 
-/** Har bir o'zgarishdan keyin ro'yxat, arxiv va profil yangilanadi. */
+/**
+ * Har bir o'zgarishdan keyin ro'yxat, arxiv va profil yangilanadi; ism, ish
+ * tartibi va ofis nuqtasi davomat, xarita va faollik raqamlariga ham ta'sir qiladi.
+ */
 function useEmployeeInvalidate() {
   const qc = useQueryClient();
   return () => {
     void qc.invalidateQueries({ queryKey: ['oversight'] });
     void qc.invalidateQueries({ queryKey: ['employee-profile'] });
+    void qc.invalidateQueries({ queryKey: ['attendance'] });
+    void qc.invalidateQueries({ queryKey: ['locations'] });
+    void qc.invalidateQueries({ queryKey: ['daily-reports', 'activity'] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'overview'] });
   };
 }
 

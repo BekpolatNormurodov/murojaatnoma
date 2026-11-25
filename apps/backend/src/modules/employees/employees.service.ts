@@ -25,8 +25,14 @@ export class EmployeesService {
     private readonly locations: LocationsService,
   ) {}
 
-  create(dto: CreateEmployeeDto): Promise<Employee> {
-    return this.prisma.employee.create({ data: dto });
+  async create(dto: CreateEmployeeDto): Promise<Employee> {
+    const data = { ...dto };
+    if (dto.assignedMahallaCodes !== undefined) {
+      data.assignedMahallaCodes = await this.locations.normalizeMahallaCodes(
+        dto.assignedMahallaCodes,
+      );
+    }
+    return this.prisma.employee.create({ data });
   }
 
   async findAll(
@@ -70,11 +76,14 @@ export class EmployeesService {
   }
 
   async update(id: string, dto: UpdateEmployeeDto): Promise<EmployeeWithFace> {
-    await this.findOne(id);
+    const before = await this.findOne(id);
     const data: Prisma.EmployeeUncheckedUpdateInput = { ...dto };
-    const territoryChanged = dto.assignedMahallaCodes !== undefined;
-    if (dto.assignedMahallaCodes !== undefined) {
-      data.assignedMahallaCodes = await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes);
+    const codes =
+      dto.assignedMahallaCodes === undefined
+        ? undefined
+        : await this.locations.normalizeMahallaCodes(dto.assignedMahallaCodes);
+    if (codes !== undefined) {
+      data.assignedMahallaCodes = codes;
     }
     const updated = await this.prisma.employee.update({
       where: { id },
@@ -84,11 +93,16 @@ export class EmployeesService {
     // Territory reassignment must re-evaluate the in-zone flags against the
     // LAST known position (and today's fixes) immediately — otherwise the admin
     // keeps seeing a stale "Hududda/Tashqarida" until the next GPS report.
-    if (territoryChanged) {
+    if (codes !== undefined) {
       const fresh = await this.locations.reevaluateTerritory(id);
       if (fresh.insideAssignedZone !== null) {
         updated.lastInsideAssignedZone = fresh.insideAssignedZone;
       }
+      if (fresh.insideOffice !== null) {
+        updated.lastInsideOffice = fresh.insideOffice;
+      }
+      // After the flags are fresh: the employee's app re-reads them on this signal.
+      await this.locations.territoryChanged(id, before.assignedMahallaCodes, codes);
     }
     const { _count, passwordHash: _pw, ...rest } = updated;
     return { ...rest, hasFace: _count.faceTemplates > 0 };

@@ -12,8 +12,11 @@ export type StatusKey = 'office' | 'zone' | 'offzone' | 'outside' | 'stale' | 'n
 /** A status filter chip — every bucket plus the "all" pseudo-bucket. */
 export type FilterKey = 'all' | StatusKey;
 
-/** Track time-window presets exposed in the detail drawer. */
-export type TrackWindow = 'today' | '1h' | '3h';
+/** Track time-window: a preset, or one past day as local "YYYY-MM-DD". */
+export type TrackWindow = 'today' | '1h' | '3h' | `${number}-${number}-${number}`;
+
+/** How many days before today the route history offers. */
+export const TRACK_HISTORY_DAYS = 7;
 
 /**
  * Office centroid + geofence radius, mirrored from the backend config
@@ -97,7 +100,8 @@ export const FILTER_ORDER: FilterKey[] = [
 ];
 
 /**
- * Bucket an employee, matching the exact priority used for the marker color.
+ * Bucket an employee, matching the exact priority used for the marker color:
+ * territory first, else office, else outside (same as every other screen).
  * "Zone" is the employee's ASSIGNED mahallas (server-computed with GPS
  * tolerance; the whole district when none are assigned) — being somewhere in
  * the district is not enough. Older backends without the flag fall back to
@@ -106,10 +110,9 @@ export const FILTER_ORDER: FilterKey[] = [
 export function statusKey(loc: LiveLocation): StatusKey {
   if (!loc.hasLocation) return 'noloc';
   if (loc.isStale) return 'stale';
+  if (loc.insideAssignedZone ?? loc.insideDistrict) return 'zone';
   if (loc.insideOffice) return 'office';
-  if (!loc.insideDistrict) return 'outside';
-  if (loc.insideAssignedZone === false) return 'offzone';
-  return 'zone';
+  return loc.insideDistrict ? 'offzone' : 'outside';
 }
 
 export function statusColor(loc: LiveLocation): string {
@@ -213,6 +216,8 @@ export const LABELS: Record<Lang, Labels> = {
     alertOff: 'hududdan tashqarida',
     alertOut: 'tumandan tashqarida',
     today: 'Bugun',
+    yesterday: 'Kecha',
+    history: 'Oldingi kunlar',
     lastHour: "So'nggi 1 soat",
     last3h: "So'nggi 3 soat",
     points: 'nuqta',
@@ -294,6 +299,8 @@ export const LABELS: Record<Lang, Labels> = {
     alertOff: 'вне своей зоны',
     alertOut: 'вне района',
     today: 'Сегодня',
+    yesterday: 'Вчера',
+    history: 'Предыдущие дни',
     lastHour: 'Последний час',
     last3h: 'Последние 3 часа',
     points: 'точек',
@@ -365,9 +372,26 @@ export function fmtDistance(m: number | null, t: Labels): string {
   return `${(m / 1000).toFixed(m < 9500 ? 1 : 0)} ${t.km}`;
 }
 
-/** from/to ISO range for a track window preset. */
-export function trackRange(w: TrackWindow): { from: string; to: string } {
-  const now = new Date();
+/** A past day is finished — its route no longer changes. */
+export const isPastDayWindow = (w: TrackWindow) => w !== 'today' && w !== '1h' && w !== '3h';
+
+/** The previous {@link TRACK_HISTORY_DAYS} days as day windows, newest first. */
+export function trackHistoryDays(now = new Date()): TrackWindow[] {
+  return Array.from({ length: TRACK_HISTORY_DAYS }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i - 1);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` as TrackWindow;
+  });
+}
+
+/** from/to ISO range for a track window (a past day: its local midnight to midnight). */
+export function trackRange(w: TrackWindow, now = new Date()): { from: string; to: string } {
+  if (isPastDayWindow(w)) {
+    const [y, m, d] = w.split('-').map(Number);
+    return {
+      from: new Date(y, m - 1, d).toISOString(),
+      to: new Date(new Date(y, m - 1, d + 1).getTime() - 1).toISOString(),
+    };
+  }
   const to = now.toISOString();
   let from: Date;
   if (w === 'today') {
@@ -403,9 +427,8 @@ type TrackFix = {
 
 const accurate = (p: TrackFix) => p.accuracy == null || p.accuracy <= MAX_DRAW_ACCURACY_M;
 const atMs = (p: TrackFix) => new Date(p.recordedAt).getTime();
-/** Inside the employee's zone at this fix (office counts; old backends: district). */
-export const fixInZone = (p: TrackFix) =>
-  p.insideOffice || (p.insideAssignedZone ?? p.insideDistrict);
+/** Inside the employee's territory at this fix (the office does not count; old backends: district). */
+export const fixInZone = (p: TrackFix) => p.insideAssignedZone ?? p.insideDistrict;
 
 /**
  * Splits a chronological track into drawable runs: a new run starts after a

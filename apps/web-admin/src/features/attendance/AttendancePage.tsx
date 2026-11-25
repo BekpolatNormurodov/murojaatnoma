@@ -37,7 +37,9 @@ import { DateRangePicker } from '@/shared/ui/DatePicker';
 import { Skeleton } from '@/shared/ui/Skeleton';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
+import { territoryOf } from '@/shared/lib/territory';
 import { EmployeeStatsDrawer } from '@/features/oversight/EmployeeStatsDrawer';
+import { useAttendanceSettings } from '@/features/oversight/useActivity';
 import { useAttendanceToday, todayIso } from './useAttendanceToday';
 import { useAttendanceMonthlyReport } from './useAttendanceMonthlyReport';
 import { AttendanceRangeView } from './AttendanceRangeView';
@@ -85,8 +87,13 @@ type FilterKey = 'all' | 'working' | 'late' | 'absent' | 'left' | 'leave' | 'iss
 
 const early = (r: EmployeeTodayEntry) => r.earlyLeaveMinutes ?? 0;
 const failedCount = (r: EmployeeTodayEntry) => r.failedScans?.length ?? 0;
+// Ofisdagi xodim "hududdan tashqarida" muammosi emas.
 const outOfZone = (r: EmployeeTodayEntry) =>
-  !!r.checkIn && !r.checkOut && !!r.live && !r.live.stale && !r.live.insideZone;
+  !!r.checkIn &&
+  !r.checkOut &&
+  !!r.live &&
+  !r.live.stale &&
+  territoryOf(r.live.insideZone, r.live.insideOffice) === 'outside';
 const hasIssue = (r: EmployeeTodayEntry) => failedCount(r) > 0 || early(r) > 0 || outOfZone(r);
 
 const FILTERS: { key: FilterKey; label: string; test: (r: EmployeeTodayEntry) => boolean }[] = [
@@ -170,6 +177,8 @@ export function AttendancePage() {
 
   const { data, isLoading, isFetching, isError, error, refetch, dataUpdatedAt } =
     useAttendanceToday(date);
+  // Yuz skaneri o'chirilgan bo'lsa matnlarda yuz tilga olinmaydi.
+  const faceRequired = useAttendanceSettings().data?.faceRequired ?? true;
 
   const [year, month] = useMemo(() => date.split('-').map(Number), [date]);
   const monthly = useAttendanceMonthlyReport(year, month);
@@ -203,6 +212,9 @@ export function AttendancePage() {
       insideNow: hasLive
         ? working.filter((r) => r.live && !r.live.stale && r.live.insideZone).length
         : null,
+      officeNow: working.filter(
+        (r) => r.live && !r.live.stale && territoryOf(r.live.insideZone, r.live.insideOffice) === 'office',
+      ).length,
     };
   }, [roster, summary]);
 
@@ -344,7 +356,11 @@ export function AttendancePage() {
                   icon={Profile2User}
                   label="Hozir ishda"
                   value={String(stats.workingNow)}
-                  hint={stats.insideNow != null ? `Hududida: ${stats.insideNow}` : `Ish vaqti ${workStart}–${workEnd}`}
+                  hint={
+                    stats.insideNow != null
+                      ? `Hududida: ${stats.insideNow}${stats.officeNow ? ` · ofisda: ${stats.officeNow}` : ''}`
+                      : `Ish vaqti ${workStart}–${workEnd}`
+                  }
                   tint="#3b82f6"
                   index={1}
                 />
@@ -384,7 +400,7 @@ export function AttendancePage() {
                   icon={ShieldCross}
                   label="Rad etilgan urinish"
                   value={String(stats.withFailed)}
-                  hint="Yuz yoki joy mos kelmagan"
+                  hint={faceRequired ? 'Yuz yoki joy mos kelmagan' : 'Joylashuv mos kelmagan'}
                   tint="#e11d48"
                   index={5}
                 />
@@ -647,7 +663,7 @@ export function AttendancePage() {
                             )}
                           </td>
                           <td className="px-3 py-3">
-                            <span className="flex items-center gap-1.5 text-ink-soft">
+                            <span className="flex items-center gap-1.5 whitespace-nowrap text-ink-soft">
                               <Clock size={14} className="text-ink-muted" />
                               {r.hoursWorked != null ? hoursText(r.hoursWorked) : '—'}
                             </span>
@@ -698,20 +714,36 @@ export function AttendancePage() {
 /** Jonli joylashuv (yangi backend) yoki kelish paytidagi geofence (eski). */
 function LocationCell({ r }: { r: EmployeeTodayEntry }) {
   if (r.live && r.checkIn && !r.checkOut) {
-    const tone = r.live.stale ? 'text-ink-muted' : r.live.insideZone ? 'text-primary-600' : 'text-red-600';
+    const at = territoryOf(r.live.insideZone, r.live.insideOffice);
+    const tone = r.live.stale
+      ? 'text-ink-muted'
+      : at === 'zone'
+        ? 'text-primary-600'
+        : at === 'office'
+          ? 'text-accent-600'
+          : 'text-red-600';
     return (
-      <span className={cn('flex items-center gap-1.5 text-[12px] font-medium', tone)}>
+      <span
+        className={cn('flex items-center gap-1.5 text-[12px] font-medium', tone)}
+        title={r.live.mahallaName ?? undefined}
+      >
         <Location size={15} variant="Bulk" />
         <span className="max-w-40 truncate">
-          {r.live.stale ? "Aloqa yo'q" : (r.live.mahallaName ?? (r.live.insideZone ? 'Hududida' : 'Tashqarida'))}
+          {r.live.stale
+            ? "Aloqa yo'q"
+            : at === 'office'
+              ? 'Ofisda'
+              : (r.live.mahallaName ?? (at === 'zone' ? 'Hududida' : 'Tashqarida'))}
         </span>
       </span>
     );
   }
   if (!r.checkIn) return <span className="text-ink-muted">—</span>;
   return r.checkIn.insideGeofence ? (
-    <span className="text-[12px] font-medium text-primary-600">Ofisda belgiladi</span>
+    <span className="text-[12px] font-medium text-primary-600" title="Ofisda yoki biriktirilgan mahallada belgilagan">
+      Ish joyida belgiladi
+    </span>
   ) : (
-    <span className="text-[12px] font-medium text-red-600">Ofisdan tashqarida</span>
+    <span className="text-[12px] font-medium text-red-600">Ish joyidan tashqarida</span>
   );
 }

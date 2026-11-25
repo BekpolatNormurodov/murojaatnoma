@@ -70,3 +70,86 @@ describe('xodim CRUD — arxiv, tiklash, o‘chirish', () => {
     );
   });
 });
+
+describe('hudud va ofis (nazorat)', () => {
+  const loc = (
+    employeeId: string,
+    insideAssignedZone: boolean,
+    insideOffice: boolean,
+  ) => ({
+    employeeId,
+    hasLocation: true,
+    insideAssignedZone,
+    insideOffice,
+    mahallaName: null,
+    isStale: false,
+    assignedMahallaCodes: [],
+  });
+
+  it('ofisdagi xodim "tashqarida" hisoblanmaydi; qatorda insideOffice bor', async () => {
+    const ids = ['zone', 'office', 'out'];
+    const prisma = {
+      faceTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      attendanceRecord: { findMany: jest.fn().mockResolvedValue([]) },
+      bonus: { groupBy: jest.fn().mockResolvedValue([]) },
+      employee: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const attendance = { today: jest.fn().mockResolvedValue({ roster: [] }) };
+    const locations = {
+      getLatestForAll: jest
+        .fn()
+        .mockResolvedValue([
+          loc('zone', true, false),
+          loc('office', false, true),
+          loc('out', false, false),
+        ]),
+    };
+    const salaries = {
+      monthlyRoster: jest.fn().mockResolvedValue({
+        year: 2026,
+        month: 11,
+        totalNet: 0,
+        rows: ids.map((employeeId) => ({ employeeId, salary: null })),
+      }),
+    };
+    const svc = new OversightService(
+      prisma as never,
+      attendance as never,
+      locations as never,
+      salaries as never,
+    );
+    const res = await svc.overview();
+    expect(res.summary.outsideZone).toBe(1);
+    expect(res.rows.map((r) => r.location.insideOffice)).toEqual([false, true, false]);
+  });
+
+  it('tahrirlash: qayta hisobdan keyin xodimga xabar; hudud yuborilmasa — yo‘q', async () => {
+    const prisma = {
+      employee: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'e1', assignedMahallaCodes: ['M1'] }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const locations = {
+      normalizeMahallaCodes: jest.fn((codes: string[]) => Promise.resolve(codes)),
+      reevaluateTerritory: jest.fn().mockResolvedValue({}),
+      territoryChanged: jest.fn().mockResolvedValue(true),
+    };
+    const svc = new OversightService(
+      prisma as never,
+      {} as never,
+      locations as never,
+      {} as never,
+    );
+    const base = { fullName: 'Aliyev Ali', position: 'Inspektor' };
+    await svc.updateEmployee('e1', { ...base, officeLat: 41.3, officeLng: 69.3 });
+    expect(locations.reevaluateTerritory).toHaveBeenCalledTimes(1);
+    expect(locations.territoryChanged).not.toHaveBeenCalled();
+
+    await svc.updateEmployee('e1', { ...base, assignedMahallaCodes: [] });
+    expect(prisma.employee.update.mock.calls[1][0].data.assignedMahallaCodes).toEqual([]);
+    expect(locations.territoryChanged).toHaveBeenCalledWith('e1', ['M1'], []);
+  });
+});

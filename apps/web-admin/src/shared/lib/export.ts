@@ -68,6 +68,10 @@ export interface ExportColumn<T> {
   align?: "left" | "center" | "right";
   /** Jami qatori uchun yig'indi (Excel pastki qatori). */
   total?: (rows: T[]) => string | number;
+  /** Excel ustun eni (belgi). Berilmasa sarlavha, qiymatlar va jamidan hisoblanadi. */
+  width?: number;
+  /** Excel son formati (masalan "[h]:mm") — faqat son qiymatli kataklarga. */
+  numFmt?: string;
 }
 
 /** Massivni CSV (Excel ochadi) sifatida yuklab olish. UTF-8 BOM bilan. */
@@ -95,6 +99,28 @@ export interface SheetSpec<T> {
   opts?: { title?: string; subtitle?: string };
 }
 
+const MIN_COLUMN_WIDTH = 12;
+export const MAX_COLUMN_WIDTH = 60;
+
+/** Katakda ko'rinadigan matn uzunligi (formatlangan vaqt xom sondan ancha qisqa). */
+function shownLength(value: string | number, numFmt?: string): number {
+  if (typeof value === "number" && numFmt) {
+    if (numFmt.includes("[h]")) return `${Math.floor(value * 24)}:00`.length;
+    return Math.min(String(value).length, numFmt.length + 4);
+  }
+  return String(value ?? "")
+    .split("\n")
+    .reduce((max, line) => Math.max(max, line.length), 0);
+}
+
+/** Ustun eni: sarlavha, qiymatlar va jami bo'yicha (cheklangan). */
+function columnWidth<T>(column: ExportColumn<T>, cells: (string | number)[]): number {
+  if (column.width) return column.width;
+  let longest = column.header.length;
+  for (const v of cells) longest = Math.max(longest, shownLength(v, column.numFmt));
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, longest + 2));
+}
+
 /** Ustunlar + qatorlardan SheetJS worksheet (sarlavha + jami qatori bilan). */
 function buildSheet<T>(
   XLSX: XlsxLib,
@@ -108,12 +134,22 @@ function buildSheet<T>(
   aoa.push([`Yaratilgan: ${new Date().toLocaleString("uz-UZ")} · Qatorlar: ${rows.length}`]);
   aoa.push([]);
   aoa.push(columns.map((c) => c.header));
+  const firstDataRow = aoa.length;
   for (const r of rows) aoa.push(columns.map((c) => c.value(r)));
   if (columns.some((c) => c.total)) {
     aoa.push(columns.map((c, i) => (c.total ? c.total(rows) : i === 0 ? "JAMI" : "")));
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!cols"] = columns.map((c) => ({ wch: Math.max(12, c.header.length + 2) }));
+  ws["!cols"] = columns.map((c, col) => {
+    const cells: (string | number)[] = [];
+    for (let row = firstDataRow; row < aoa.length; row++) {
+      cells.push(aoa[row][col]);
+      if (!c.numFmt) continue;
+      const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+      if (cell?.t === "n") cell.z = c.numFmt;
+    }
+    return { wch: columnWidth(c, cells) };
+  });
   return ws;
 }
 
@@ -135,14 +171,21 @@ export async function exportToExcel<T>(
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }
 
-/** Ko'p varaqli (2-3 tab) Excel workbook — har varaq alohida ustun/qatorlar. */
+/** Varaqlardan SheetJS workbook (yuklab olmasdan). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function exportWorkbook(filename: string, sheets: SheetSpec<any>[]) {
-  const XLSX = await loadXlsx();
+export function buildWorkbook(XLSX: XlsxLib, sheets: SheetSpec<any>[]) {
   const wb = XLSX.utils.book_new();
   for (const s of sheets) {
     XLSX.utils.book_append_sheet(wb, buildSheet(XLSX, s.columns, s.rows, s.opts ?? {}), cleanSheetName(s.name));
   }
+  return wb;
+}
+
+/** Ko'p varaqli (2-3 tab) Excel workbook — har varaq alohida ustun/qatorlar. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function exportWorkbook(filename: string, sheets: SheetSpec<any>[]) {
+  const XLSX = await loadXlsx();
+  const wb = buildWorkbook(XLSX, sheets);
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }
 

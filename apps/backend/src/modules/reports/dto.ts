@@ -78,7 +78,7 @@ export class CreateDailyReportDto {
 }
 
 export class DaysQueryDto {
-  @ApiPropertyOptional({ example: 7, description: 'Bugundan necha kun orqaga (1..31)' })
+  @ApiPropertyOptional({ example: 8, description: 'Bugun bilan birga necha kun (1..31)' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -102,4 +102,25 @@ export class RangeQueryDto {
   @IsOptional()
   @IsString()
   employeeId?: string;
+}
+
+/** GET /daily-reports — one page of the list. */
+export class ListReportsQueryDto extends RangeQueryDto {
+  @ApiPropertyOptional({
+    example: 1000,
+    description: 'Sahifa hajmi (1..2000, default 1000)',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(2000)
+  limit?: number;
+
+  @ApiPropertyOptional({ example: 0, description: "Nechtasini o'tkazib yuborish" })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }

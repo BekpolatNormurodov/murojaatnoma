@@ -1,83 +1,25 @@
-import { BadRequestException, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MulterModule } from '@nestjs/platform-express';
-import { randomUUID } from 'crypto';
-import * as fs from 'fs';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
 import { AppConfig } from '../../common/config/configuration';
+import { uploadMulterOptions } from '../../common/upload/upload-policy';
 import { ApplicationsController } from './applications.controller';
 import { ApplicationsService } from './applications.service';
 import { UploadsController } from './uploads.controller';
 import { NotificationsModule } from '../notifications/notifications.module';
 
-/** Max size accepted for a single application attachment upload (photo/video/voice). */
-const MAX_ATTACHMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
-
-/** multipart/form-data file uploads are only accepted for these media kinds. */
-const ALLOWED_ATTACHMENT_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
-
-/**
- * Office documents — accepted ONLY on POST /uploads/document (kunlik hisobot
- * hujjatlari). Checked by extension too: phones often send a generic
- * `application/octet-stream` for a .docx/.xlsx picked from Files.
- */
-const DOCUMENT_UPLOAD_PATH = /\/uploads\/document\/?(\?.*)?$/;
-const DOCUMENT_EXTENSIONS = new Set([
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.rtf', '.odt', '.ods', '.zip',
-]);
-
-export function isAllowedUpload(originalUrl: string, mimetype: string, originalName: string): boolean {
-  if (ALLOWED_ATTACHMENT_MIME_PREFIXES.some((prefix) => mimetype.startsWith(prefix))) return true;
-  return (
-    DOCUMENT_UPLOAD_PATH.test(originalUrl) && DOCUMENT_EXTENSIONS.has(extname(originalName).toLowerCase())
-  );
-}
-
 @Module({
   imports: [
     NotificationsModule,
     // Backs POST /applications/:id/attachments/upload (see
-    // applications.controller.ts). Configured via MulterModule.registerAsync
-    // (rather than inline FileInterceptor options) so the destination
-    // directory can be sourced from ConfigService/UPLOADS_DIR instead of
-    // reading process.env directly in the controller.
+    // applications.controller.ts) and /uploads/*. Configured via
+    // MulterModule.registerAsync (rather than inline FileInterceptor options) so
+    // the destination directory can be sourced from ConfigService/UPLOADS_DIR
+    // instead of reading process.env directly in the controller. Size cap and
+    // accepted types: common/upload/upload-policy.ts.
     MulterModule.registerAsync({
-      useFactory: (configService: ConfigService<AppConfig, true>) => {
-        const { dir } = configService.get('uploads', { infer: true });
-        // Ensure the upload directory exists before the first request hits
-        // diskStorage's destination callback.
-        fs.mkdirSync(dir, { recursive: true });
-
-        return {
-          storage: diskStorage({
-            destination: dir,
-            filename: (_req, file, callback) => {
-              // Collision-free, non-guessable filename; original name is
-              // preserved separately on the Attachment row (fileName).
-              callback(null, `${randomUUID()}${extname(file.originalname)}`);
-            },
-          }),
-          limits: { fileSize: MAX_ATTACHMENT_UPLOAD_BYTES },
-          fileFilter: (req, file, callback) => {
-            const isAllowed = isAllowedUpload(
-              (req as { originalUrl?: string }).originalUrl ?? '',
-              file.mimetype,
-              file.originalname,
-            );
-            if (!isAllowed) {
-              callback(
-                new BadRequestException(
-                  `Unsupported file type: ${file.mimetype}. Only image/video/audio uploads are accepted (documents: POST /uploads/document).`,
-                ),
-                false,
-              );
-              return;
-            }
-            callback(null, true);
-          },
-        };
-      },
+      useFactory: (configService: ConfigService<AppConfig, true>) =>
+        uploadMulterOptions(configService.get('uploads', { infer: true }).dir),
       inject: [ConfigService],
     }),
   ],

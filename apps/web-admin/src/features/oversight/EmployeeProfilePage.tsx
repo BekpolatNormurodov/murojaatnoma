@@ -35,12 +35,15 @@ import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { cn } from '@/shared/lib/cn';
 import { formatDateTime, formatSom, timeAgo } from '@/shared/lib/format';
 import { usePermissions } from '@/shared/lib/permissions';
+import { TERRITORY_LABEL, territoryOf } from '@/shared/lib/territory';
 import { EmployeeFormModal } from './EmployeeFormModal';
 import { AssignZonesModal } from './AssignZonesModal';
 import { ArchiveEmployeeDialog } from './ArchiveEmployeeDialog';
 import { useResetFace, useRestoreEmployee } from './useEmployeeMutations';
 import { ReportList, ZoneTimePanel } from './ActivityViews';
-import { localDay } from './useActivity';
+import { durationText, useAttendanceSettings } from './useActivity';
+import { PeriodBar } from './PeriodBar';
+import { daysInclusive, rangeText, resolvePeriod, type PeriodSelection } from './period';
 import {
   useEmployeeMurojaats,
   useEmployeeProfile,
@@ -101,7 +104,7 @@ export function EmployeeProfilePage() {
       { replace: true },
     );
 
-  const { data: p, isLoading, isError, error, refetch } = useEmployeeProfile(id);
+  const { data: p, isLoading, error, refetch } = useEmployeeProfile(id);
   const { canWrite } = usePermissions();
   const [editing, setEditing] = useState(false);
   const [zones, setZones] = useState(false);
@@ -111,6 +114,8 @@ export function EmployeeProfilePage() {
   const [toast, setToast] = useState<string | null>(null);
   const restore = useRestoreEmployee();
   const resetFace = useResetFace();
+  // Yuz skaneri o'chirilgan bo'lsa yuz bilan bog'liq ogohlantirishlar ko'rsatilmaydi.
+  const faceRequired = useAttendanceSettings().data?.faceRequired ?? true;
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -127,7 +132,8 @@ export function EmployeeProfilePage() {
       </div>
     );
   }
-  if (isError || !p) {
+  // Fon yangilanishi yiqilsa, ochilgan profil ekranda qoladi.
+  if (!p) {
     return (
       <Card className="flex flex-col items-center gap-3 p-14 text-center">
         <CloseCircle size={40} variant="Bulk" className="text-danger" />
@@ -166,6 +172,7 @@ export function EmployeeProfilePage() {
 
       <Hero
         p={p}
+        faceRequired={faceRequired}
         canWrite={canWrite}
         onZoom={() => p.avatarUrl && setZoom({ url: p.avatarUrl, caption: p.fullName })}
         onEdit={() => setEditing(true)}
@@ -213,11 +220,17 @@ export function EmployeeProfilePage() {
 
       <div className="mt-4">
         {tab === 'overview' && (
-          <OverviewTab p={p} canWrite={canWrite} onZones={() => setZones(true)} onFaceReset={() => setFaceReset(true)} />
+          <OverviewTab
+            p={p}
+            faceRequired={faceRequired}
+            canWrite={canWrite}
+            onZones={() => setZones(true)}
+            onFaceReset={() => setFaceReset(true)}
+          />
         )}
         {tab === 'attendance' && <AttendanceTab p={p} onZoom={setZoom} />}
         {tab === 'zone' && <ZoneTimePanel employeeId={p.employeeId} assignedCount={p.assignedMahallas.length} />}
-        {tab === 'reports' && <ReportList from={localDay(-30)} to={localDay()} employeeId={p.employeeId} />}
+        {tab === 'reports' && <ReportsTab employeeId={p.employeeId} />}
         {tab === 'murojaat' && <MurojaatTab p={p} />}
         {tab === 'finance' && <FinanceTab p={p} />}
       </div>
@@ -233,10 +246,17 @@ export function EmployeeProfilePage() {
       <AssignZonesModal
         row={
           zones
-            ? { employeeId: p.employeeId, fullName: p.fullName, assignedMahallaCodes: p.assignedMahallas.map((m) => m.code) }
+            ? {
+                employeeId: p.employeeId,
+                fullName: p.fullName,
+                assignedMahallaCodes: p.assignedMahallas.map((m) => m.code),
+                // Eskirgan signalni "Hozir" deb ko'rsatmaymiz.
+                location: { hasLocation: !!p.live && !p.live.stale, mahallaName: p.live?.mahallaName ?? null },
+              }
             : null
         }
         onClose={() => setZones(false)}
+        onDone={flash}
       />
       <ArchiveEmployeeDialog
         employee={archiving ? { id: p.employeeId, fullName: p.fullName } : null}
@@ -249,7 +269,10 @@ export function EmployeeProfilePage() {
         onConfirm={async () => {
           try {
             const r = await resetFace.mutateAsync(p.employeeId);
-            flash(`Yuz qayta o'rnatildi (${r.removed} ta shablon o'chdi) — xodim ilovada yuzini qayta ro'yxatdan o'tkazadi`);
+            flash(
+              `Yuz qayta o'rnatildi (${r.removed} ta shablon o'chdi)` +
+                (faceRequired ? " — xodim ilovada yuzini qayta ro'yxatdan o'tkazadi" : ''),
+            );
             setFaceReset(false);
           } catch (e) {
             flash(e instanceof Error ? e.message : "Bajarib bo'lmadi");
@@ -260,9 +283,10 @@ export function EmployeeProfilePage() {
         title="Yuzni qayta o'rnatish"
         message={
           <>
-            <span className="font-semibold text-ink">{p.fullName}</span> ning yuz shablonlari o'chiriladi. Keyingi
-            keldi-ketdida ilova yuzni qaytadan ro'yxatdan o'tkazishni so'raydi. Telefon almashganda yoki yuz tanilmay
-            qolganda ishlating.
+            <span className="font-semibold text-ink">{p.fullName}</span> ning yuz shablonlari o'chiriladi.{' '}
+            {faceRequired
+              ? "Keyingi keldi-ketdida ilova yuzni qaytadan ro'yxatdan o'tkazishni so'raydi. Telefon almashganda yoki yuz tanilmay qolganda ishlating."
+              : "Yuz skaneri hozir o'chirilgan — keldi-ketdi faqat joylashuv bo'yicha qabul qilinadi."}
           </>
         }
         confirmLabel="Qayta o'rnatish"
@@ -274,7 +298,7 @@ export function EmployeeProfilePage() {
       {toast && (
         <div
           role="status"
-          className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[70] mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-medium text-white shadow-pop"
+          className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[70] mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-medium text-surface shadow-pop"
         >
           {toast}
         </div>
@@ -287,6 +311,7 @@ export function EmployeeProfilePage() {
 
 function Hero({
   p,
+  faceRequired,
   canWrite,
   onZoom,
   onEdit,
@@ -296,6 +321,7 @@ function Hero({
   restoring,
 }: {
   p: EmployeeProfile;
+  faceRequired: boolean;
   canWrite: boolean;
   onZoom: () => void;
   onEdit: () => void;
@@ -305,6 +331,7 @@ function Hero({
   restoring: boolean;
 }) {
   const live = p.live;
+  const territory = live ? territoryOf(live.insideZone, live.insideOffice) : null;
   return (
     <Card className="overflow-hidden">
       <div className="h-20 bg-gradient-to-r from-primary-600/90 via-primary-500/80 to-emerald-400/70 sm:h-24" />
@@ -365,13 +392,18 @@ function Hero({
               <ArchiveBook size={13} /> Arxivda · {p.archivedAt ? new Date(p.archivedAt).toLocaleDateString('uz-UZ') : ''}
             </Badge>
           )}
-          <Badge tone={p.face.enrolled ? 'success' : 'warning'}>
-            <ScanBarcode size={13} /> {p.face.enrolled ? 'Yuz ro‘yxatda' : 'Yuz yo‘q'}
-          </Badge>
+          {(p.face.enrolled || faceRequired) && (
+            <Badge tone={p.face.enrolled ? 'success' : 'warning'}>
+              <ScanBarcode size={13} /> {p.face.enrolled ? 'Yuz ro‘yxatda' : 'Yuz yo‘q'}
+            </Badge>
+          )}
           {p.username ? <Badge tone="info">@{p.username}</Badge> : <Badge tone="warning">Login yo'q</Badge>}
-          {live && (
-            <Badge tone={live.stale ? 'neutral' : live.insideZone ? 'success' : 'danger'}>
-              <Location size={13} /> {live.mahallaName ?? 'Joy aniqlanmadi'} · {timeAgo(live.at)}
+          {live && territory && (
+            <Badge
+              tone={live.stale ? 'neutral' : territory === 'zone' ? 'success' : territory === 'office' ? 'info' : 'danger'}
+            >
+              <Location size={13} /> {live.stale ? '' : `${TERRITORY_LABEL[territory]} · `}
+              {live.mahallaName ?? 'Joy aniqlanmadi'} · {timeAgo(live.at)}
             </Badge>
           )}
         </div>
@@ -421,8 +453,8 @@ function MonthStrip({ p }: { p: EmployeeProfile }) {
   const m = p.month;
   const tiles: { label: string; value: string; hint?: string; icon: IconType; color: string }[] = [
     { label: 'Ish kunlari', value: String(m.daysWorked), hint: m.absentDays ? `${m.absentDays} kun kelmagan` : undefined, icon: TickCircle, color: '#10b981' },
-    { label: 'Kechikishlar', value: String(m.lateDays), hint: m.lateMinutes ? `jami ${m.lateMinutes} daq` : undefined, icon: Timer1, color: '#f59e0b' },
-    { label: 'Ishlagan soat', value: m.hours.toFixed(1), icon: Clock, color: '#3b82f6' },
+    { label: 'Kechikishlar', value: String(m.lateDays), hint: m.lateMinutes ? `jami ${durationText(m.lateMinutes)}` : undefined, icon: Timer1, color: '#f59e0b' },
+    { label: 'Ishlagan vaqt', value: durationText(m.hours * 60), icon: Clock, color: '#3b82f6' },
     { label: 'Hal qilgan murojaat', value: String(p.murojaat.resolved), hint: `${p.murojaat.answered} tasiga javob bergan`, icon: MessageQuestion, color: '#8b5cf6' },
     { label: "O'rtacha baho", value: p.murojaat.avgRating != null ? `${p.murojaat.avgRating}/5` : '—', icon: Star1, color: '#eab308' },
   ];
@@ -438,7 +470,15 @@ function MonthStrip({ p }: { p: EmployeeProfile }) {
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg" style={{ background: `${t.color}1a`, color: t.color }}>
                 <t.icon size={16} variant="Bulk" />
               </span>
-              <span className="text-xl font-bold tabular-nums text-ink">{t.value}</span>
+              {/* "168 soat 25 daqiqa" tor kartada ikki qatorga tushadi. */}
+              <span
+                className={cn(
+                  'min-w-0 font-bold tabular-nums text-ink',
+                  t.value.length > 8 ? 'text-[15px] leading-tight' : 'text-xl',
+                )}
+              >
+                {t.value}
+              </span>
             </div>
             <p className="mt-1.5 truncate text-[12px] text-ink-soft">{t.label}</p>
             {t.hint && <p className="truncate text-[11px] text-ink-muted">{t.hint}</p>}
@@ -453,11 +493,13 @@ function MonthStrip({ p }: { p: EmployeeProfile }) {
 
 function OverviewTab({
   p,
+  faceRequired,
   canWrite,
   onZones,
   onFaceReset,
 }: {
   p: EmployeeProfile;
+  faceRequired: boolean;
   canWrite: boolean;
   onZones: () => void;
   onFaceReset: () => void;
@@ -482,7 +524,7 @@ function OverviewTab({
           {rows.map((r) => (
             <div key={r.label} className="flex items-center gap-3 py-2.5">
               <r.icon size={17} variant="Bulk" className="shrink-0 text-ink-muted" />
-              <dt className="w-36 shrink-0 text-[13px] text-ink-muted">{r.label}</dt>
+              <dt className="w-28 shrink-0 text-[13px] text-ink-muted sm:w-36">{r.label}</dt>
               <dd className="min-w-0 flex-1 break-words text-[13.5px] font-medium text-ink">{r.value}</dd>
             </div>
           ))}
@@ -530,13 +572,35 @@ function OverviewTab({
             <p className="text-[13px] text-ink-soft">
               {p.face.templates} ta shablon · oxirgisi {p.face.lastAt ? formatDateTime(p.face.lastAt) : '—'}
             </p>
-          ) : (
+          ) : faceRequired ? (
             <p className="flex items-center gap-1.5 text-[13px] text-amber-700 dark:text-amber-400">
               <Warning2 size={16} variant="Bulk" /> Xodim ilovada yuzini hali ro'yxatdan o'tkazmagan
+            </p>
+          ) : (
+            <p className="text-[13px] text-ink-soft">
+              Yuz skaneri o'chirilgan — ro'yxatdan o'tish shart emas
             </p>
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Hisobotlar ───────────────────────── */
+
+function ReportsTab({ employeeId }: { employeeId: string }) {
+  const [period, setPeriod] = useState<PeriodSelection>({ preset: 'week' });
+  const range = resolvePeriod(period);
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <PeriodBar value={period} onChange={setPeriod} />
+        <p className="text-[12.5px] tabular-nums text-ink-muted">
+          {rangeText(range)} · {daysInclusive(range.from, range.to)} kun
+        </p>
+      </div>
+      <ReportList from={range.from} to={range.to} employeeId={employeeId} />
     </div>
   );
 }
@@ -559,21 +623,21 @@ function AttendanceTab({ p, onZoom }: { p: EmployeeProfile; onZoom: (z: { url: s
         </label>
       </div>
       <div className="mt-3 overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
             <tr className="border-y border-line text-[11px] uppercase tracking-wider text-ink-muted">
               <th className="px-5 py-2.5 font-semibold">Sana</th>
               <th className="px-3 py-2.5 font-semibold">Holat</th>
               <th className="px-3 py-2.5 font-semibold">Keldi</th>
               <th className="px-3 py-2.5 font-semibold">Ketdi</th>
-              <th className="px-5 py-2.5 text-right font-semibold">Soat</th>
+              <th className="px-5 py-2.5 text-right font-semibold">Ishladi</th>
             </tr>
           </thead>
           <tbody>
             {days.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-ink-muted">
-                  Bu davrda muammo yo'q
+                  {onlyProblems ? "Bu davrda muammo yo'q" : "Bu davrda davomat yo'q"}
                 </td>
               </tr>
             ) : (
@@ -599,7 +663,7 @@ function DayRow({ d, name, onZoom }: { d: ProfileDay; name: string; onZoom: (z: 
       <td className="px-3 py-2.5">
         <Badge tone={meta.tone} dot>
           {meta.label}
-          {d.checkIn?.isLate ? ` · ${d.checkIn.lateMinutes} daq` : ''}
+          {d.checkIn?.isLate ? ` · ${durationText(d.checkIn.lateMinutes)}` : ''}
         </Badge>
       </td>
       <td className="px-3 py-2.5">
@@ -608,7 +672,9 @@ function DayRow({ d, name, onZoom }: { d: ProfileDay; name: string; onZoom: (z: 
       <td className="px-3 py-2.5">
         <ScanCell time={d.checkOut?.time} photo={d.checkOut?.photoUrl} caption={`${name} · ketdi ${hhmm(d.checkOut?.time)}, ${d.date}`} onZoom={onZoom} />
       </td>
-      <td className="px-5 py-2.5 text-right tabular-nums text-ink-soft">{d.hoursWorked != null ? d.hoursWorked.toFixed(1) : '—'}</td>
+      <td className="whitespace-nowrap px-5 py-2.5 text-right tabular-nums text-ink-soft">
+        {d.hoursWorked != null ? durationText(d.hoursWorked * 60) : '—'}
+      </td>
     </tr>
   );
 }
@@ -638,7 +704,7 @@ function ScanCell({
           <img src={photo} alt="" loading="lazy" onError={() => setBroken(true)} className="h-full w-full object-cover" />
         </button>
       )}
-      <span className="font-medium tabular-nums text-ink">{hhmm(time)}</span>
+      <span className="whitespace-nowrap font-medium tabular-nums text-ink">{hhmm(time)}</span>
     </span>
   );
 }
@@ -728,6 +794,14 @@ function MurojaatTab({ p }: { p: EmployeeProfile }) {
               {Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="h-16 animate-pulse rounded-xl bg-surface-2" />
               ))}
+            </div>
+          ) : q.isError && !q.data ? (
+            <div role="alert" className="flex flex-col items-center gap-3 px-4 py-14 text-center">
+              <CloseCircle size={36} variant="Bulk" className="text-danger" />
+              <p className="text-sm text-ink-soft">Murojaatlarni yuklab bo'lmadi</p>
+              <Button variant="secondary" onClick={() => void q.refetch()} disabled={q.isFetching}>
+                <RotateRight size={16} className={cn(q.isFetching && 'animate-spin')} /> Qayta urinish
+              </Button>
             </div>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-4 py-14 text-center">

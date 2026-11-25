@@ -400,7 +400,7 @@ export function DeputiesPage() {
                     className={cn(
                       'min-h-11 rounded-xl px-3.5 py-2 text-[13px] font-medium transition-colors',
                       categoryFilter === 'all'
-                        ? 'bg-ink text-white'
+                        ? 'bg-ink text-surface'
                         : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
                     )}
                   >

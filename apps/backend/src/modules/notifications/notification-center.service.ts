@@ -47,10 +47,11 @@ export class NotificationCenter {
     title: string,
     body: string,
     data: Record<string, string> = {},
+    type: NotificationType = NotificationType.APPLICATION,
   ): Promise<void> {
     try {
       await this.prisma.notification.create({
-        data: { employeeId, title, body, type: NotificationType.APPLICATION },
+        data: { employeeId, title, body, type },
       });
       await this.push.sendToEmployee(employeeId, title, body, data);
     } catch (e) {

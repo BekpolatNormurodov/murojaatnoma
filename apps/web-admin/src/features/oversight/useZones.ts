@@ -28,16 +28,19 @@ export function useAssignZones() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ employeeId, mahallaCodes }: { employeeId: string; mahallaCodes: string[] }) =>
-      api.patch<{ lastInsideAssignedZone: boolean; lastLocationAt: string | null }>(`/employees/${employeeId}`, {
-        assignedMahallaCodes: mahallaCodes,
-      }),
+      api.patch<{ lastInsideAssignedZone: boolean; lastInsideOffice?: boolean; lastLocationAt: string | null }>(
+        `/employees/${employeeId}`,
+        { assignedMahallaCodes: mahallaCodes },
+      ),
     // The backend re-judges the last position and today's track against the new
     // territory, so every view that shows "Hududda/Tashqarida" or zone time is stale.
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['oversight'] });
       void qc.invalidateQueries({ queryKey: ['employee-profile'] });
       void qc.invalidateQueries({ queryKey: ['locations'] });
+      void qc.invalidateQueries({ queryKey: ['attendance'] });
       void qc.invalidateQueries({ queryKey: ['daily-reports', 'activity'] });
+      void qc.invalidateQueries({ queryKey: ['analytics', 'overview'] });
     },
   });
 }

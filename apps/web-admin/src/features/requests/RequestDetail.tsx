@@ -743,7 +743,7 @@ export function RequestDetail({
                       className={cn(
                         'flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors disabled:cursor-not-allowed',
                         active
-                          ? 'bg-ink text-white'
+                          ? 'bg-ink text-surface'
                           : 'border border-line bg-surface text-ink-soft hover:bg-surface-2 disabled:opacity-45 disabled:hover:bg-surface',
                       )}
                     >

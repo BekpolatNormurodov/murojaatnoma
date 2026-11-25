@@ -26,7 +26,10 @@ export interface OversightRow {
   };
   location: {
     hasLocation: boolean;
+    /** Faqat biriktirilgan hudud — ofis bunga kirmaydi. */
     insideAssignedZone: boolean;
+    /** Ofisda (eski backend'da yo'q). */
+    insideOffice?: boolean;
     mahallaName: string | null;
     isStale: boolean;
   };

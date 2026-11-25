@@ -45,20 +45,24 @@ function useClickOutside<T extends HTMLElement>(onOut: () => void) {
 }
 
 /**
- * Ochilganda tugma o'ng chekkaga yaqin bo'lsa — drop-down'ni o'ngga
- * (`right-0`) tekislaydi, aks holda `left-0`. Shu bilan sahifaning o'ng
- * tomonidagi (masalan Davomat sarlavhasidagi) kalendar ekrandan chiqib
- * ketmaydi. `popoverWidth` — drop-down eni (px, taxminan).
+ * Drop-down'ning tugmaga nisbatan gorizontal o'rni (`left`, px): odatda tugma
+ * chap chetidan, o'ng chekkada joy yetmasa — tugma o'ng chetiga tekislanadi,
+ * va hech qachon ekrandan chiqmaydi (telefonda ham). `popoverWidth` —
+ * drop-down eni (px, taxminan); `narrowWidth` — 640px'dan tor ekrandagi eni.
  */
-function useAutoAlign<T extends HTMLElement>(open: boolean, popoverWidth = 288) {
+function useAutoAlign<T extends HTMLElement>(open: boolean, popoverWidth = 288, narrowWidth = popoverWidth) {
   const btnRef = useRef<T>(null);
-  const [alignEnd, setAlignEnd] = useState(false);
+  const [left, setLeft] = useState(0);
   useEffect(() => {
     if (!open) return;
     const r = btnRef.current?.getBoundingClientRect();
-    if (r) setAlignEnd(r.left + popoverWidth > window.innerWidth - 8);
-  }, [open, popoverWidth]);
-  return [btnRef, alignEnd] as const;
+    if (!r) return;
+    const screen = document.documentElement.clientWidth;
+    const width = screen < 640 ? narrowWidth : popoverWidth;
+    const preferred = r.left + width <= screen - 8 ? 0 : r.width - width;
+    setLeft(Math.max(8 - r.left, Math.min(preferred, screen - 8 - width - r.left)));
+  }, [open, popoverWidth, narrowWidth]);
+  return [btnRef, left] as const;
 }
 
 /**
@@ -80,7 +84,7 @@ export function DatePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open);
+  const [btnRef, popLeft] = useAutoAlign<HTMLButtonElement>(open, 280);
   const selected = parseDate(value);
   const today = new Date();
 
@@ -148,10 +152,8 @@ export function DatePicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className={cn(
-              'absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop',
-              alignEnd ? 'right-0' : 'left-0',
-            )}
+            style={{ left: popLeft }}
+            className="absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
           >
             {/* Oy navigatsiyasi */}
             <div className="mb-2 flex items-center justify-between">
@@ -315,7 +317,7 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open, 388);
+  const [btnRef, popLeft] = useAutoAlign<HTMLButtonElement>(open, 414, 282);
   const today = new Date();
   const fromD = parseDate(from);
   const toD = parseDate(to);
@@ -412,13 +414,11 @@ export function DateRangePicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className={cn(
-              'absolute z-50 mt-2 flex w-max rounded-2xl border border-line bg-surface p-3 shadow-pop',
-              alignEnd ? 'right-0' : 'left-0',
-            )}
+            style={{ left: popLeft }}
+            className="absolute z-50 mt-2 flex w-max flex-col rounded-2xl border border-line bg-surface p-3 shadow-pop sm:flex-row"
           >
-            {/* Tayyor oraliqlar */}
-            <div className="flex w-30 flex-col gap-0.5 border-r border-line pr-2">
+            {/* Tayyor oraliqlar (telefonda — kalendar ustida) */}
+            <div className="mb-3 flex w-64 flex-wrap gap-0.5 border-b border-line pb-2 sm:mb-0 sm:w-30 sm:flex-col sm:flex-nowrap sm:border-b-0 sm:border-r sm:pb-0 sm:pr-2">
               {RANGE_PRESETS.map((p) => (
                 <button
                   key={p.label}
@@ -437,7 +437,7 @@ export function DateRangePicker({
             </div>
 
             {/* Kalendar (boshi → oxiri) */}
-            <div className="w-64 pl-3">
+            <div className="w-64 sm:pl-3">
               <div className="mb-2 flex items-center justify-between">
                 <button
                   type="button"
@@ -544,7 +544,7 @@ export function MonthPicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open);
+  const [btnRef, popLeft] = useAutoAlign<HTMLButtonElement>(open, 280);
   const parsed = parseMonth(value);
   const today = new Date();
   const [viewYear, setViewYear] = useState(() => parsed?.year ?? today.getFullYear());
@@ -589,10 +589,8 @@ export function MonthPicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className={cn(
-              'absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop',
-              alignEnd ? 'right-0' : 'left-0',
-            )}
+            style={{ left: popLeft }}
+            className="absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
           >
             {/* Yil navigatsiyasi */}
             <div className="mb-2 flex items-center justify-between">
@@ -697,7 +695,7 @@ export function TimePicker({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const [btnRef, alignEnd] = useAutoAlign<HTMLButtonElement>(open, 272);
+  const [btnRef, popLeft] = useAutoAlign<HTMLButtonElement>(open, 272);
   const hoursRef = useRef<HTMLDivElement>(null);
   const minutesRef = useRef<HTMLDivElement>(null);
   // Pastda joy yetmasa (modal tagi, sahifa oxiri) — tepaga ochiladi.
@@ -782,10 +780,10 @@ export function TimePicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: openUp ? 6 : -6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            style={{ left: popLeft }}
             className={cn(
               'absolute z-50 w-[272px] rounded-2xl border border-line bg-surface p-3 shadow-pop',
               openUp ? 'bottom-full mb-2' : 'top-full mt-2',
-              alignEnd ? 'right-0' : 'left-0',
             )}
           >
             <div className="flex items-baseline justify-between px-1">

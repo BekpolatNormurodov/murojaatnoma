@@ -18,6 +18,7 @@ import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
 import { useAttendanceRangeReport } from './useAttendanceRangeReport';
+import { minutesText } from './attendanceMeta';
 
 const AVATAR_TINTS = ['#10b981', '#3b82f6', '#f59e0b', '#a855f7', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
 function tintFor(id: string): string {
@@ -26,12 +27,9 @@ function tintFor(id: string): string {
   return AVATAR_TINTS[h % AVATAR_TINTS.length];
 }
 
-/** Daqiqa -> "2s 15d" yoki "45d". */
+/** Daqiqa -> "2 soat 15 daqiqa" / "45 daqiqa"; yo'q bo'lsa "—". */
 function fmtMinutes(m: number): string {
-  if (m <= 0) return '—';
-  const h = Math.floor(m / 60);
-  const min = m % 60;
-  return h > 0 ? `${h}s ${min}d` : `${min}d`;
+  return m <= 0 ? '—' : minutesText(m);
 }
 
 function Skeleton({ className }: { className?: string }) {
@@ -104,7 +102,8 @@ export function AttendanceRangeView({
     return { present, absent, lateIncidents, lateMinutes };
   }, [rows]);
 
-  if (isError) {
+  // Fon yangilanishi yiqilsa, yuklangan hisobot ekranda qoladi.
+  if (isError && !data) {
     return (
       <Card className="mt-5 flex flex-col items-center gap-3 p-14 text-center">
         <CloseCircle size={40} variant="Bulk" className="text-danger" />
@@ -138,7 +137,8 @@ export function AttendanceRangeView({
       <Card className="mt-5 overflow-hidden">
         <CardHeader
           title="Oraliq bo'yicha davomat"
-          subtitle={`${from} — ${to}`}
+          subtitle={`${from.split('-').reverse().join('.')} — ${to.split('-').reverse().join('.')}`}
+          className="flex-col items-stretch gap-3 sm:flex-row sm:items-start"
           action={
             <div className="relative">
               <SearchNormal1 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
@@ -207,7 +207,7 @@ export function AttendanceRangeView({
                         </span>
                       </td>
                       <td className="px-3 py-3 text-ink-soft">{r.lateCount || '—'}</td>
-                      <td className="px-3 py-3 text-ink-soft">{fmtMinutes(r.lateMinutes)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-ink-soft">{fmtMinutes(r.lateMinutes)}</td>
                     </motion.tr>
                   ))}
             </tbody>

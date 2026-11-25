@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { EmployeeRole } from '@prisma/client';
-import { IsArray, IsEnum, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+  Matches,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 import { E164_PHONE_REGEX } from '../../../common/constants/validation.constants';
 
 export class CreateEmployeeDto {
@@ -38,7 +46,8 @@ export class CreateEmployeeDto {
     description:
       'Mahalla codes (from mahallas.geojson) this employee is assigned to for territory oversight. Empty = the whole district counts as in-zone.',
   })
-  @IsOptional()
+  // Not @IsOptional(): that would let `null` through to Prisma (500).
+  @ValidateIf((_, value) => value !== undefined)
   @IsArray()
   @IsString({ each: true })
   assignedMahallaCodes?: string[];

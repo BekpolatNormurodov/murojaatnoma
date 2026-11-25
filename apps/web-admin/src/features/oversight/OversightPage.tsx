@@ -19,6 +19,7 @@ import {
   ArchiveBook,
   Refresh2,
   DocumentText1,
+  Building,
 } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
 import { Badge } from '@/shared/ui/Badge';
@@ -29,7 +30,7 @@ import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { Pagination } from '@/shared/ui/Pagination';
 import { ConfirmDialog } from '@/shared/ui/ConfirmDialog';
 import { formatSom, formatSomShort } from '@/shared/lib/format';
-import { exportWorkbook, type ExportColumn } from '@/shared/lib/export';
+import { TERRITORY_LABEL, territoryOf } from '@/shared/lib/territory';
 import { cn } from '@/shared/lib/cn';
 import { matchesSearch } from '@/shared/lib/translit';
 import { usePermissions } from '@/shared/lib/permissions';
@@ -41,21 +42,17 @@ import { usePurgeEmployee, useRestoreEmployee } from './useEmployeeMutations';
 import { useArchivedEmployees, type ArchivedEmployee } from './useEmployeeProfile';
 import {
   durationText,
-  fetchActivity,
-  hoursOf,
   localDay,
-  monthRange,
   useActivity,
   useAttendanceSettings,
   useUpdateAttendanceSettings,
   type ActivityRow,
 } from './useActivity';
+import { attMeta } from './oversightMeta';
+import { exportActivityWorkbook } from './exportActivity';
+import { ExportPeriodModal } from './ExportPeriodModal';
+import type { Range } from './period';
 import { Switch } from '@/shared/ui/Switch';
-
-const MONTH_NAMES = [
-  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
-];
 
 function currentMonthValue(): string {
   const d = new Date();
@@ -70,25 +67,6 @@ function hhmm(iso: string | null): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-type AttMeta = { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' | 'primary' };
-
-const ATT_META: Record<OversightRow['attendance']['status'], AttMeta> = {
-  present: { label: 'Ish joyida', tone: 'success' },
-  late: { label: 'Kechikkan', tone: 'warning' },
-  left: { label: 'Chiqib ketgan', tone: 'neutral' },
-  absent: { label: 'Kelmagan', tone: 'danger' },
-  leave: { label: "Ta'tilda", tone: 'primary' },
-  dayoff: { label: 'Dam olish', tone: 'neutral' },
-};
-
-/**
- * Backend yangi holat qo'shsa ham sahifa qulamasin: dam olish kuni `dayoff`
- * kelganda butun /oversight "undefined.tone" bilan yiqilgan edi.
- */
-function attMeta(status: string): AttMeta {
-  return (ATT_META as Record<string, AttMeta | undefined>)[status] ?? { label: "Noma'lum", tone: 'neutral' };
-}
-
 type FlagFilter = 'all' | 'absent' | 'late' | 'outside' | 'noface';
 
 /** Does a row match the active quick-filter (problem categories for oversight)? */
@@ -99,7 +77,11 @@ function matchesFlag(r: OversightRow, f: FlagFilter): boolean {
     case 'late':
       return r.attendance.status === 'late';
     case 'outside':
-      return r.location.hasLocation && !r.location.insideAssignedZone;
+      // Ofisdagi xodim "hududdan tashqari" muammosi emas.
+      return (
+        r.location.hasLocation &&
+        territoryOf(r.location.insideAssignedZone, r.location.insideOffice) === 'outside'
+      );
     case 'noface':
       return !r.hasFace;
     default:
@@ -115,13 +97,17 @@ const FLAGS: { key: FlagFilter; label: string }[] = [
   { key: 'noface', label: 'Yuzsiz' },
 ];
 
-/** Grid spans for the 5 KPI tiles: phone 2+2+1(wide), tablet 3+2, desktop 5. */
+/**
+ * Grid spans for the 5 KPI tiles: phone 2+2+1(wide), tablet and laptop 3+2,
+ * wide desktop 5 in a row (at 1024–1279px five tiles cut their labels off).
+ * Without the face tile the 4 that remain need no spans.
+ */
 const KPI_SPANS = [
-  'sm:col-span-2 lg:col-span-1',
-  'sm:col-span-2 lg:col-span-1',
-  'sm:col-span-2 lg:col-span-1',
-  'sm:col-span-3 lg:col-span-1',
-  'col-span-2 sm:col-span-3 lg:col-span-1',
+  'sm:col-span-2 xl:col-span-1',
+  'sm:col-span-2 xl:col-span-1',
+  'sm:col-span-2 xl:col-span-1',
+  'sm:col-span-3 xl:col-span-1',
+  'col-span-2 sm:col-span-3 xl:col-span-1',
 ];
 
 function Skeleton({ className }: { className?: string }) {
@@ -183,18 +169,29 @@ export function OversightPage() {
   }, [toast]);
 
   const rows = useMemo(() => (Array.isArray(data?.rows) ? data!.rows : []), [data]);
+  // Yuz skaneri o'chirilgan bo'lsa "Yuzsiz" muammo emas — filtri ham yashirinadi.
+  const faceRequired = useAttendanceSettings().data?.faceRequired ?? true;
+  const flags = faceRequired ? FLAGS : FLAGS.filter((f) => f.key !== 'noface');
+  const kpiSpan = (i: number) => (faceRequired ? KPI_SPANS[i] : undefined);
+  const kpiGrid = faceRequired ? 'grid-cols-2 sm:grid-cols-6 xl:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4';
+  const activeFlag: FlagFilter = flags.some((f) => f.key === flag) ? flag : 'all';
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       // Kirill/lotin farqisiz qidiruv ("Ismoilov" ↔ "Исмоилов").
       if (!matchesSearch(query, r.fullName, r.position)) return false;
-      return matchesFlag(r, flag);
+      return matchesFlag(r, activeFlag);
     });
-  }, [rows, query, flag]);
+  }, [rows, query, activeFlag]);
 
   useEffect(() => {
     setPage(1);
   }, [query, flag, monthValue]);
-  const paged = useMemo(() => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), [filtered, page]);
+  // Hudud o'zgarsa yoki ro'yxat yangilansa filtr natijasi qisqaradi — bo'sh sahifada qolmaymiz.
+  const shownPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
+  const paged = useMemo(
+    () => filtered.slice((shownPage - 1) * PAGE_SIZE, shownPage * PAGE_SIZE),
+    [filtered, shownPage],
+  );
 
   const s = data?.summary;
   // Bugungi faollik (hududda vaqt + hisobot) — kartalarda ko'rsatiladi.
@@ -205,92 +202,44 @@ export function OversightPage() {
     [todayActivity.data],
   );
   const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // Distinct positions — suggestions for the Lavozim field in the form.
   const positions = useMemo(
     () => [...new Set(rows.map((r) => r.position).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [rows],
   );
 
-  /**
-   * Excel: "Faollik" (asosiy) — F.I.Sh., mahallalari, lavozimi, hisobot bergan
-   * kunlar, faol soat, hududda soat, ish vaqti (jadval) va ishlagan soat
-   * alohida; keyin "Bugungi holat" va "Umumiy" varaqlari. Davr = tanlangan oy
-   * (joriy oy bo'lsa bugungacha).
-   */
-  async function handleExport() {
+  /** Excel: tanlangan davr; sahifadagi filtr va qidiruv ham qo'llanadi. */
+  async function handleExport(range: Range) {
     setExporting(true);
     try {
-      const range = monthRange(year, month);
-      const activity = await fetchActivity(range.from, range.to);
-      const byId = new Map(rows.map((r) => [r.employeeId, r]));
-      const actRows = activity.rows.filter((a) => {
-        const r = byId.get(a.employeeId);
-        return r ? filtered.includes(r) : !query.trim() && flag === 'all';
-      });
-      const actCols: ExportColumn<ActivityRow & { n: number }>[] = [
-        { header: '№', value: (r) => r.n, align: 'center' },
-        { header: 'F.I.Sh.', value: (r) => r.fullName },
-        { header: 'Mahallalari', value: (r) => (r.mahallas.length ? r.mahallas.join(', ') : 'Butun tuman') },
-        { header: 'Lavozimi', value: (r) => r.position },
-        { header: "Bo'lim", value: (r) => r.department ?? '—' },
-        { header: 'Hisobot bergan kunlar', value: (r) => r.reportDays, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.reportDays, 0) },
-        { header: 'Hisobotlar soni', value: (r) => r.reportCount, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.reportCount, 0) },
-        { header: 'Faol holatda (soat)', value: (r) => hoursOf(r.activeMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.activeMinutes, 0)) },
-        { header: 'Hududda (soat)', value: (r) => hoursOf(r.zoneMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.zoneMinutes, 0)) },
-        { header: 'Ish vaqti (jadval)', value: (r) => `${r.workStartTime}–${r.workEndTime}`, align: 'center' },
-        { header: 'Kelgan kunlar', value: (r) => r.daysWorked, align: 'right', total: (rs) => rs.reduce((a, r) => a + r.daysWorked, 0) },
-        { header: 'Ishlagan vaqt (soat)', value: (r) => hoursOf(r.workMinutes), align: 'right', total: (rs) => hoursOf(rs.reduce((a, r) => a + r.workMinutes, 0)) },
-      ];
-      const todayCols: ExportColumn<OversightRow>[] = [
-        { header: 'F.I.Sh.', value: (r) => r.fullName },
-        { header: 'Lavozim', value: (r) => r.position },
-        { header: 'Yuz', value: (r) => (r.hasFace ? "Ro'yxatdan o'tgan" : "Yo'q") },
-        { header: 'Holat', value: (r) => attMeta(r.attendance.status).label },
-        { header: 'Keldi', value: (r) => hhmm(r.attendance.checkInAt) },
-        { header: 'Ketdi', value: (r) => hhmm(r.attendance.checkOutAt) },
-        { header: 'Bugun (soat)', value: (r) => (r.attendance.hoursWorked != null ? r.attendance.hoursWorked.toFixed(1) : '—'), align: 'right' },
-        { header: 'Hudud', value: (r) => (!r.location.hasLocation ? "Ma'lumot yo'q" : r.location.insideAssignedZone ? 'Hududda' : 'Tashqarida') },
-        { header: 'Hozirgi mahalla', value: (r) => r.location.mahallaName ?? '—' },
-        { header: "Oylik (sof, so'm)", value: (r) => r.salaryNet ?? 0, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + (r.salaryNet ?? 0), 0)) },
-        { header: "Premya (so'm)", value: (r) => r.premyaThisMonth, align: 'right', total: (rs) => formatSom(rs.reduce((a, r) => a + r.premyaThisMonth, 0)) },
-      ];
-      const summaryRows = s
-        ? [
-            { k: 'Davr', v: `${range.from} — ${range.to}` },
-            { k: 'Jami xodim', v: s.total },
-            { k: "Yuz ro'yxatdan o'tgan", v: `${s.faceEnrolled}/${s.total}` },
-            { k: 'Hozir ish joyida', v: s.presentNow },
-            { k: 'Kechikkan', v: s.lateNow },
-            { k: 'Hududdan tashqarida', v: s.outsideZone },
-            { k: 'Hisobot bergan xodimlar', v: actRows.filter((r) => r.reportDays > 0).length },
-            { k: "Jami oylik fondi (sof, so'm)", v: s.salaryTotalNet },
-          ]
-        : [];
-      const sumCols: ExportColumn<{ k: string; v: string | number }>[] = [
-        { header: "Ko'rsatkich", value: (r) => r.k },
-        { header: 'Qiymat', value: (r) => r.v, align: 'right' },
-      ];
-      const label = `${MONTH_NAMES[month - 1]} ${year}`;
-      await exportWorkbook(`xodimlar_faollik_${year}-${String(month).padStart(2, '0')}`, [
-        {
-          name: 'Faollik',
-          columns: actCols,
-          rows: actRows.map((r, i) => ({ ...r, n: i + 1 })),
-          opts: {
-            title: `Xodimlar faolligi — ${label}`,
-            subtitle: `Mirzo Ulug'bek tumani hokimligi · ${range.from} — ${range.to} · ${actRows.length} ta xodim`,
-          },
+      const picked = flags.find((f) => f.key === activeFlag);
+      const result = await exportActivityWorkbook({
+        range,
+        filter: {
+          query,
+          flag:
+            picked && picked.key !== 'all'
+              ? { label: picked.label, test: (r) => matchesFlag(r, picked.key) }
+              : undefined,
         },
-        { name: 'Bugungi holat', columns: todayCols, rows: filtered, opts: { title: `Bugungi holat — ${localDay()}` } },
-        { name: 'Umumiy', columns: sumCols, rows: summaryRows, opts: { title: `Xodimlar boshqaruvi — ${label}` } },
-      ]);
-      setToast('Excel tayyor');
+      });
+      setExportOpen(false);
+      setToast(
+        result.dailyMissing ? `Excel tayyor — kunlik varaqlarsiz: ${result.dailyMissing}` : 'Excel tayyor',
+      );
     } catch (err) {
       setToast(err instanceof Error ? err.message : "Excel'ni tayyorlab bo'lmadi");
     } finally {
       setExporting(false);
     }
   }
+  const filterNote = [
+    activeFlag !== 'all' ? `filtr «${flags.find((f) => f.key === activeFlag)?.label}»` : '',
+    query.trim() ? `qidiruv «${query.trim()}»` : '',
+  ]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <div>
@@ -311,7 +260,7 @@ export function OversightPage() {
         {(
           [
             ['active', 'Faol xodimlar', data?.summary?.total],
-            ['archive', 'Arxiv', archivedRows.length],
+            ['archive', 'Arxiv', archivedQuery.data?.length],
           ] as const
         ).map(([v, label, count]) => (
           <button
@@ -347,6 +296,9 @@ export function OversightPage() {
         <ArchiveList
           rows={archivedRows}
           loading={archivedQuery.isLoading}
+          failed={archivedQuery.isError && !archivedQuery.data}
+          retrying={archivedQuery.isFetching}
+          onRetry={() => void archivedQuery.refetch()}
           canWrite={canWrite}
           canPurge={isSuperAdmin}
           restoringId={restore.isPending ? restore.variables : undefined}
@@ -356,7 +308,8 @@ export function OversightPage() {
         />
       ) : null}
 
-      {view === 'archive' ? null : isError ? (
+      {/* Fon yangilanishi yiqilsa, yuklangan ro'yxat ekranda qoladi. */}
+      {view === 'archive' ? null : isError && !data ? (
         <Card className="flex flex-col items-center gap-3 p-14 text-center">
           <CloseCircle size={40} variant="Bulk" className="text-danger" />
           <div>
@@ -374,27 +327,29 @@ export function OversightPage() {
           {/* 6-col track on tablets: 3 tiles of 2 + 2 tiles of 3 = two full rows. */}
           <FaceScanSetting canWrite={canWrite} onDone={setToast} />
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6 lg:grid-cols-5">
+          <div className={cn('grid gap-3', kpiGrid)}>
             {isLoading || !s ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className={cn('h-[72px]', KPI_SPANS[i])} />
+              Array.from({ length: faceRequired ? 5 : 4 }).map((_, i) => (
+                <Skeleton key={i} className={cn('h-[72px]', kpiSpan(i))} />
               ))
             ) : (
               <>
-                <KpiTile icon={Profile2User} label="Jami xodim" value={String(s.total)} tint="#3b82f6" className={KPI_SPANS[0]} />
-                <KpiTile icon={ScanBarcode} label="Yuz ro'yxatda" value={`${s.faceEnrolled}/${s.total}`} tint="#8b5cf6" className={KPI_SPANS[1]} />
-                <KpiTile icon={TickCircle} label="Ish joyida" value={String(s.presentNow)} tint="#10b981" className={KPI_SPANS[2]} />
-                <KpiTile icon={Timer1} label="Kechikkan" value={String(s.lateNow)} tint="#f59e0b" className={KPI_SPANS[3]} />
-                <KpiTile icon={Location} label="Hududdan tashqari" value={String(s.outsideZone)} tint="#ef4444" className={KPI_SPANS[4]} />
+                <KpiTile icon={Profile2User} label="Jami xodim" value={String(s.total)} tint="#3b82f6" className={kpiSpan(0)} />
+                {faceRequired && (
+                  <KpiTile icon={ScanBarcode} label="Yuz ro'yxatda" value={`${s.faceEnrolled}/${s.total}`} tint="#8b5cf6" className={kpiSpan(1)} />
+                )}
+                <KpiTile icon={TickCircle} label="Ish joyida" value={String(s.presentNow)} tint="#10b981" className={kpiSpan(2)} />
+                <KpiTile icon={Timer1} label="Kechikkan" value={String(s.lateNow)} tint="#f59e0b" className={kpiSpan(3)} />
+                <KpiTile icon={Location} label="Hududdan tashqari" value={String(s.outsideZone)} tint="#ef4444" className={kpiSpan(4)} />
               </>
             )}
           </div>
 
           {/* Quick filters — one swipeable row on phones, wrapping on wider screens. */}
           <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
-            {FLAGS.map((f) => {
+            {flags.map((f) => {
               const count = f.key === 'all' ? rows.length : rows.filter((r) => matchesFlag(r, f.key)).length;
-              const active = flag === f.key;
+              const active = activeFlag === f.key;
               const danger = f.key !== 'all' && count > 0;
               return (
                 <button
@@ -433,7 +388,7 @@ export function OversightPage() {
               />
             </div>
             <MonthPicker value={monthValue} onChange={setMonthValue} className="min-w-0 sm:w-52" />
-            <Button variant="secondary" onClick={() => void handleExport()} disabled={isLoading || exporting || filtered.length === 0} title="Excel: faollik, hisobotlar, hudud va ish vaqti">
+            <Button variant="secondary" onClick={() => setExportOpen(true)} disabled={isLoading || exporting} title="Excel: faollik, hisobotlar, hudud va ish vaqti">
               {exporting ? <RotateRight size={17} className="animate-spin" /> : <DocumentDownload size={17} />} Excel
             </Button>
           </div>
@@ -454,7 +409,29 @@ export function OversightPage() {
               ) : filtered.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Judge size={40} variant="Bulk" className="text-ink-muted" />
-                  <p className="mt-3 text-sm text-ink-soft">Xodim topilmadi</p>
+                  {rows.length === 0 ? (
+                    <>
+                      <p className="mt-3 text-sm font-semibold text-ink">Hali xodim qo'shilmagan</p>
+                      {canWrite && (
+                        <p className="mt-1 text-[13px] text-ink-muted">«Xodim qo'shish» tugmasi orqali birinchi xodimni kiriting.</p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-3 text-sm text-ink-soft">Filtr yoki qidiruv bo'yicha xodim topilmadi</p>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => {
+                          setQuery('');
+                          setFlag('all');
+                        }}
+                      >
+                        Filtrni tozalash
+                      </Button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -463,7 +440,8 @@ export function OversightPage() {
                       key={r.employeeId}
                       row={r}
                       today={todayMap.get(r.employeeId)}
-                      onAssign={() => setAssigning(r)}
+                      faceRequired={faceRequired}
+                      onAssign={canWrite ? () => setAssigning(r) : undefined}
                       onDetail={() => openProfile(r.employeeId)}
                       onEdit={canWrite ? () => setEmpModal({ open: true, row: r }) : undefined}
                       onDelete={canWrite ? () => setArchiving({ id: r.employeeId, fullName: r.fullName }) : undefined}
@@ -473,7 +451,7 @@ export function OversightPage() {
               )}
             </div>
             {!isLoading && (
-              <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} className="border-t border-line" />
+              <Pagination page={shownPage} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} className="border-t border-line" />
             )}
           </Card>
 
@@ -486,6 +464,14 @@ export function OversightPage() {
       )}
 
       <AssignZonesModal row={assigning} onClose={() => setAssigning(null)} onDone={setToast} />
+      <ExportPeriodModal
+        open={exportOpen}
+        pageMonth={`${year}-${String(month).padStart(2, '0')}`}
+        filterNote={filterNote ? `Excel'ga qo'llanadi: ${filterNote}.` : undefined}
+        busy={exporting}
+        onClose={() => (exporting ? undefined : setExportOpen(false))}
+        onExport={(range) => void handleExport(range)}
+      />
       <EmployeeFormModal
         open={empModal.open}
         row={empModal.row}
@@ -521,7 +507,7 @@ export function OversightPage() {
         // closing used to render underneath its backdrop.
         <div
           role="status"
-          className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[70] mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-medium text-white shadow-pop"
+          className="fixed inset-x-4 bottom-[max(1.5rem,env(safe-area-inset-bottom))] z-[70] mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-xl bg-ink px-4 py-2.5 text-center text-sm font-medium text-surface shadow-pop"
         >
           {toast}
         </div>
@@ -533,6 +519,7 @@ export function OversightPage() {
 function OversightCard({
   row,
   today,
+  faceRequired,
   onAssign,
   onDetail,
   onEdit,
@@ -541,7 +528,9 @@ function OversightCard({
   row: OversightRow;
   /** Bugungi faollik (yuklanmagan bo'lsa undefined). */
   today?: ActivityRow;
-  onAssign: () => void;
+  faceRequired: boolean;
+  /** Berilmasa (VIEWER) hudud faqat ko'rsatiladi. */
+  onAssign?: () => void;
   onDetail: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -549,6 +538,41 @@ function OversightCard({
   const att = attMeta(row.attendance.status);
   const loc = row.location;
   const assignedCount = (row.assignedMahallaCodes ?? []).length;
+  const territory = territoryOf(loc.insideAssignedZone, loc.insideOffice);
+  const zoneChip = (
+    <>
+      {!loc.hasLocation ? (
+        <span
+          className={cn(
+            'inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-muted',
+            onAssign && 'group-hover:text-primary-600',
+          )}
+          title="Mobil ilova o'rnatilmagan yoki lokatsiya hali yuborilmagan"
+        >
+          <Location size={14} variant="Outline" className="shrink-0" /> Lokatsiya yo'q
+        </span>
+      ) : (
+        <span
+          className={cn(
+            'inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium',
+            territory === 'zone' ? 'text-emerald-600' : territory === 'office' ? 'text-sky-600' : 'text-red-500',
+          )}
+          title={loc.mahallaName ?? undefined}
+        >
+          <Location size={14} variant="Bulk" className="shrink-0" /> {TERRITORY_LABEL[territory]}
+          {territory !== 'outside' && loc.isStale ? ' (eski)' : ''}
+        </span>
+      )}
+      <span
+        className={cn(
+          'shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted transition-colors',
+          onAssign && 'group-hover:bg-primary-50 group-hover:text-primary-600',
+        )}
+      >
+        {assignedCount ? `${assignedCount} mahalla` : 'butun tuman'}
+      </span>
+    </>
+  );
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-surface p-3.5 transition-shadow hover:shadow-card sm:p-4">
       {/* Avatar + ism (bosilsa — o'ng drawer) + amallar */}
@@ -581,17 +605,19 @@ function OversightCard({
       {/* Yuz + davomat holati */}
       <div className="flex flex-wrap items-center gap-2">
         {row.hasFace ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11.5px] font-medium text-emerald-600">
+          <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11.5px] font-medium text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
             <ScanBarcode size={13} variant="Bulk" /> Yuz bor
           </span>
-        ) : (
+        ) : faceRequired ? (
           <span className="inline-flex items-center gap-1 rounded-md bg-surface-2 px-2 py-1 text-[11.5px] text-ink-muted">
             <CloseCircle size={13} variant="Bulk" /> Yuzsiz
           </span>
-        )}
-        <Badge tone={att.tone} dot>
+        ) : null}
+        <Badge tone={att.tone} dot className="tabular-nums">
           {att.label}
-          {row.attendance.checkInAt ? ` · ${hhmm(row.attendance.checkInAt)}` : ''}
+          {row.attendance.checkInAt
+            ? ` · ${hhmm(row.attendance.checkInAt)}${row.attendance.checkOutAt ? ` – ${hhmm(row.attendance.checkOutAt)}` : ''}`
+            : ''}
         </Badge>
       </div>
 
@@ -602,6 +628,12 @@ function OversightCard({
             <Timer1 size={13} className="text-emerald-600" />
             Bugun hududda: <span className="font-semibold tabular-nums text-ink">{durationText(today.zoneMinutes)}</span>
           </span>
+          {(today.officeMinutes ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1" title="Bugun hududdan tashqarida, lekin ofisda bo'lgan vaqt">
+              <Building size={13} className="text-sky-600" />
+              Ofisda: <span className="font-semibold tabular-nums text-ink">{durationText(today.officeMinutes!)}</span>
+            </span>
+          )}
           <span
             className={cn('inline-flex items-center gap-1', today.reportCount > 0 ? 'text-emerald-600' : 'text-ink-muted')}
             title="Bugungi kunlik hisobot"
@@ -614,31 +646,17 @@ function OversightCard({
 
       {/* Hudud (biriktirish) + oylik/premya */}
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-line pt-3">
-        <button
-          onClick={onAssign}
-          title={`Hudud biriktirish${assignedCount ? ` (${assignedCount} ta mahalla)` : ' (hozircha butun tuman)'}`}
-          className="group flex min-w-0 items-center gap-1.5 rounded-lg py-1 text-left"
-        >
-          {!loc.hasLocation ? (
-            <span
-              className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] text-ink-muted group-hover:text-primary-600"
-              title="Mobil ilova o'rnatilmagan yoki lokatsiya hali yuborilmagan"
-            >
-              <Location size={14} variant="Outline" className="shrink-0" /> Lokatsiya yo'q
-            </span>
-          ) : loc.insideAssignedZone ? (
-            <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium text-emerald-600" title={loc.mahallaName ?? undefined}>
-              <Location size={14} variant="Bulk" className="shrink-0" /> Hududda{loc.isStale ? ' (eski)' : ''}
-            </span>
-          ) : (
-            <span className="inline-flex min-w-0 items-center gap-1 whitespace-nowrap text-[12.5px] font-medium text-red-500" title={loc.mahallaName ?? undefined}>
-              <Location size={14} variant="Bulk" className="shrink-0" /> Tashqarida
-            </span>
-          )}
-          <span className="shrink-0 whitespace-nowrap rounded-md bg-surface-2 px-1.5 py-0.5 text-[10.5px] tabular-nums text-ink-muted transition-colors group-hover:bg-primary-50 group-hover:text-primary-600">
-            {assignedCount ? `${assignedCount} mahalla` : 'butun tuman'}
-          </span>
-        </button>
+        {onAssign ? (
+          <button
+            onClick={onAssign}
+            title={`Hudud biriktirish${assignedCount ? ` (${assignedCount} ta mahalla)` : ' (hozircha butun tuman)'}`}
+            className="group flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 rounded-lg py-1 text-left"
+          >
+            {zoneChip}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 py-1">{zoneChip}</div>
+        )}
         <div className="shrink-0 text-right tabular-nums">
           <div className="whitespace-nowrap text-[13.5px] font-semibold text-primary-600">
             {row.salaryNet != null ? formatSom(row.salaryNet) : <span className="font-normal text-ink-muted">Oylik yo'q</span>}
@@ -658,7 +676,7 @@ function OversightCard({
  * mobil ilova kamerani ochmaydi. VIEWER faqat ko'radi.
  */
 function FaceScanSetting({ canWrite, onDone }: { canWrite: boolean; onDone: (msg: string) => void }) {
-  const { data, isLoading, isError } = useAttendanceSettings();
+  const { data, isLoading, isError, refetch, isFetching } = useAttendanceSettings();
   const update = useUpdateAttendanceSettings();
   const on = data?.faceRequired ?? true;
 
@@ -671,7 +689,19 @@ function FaceScanSetting({ canWrite, onDone }: { canWrite: boolean; onDone: (msg
     }
   }
 
-  if (isError) return null;
+  if (isError && !data) {
+    return (
+      <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-danger-soft p-3.5 sm:p-4">
+        <CloseCircle size={20} variant="Bulk" className="shrink-0 text-danger" />
+        <p className="min-w-0 flex-1 text-[13px] font-medium text-red-700">
+          Yuz skaneri sozlamasini yuklab bo'lmadi
+        </p>
+        <Button variant="secondary" onClick={() => void refetch()} disabled={isFetching}>
+          <RotateRight size={16} className={cn(isFetching && 'animate-spin')} /> Qayta urinish
+        </Button>
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -682,7 +712,9 @@ function FaceScanSetting({ canWrite, onDone }: { canWrite: boolean; onDone: (msg
       <span
         className={cn(
           'grid h-10 w-10 shrink-0 place-items-center rounded-xl',
-          on ? 'bg-violet-50 text-violet-600' : 'bg-amber-100 text-amber-700',
+          on
+            ? 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300'
+            : 'bg-amber-100 text-amber-700 dark:bg-amber-500/20',
         )}
       >
         <ScanBarcode size={20} variant="Bulk" />
@@ -698,7 +730,14 @@ function FaceScanSetting({ canWrite, onDone }: { canWrite: boolean; onDone: (msg
         </div>
       </div>
       {update.isPending && <RotateRight size={16} className="shrink-0 animate-spin text-ink-muted" />}
-      <Switch checked={on} onChange={(v) => void toggle(v)} disabled={!canWrite || isLoading || update.isPending} />
+      <span className="flex shrink-0" title={canWrite ? undefined : "O'zgartirish huquqi yo'q"}>
+        <Switch
+          label="Yuz skaneri (Face ID) majburiy"
+          checked={on}
+          onChange={(v) => void toggle(v)}
+          disabled={!canWrite || isLoading || update.isPending}
+        />
+      </span>
     </div>
   );
 }
@@ -724,7 +763,7 @@ function KpiTile({
       </span>
       <div className="min-w-0">
         <div className="text-xl font-bold leading-tight tabular-nums text-ink">{value}</div>
-        <div className="truncate text-[12px] text-ink-muted">{label}</div>
+        <div className="text-[12px] leading-tight text-ink-muted">{label}</div>
       </div>
     </div>
   );
@@ -761,6 +800,9 @@ function RowAction({
 function ArchiveList({
   rows,
   loading,
+  failed,
+  retrying,
+  onRetry,
   canWrite,
   canPurge,
   restoringId,
@@ -770,6 +812,9 @@ function ArchiveList({
 }: {
   rows: ArchivedEmployee[];
   loading: boolean;
+  failed: boolean;
+  retrying: boolean;
+  onRetry: () => void;
   canWrite: boolean;
   canPurge: boolean;
   restoringId?: string;
@@ -784,6 +829,17 @@ function ArchiveList({
           <Skeleton key={i} className="h-[120px]" />
         ))}
       </div>
+    );
+  }
+  if (failed) {
+    return (
+      <Card className="flex flex-col items-center gap-3 p-14 text-center">
+        <CloseCircle size={40} variant="Bulk" className="text-danger" />
+        <p className="font-semibold text-ink">Arxivni yuklab bo'lmadi</p>
+        <Button variant="secondary" onClick={onRetry} disabled={retrying}>
+          <RotateRight size={16} className={cn(retrying && 'animate-spin')} /> Qayta urinish
+        </Button>
+      </Card>
     );
   }
   if (rows.length === 0) {

@@ -10,6 +10,7 @@ import { Request, Response } from 'express';
 import { resolveLang } from '../i18n/lang.util';
 import { localizeValidationErrors } from '../i18n/validation-messages';
 import { isValidationExceptionPayload } from '../i18n/validation-exception.types';
+import { UPLOAD_SIZE_MESSAGE } from '../upload/upload-policy';
 
 interface ErrorResponseBody {
   statusCode: number;
@@ -46,9 +47,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // here and localize it into the caller's language; every other
     // exception (including plain BadRequestExceptions thrown by app code)
     // falls through to the unchanged default handling below.
-    const message = isValidationExceptionPayload(exceptionResponse)
+    let message = isValidationExceptionPayload(exceptionResponse)
       ? localizeValidationErrors(exceptionResponse.validationErrors, resolveLang(request))
       : this.extractMessage(exceptionResponse, exception);
+    // Multer's size limit arrives through Nest as a bare English 413.
+    if (
+      statusCode === Number(HttpStatus.PAYLOAD_TOO_LARGE) &&
+      message === 'File too large'
+    ) {
+      message = UPLOAD_SIZE_MESSAGE;
+    }
     const error = isHttpException ? exception.name : 'InternalServerError';
 
     const body: ErrorResponseBody = {

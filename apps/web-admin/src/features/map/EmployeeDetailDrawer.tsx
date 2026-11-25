@@ -24,6 +24,7 @@ import {
   haversineM,
   initials,
   isOnline,
+  isPastDayWindow,
   MAX_DRAW_ACCURACY_M,
   OFFICE_CENTER,
   OFFLINE_COLOR,
@@ -32,6 +33,7 @@ import {
   statusColor,
   statusKey,
   STATUS_COLORS,
+  trackHistoryDays,
   type Labels,
   type TrackSummary,
   type TrackWindow,
@@ -125,8 +127,11 @@ export function EmployeeDetailDrawer({
     loc.hasLocation && loc.latitude != null && loc.longitude != null
       ? [loc.latitude, loc.longitude]
       : null;
+  // A past day's route says nothing about where they are now.
+  const pastDay = isPastDayWindow(trackWindow);
+  const historyDays = trackHistoryDays();
   // Prefer the server's per-employee office distance from the latest fix.
-  const lastFix = track?.points[track.points.length - 1];
+  const lastFix = pastDay ? undefined : track?.points[track.points.length - 1];
   const distanceM =
     lastFix?.distanceToOfficeM != null ? lastFix.distanceToOfficeM : pos ? haversineM(pos, OFFICE_CENTER) : null;
   const key = statusKey(loc);
@@ -157,7 +162,8 @@ export function EmployeeDetailDrawer({
       {/* Panel: bottom sheet on phones, right rail on ≥sm */}
       <aside
         className={cn(
-          'pointer-events-auto absolute flex flex-col overflow-hidden border-line bg-surface shadow-pop transition-transform duration-300 ease-out',
+          // The whole panel scrolls when the header and metrics leave no room for the list.
+          'pointer-events-auto absolute flex flex-col overflow-y-auto overflow-x-hidden border-line bg-surface shadow-pop transition-transform duration-300 ease-out',
           'inset-x-0 bottom-0 max-h-[82%] rounded-t-2xl border-t',
           'sm:inset-x-auto sm:inset-y-0 sm:right-0 sm:max-h-none sm:w-[360px] sm:rounded-t-none sm:rounded-l-2xl sm:border-l sm:border-t-0',
           shown
@@ -210,7 +216,9 @@ export function EmployeeDetailDrawer({
             <span
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
-                online ? 'bg-emerald-50 text-emerald-700' : 'bg-surface-2 text-ink-muted',
+                online
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'bg-surface-2 text-ink-muted',
               )}
             >
               <span
@@ -367,7 +375,7 @@ export function EmployeeDetailDrawer({
               className={cn(
                 'flex-1 rounded-lg px-2 py-1.5 text-[11px] font-medium transition-colors',
                 trackWindow === w.key
-                  ? 'bg-ink text-white'
+                  ? 'bg-ink text-surface'
                   : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
               )}
             >
@@ -376,8 +384,27 @@ export function EmployeeDetailDrawer({
           ))}
         </div>
 
+        {/* One of the previous days */}
+        <div className="mt-1.5 flex flex-wrap gap-1 px-4" aria-label={t.history}>
+          {historyDays.map((day, i) => (
+            <button
+              key={day}
+              onClick={() => onTrackWindow(day)}
+              aria-pressed={trackWindow === day}
+              className={cn(
+                'shrink-0 whitespace-nowrap rounded-lg px-2 py-1.5 text-[11px] font-medium tabular-nums transition-colors',
+                trackWindow === day
+                  ? 'bg-ink text-surface'
+                  : 'border border-line bg-surface text-ink-soft hover:bg-surface-2',
+              )}
+            >
+              {i === 0 ? t.yesterday : `${day.slice(8)}.${day.slice(5, 7)}`}
+            </button>
+          ))}
+        </div>
+
         {/* Track point list */}
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-2 pb-3 sm:min-h-[120px]">
+        <div className="mt-3 shrink-0 px-2 pb-3 sm:min-h-[160px] sm:flex-1 sm:shrink sm:overflow-y-auto">
           {trackLoading ? (
             <p className="px-3 py-6 text-center text-xs text-ink-muted">
               {t.loadingTrack}
@@ -393,7 +420,7 @@ export function EmployeeDetailDrawer({
               const coarse = p.accuracy != null && p.accuracy > MAX_DRAW_ACCURACY_M;
               const inZone = fixInZone(p);
               // "Jonli" only when the newest fix really is current (not hours old).
-              const isLive = i === 0 && online;
+              const isLive = i === 0 && online && !pastDay;
               return (
                 <Fragment key={`${p.recordedAt}-${i}`}>
                   <button
@@ -413,10 +440,11 @@ export function EmployeeDetailDrawer({
                     <span
                       className={cn(
                         'min-w-0 flex-1 truncate text-xs',
-                        coarse ? 'text-ink-muted' : inZone ? 'text-ink' : 'text-amber-700',
+                        coarse ? 'text-ink-muted' : inZone || p.insideOffice ? 'text-ink' : 'text-amber-700',
                       )}
                     >
                       {p.mahallaName ?? '—'}
+                      {p.insideOffice && !inZone && ` · ${t.office}`}
                       {coarse && ` · ${t.lowAccuracy}`}
                     </span>
                     {isLive && (
@@ -427,11 +455,11 @@ export function EmployeeDetailDrawer({
                   </button>
                   {older && gapMs >= GAP_MIN_MS && (
                     <div className="my-0.5 flex items-center gap-2 px-3 py-1" aria-label={`${fmtGap(gapMs)} lokatsiya uzilgan`}>
-                      <span className="h-px flex-1 bg-amber-200" />
-                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                      <span className="h-px flex-1 bg-amber-200 dark:bg-amber-500/30" />
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-500/10">
                         <Timer1 size={11} variant="Bulk" /> {fmtGap(gapMs)} uzilgan
                       </span>
-                      <span className="h-px flex-1 bg-amber-200" />
+                      <span className="h-px flex-1 bg-amber-200 dark:bg-amber-500/30" />
                     </div>
                   )}
                 </Fragment>

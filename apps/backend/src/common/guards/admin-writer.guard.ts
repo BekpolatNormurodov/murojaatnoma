@@ -10,6 +10,10 @@ import { AuthenticatedUser } from '../interfaces/authenticated-user.interface';
 export class AdminWriterGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const user = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>().user;
+    return this.allows(user);
+  }
+
+  allows(user: AuthenticatedUser | undefined): boolean {
     return (
       user?.scope === 'admin' &&
       (user.adminRole === AdminRole.SUPER_ADMIN || user.adminRole === AdminRole.ADMIN)

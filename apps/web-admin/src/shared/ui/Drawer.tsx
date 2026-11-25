@@ -26,7 +26,7 @@ export function Drawer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-sm"
+            className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-sm dark:bg-black/60"
           />
           <motion.aside
             initial={{ x: '100%' }}

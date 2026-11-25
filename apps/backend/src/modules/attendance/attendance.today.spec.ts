@@ -22,6 +22,7 @@ function employee(id: string, over: Record<string, unknown> = {}) {
     lastLocationAt: null,
     lastMahallaName: null,
     lastInsideAssignedZone: true,
+    lastInsideOffice: false,
     ...over,
   };
 }
@@ -130,5 +131,27 @@ describe('AttendanceService.today (davomat board)', () => {
     const service = build([employee('ali', { lastLocationAt: old })], []);
     const res = await service.today({});
     expect(res.roster[0].live?.stale).toBe(true);
+  });
+
+  it('faceChecked: yuz tekshirilmagan skan ajralib turadi; live — insideOffice', async () => {
+    const service = build(
+      [
+        employee('ali', {
+          lastLocationAt: new Date(),
+          lastInsideAssignedZone: false,
+          lastInsideOffice: true,
+        }),
+      ],
+      [
+        scan('ali', AttendanceType.CHECK_IN, at(8, 30), { isValid: false, faceScore: 0 }),
+        scan('ali', AttendanceType.CHECK_IN, at(8, 45), { faceScore: 0 }),
+        scan('ali', AttendanceType.CHECK_OUT, at(17, 0)),
+      ],
+    );
+    const [ali] = (await service.today({})).roster;
+    expect(ali.checkIn).toMatchObject({ faceScore: 0, faceChecked: false });
+    expect(ali.checkOut).toMatchObject({ faceScore: 0.93, faceChecked: true });
+    expect(ali.failedScans[0]).toMatchObject({ faceScore: 0, faceChecked: false });
+    expect(ali.live).toMatchObject({ insideZone: false, insideOffice: true });
   });
 });

@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LocationSource, Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { LocationSource, NotificationType, Prisma } from '@prisma/client';
 import { AppConfig } from '../../common/config/configuration';
+import { RT_EVENTS, TerritoryChangedEvent } from '../../common/events/realtime-events';
 import { distanceInMeters } from '../../common/geo/geo.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { NotificationCenter } from '../notifications/notification-center.service';
 import { ZonesService, zoneToleranceM } from '../zones/zones.service';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
@@ -13,6 +16,44 @@ import { TrackQueryDto } from './dto/track-query.dto';
 export const TRACK_GAP_MS = 15 * 60_000;
 /** Rows read for one track window at most (a full day at one fix / 30 s is ~2 900). */
 const TRACK_SCAN_CAP = 20_000;
+/** A device clock further ahead than this is wrong: the fix is stamped with server time. */
+export const MAX_FUTURE_SKEW_MS = 5 * 60_000;
+/** Buffered fixes older than this are acknowledged but not stored. */
+export const MAX_FIX_AGE_MS = 8 * 86_400_000;
+/** Mahalla names listed in the "territory changed" message before "va yana N ta". */
+const NOTICE_MAHALLA_LIMIT = 10;
+
+function startOfLocalDay(d: Date): Date {
+  const s = new Date(d);
+  s.setHours(0, 0, 0, 0);
+  return s;
+}
+
+/** When a report was taken: the device time, unless missing, unreadable or in the future. */
+function fixTime(raw: string | undefined, now: Date): Date {
+  if (!raw) return now;
+  const at = new Date(raw);
+  return at.getTime() <= now.getTime() + MAX_FUTURE_SKEW_MS ? at : now;
+}
+
+const isTooOld = (at: Date, now: Date): boolean =>
+  now.getTime() - at.getTime() > MAX_FIX_AGE_MS;
+
+/**
+ * May a fix taken at `at` become the "latest location"? Yes when it is not older
+ * than the stored one — or the stored time is impossible (a future time written
+ * by a wrong device clock), which would otherwise freeze the employee forever.
+ */
+function supersedesLatest(at: Date, lastAt: Date | null, now: Date): boolean {
+  return !lastAt || at >= lastAt || lastAt.getTime() > now.getTime() + MAX_FUTURE_SKEW_MS;
+}
+
+/** Same mahallas, whatever the order or repetition. */
+function sameCodes(a: string[], b: string[]): boolean {
+  const x = new Set(a);
+  const y = new Set(b);
+  return x.size === y.size && [...x].every((c) => y.has(c));
+}
 
 /**
  * Thins a chronological track to about `limit` points for drawing, always
@@ -47,6 +88,15 @@ interface EmployeeIngestInfo {
   officeRadiusM: number | null;
   assignedMahallaCodes: string[];
   lastLocationAt: Date | null;
+}
+
+/** What the territory rule needs to know about one position. */
+interface TerritoryPoint {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  mahallaCode: string | null;
+  insideDistrict: boolean;
 }
 
 /** Derived, storage-ready fields for one GPS report. */
@@ -85,6 +135,8 @@ export class LocationsService {
     private readonly prisma: PrismaService,
     private readonly zones: ZonesService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly notifications: NotificationCenter,
+    private readonly events: EventEmitter2,
   ) {}
 
   private get staleMinutes(): number {
@@ -124,25 +176,28 @@ export class LocationsService {
   }
 
   /**
-   * Territory oversight: is this report inside the employee's assigned zone?
-   * Being at the office always counts (staff at their desk are never "out of
-   * territory"). When no mahallas are assigned, the whole district counts
-   * (falls back to `insideDistrict`); otherwise the resolved mahalla must be
-   * one of the assigned ones.
+   * Territory oversight: is this position inside the employee's assigned
+   * territory? When no mahallas are assigned, the whole district counts
+   * (`insideDistrict`); otherwise the resolved mahalla must be one of the
+   * assigned ones, or the position within GPS tolerance of one. The office is
+   * NOT territory — it is reported separately as `insideOffice`.
    */
-  private computeInsideAssignedZone(
-    assignedMahallaCodes: string[],
-    mahallaCode: string | null,
-    insideDistrict: boolean,
-    insideOffice: boolean,
-  ): boolean {
-    if (insideOffice) {
+  private async isInTerritory(codes: string[], p: TerritoryPoint): Promise<boolean> {
+    if (codes.length === 0) {
+      return p.insideDistrict;
+    }
+    if (p.mahallaCode != null && codes.includes(p.mahallaCode)) {
       return true;
     }
-    if (assignedMahallaCodes.length === 0) {
-      return insideDistrict;
-    }
-    return mahallaCode != null && assignedMahallaCodes.includes(mahallaCode);
+    // Strict point-in-polygon said "outside" — re-check with boundary tolerance
+    // (GPS jitter). Only for the assigned-mahalla case; the whole-district
+    // fallback is huge, so boundary slack there is pointless.
+    return this.zones.isWithinToleranceOfMahallas(
+      p.latitude,
+      p.longitude,
+      codes,
+      zoneToleranceM(p.accuracy),
+    );
   }
 
   private async derive(
@@ -150,39 +205,25 @@ export class LocationsService {
     assignedMahallaCodes: string[],
     dto: CreateLocationDto,
     fallbackSource: LocationSource,
+    recordedAt: Date,
   ): Promise<DerivedLocation> {
     const locate = await this.zones.locate(dto.latitude, dto.longitude);
     const distanceToOfficeM = Math.round(
       distanceInMeters(dto.latitude, dto.longitude, office.lat, office.lng),
     );
     const mahallaCode = locate.mahalla?.code ?? null;
-    const insideOffice = distanceToOfficeM <= office.radiusM;
-    let insideAssignedZone = this.computeInsideAssignedZone(
-      assignedMahallaCodes,
+    const accuracy = dto.accuracy ?? null;
+    const insideAssignedZone = await this.isInTerritory(assignedMahallaCodes, {
+      latitude: dto.latitude,
+      longitude: dto.longitude,
+      accuracy,
       mahallaCode,
-      locate.insideDistrict,
-      insideOffice,
-    );
-    // Strict point-in-polygon said "outside" — re-check with boundary
-    // tolerance (GPS jitter). Only for the assigned-mahalla case; the
-    // whole-district fallback is huge, so boundary slack there is pointless.
-    if (
-      !insideAssignedZone &&
-      !insideOffice &&
-      assignedMahallaCodes.length > 0
-    ) {
-      const toleranceM = zoneToleranceM(dto.accuracy);
-      insideAssignedZone = await this.zones.isWithinToleranceOfMahallas(
-        dto.latitude,
-        dto.longitude,
-        assignedMahallaCodes,
-        toleranceM,
-      );
-    }
+      insideDistrict: locate.insideDistrict,
+    });
     return {
       latitude: dto.latitude,
       longitude: dto.longitude,
-      accuracy: dto.accuracy ?? null,
+      accuracy,
       speed: dto.speed ?? null,
       heading: dto.heading ?? null,
       battery: dto.battery ?? null,
@@ -190,11 +231,103 @@ export class LocationsService {
       mahallaCode,
       mahallaName: locate.mahalla?.nameUzLat ?? null,
       insideDistrict: locate.insideDistrict,
-      insideOffice,
+      insideOffice: distanceToOfficeM <= office.radiusM,
       insideAssignedZone,
       distanceToOfficeM,
-      recordedAt: dto.recordedAt ? new Date(dto.recordedAt) : new Date(),
+      recordedAt,
     };
+  }
+
+  /**
+   * Which territory judges a fix taken at a given time: the current one, unless
+   * the assignment was changed on a LATER day — then the one in force before the
+   * earliest such change (offline fixes flushed late). A change made today stays
+   * retroactive for today's fixes, as in `reevaluateTerritory`.
+   */
+  private async territoryResolver(
+    employeeId: string,
+    current: string[],
+    times: Date[],
+    now: Date,
+  ): Promise<(at: Date) => string[]> {
+    const oldest = new Date(Math.min(...times.map((t) => t.getTime())));
+    if (oldest >= startOfLocalDay(now)) {
+      return () => current;
+    }
+    const nextDay = startOfLocalDay(oldest);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const changes = await this.prisma.territoryChange.findMany({
+      where: { employeeId, changedAt: { gte: nextDay } },
+      orderBy: { changedAt: 'asc' },
+      select: { previousCodes: true, changedAt: true },
+    });
+    return (at) =>
+      changes.find((c) => startOfLocalDay(c.changedAt) > at)?.previousCodes ?? current;
+  }
+
+  /**
+   * The "latest location" flags always describe the CURRENT territory, even when
+   * the stored fix was judged by an earlier one.
+   */
+  private async underCurrentTerritory(
+    d: DerivedLocation,
+    judgedBy: string[],
+    current: string[],
+  ): Promise<DerivedLocation> {
+    if (judgedBy === current) return d;
+    return { ...d, insideAssignedZone: await this.isInTerritory(current, d) };
+  }
+
+  /** Mahalla codes with their names, in the given order. */
+  private async mahallaRefs(codes: string[]): Promise<{ code: string; name: string }[]> {
+    if (codes.length === 0) return [];
+    const names = new Map(
+      (await this.zones.listZones('MAHALLA')).map((z) => [z.code, z.nameUzLat]),
+    );
+    return codes.map((code) => ({ code, name: names.get(code) ?? code }));
+  }
+
+  /**
+   * Call after an employee's assigned mahallas were saved (the ONE path for
+   * every admin screen). When the set really changed: remembers the previous
+   * territory (late offline fixes are judged by it) and tells the employee —
+   * a live socket event, an inbox row and a push.
+   *
+   * @returns whether anything changed.
+   */
+  async territoryChanged(
+    employeeId: string,
+    previousCodes: string[],
+    codes: string[],
+  ): Promise<boolean> {
+    if (sameCodes(previousCodes, codes)) return false;
+    const changedAt = new Date();
+    await this.prisma.territoryChange.create({
+      data: { employeeId, previousCodes, codes, changedAt },
+    });
+
+    const assignedMahallas = await this.mahallaRefs(codes);
+    const event: TerritoryChangedEvent = {
+      employeeId,
+      assignedMahallas,
+      changedAt: changedAt.toISOString(),
+    };
+    this.events.emit(RT_EVENTS.territoryChanged, event);
+
+    const listed = assignedMahallas.slice(0, NOTICE_MAHALLA_LIMIT).map((m) => m.name);
+    const more = assignedMahallas.length - listed.length;
+    const body =
+      assignedMahallas.length === 0
+        ? 'Endi hududingiz — butun tuman.'
+        : `Biriktirilgan mahallalar: ${listed.join(', ')}${more > 0 ? ` va yana ${more} ta` : ''}`;
+    await this.notifications.employee(
+      employeeId,
+      "Hududingiz o'zgartirildi",
+      body,
+      { type: 'LOCATION', event: 'territory_changed' },
+      NotificationType.LOCATION,
+    );
+    return true;
   }
 
   /**
@@ -222,9 +355,14 @@ export class LocationsService {
    *  - every fix recorded TODAY, so today's "hududda necha soat" is counted
    *    against the territory the admin has just set. Earlier days keep the
    *    territory that was in force on those days.
-   * Uses the same office-first + boundary-tolerance rule as live ingest.
+   * Uses the same territory (+ boundary tolerance) and office rules as live ingest.
    */
-  async reevaluateTerritory(employeeId: string): Promise<{ insideAssignedZone: boolean | null; fixesUpdated: number }> {
+  async reevaluateTerritory(employeeId: string): Promise<{
+    /** Flags of the last known position; null when there is none. */
+    insideAssignedZone: boolean | null;
+    insideOffice: boolean | null;
+    fixesUpdated: number;
+  }> {
     const emp = await this.prisma.employee.findUnique({
       where: { id: employeeId },
       select: {
@@ -247,28 +385,21 @@ export class LocationsService {
     const office = this.resolveOffice(emp);
     const codes = emp.assignedMahallaCodes;
 
-    const judge = async (p: {
-      latitude: number;
-      longitude: number;
-      accuracy: number | null;
-      mahallaCode: string | null;
-      insideDistrict: boolean;
-    }): Promise<{ insideOffice: boolean; insideAssignedZone: boolean; distanceToOfficeM: number }> => {
+    const judge = async (
+      p: TerritoryPoint,
+    ): Promise<{
+      insideOffice: boolean;
+      insideAssignedZone: boolean;
+      distanceToOfficeM: number;
+    }> => {
       const distanceToOfficeM = Math.round(distanceInMeters(p.latitude, p.longitude, office.lat, office.lng));
       const insideOffice = distanceToOfficeM <= office.radiusM;
-      let insideAssignedZone = this.computeInsideAssignedZone(codes, p.mahallaCode, p.insideDistrict, insideOffice);
-      if (!insideAssignedZone && !insideOffice && codes.length > 0) {
-        insideAssignedZone = await this.zones.isWithinToleranceOfMahallas(
-          p.latitude,
-          p.longitude,
-          codes,
-          zoneToleranceM(p.accuracy),
-        );
-      }
+      const insideAssignedZone = await this.isInTerritory(codes, p);
       return { insideOffice, insideAssignedZone, distanceToOfficeM };
     };
 
     let latest: boolean | null = null;
+    let latestOffice: boolean | null = null;
     if (emp.lastLat != null && emp.lastLng != null) {
       const j = await judge({
         latitude: emp.lastLat,
@@ -278,6 +409,7 @@ export class LocationsService {
         insideDistrict: emp.lastInsideDistrict,
       });
       latest = j.insideAssignedZone;
+      latestOffice = j.insideOffice;
       await this.prisma.employee.update({
         where: { id: employeeId },
         data: { lastInsideOffice: j.insideOffice, lastInsideAssignedZone: j.insideAssignedZone },
@@ -328,7 +460,11 @@ export class LocationsService {
           AS v(id, zone, office, dist)
         WHERE l.id = v.id`;
     }
-    return { insideAssignedZone: latest, fixesUpdated: ids.length };
+    return {
+      insideAssignedZone: latest,
+      insideOffice: latestOffice,
+      fixesUpdated: ids.length,
+    };
   }
 
   private async writeDenormalized(employeeId: string, d: DerivedLocation): Promise<void> {
@@ -366,13 +502,42 @@ export class LocationsService {
   async ingest(employeeId: string, dto: CreateLocationDto): Promise<IngestResult> {
     const emp = await this.getEmployeeForIngest(employeeId);
     const office = this.resolveOffice(emp);
-    const d = await this.derive(office, emp.assignedMahallaCodes, dto, LocationSource.FOREGROUND);
+    const current = emp.assignedMahallaCodes;
+    const now = new Date();
+    const recordedAt = fixTime(dto.recordedAt, now);
+
+    // Too old to keep: answered like any report (so the app drops it from its
+    // queue) but nothing is stored — `id` is empty.
+    if (isTooOld(recordedAt, now)) {
+      const dropped = await this.derive(
+        office,
+        current,
+        dto,
+        LocationSource.FOREGROUND,
+        recordedAt,
+      );
+      return this.toIngestResult('', dropped);
+    }
+
+    const codes = (await this.territoryResolver(employeeId, current, [recordedAt], now))(
+      recordedAt,
+    );
+    const d = await this.derive(
+      office,
+      codes,
+      dto,
+      LocationSource.FOREGROUND,
+      recordedAt,
+    );
 
     const created = await this.prisma.employeeLocation.create({
       data: { employeeId, ...d },
     });
-    if (!emp.lastLocationAt || d.recordedAt >= emp.lastLocationAt) {
-      await this.writeDenormalized(employeeId, d);
+    if (supersedesLatest(d.recordedAt, emp.lastLocationAt, now)) {
+      await this.writeDenormalized(
+        employeeId,
+        await this.underCurrentTerritory(d, codes, current),
+      );
     }
     return this.toIngestResult(created.id, d);
   }
@@ -384,8 +549,31 @@ export class LocationsService {
   ): Promise<{ accepted: number; latest: IngestResult | null }> {
     const emp = await this.getEmployeeForIngest(employeeId);
     const office = this.resolveOffice(emp);
+    const current = emp.assignedMahallaCodes;
+    const now = new Date();
+    const kept = items
+      .map((dto) => ({ dto, recordedAt: fixTime(dto.recordedAt, now) }))
+      .filter((x) => !isTooOld(x.recordedAt, now));
+    if (kept.length === 0) {
+      return { accepted: 0, latest: null };
+    }
+
+    const codesAt = await this.territoryResolver(
+      employeeId,
+      current,
+      kept.map((x) => x.recordedAt),
+      now,
+    );
     const derived = await Promise.all(
-      items.map((it) => this.derive(office, emp.assignedMahallaCodes, it, LocationSource.BACKGROUND)),
+      kept.map((x) =>
+        this.derive(
+          office,
+          codesAt(x.recordedAt),
+          x.dto,
+          LocationSource.BACKGROUND,
+          x.recordedAt,
+        ),
+      ),
     );
 
     await this.prisma.employeeLocation.createMany({
@@ -400,9 +588,14 @@ export class LocationsService {
     }
 
     let latest: IngestResult | null = null;
-    if (!emp.lastLocationAt || newest.recordedAt >= emp.lastLocationAt) {
-      await this.writeDenormalized(employeeId, newest);
-      latest = this.toIngestResult('batch', newest);
+    if (supersedesLatest(newest.recordedAt, emp.lastLocationAt, now)) {
+      const live = await this.underCurrentTerritory(
+        newest,
+        codesAt(newest.recordedAt),
+        current,
+      );
+      await this.writeDenormalized(employeeId, live);
+      latest = this.toIngestResult('batch', live);
     }
     return { accepted: derived.length, latest };
   }
@@ -440,6 +633,8 @@ export class LocationsService {
       // The mahalla codes this employee is assigned to patrol — the worker-app
       // map draws THESE polygons as the "ish hududi" (not the office circle).
       assignedMahallaCodes: e.assignedMahallaCodes,
+      // Same set with names (empty = the whole district).
+      assignedMahallas: await this.mahallaRefs(e.assignedMahallaCodes),
     };
   }
 

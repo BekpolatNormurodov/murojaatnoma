@@ -10,12 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Employee, EmployeeRole, FaceTemplate } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireScope } from '../../common/decorators/scope.decorator';
+import { AdminWriterGuard } from '../../common/guards/admin-writer.guard';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { Paginated } from '../../common/interfaces/paginated.interface';
 import { EmployeesService, EmployeeWithFace } from './employees.service';
@@ -34,6 +36,9 @@ import { UpdateEmployeeDto } from './dto/update-employee.dto';
  * in-handler (`assertCanManageFace`): a mobile employee may enroll/read only
  * their OWN `:id`; an admin may act on any. This closes the biometric-
  * embedding + PII leak where any authenticated token reached every route.
+ *
+ * Every admin token carries role=ADMIN (a VIEWER's too), so the routes that
+ * change the roster also require `AdminWriterGuard` (SUPER_ADMIN or ADMIN).
  */
 @ApiTags('employees')
 @ApiBearerAuth()
@@ -58,6 +63,7 @@ export class EmployeesController {
 
   @Post()
   @Roles(EmployeeRole.ADMIN)
+  @UseGuards(AdminWriterGuard)
   @ApiOperation({ summary: 'Register a new employee (Xodim)' })
   create(@Body() dto: CreateEmployeeDto): Promise<Employee> {
     return this.employeesService.create(dto);
@@ -79,6 +85,7 @@ export class EmployeesController {
 
   @Patch(':id')
   @Roles(EmployeeRole.ADMIN)
+  @UseGuards(AdminWriterGuard)
   @ApiOperation({ summary: 'Update an employee profile' })
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeDto): Promise<EmployeeWithFace> {
     return this.employeesService.update(id, dto);
@@ -86,6 +93,7 @@ export class EmployeesController {
 
   @Delete(':id')
   @Roles(EmployeeRole.ADMIN)
+  @UseGuards(AdminWriterGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Remove an employee' })
   remove(@Param('id') id: string): Promise<void> {
@@ -101,6 +109,9 @@ export class EmployeesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<FaceTemplate> {
     this.assertCanManageFace(user, id);
+    if (user.scope === 'admin' && !new AdminWriterGuard().allows(user)) {
+      throw new ForbiddenException('Sizda yuz shablonini o‘zgartirish huquqi yo‘q.');
+    }
     return this.employeesService.enrollFace(id, dto);
   }
 

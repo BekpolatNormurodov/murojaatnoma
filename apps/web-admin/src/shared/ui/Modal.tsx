@@ -47,7 +47,7 @@ export function Modal({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onClose}
-            className="absolute inset-0 bg-ink/45 backdrop-blur-sm"
+            className="absolute inset-0 bg-ink/45 backdrop-blur-sm dark:bg-black/60"
           />
           <motion.div
             role="dialog"

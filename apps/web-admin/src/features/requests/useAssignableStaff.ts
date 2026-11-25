@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
 import type { Worker } from '@/shared/data/types';
 import { useOversight } from '@/features/oversight/useOversight';
+import { territoryOf } from '@/shared/lib/territory';
 
 /** GET /applications/stats — murojaat pipeline numbers (also per employee). */
 export interface ApplicationStats {
@@ -69,7 +70,11 @@ export function useAssignableStaff(): { staff: Worker[]; loading: boolean } {
         email: '',
         specialization: [],
         status: atWork ? 'online' : 'offline',
+        // "Hududda" = faqat biriktirilgan hudud; ofis hudud emas, alohida holat.
         insideRegion: r.location.hasLocation && r.location.insideAssignedZone,
+        atOffice:
+          r.location.hasLocation &&
+          territoryOf(r.location.insideAssignedZone, r.location.insideOffice) === 'office',
         rating: p?.avgRating ?? 0,
         points: 0,
         completedTasks: p?.resolved ?? 0,

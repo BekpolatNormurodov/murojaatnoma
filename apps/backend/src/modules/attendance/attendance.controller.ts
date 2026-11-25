@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AttendanceRecord, EmployeeRole } from '@prisma/client';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AdminWriterGuard } from '../../common/guards/admin-writer.guard';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import {
   AttendanceReport,
@@ -160,6 +161,10 @@ export class AttendanceController {
    */
   private resolveEmployeeId(user: AuthenticatedUser, bodyEmployeeId?: string): string {
     if (bodyEmployeeId && user.role === EmployeeRole.ADMIN) {
+      // A VIEWER token also carries role=ADMIN, but may only read.
+      if (user.scope === 'admin' && !new AdminWriterGuard().allows(user)) {
+        throw new ForbiddenException('Sizda boshqa xodim nomidan belgilash huquqi yo‘q.');
+      }
       return bodyEmployeeId;
     }
     return user.employeeId;

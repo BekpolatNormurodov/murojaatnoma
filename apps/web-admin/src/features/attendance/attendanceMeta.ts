@@ -31,16 +31,16 @@ export function distanceText(m: number): string {
 }
 
 export function minutesText(min: number): string {
-  if (min < 60) return `${min} daq`;
+  if (min < 60) return `${min} daqiqa`;
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return m ? `${h} soat ${m} daq` : `${h} soat`;
+  return m ? `${h} soat ${m} daqiqa` : `${h} soat`;
 }
 
 export function hoursText(h: number): string {
   const total = Math.round(h * 60);
   const m = total % 60;
-  return m ? `${Math.floor(total / 60)} soat ${m} daq` : `${Math.floor(total / 60)} soat`;
+  return m ? `${Math.floor(total / 60)} soat ${m} daqiqa` : `${Math.floor(total / 60)} soat`;
 }
 
 /**

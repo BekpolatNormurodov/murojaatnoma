@@ -815,7 +815,7 @@ export function ChatPage() {
                 onClick={() => setFilter(f)}
                 className={cn(
                   'rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors',
-                  filter === f ? 'bg-ink text-white' : 'bg-surface-2 text-ink-soft hover:text-ink',
+                  filter === f ? 'bg-ink text-surface' : 'bg-surface-2 text-ink-soft hover:text-ink',
                 )}
               >
                 {f === 'all' ? 'Hammasi' : 'Xodimlar'}
@@ -826,7 +826,7 @@ export function ChatPage() {
               title={archivedView ? 'Asosiy suhbatlar' : 'Arxivlangan suhbatlar'}
               className={cn(
                 'ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors',
-                archivedView ? 'bg-ink text-white' : 'bg-surface-2 text-ink-soft hover:text-ink',
+                archivedView ? 'bg-ink text-surface' : 'bg-surface-2 text-ink-soft hover:text-ink',
               )}
             >
               <Archive size={15} variant="Bulk" />

@@ -5,6 +5,7 @@ import { Badge } from '@/shared/ui/Badge';
 import { Modal } from '@/shared/ui/Modal';
 import { cn } from '@/shared/lib/cn';
 import { timeAgo } from '@/shared/lib/format';
+import { territoryOf } from '@/shared/lib/territory';
 import type { EmployeeTodayEntry } from './api/types';
 import {
   ATTENDANCE_STATUS_META,
@@ -31,6 +32,7 @@ export function AttendanceDayDetail({
   const meta = ATTENDANCE_STATUS_META[entry.status];
   const early = entry.earlyLeaveMinutes ?? 0;
   const failed = entry.failedScans ?? [];
+  const liveAt = entry.live ? territoryOf(entry.live.insideZone, entry.live.insideOffice) : null;
   const schedule =
     entry.workStartTime && entry.workEndTime ? `${entry.workStartTime}–${entry.workEndTime}` : null;
 
@@ -76,6 +78,7 @@ export function AttendanceDayDetail({
               </span>
               <ScanFacts
                 faceScore={entry.checkIn.faceScore}
+                faceChecked={entry.checkIn.faceChecked}
                 distanceM={entry.checkIn.distanceM}
                 inside={entry.checkIn.insideGeofence}
               />
@@ -101,6 +104,7 @@ export function AttendanceDayDetail({
               </span>
               <ScanFacts
                 faceScore={entry.checkOut.faceScore}
+                faceChecked={entry.checkOut.faceChecked}
                 distanceM={entry.checkOut.distanceM}
                 inside={entry.checkOut.insideGeofence}
               />
@@ -152,9 +156,11 @@ export function AttendanceDayDetail({
               'grid h-9 w-9 shrink-0 place-items-center rounded-lg',
               entry.live.stale
                 ? 'bg-surface-2 text-ink-muted'
-                : entry.live.insideZone
+                : liveAt === 'zone'
                   ? 'bg-success-soft text-primary-600'
-                  : 'bg-danger-soft text-red-600',
+                  : liveAt === 'office'
+                    ? 'bg-info-soft text-accent-600'
+                    : 'bg-danger-soft text-red-600',
             )}
           >
             {entry.live.stale ? <Warning2 size={17} variant="Bulk" /> : <Location size={17} variant="Bulk" />}
@@ -166,7 +172,9 @@ export function AttendanceDayDetail({
             <span className="block text-[12px] text-ink-muted">
               {entry.live.stale
                 ? `Aloqa yo'q · oxirgi signal ${timeAgo(entry.live.at)}`
-                : `${entry.live.insideZone ? 'Hududida' : 'Hududdan tashqarida'} · ${timeAgo(entry.live.at)}`}
+                : `${
+                    liveAt === 'zone' ? 'Hududida' : liveAt === 'office' ? 'Ofisda' : 'Hududdan tashqarida'
+                  } · ${timeAgo(entry.live.at)}`}
             </span>
           </span>
           <span className="shrink-0 text-[12px] font-medium text-primary-600">Xaritada</span>
@@ -247,19 +255,23 @@ function ScanPhoto({ url, caption, size = 48 }: { url: string; caption: string; 
 
 function ScanFacts({
   faceScore,
+  faceChecked,
   distanceM,
   inside,
 }: {
   faceScore?: number;
+  faceChecked?: boolean;
   distanceM?: number;
   inside?: boolean;
 }) {
-  if (faceScore == null && distanceM == null) return null;
+  if (faceScore == null && faceChecked == null && distanceM == null) return null;
+  // Eski backend `faceChecked` bermaydi — ball 0 dan katta bo'lsa yuz tekshirilgan.
+  const checked = faceChecked ?? (faceScore ?? 0) > 0;
   return (
     <span className="flex flex-wrap gap-1.5">
-      {faceScore != null && (
+      {(faceScore != null || faceChecked === false) && (
         <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px] text-ink-soft">
-          Yuz {Math.round(faceScore * 100)}%
+          {checked ? `Yuz ${Math.round((faceScore ?? 0) * 100)}%` : "Joylashuv bo'yicha"}
         </span>
       )}
       {distanceM != null && (

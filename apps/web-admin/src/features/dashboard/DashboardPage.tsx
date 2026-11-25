@@ -652,7 +652,7 @@ function LocationCard({ data }: { data: Overview | undefined }) {
             <div className="bg-slate-400" style={{ width: `${pct(w.stale)}%` }} />
           </div>
           <div className="mt-4 space-y-2 text-[13px]">
-            <Row dot="#10b981" label="Hududida" value={w.insideZone} />
+            <Row dot="#10b981" label="Hududida yoki ofisda" value={w.insideZone} />
             <Row dot="#ef4444" label="Hududdan tashqarida" value={w.outsideZone} />
             <Row dot="#94a3b8" label={`Aloqa yo'q (${w.staleMinutes}+ daq)`} value={w.stale} />
             <Row dot="#cbd5e1" label="Ilova ishga tushmagan" value={w.neverReported} />

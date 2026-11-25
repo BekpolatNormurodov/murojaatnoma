@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/Button';
 import { cn } from '@/shared/lib/cn';
 import { exportToExcel, type ExportColumn } from '@/shared/lib/export';
 import { useEmployeeStats, periodRange, type StatsPeriod, type DayStat } from './useEmployeeStats';
+import { durationText } from './useActivity';
 import { AttendanceDayDetail } from '@/features/attendance/AttendanceDayDetail';
 import type { EmployeeTodayEntry } from '@/features/attendance/api/types';
 import { useAttendanceToday } from '@/features/attendance/useAttendanceToday';
@@ -82,7 +83,8 @@ export function EmployeeStatsDrawer({
   return (
     <Drawer open={!!employeeId} onClose={onClose} title="Xodim tafsiloti" subtitle={fullName} width={520}>
       {employeeId && (
-        <div className="flex-1 overflow-y-auto p-5">
+        // Drawer tanasi o'zi aylanadi va chetlarni beradi — ikkinchi padding kerak emas.
+        <div>
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4">
             <Avatar name={fullName ?? ''} src={avatarUrl ?? undefined} size={46} />
             <div className="min-w-0 flex-1">
@@ -143,10 +145,10 @@ export function EmployeeStatsDrawer({
             <>
               {/* Stat kartalari */}
               <div className="mt-4 grid grid-cols-2 gap-3">
-                <StatBox icon={Clock} tint="#3b82f6" label="Jami soat" value={`${data.totalHours} s`} />
+                <StatBox icon={Clock} tint="#3b82f6" label="Jami ish vaqti" value={durationText(data.totalHours * 60)} />
                 <StatBox icon={TickCircle} tint="#10b981" label="Kelgan kunlar" value={String(data.daysPresent)} />
                 <StatBox icon={Timer1} tint="#f59e0b" label="Kechikkan kunlar" value={String(data.daysLate)} />
-                <StatBox icon={Timer1} tint="#ef4444" label="Jami kechikish" value={`${data.totalLateMinutes} daq`} />
+                <StatBox icon={Timer1} tint="#ef4444" label="Jami kechikish" value={durationText(data.totalLateMinutes)} />
               </div>
 
               {/* Kunlik jadval */}
@@ -157,7 +159,7 @@ export function EmployeeStatsDrawer({
                       <th className="px-3 py-2 font-semibold">Sana</th>
                       <th className="px-3 py-2 font-semibold">Keldi</th>
                       <th className="px-3 py-2 font-semibold">Ketdi</th>
-                      <th className="px-3 py-2 text-right font-semibold">Soat</th>
+                      <th className="px-3 py-2 text-right font-semibold">Ishladi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -174,7 +176,7 @@ export function EmployeeStatsDrawer({
                             {d.late && <span className="ml-1 text-[10.5px]">(+{d.lateMinutes}′)</span>}
                           </td>
                           <td className="px-3 py-2 tabular-nums text-ink-soft">{hhmm(d.checkOut)}</td>
-                          <td className="px-3 py-2 text-right font-medium tabular-nums text-ink">{d.hours ? `${d.hours}` : '—'}</td>
+                          <td className="px-3 py-2 text-right font-medium tabular-nums text-ink">{d.hours ? durationText(d.hours * 60) : '—'}</td>
                         </tr>
                       ))
                     )}
