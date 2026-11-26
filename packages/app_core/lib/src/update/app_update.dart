@@ -1,10 +1,11 @@
 import 'dart:async';
 
 import 'package:app_core/src/config/app_config.dart';
+import 'package:app_core/src/update/update_installer.dart';
+import 'package:app_core/src/update/update_sheet.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Saytga chiqarilgan APK (`/downloads/manifest.json` dagi yozuv).
 @immutable
@@ -13,11 +14,25 @@ class AppRelease {
     required this.version,
     required this.build,
     required this.url,
+    this.size = 0,
+    this.sha256,
+    this.notes = const [],
+    this.required = false,
   });
 
   final String version;
   final int build;
   final Uri url;
+
+  /// Baytlarda; 0 — noma'lum.
+  final int size;
+  final String? sha256;
+
+  /// Nima yangilangani.
+  final List<String> notes;
+
+  /// O'rnatilgan versiya endi qo'llab-quvvatlanmaydi — kechiktirib bo'lmaydi.
+  final bool required;
 }
 
 /// O'rnatilgan ilovadan yangiroq APK saytda borligini tekshiradi.
@@ -62,11 +77,20 @@ class UpdateChecker {
       final entry = (apps as Map<String, dynamic>)[appKey];
       if (entry is! Map<String, dynamic>) return null;
       final build = entry['build'] as int;
-      if (build <= await _currentBuild()) return null;
+      final current = await _currentBuild();
+      if (build <= current) return null;
+      final size = entry['size'];
+      final sha = entry['sha256'];
+      final notes = entry['notes'];
+      final minBuild = entry['minBuild'];
       return AppRelease(
         version: entry['version'] as String,
         build: build,
         url: manifest.resolve(Uri.encodeComponent(entry['file'] as String)),
+        size: size is int ? size : 0,
+        sha256: sha is String ? sha : null,
+        notes: notes is List ? notes.whereType<String>().toList() : const [],
+        required: minBuild is int && current < minBuild,
       );
     } on Object catch (error) {
       debugPrint('[update] $error');
@@ -75,10 +99,16 @@ class UpdateChecker {
   }
 }
 
-/// Yangi versiya chiqqanda ilova ustida taklif ko'rsatadi. Ishga tushishda va
-/// ilovaga qaytishda tekshiradi.
+/// Yangi versiya chiqqanda ilova ustida yangilash oynasini ko'rsatadi. Ishga
+/// tushishda va ilovaga qaytishda tekshiradi.
 class UpdateGate extends StatefulWidget {
-  const UpdateGate({required this.child, this.checker, this.open, super.key});
+  const UpdateGate({
+    required this.child,
+    this.checker,
+    this.installer,
+    this.openInBrowser,
+    super.key,
+  });
 
   /// "Keyinroq" bosilgach shu versiya haqida qayta eslatish oralig'i.
   static const Duration remindAfter = Duration(hours: 4);
@@ -87,9 +117,10 @@ class UpdateGate extends StatefulWidget {
 
   /// Standart — [UpdateChecker.instance].
   final UpdateChecker? checker;
+  final UpdateInstaller? installer;
 
-  /// APK havolasini ochadi (standart — brauzer).
-  final Future<void> Function(Uri url)? open;
+  /// Ilova ichida yuklab bo'lmaganda zaxira yo'l.
+  final Future<void> Function(Uri url)? openInBrowser;
 
   @override
   State<UpdateGate> createState() => _UpdateGateState();
@@ -100,6 +131,7 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
   int? _postponed;
   DateTime? _postponedAt;
   bool _checking = false;
+  late final UpdateInstaller _installer = widget.installer ?? UpdateInstaller();
 
   UpdateChecker? get _checker => widget.checker ?? UpdateChecker.instance;
 
@@ -127,20 +159,17 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
     _checking = true;
     var release = await checker.check();
     _checking = false;
+    // Tekshirib bo'lmadi (oflayn) — ochiq turgan oyna yopilmaydi.
+    if (release == null && _release != null) return;
     final at = _postponedAt;
     if (release != null &&
+        !release.required &&
         release.build == _postponed &&
         at != null &&
         DateTime.now().difference(at) < UpdateGate.remindAfter) {
       release = null;
     }
     if (mounted) setState(() => _release = release);
-  }
-
-  Future<void> _download(Uri url) async {
-    final open = widget.open;
-    if (open != null) return open(url);
-    await launchUrl(url, mode: LaunchMode.externalApplication);
   }
 
   void _later() => setState(() {
@@ -154,63 +183,19 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
     final release = _release;
     return Stack(
       children: [
-        widget.child,
-        if (release != null) Positioned.fill(child: _card(context, release)),
-      ],
-    );
-  }
-
-  Widget _card(BuildContext context, AppRelease release) {
-    final ru = Localizations.localeOf(context).languageCode == 'ru';
-    final theme = Theme.of(context);
-    return ColoredBox(
-      key: const Key('app_update_card'),
-      color: Colors.black54,
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Icon(Icons.system_update, size: 40),
-                    const SizedBox(height: 12),
-                    Text(
-                      ru ? 'Вышла новая версия' : 'Yangi versiya chiqdi',
-                      style: theme.textTheme.titleLarge,
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      ru
-                          ? 'Версия ${release.version}. Скачайте файл и '
-                                'установите поверх приложения — вход '
-                                'сохранится.'
-                          : '${release.version} versiya. Faylni yuklab olib, '
-                                'ilova ustidan o‘rnating — qayta kirish '
-                                'shart emas.',
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: () => unawaited(_download(release.url)),
-                      child: Text(ru ? 'Скачать' : 'Yuklab olish'),
-                    ),
-                    TextButton(
-                      onPressed: _later,
-                      child: Text(ru ? 'Позже' : 'Keyinroq'),
-                    ),
-                  ],
-                ),
-              ),
+        ExcludeSemantics(excluding: release != null, child: widget.child),
+        if (release != null)
+          Positioned.fill(
+            child: UpdateSheet(
+              // Yuklash holati versiyaga bog'liq.
+              key: ValueKey(release.build),
+              release: release,
+              installer: _installer,
+              onLater: release.required ? null : _later,
+              openInBrowser: widget.openInBrowser,
             ),
           ),
-        ),
-      ),
+      ],
     );
   }
 }

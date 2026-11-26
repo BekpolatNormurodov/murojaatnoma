@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { LocationsService } from './locations.service';
+import { DayQueryDto } from './dto/day-query.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
 
 /**
@@ -38,6 +39,12 @@ export class LocationsAdminController {
   @ApiOperation({ summary: 'Location dashboard counters' })
   stats() {
     return this.locationsService.getStats();
+  }
+
+  @Get(':employeeId/online')
+  @ApiOperation({ summary: 'Online/offline timeline of one employee for a day' })
+  online(@Param('employeeId') employeeId: string, @Query() query: DayQueryDto) {
+    return this.locationsService.getOnlineDay(employeeId, query.date);
   }
 
   @Get(':employeeId/track')

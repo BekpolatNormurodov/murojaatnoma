@@ -1681,7 +1681,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get workScheduleSubtitle =>
-      'Недельный график — 6-дневная рабочая неделя';
+      'Недельный график — 5-дневная рабочая неделя';
 
   @override
   String get workScheduleTodayBadge => 'Сегодня';

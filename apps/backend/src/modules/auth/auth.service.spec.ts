@@ -21,6 +21,15 @@ function table() {
       rows.push({ ...data, revoked: false });
       return Promise.resolve(data);
     }),
+    findFirst: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(
+        rows.find((r) =>
+          Object.entries(where).every(([k, v]) =>
+            k === 'expiresAt' ? r.expiresAt > (v as { gt: Date }).gt : r[k] === v,
+          ),
+        ) ?? null,
+      ),
+    ),
     updateMany: jest.fn(
       ({ where, data }: { where: Record<string, unknown>; data: Partial<Row> }) => {
         const hit = rows.filter((r) =>

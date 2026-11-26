@@ -14,7 +14,24 @@ import 'package:record_platform_interface/record_platform_interface.dart';
 
 /// Directory on the host with `voice.m4a`, `video.mp4`, `photo.jpg` and the
 /// documents (a simulator app can read host paths).
-const fixturesDir = String.fromEnvironment('E2E_FIXTURES');
+String fixturesDir = const String.fromEnvironment('E2E_FIXTURES');
+
+/// Android qurilmasi kompyuter fayllarini o'qiy olmaydi: `E2E_FIXTURES`
+/// mahalliy `http://127.0.0.1:...` manzil bo'lsa, fayllar avval yuklab olinadi.
+Future<void> fetchFixtures(List<String> names) async {
+  if (!fixturesDir.startsWith('http://127.0.0.1')) return;
+  final target = Directory('${Directory.systemTemp.path}/e2e-fx')
+    ..createSync(recursive: true);
+  final client = HttpClient();
+  for (final name in names) {
+    final request = await client.getUrl(Uri.parse('$fixturesDir/$name'));
+    final response = await request.close();
+    if (response.statusCode != 200) continue;
+    await response.pipe(File('${target.path}/$name').openWrite());
+  }
+  client.close();
+  fixturesDir = target.path;
+}
 
 class FakeRecordPlatform
     with MockPlatformInterfaceMixin

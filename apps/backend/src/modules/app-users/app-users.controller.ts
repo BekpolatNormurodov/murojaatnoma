@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequireScope } from '../../common/decorators/scope.decorator';
 import { Paginated } from '../../common/interfaces/paginated.interface';
+import { AppSessionsService } from './app-sessions.service';
 import { AppUsersService } from './app-users.service';
 import { ListAppUsersQueryDto } from './dto/list-app-users-query.dto';
 import { UpdateAppUserDto } from './dto/update-app-user.dto';
@@ -22,12 +23,21 @@ import {
 @RequireScope('admin')
 @Controller('app-users')
 export class AppUsersController {
-  constructor(private readonly appUsersService: AppUsersService) {}
+  constructor(
+    private readonly appUsersService: AppUsersService,
+    private readonly appSessions: AppSessionsService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'List app (mobile) users, paginated' })
   findAll(@Query() query: ListAppUsersQueryDto): Promise<Paginated<AppUserResponse>> {
     return this.appUsersService.findAll(query);
+  }
+
+  @Get('sessions')
+  @ApiOperation({ summary: 'Real sign-ins: employees and citizens with their live sessions' })
+  sessions() {
+    return this.appSessions.overview();
   }
 
   @Get('stats')

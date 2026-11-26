@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_core/src/network/cache/response_cache.dart';
+import 'package:app_core/src/network/client_headers.dart';
 import 'package:app_core/src/network/interceptors/idempotency_interceptor.dart';
 import 'package:app_core/src/network/network_status.dart';
 import 'package:dio/dio.dart';
@@ -126,6 +127,7 @@ class AuthInterceptor extends Interceptor {
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
         headers: {
+          ...ClientHeaders.value,
           IdempotencyInterceptor.header: IdempotencyInterceptor.newKey(),
         },
       ),

@@ -561,7 +561,7 @@
 
   "workScheduleTileLabel": "График работы",
   "workSchedulePageTitle": "График работы",
-  "workScheduleSubtitle": "Недельный график — 6-дневная рабочая неделя",
+  "workScheduleSubtitle": "Недельный график — 5-дневная рабочая неделя",
   "workScheduleTodayBadge": "Сегодня",
   "workScheduleRestDay": "Выходной",
   "workScheduleHours": "09:00–18:00",

@@ -1,4 +1,5 @@
 import 'package:app_core/src/config/app_config.dart';
+import 'package:app_core/src/network/client_headers.dart';
 import 'package:app_core/src/network/interceptors/auth_interceptor.dart';
 import 'package:app_core/src/network/interceptors/idempotency_interceptor.dart';
 import 'package:app_core/src/network/interceptors/offline_cache_interceptor.dart';
@@ -33,6 +34,12 @@ class DioClient {
     //     (online/sekin/oflayn) shu yerda yangilanadi.
     //  5. Logging, 6. FriendlyError — xom xato o'rniga o'zbekcha matn.
     dio.interceptors.addAll([
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          options.headers.addAll(ClientHeaders.value);
+          handler.next(options);
+        },
+      ),
       IdempotencyInterceptor(),
       AuthInterceptor(),
       RetryInterceptor(dio),

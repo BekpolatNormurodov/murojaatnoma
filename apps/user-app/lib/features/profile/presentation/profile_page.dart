@@ -392,6 +392,18 @@ class _MyRequestsStatsState extends State<_MyRequestsStats> {
     _load();
   }
 
+  bool? _visible;
+
+  /// Boshqa tabdan qaytilganda hisoblagichlar yangilanadi (ko'rinmayotgan
+  /// tabda animatsiyalar o'chiq bo'ladi).
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = TickerMode.of(context);
+    if (visible && _visible == false) _load();
+    _visible = visible;
+  }
+
   @override
   void dispose() {
     citizenRequestsRevision.removeListener(_load);

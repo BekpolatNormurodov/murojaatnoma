@@ -75,11 +75,19 @@ for app in ${@:-worker user}; do
   sha="$(shasum -a 256 "dist-apk/$file" | cut -d' ' -f1)"
   echo "== $app: uploading $file ($((size / 1048576)) MB)"
   upload "dist-apk/$file" "$REMOTE_DIR/downloads/$file.part"
-  entry="$(python3 -I -c 'import json,sys,datetime
-v,b,f,s,h,src,sig=sys.argv[1:]
-print(json.dumps({"version":v,"build":int(b),"file":f,"size":int(s),"sha256":h,"source":src,"signer":sig,
- "publishedAt":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}))' \
-    "$version" "$build" "$file" "$size" "$sha" "$hash" "$signer")"
+  # release-notes.txt: one "what is new" line each, shown in the update dialog.
+  # min-build (optional): older installs may not postpone the update.
+  entry="$(python3 -I -c 'import json,os,sys,datetime
+v,b,f,s,h,src,sig,app=sys.argv[1:]
+def lines(p):
+    return [l.strip() for l in open(p,encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+e={"version":v,"build":int(b),"file":f,"size":int(s),"sha256":h,"source":src,"signer":sig,
+ "notes":lines(app+"/release-notes.txt"),
+ "publishedAt":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+m=lines(app+"/min-build")
+if m: e["minBuild"]=int(m[0])
+print(json.dumps(e))' \
+    "$version" "$build" "$file" "$size" "$sha" "$hash" "$signer" "apps/$app-app")"
   # Check the upload, publish the file, then the manifest (both atomically);
   # keep the three newest APKs of this app.
   printf '%s' "$entry" | remote "set -e; cd $REMOTE_DIR/downloads

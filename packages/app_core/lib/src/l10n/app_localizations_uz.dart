@@ -1691,7 +1691,7 @@ class AppLocalizationsUz extends AppLocalizations {
 
   @override
   String get workScheduleSubtitle =>
-      'Haftalik ish vaqti — 6 kunlik ish haftasi';
+      'Haftalik ish vaqti — 5 kunlik ish haftasi';
 
   @override
   String get workScheduleTodayBadge => 'Bugun';

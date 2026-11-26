@@ -15,6 +15,7 @@ import 'package:worker_app/features/face/domain/repositories/face_repository.dar
 import 'package:worker_app/core/session/logout_flow.dart';
 import 'package:worker_app/features/attendance/data/attendance_history.dart';
 import 'package:worker_app/injection.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// "Profil" tabi — sozlamalar ekrani: profil sarlavhasi (avatar/ism/lavozim/
 /// hudud/ID), til va mavzu almashtirgichlari, ish ma'lumotlari, ilova haqida
@@ -32,12 +33,6 @@ class ProfilePage extends StatelessWidget {
   /// endi haqiqiy jadval soatlarini (`l10n.workScheduleHours`) ko'rsatadi.
   static const _emptyPlaceholder = '—';
 
-  /// Ilova versiyasi — `pubspec.yaml`dagi `version:` bilan QO'LDA
-  /// sinxronlanadi (`package_info_plus` kabi runtime-o'quvchi paket hali
-  /// bog'liqlik sifatida qo'shilmagan, shuning uchun bu yerda o'z-o'zidan
-  /// o'qilmaydi). Fabrikatsiya qilingan '4.8' reyting kabi ХАТО qiymat
-  /// EMAS — bu haqiqiy release versiyasi, faqat statik konstanta sifatida.
-  static const _appVersion = 'v1.0.8';
 
   /// [session]dan "Bo'lim" qatori uchun eng yaqin haqiqiy ma'lumot —
   /// backendda alohida "bo'lim nomi" maydoni yo'q, shuning uchun tuman
@@ -280,7 +275,7 @@ class ProfilePage extends StatelessWidget {
                       child: AppListTile(
                         title: l10n.profileAppVersionLabel,
                         leadingIcon: AppIcons.info,
-                        trailing: const _TrailingValue(_appVersion),
+                        trailing: const _AppVersionValue(),
                       ),
                     )
                     .animate(delay: 180.ms)
@@ -687,4 +682,27 @@ class _MonthStatsRowState extends State<_MonthStatsRow> {
       ),
     );
   }
+}
+
+/// O'rnatilgan ilovaning haqiqiy versiyasi.
+class _AppVersionValue extends StatefulWidget {
+  const _AppVersionValue();
+
+  @override
+  State<_AppVersionValue> createState() => _AppVersionValueState();
+}
+
+class _AppVersionValueState extends State<_AppVersionValue> {
+  late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
+    future: _info,
+    builder: (context, snapshot) {
+      final info = snapshot.data;
+      return _TrailingValue(
+        info == null ? '—' : '${info.version} (${info.buildNumber})',
+      );
+    },
+  );
 }

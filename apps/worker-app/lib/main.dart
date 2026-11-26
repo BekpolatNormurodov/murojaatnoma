@@ -33,6 +33,8 @@ import 'package:worker_app/injection.dart';
 Future<void> bootstrap({bool systemServices = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // DI'dan oldin: birinchi so'rovdan boshlab telefon ma'lumoti ketadi.
+  if (systemServices && !AppConfig.useMock) await ClientHeaders.load();
   await configureDependencies();
   // Tizim ruxsatlari va fon xizmati — faqat haqiqiy ishga tushirishda.
   if (systemServices) {
@@ -144,7 +146,7 @@ Future<void> _initNotifications() async {
       if (!getIt<AuthCubit>().state.isAuthenticated) return;
       unawaited(getIt<RealtimeSocketService>().connect());
       unawaited(
-        getIt<CallCubit>().acceptFromPush(
+        getIt<CallCubit>().showFromPush(
           callId: callId,
           callerName: callerName,
           media: CallMedia.fromWire(media),

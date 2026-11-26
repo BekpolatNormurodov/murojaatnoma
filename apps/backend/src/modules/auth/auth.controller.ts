@@ -1,9 +1,10 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { AuthService } from './auth.service';
+import { clientInfo } from './client-info';
 import { EmployeeLoginDto } from './dto/employee-login.dto';
 import { MeDto } from './dto/me.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -29,24 +30,33 @@ export class AuthController {
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify the OTP code and obtain a citizen token pair' })
-  verifyOtp(@Body() dto: VerifyOtpDto): Promise<TokenPairDto> {
-    return this.authService.verifyOtp(dto);
+  verifyOtp(
+    @Body() dto: VerifyOtpDto,
+    @Headers() headers: Record<string, unknown>,
+  ): Promise<TokenPairDto> {
+    return this.authService.verifyOtp(dto, clientInfo(headers));
   }
 
   @Public()
   @Post('employee/login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Employee login with username + password (worker-app)' })
-  employeeLogin(@Body() dto: EmployeeLoginDto): Promise<TokenPairDto> {
-    return this.authService.employeeLogin(dto);
+  employeeLogin(
+    @Body() dto: EmployeeLoginDto,
+    @Headers() headers: Record<string, unknown>,
+  ): Promise<TokenPairDto> {
+    return this.authService.employeeLogin(dto, clientInfo(headers));
   }
 
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exchange a refresh token for a new token pair' })
-  refresh(@Body() dto: RefreshTokenDto): Promise<TokenPairDto> {
-    return this.authService.refresh(dto.refreshToken);
+  refresh(
+    @Body() dto: RefreshTokenDto,
+    @Headers() headers: Record<string, unknown>,
+  ): Promise<TokenPairDto> {
+    return this.authService.refresh(dto.refreshToken, clientInfo(headers));
   }
 
   @Public()

@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:user_app/features/payments/domain/entities/payment.dart';
 import 'package:user_app/features/payments/presentation/widgets/utility_type_meta.dart';
+import 'package:user_app/core/widgets/test_mode_banner.dart';
 
 /// Bitta to'lovning "cheki" — premium ko'rinishdagi kvitansiya kartasi +
 /// uni rasm sifatida ulashish ("Ulashish" tugmasi).
@@ -77,10 +78,23 @@ class _PaymentReceiptPageState extends State<PaymentReceiptPage> {
             children: [
               RepaintBoundary(
                 key: _receiptKey,
-                child: _ReceiptCard(payment: widget.payment)
-                    .animate()
-                    .fadeIn(duration: 250.ms)
-                    .slideY(begin: 0.05, end: 0),
+                // Belgi rasm ichida: ulashilgan "chek" ham namoyish
+                // ekani ko'rinadi.
+                child:
+                    Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (AppConfig.useMock)
+                              const TestModeBanner(
+                                message:
+                                    "Namoyish cheki — haqiqiy to'lov emas.",
+                              ),
+                            _ReceiptCard(payment: widget.payment),
+                          ],
+                        )
+                        .animate()
+                        .fadeIn(duration: 250.ms)
+                        .slideY(begin: 0.05, end: 0),
               ),
               const SizedBox(height: 28),
               AppButton(

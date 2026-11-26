@@ -1,5 +1,6 @@
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
+import 'package:flutter/foundation.dart';
 import 'package:worker_app/core/constants/app_constants.dart';
 import 'package:worker_app/features/face/data/datasources/face_local_data_source.dart';
 import 'package:worker_app/features/face/data/datasources/face_remote_data_source.dart';
@@ -45,6 +46,13 @@ class FaceRepositoryImpl implements FaceRepository {
     try {
       await _syncToBackend(t);
     } on Exception catch (_) {
+      // Mahalliy nusxa qolsa keyingi ishga tushishda "ro'yxatdan o'tgan" deb
+      // hisoblanib, har bir davomat server tomonidan rad etilardi.
+      try {
+        await local.clear();
+      } on Exception catch (error) {
+        debugPrint('[face] clear after failed upload: $error');
+      }
       return const Left(
         ServerFailure(
           'Yuz serverga yuklanmadi — internetni tekshirib qayta urining',

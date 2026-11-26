@@ -9,7 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationCenter } from '../notifications/notification-center.service';
 import { parseTimeOnDate } from '../attendance/utils/date.util';
 import { ZonesService, zoneToleranceM } from '../zones/zones.service';
-import { coveredMs } from './coverage';
+import { onlineDay } from './online-day';
 import { CreateLocationDto } from './dto/create-location.dto';
 import { DeviceStatusDto } from './dto/device-status.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
@@ -697,8 +697,8 @@ export class LocationsService {
   }
 
   /**
-   * Today's reporting coverage of every active employee inside their own
-   * working hours (up to now) — "who is really sending location".
+   * Today's online time of every active employee against their own working
+   * hours — "who is really sending location, and since when".
    */
   async getCoverage(now = new Date()) {
     const employees = await this.prisma.employee.findMany({
@@ -717,19 +717,36 @@ export class LocationsService {
       if (list) list.push(p.recordedAt.getTime());
       else byEmployee.set(p.employeeId, [p.recordedAt.getTime()]);
     }
-    return employees.map((e) => {
-      const from = parseTimeOnDate(now, e.workStartTime).getTime();
-      const to = Math.max(from, Math.min(now.getTime(), parseTimeOnDate(now, e.workEndTime).getTime()));
-      const times = byEmployee.get(e.id) ?? [];
-      return {
-        employeeId: e.id,
-        windowMinutes: Math.round((to - from) / 60_000),
-        coveredMinutes: Math.round(coveredMs(times, from, to) / 60_000),
-        points: times.length,
-        firstAt: times.length ? new Date(times[0]) : null,
-        lastAt: times.length ? new Date(times[times.length - 1]) : null,
-      };
+    return employees.map((e) => ({
+      employeeId: e.id,
+      ...onlineDay(byEmployee.get(e.id) ?? [], e, dayStart, now),
+    }));
+  }
+
+  /** One employee's online/offline timeline for a day (today by default). */
+  async getOnlineDay(employeeId: string, date?: string, now = new Date()) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { workStartTime: true, workEndTime: true },
     });
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+    // Local midnight; "Date(y, m, d)" follows the server timezone (Tashkent).
+    const [y, m, d] = (date ?? '').split('-').map(Number);
+    const day = date ? new Date(y, m - 1, d) : parseTimeOnDate(now, '00:00');
+    const next = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
+    const points = await this.prisma.employeeLocation.findMany({
+      where: { employeeId, recordedAt: { gte: day, lt: next } },
+      select: { recordedAt: true },
+      orderBy: { recordedAt: 'asc' },
+    });
+    return onlineDay(
+      points.map((p) => p.recordedAt.getTime()),
+      employee,
+      day,
+      now,
+    );
   }
 
   /** Latest position of every active employee — powers the admin live map. */

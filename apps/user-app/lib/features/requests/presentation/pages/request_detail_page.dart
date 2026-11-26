@@ -14,6 +14,7 @@ import 'package:user_app/features/requests/presentation/widgets/citizen_request_
 import 'package:user_app/features/requests/presentation/widgets/request_attachment_tile.dart';
 import 'package:user_app/features/requests/presentation/widgets/request_kind_meta.dart';
 import 'package:user_app/features/requests/presentation/widgets/request_status_chip.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// "Murojaat tafsilotlari" sahifasi — to'liq ariza/shikoyat (sarlavha,
 /// holat bosqichlari, matn, biriktirmalar) va rasmiy javob (bo'lsa).
@@ -148,11 +149,7 @@ class _DetailContent extends StatelessWidget {
             for (final attachment in request.attachments) ...[
               RequestAttachmentTile(
                 attachment: attachment,
-                onTap:
-                    attachment.type == RequestAttachmentType.image &&
-                        attachment.path.startsWith('http')
-                    ? () => _showImage(context, attachment)
-                    : null,
+                onTap: _openAction(context, attachment),
               ),
               const SizedBox(height: 8),
             ],
@@ -268,16 +265,37 @@ class _FeedbackCardState extends State<_FeedbackCard> {
     final rated = widget.request.rating;
     if (rated != null) {
       return AppCard(
-        child: Row(
+        child: Column(
           children: [
-            for (var i = 1; i <= 5; i++)
-              Icon(
-                i <= rated ? Icons.star_rounded : Icons.star_outline_rounded,
-                color: AppColors.warning,
-                size: 22,
+            Row(
+              children: [
+                for (var i = 1; i <= 5; i++)
+                  Icon(
+                    i <= rated
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    color: AppColors.warning,
+                    size: 22,
+                  ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _t(
+                      context,
+                      'Bahoyingiz uchun rahmat',
+                      'Спасибо за оценку',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // Past baho qo'ygan fuqaro ham murojaatni qayta ocha oladi.
+            TextButton(
+              onPressed: _busy ? null : _reopen,
+              child: Text(
+                _t(context, "Muammo hal bo'lmadi", 'Проблема не решена'),
               ),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('Bahoyingiz uchun rahmat')),
+            ),
           ],
         ),
       );
@@ -412,6 +430,32 @@ class _ReopenSheetState extends State<_ReopenSheet> {
   }
 }
 
+/// Rasm ilova ichida ochiladi; video, ovoz va hujjat — telefondagi mos
+/// dasturda. Hali yuborilmagan (mahalliy) fayl ochilmaydi.
+VoidCallback? _openAction(BuildContext context, RequestAttachment attachment) {
+  final url = Uri.tryParse(attachment.path);
+  if (url == null || !attachment.path.startsWith('http')) return null;
+  if (attachment.type == RequestAttachmentType.image) {
+    return () => _showImage(context, attachment);
+  }
+  return () => unawaited(_openExternally(context, url));
+}
+
+Future<void> _openExternally(BuildContext context, Uri url) async {
+  var opened = false;
+  try {
+    opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+  } on Object catch (error) {
+    debugPrint('[attachment] open: $error');
+  }
+  if (!opened && context.mounted) {
+    AppAlert.error(
+      context,
+      _t(context, "Faylni ochib bo'lmadi", 'Не удалось открыть файл'),
+    );
+  }
+}
+
 /// Rasm biriktirmasini to'liq ekranda (kattalashtirish bilan) ko'rsatadi.
 void _showImage(BuildContext context, RequestAttachment attachment) {
   unawaited(
@@ -538,9 +582,7 @@ class _MessageBubble extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 280),
               child: RequestAttachmentTile(
                 attachment: file,
-                onTap: file.type == RequestAttachmentType.image
-                    ? () => _showImage(context, file)
-                    : null,
+                onTap: _openAction(context, file),
               ),
             ),
           ],

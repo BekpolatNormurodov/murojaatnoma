@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'fakes.dart';
+
 const apiBase = String.fromEnvironment(
   'API_BASE_URL',
   defaultValue: 'http://127.0.0.1:3555',
@@ -51,7 +53,15 @@ void requireLocalBackend() {
 /// is an uncaught error. If `<E2E_FIXTURES>/fonts.txt` lists the expected cache
 /// file names, `font.ttf` is placed there under each name before the app starts.
 Future<void> seedFontCache() async {
-  const dir = String.fromEnvironment('E2E_FIXTURES');
+  await fetchFixtures(const [
+    'fonts.txt',
+    'font.ttf',
+    'photo.jpg',
+    'video.mp4',
+    'voice.m4a',
+    'document.pdf',
+  ]);
+  final dir = fixturesDir;
   final list = File('$dir/fonts.txt');
   if (!list.existsSync()) return;
   final support = await getApplicationSupportDirectory();

@@ -188,7 +188,7 @@ Future<bool> _hasSession() async {
 /// to'liq-ekran jiringlash bildirishnomasini QO'LDA ko'rsatamiz (background
 /// isolate o'z plagin nusxasini yaratadi). Bosilганда ilova ochilib
 /// `/call/:callId`ga o'tadi va qo'ng'iroqni qabul qiladi
-/// (`NotificationService.dispatchLaunchTap` -> `acceptFromPush`).
+/// (`NotificationService.dispatchLaunchTap` -> `showFromPush`).
 ///
 /// Handler RO'YXATDAN O'TKAZILISHI shart
 /// (`FirebaseMessaging.onBackgroundMessage`), aks holda ba'zi platformalarda

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:worker_app/app/router/redirect_policy.dart';
 import 'package:worker_app/app/shell/main_shell.dart';
 import 'package:worker_app/features/attendance/presentation/bloc/attendance_cubit.dart';
 import 'package:worker_app/features/attendance/presentation/pages/home_page.dart';
+import 'package:worker_app/features/attendance/presentation/pages/my_attendance_page.dart';
 import 'package:worker_app/features/attendance/presentation/pages/work_schedule_page.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/auth/presentation/pages/login_page.dart';
@@ -20,6 +22,10 @@ import 'package:worker_app/features/chat/presentation/bloc/chat_list_cubit.dart'
 import 'package:worker_app/features/chat/presentation/bloc/conversation_cubit.dart';
 import 'package:worker_app/features/chat/presentation/pages/chat_page.dart';
 import 'package:worker_app/features/chat/presentation/pages/conversation_page.dart';
+import 'package:worker_app/features/documents/presentation/bloc/document_detail_cubit.dart';
+import 'package:worker_app/features/documents/presentation/bloc/documents_cubit.dart';
+import 'package:worker_app/features/documents/presentation/pages/document_detail_page.dart';
+import 'package:worker_app/features/documents/presentation/pages/documents_page.dart';
 import 'package:worker_app/features/face/domain/entities/attendance_scan_kind.dart';
 import 'package:worker_app/features/face/presentation/bloc/face_cubit.dart';
 import 'package:worker_app/features/face/presentation/pages/face_checkin_page.dart';
@@ -31,10 +37,6 @@ import 'package:worker_app/features/meetings/presentation/bloc/meeting_detail_cu
 import 'package:worker_app/features/meetings/presentation/bloc/meetings_cubit.dart';
 import 'package:worker_app/features/meetings/presentation/pages/meeting_detail_page.dart';
 import 'package:worker_app/features/meetings/presentation/pages/meetings_page.dart';
-import 'package:worker_app/features/documents/presentation/bloc/document_detail_cubit.dart';
-import 'package:worker_app/features/documents/presentation/bloc/documents_cubit.dart';
-import 'package:worker_app/features/documents/presentation/pages/document_detail_page.dart';
-import 'package:worker_app/features/documents/presentation/pages/documents_page.dart';
 import 'package:worker_app/features/news/presentation/bloc/news_cubit.dart';
 import 'package:worker_app/features/news/presentation/bloc/news_detail_cubit.dart';
 import 'package:worker_app/features/news/presentation/pages/news_detail_page.dart';
@@ -43,6 +45,7 @@ import 'package:worker_app/features/notifications/presentation/pages/notificatio
 import 'package:worker_app/features/points/presentation/bloc/points_cubit.dart';
 import 'package:worker_app/features/points/presentation/pages/points_page.dart';
 import 'package:worker_app/features/premya/presentation/pages/premya_request_page.dart';
+import 'package:worker_app/features/profile/presentation/pages/personal_info_page.dart';
 import 'package:worker_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:worker_app/features/reports/presentation/bloc/report_compose_cubit.dart';
 import 'package:worker_app/features/reports/presentation/bloc/reports_cubit.dart';
@@ -60,8 +63,6 @@ import 'package:worker_app/features/suggestions/presentation/bloc/suggestions_cu
 import 'package:worker_app/features/suggestions/presentation/pages/submit_suggestion_page.dart';
 import 'package:worker_app/features/suggestions/presentation/pages/suggestions_page.dart';
 import 'package:worker_app/injection.dart';
-import 'package:worker_app/features/attendance/presentation/pages/my_attendance_page.dart';
-import 'package:worker_app/features/profile/presentation/pages/personal_info_page.dart';
 
 /// Ilovaning to'liq routeri (Vazifa 18).
 ///
@@ -77,6 +78,18 @@ import 'package:worker_app/features/profile/presentation/pages/personal_info_pag
 ///   `context.go(...)` qilishi SHART emas.
 /// - **`StatefulShellRoute.indexedStack`** — 5 tabli asosiy qobiq
 ///   (`MainShell`), har bir tab holati saqlangan holda.
+/// Splash ustida qo'ng'iroq/yig'ilish ekrani ochilgan bo'lsa `go` uni olib
+/// tashlardi (qo'ng'iroq davom etib, ekrani yo'qolardi) — u yopilishini
+/// kutamiz.
+void _leaveSplash(BuildContext context) {
+  if (!context.mounted) return;
+  if (ModalRoute.of(context)?.isCurrent ?? true) {
+    context.go('/home');
+    return;
+  }
+  Timer(const Duration(milliseconds: 500), () => _leaveSplash(context));
+}
+
 class AppRouter {
   AppRouter() {
     // `AuthCubit` `injection.dart`da `registerLazySingleton` — shu tufayli
@@ -113,7 +126,7 @@ class AppRouter {
             // `redirect` orqali hal qilinadi (qarang: `resolveAuthRedirect`
             // hujjatidagi splash izohi). Shu tufayli bu yerda `AuthCubit`
             // holatini oldindan o'qishning hojati yo'q.
-            onFinished: () => context.go('/home'),
+            onFinished: () => _leaveSplash(context),
           ),
         ),
         GoRoute(

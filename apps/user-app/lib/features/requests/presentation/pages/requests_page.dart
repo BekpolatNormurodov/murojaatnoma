@@ -190,14 +190,28 @@ class _RequestsPageState extends State<RequestsPage> {
                   onRetry: cubit.reload,
                   retryLabel: l10n.retry,
                 ),
-                RequestsEmpty() => EmptyView(
-                  icon: AppIcons.requests,
-                  title: l10n.requestsEmptyTitle,
-                  message:
-                      cubit.hasActiveFilters ||
-                          (cubit.query?.isNotEmpty ?? false)
-                      ? l10n.requestsEmptyFilteredMessage
-                      : l10n.requestsEmptyMessage,
+                // Bo'sh ro'yxatni ham tortib yangilash mumkin.
+                RequestsEmpty() => RefreshIndicator(
+                  onRefresh: cubit.reload,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight,
+                        ),
+                        child: EmptyView(
+                          icon: AppIcons.requests,
+                          title: l10n.requestsEmptyTitle,
+                          message:
+                              cubit.hasActiveFilters ||
+                                  (cubit.query?.isNotEmpty ?? false)
+                              ? l10n.requestsEmptyFilteredMessage
+                              : l10n.requestsEmptyMessage,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
                 RequestsLoaded(:final items, :final isRefreshing) => Column(
                   children: [

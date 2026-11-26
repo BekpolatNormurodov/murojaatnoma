@@ -85,6 +85,16 @@ class OtpInputState extends State<OtpInput>
     );
   }
 
+  /// Klaviatura "orqaga" bilan yashirilganda maydon fokusda qoladi —
+  /// `requestFocus` uni qayta ochmaydi.
+  void _showKeyboard() {
+    if (_focusNode.hasFocus) {
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+    } else {
+      _focusNode.requestFocus();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -119,7 +129,7 @@ class OtpInputState extends State<OtpInput>
         // Ko'rinadigan kataklar — xato holatida `_shakeController` orqali
         // butun qator silkinadi (PIN kiritish bilan bir xil taassurot).
         GestureDetector(
-          onTap: _focusNode.requestFocus,
+          onTap: _showKeyboard,
           child: AnimatedBuilder(
             animation: _shakeController,
             builder: (context, child) {

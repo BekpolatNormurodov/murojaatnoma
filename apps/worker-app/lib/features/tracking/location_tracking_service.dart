@@ -108,6 +108,10 @@ class LocationTrackingService {
 
   bool get isRunning => _running;
 
+  /// Server sessiyani rad etyapti — nuqtalar faqat buferga yig'iladi.
+  bool get sessionRejected => _sessionRejected;
+  bool _sessionRejected = false;
+
   /// Oxirgi kuzatilgan xato (diagnostika uchun).
   Object? get lastError => _lastError;
 
@@ -397,10 +401,14 @@ class LocationTrackingService {
     final report = _toReport(position, await _batteryLevel?.call());
     try {
       await _dio.post<dynamic>('/locations', data: report);
+      _sessionRejected = false;
       // Muvaffaqiyatli yuborish = onlayn bo'ldik — bufernikini oqizamiz.
       await flush();
     } on Object catch (error) {
       _lastError = error;
+      if (error is DioException && error.response?.statusCode == 401) {
+        _sessionRejected = true;
+      }
       await _enqueue(report, owner);
     }
   }

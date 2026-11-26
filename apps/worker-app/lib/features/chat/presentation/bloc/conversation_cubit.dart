@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:app_core/app_core.dart';
 import 'package:dartz/dartz.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
 import 'package:worker_app/core/realtime/uploads_service.dart';
@@ -76,7 +77,7 @@ class ConversationCubit extends Cubit<ConversationState> {
 
   /// Jonli socket oqimlariga obunalar — [open]da o'rnatiladi, [_teardownSocket]
   /// da bekor qilinadi.
-  final List<StreamSubscription<Map<String, dynamic>>> _subs = [];
+  final List<StreamSubscription<Object?>> _subs = [];
 
   /// Jonli rejim faolmi (socket ulangan va mock emas).
   bool get _useSocket => !AppConfig.useMock && _socket.isConnected;
@@ -276,17 +277,44 @@ class ConversationCubit extends Cubit<ConversationState> {
   /// Suhbat xonasiga qo'shiladi, o'qilgan deb belgilaydi va chat
   /// oqimlariga obuna bo'ladi. Faqat jonli rejimda ish bajaradi.
   void _attachSocket(String conversationId) {
-    if (!_useSocket) return;
+    if (AppConfig.useMock) return;
 
-    _socket
-      ..joinConversation(conversationId)
-      ..markRead(conversationId);
+    // Chat ochilganda socket hali ulanmagan bo'lishi mumkin — obuna baribir
+    // qilinadi, xonaga ulanish tayyor bo'lganda qo'shiladi.
+    if (_socket.isConnected) {
+      _socket
+        ..joinConversation(conversationId)
+        ..markRead(conversationId);
+    }
 
     _subs
+      ..add(_socket.onReady.listen((_) => _rejoin(conversationId)))
       ..add(_socket.chatMessage.listen(_onInboundMessage))
       ..add(_socket.chatMessageEdited.listen(_onInboundMessage))
       ..add(_socket.chatMessageDeleted.listen(_onMessageDeleted))
       ..add(_socket.chatTyping.listen(_onTyping));
+  }
+
+  /// Qayta ulanganda: xonaga qaytadi va uzilish paytidagi xabarlarni oladi.
+  Future<void> _rejoin(String conversationId) async {
+    if (conversationId != _conversationId) return;
+    _socket
+      ..joinConversation(conversationId)
+      ..markRead(conversationId);
+    await _catchUp(conversationId);
+  }
+
+  /// Uzilish paytida kelgan xabarlarni qo'shadi (xato bo'lsa jim).
+  Future<void> _catchUp(String conversationId) async {
+    try {
+      final result = await _getMessages(GetMessagesParams(conversationId));
+      result.fold((_) {}, (messages) {
+        if (isClosed || conversationId != _conversationId) return;
+        messages.forEach(_mergeInbound);
+      });
+    } on Object catch (error) {
+      debugPrint('[chat] catch up: $error');
+    }
   }
 
   /// Obunalarni bekor qiladi va (agar ochiq bo'lsa) suhbat xonasini

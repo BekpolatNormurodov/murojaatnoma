@@ -19,6 +19,7 @@ import 'package:user_app/features/notifications/presentation/bloc/notifications_
 import 'package:user_app/features/payments/domain/entities/utility.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/injection.dart';
+import 'package:user_app/core/widgets/test_mode_banner.dart';
 
 /// Fuqaro bosh sahifasi (dashboard) — 4-tab shellning "home" branchi.
 ///
@@ -85,7 +86,11 @@ class _HomeContent extends StatelessWidget {
             : 20.0;
 
         return RefreshIndicator(
-          onRefresh: () => context.read<HomeCubit>().load(),
+          onRefresh: () {
+            // E'lonlar bo'limi o'z holatini o'zi yuklaydi — qayta quriladi.
+            _newsRevision.value++;
+            return context.read<HomeCubit>().load();
+          },
           child: ListView(
             padding: EdgeInsets.fromLTRB(
               horizontalPadding,
@@ -96,6 +101,11 @@ class _HomeContent extends StatelessWidget {
             children: [
               _GreetingHeader(session: session),
               const SizedBox(height: 22),
+              // To'lov shlyuzi ulanmagan: summa namoyish uchun.
+              if (AppConfig.useMock) ...[
+                const TestModeBanner(),
+                const SizedBox(height: 8),
+              ],
               _TotalDueCard(totalDue: totalDue, isEmpty: isEmpty),
               const SizedBox(height: 26),
               Text(
@@ -105,7 +115,11 @@ class _HomeContent extends StatelessWidget {
               const SizedBox(height: 14),
               const _QuickActionsGrid(),
               const SizedBox(height: 26),
-              const NewsSection(),
+              ValueListenableBuilder<int>(
+                valueListenable: _newsRevision,
+                builder: (context, revision, _) =>
+                    NewsSection(key: ValueKey(revision)),
+              ),
             ],
           ),
         );
@@ -295,6 +309,9 @@ class _NotificationBellState extends State<_NotificationBell> {
     );
   }
 }
+
+/// "Yangilash" tortilganda oshadi.
+final ValueNotifier<int> _newsRevision = ValueNotifier(0);
 
 class _TotalDueCard extends StatelessWidget {
   const _TotalDueCard({required this.totalDue, required this.isEmpty});

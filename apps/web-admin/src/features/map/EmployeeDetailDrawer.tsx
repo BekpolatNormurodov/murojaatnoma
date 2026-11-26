@@ -37,6 +37,8 @@ import {
   type TrackSummary,
   type TrackWindow,
 } from './mapShared';
+import { OnlineCard } from '@/features/oversight/OnlineCard';
+import { localDay } from '@/features/oversight/period';
 import { routeStops } from './routeStops';
 import { silentReason } from './silentReason';
 
@@ -109,6 +111,9 @@ export function EmployeeDetailDrawer({
   const navigate = useNavigate();
   const online = isOnline(loc);
   const reason = silentReason(loc, lang);
+  // Marshrut oynasi o'tgan kunni ko'rsatsa, onlayn vaqt ham o'sha kunniki.
+  const shownDay = lastRouteDay ?? trackWindow;
+  const onlineDate = isPastDayWindow(shownDay) ? shownDay : localDay();
 
   // Enter transition: mount off-screen, then slide in on the next frame.
   const [shown, setShown] = useState(false);
@@ -315,6 +320,14 @@ export function EmployeeDetailDrawer({
               )}
             </div>
           )}
+        </div>
+
+        <div className="px-4 pt-3">
+          <OnlineCard
+            employeeId={loc.employeeId}
+            date={onlineDate}
+            live={onlineDate === localDay()}
+          />
         </div>
 
         {/* Metrics */}

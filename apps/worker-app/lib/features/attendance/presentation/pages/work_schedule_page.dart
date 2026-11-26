@@ -75,7 +75,9 @@ class _WorkSchedulePageState extends State<WorkSchedulePage> {
         _ScheduleDay(
           weekday: weekday,
           label: names[weekday]!,
-          isRestDay: weekday == DateTime.sunday,
+          // Server standarti: dushanba–juma.
+          isRestDay:
+              weekday == DateTime.saturday || weekday == DateTime.sunday,
         ),
     ];
   }

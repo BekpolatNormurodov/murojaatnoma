@@ -1,5 +1,6 @@
 /* Kunlik monitoring: to'rt manbadan har xodim uchun bitta qator va alertlar. */
 import { SILENT_AFTER_MIN, silentReason, type SilentInput } from '../map/silentReason.ts';
+import type { OnlineDay } from '../oversight/online.ts';
 
 export interface MonitorPerson extends SilentInput {
   employeeId: string;
@@ -8,12 +9,7 @@ export interface MonitorPerson extends SilentInput {
   avatarUrl: string | null;
 }
 
-export interface Coverage {
-  employeeId: string;
-  /** Ish vaqtining hozirgacha o'tgan qismi, daqiqa. */
-  windowMinutes: number;
-  coveredMinutes: number;
-}
+export type Coverage = { employeeId: string } & OnlineDay;
 
 export interface Attendance {
   employeeId: string;
@@ -35,6 +31,8 @@ export interface Row {
   /** Ish vaqtining qamralgan foizi; ish vaqti hali boshlanmagan bo'lsa null. */
   coverage: number | null;
   coveredMinutes: number;
+  /** Bugungi onlayn vaqt tafsiloti; hali yuklanmagan bo'lsa undefined. */
+  day?: Coverage;
   lastLocationAt: string | null;
   checkInAt: string | null;
   lateMinutes: number;
@@ -72,6 +70,7 @@ export function buildRows(input: {
         sending,
         coverage: c && c.windowMinutes > 0 ? Math.min(100, Math.round((c.coveredMinutes / c.windowMinutes) * 100)) : null,
         coveredMinutes: c?.coveredMinutes ?? 0,
+        day: c,
         lastLocationAt: p.lastLocationAt,
         checkInAt: a?.checkIn?.time ?? null,
         lateMinutes: a?.checkIn?.lateMinutes ?? 0,
@@ -99,6 +98,3 @@ export function matches(row: Row, filter: Filter): boolean {
   if (filter === 'absent') return row.absent;
   return row.reportSent === false;
 }
-
-export const hours = (minutes: number) =>
-  minutes < 60 ? `${minutes} daq` : `${Math.floor(minutes / 60)} soat ${minutes % 60} daq`;

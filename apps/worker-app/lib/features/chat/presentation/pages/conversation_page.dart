@@ -392,32 +392,9 @@ class _HeaderSubtitle extends StatelessWidget {
     final l10n = context.l10n;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // Suhbatdoshning holati ma'lum emas — "onlayn" deb ko'rsatilmaydi.
     if (conversation.type == ConversationType.shaxsiy) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: const BoxDecoration(
-              color: AppColors.primary,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            child: Text(
-              l10n.chatPresenceOnline,
-              style: AppTextStyles.caption.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      );
+      return const SizedBox.shrink();
     }
 
     return Text(

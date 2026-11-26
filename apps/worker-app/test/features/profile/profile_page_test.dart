@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/features/auth/domain/entities/auth_session.dart';
 import 'package:worker_app/features/auth/domain/usecases/login_employee.dart';
@@ -88,6 +89,13 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'worker',
+      packageName: 'worker',
+      version: '9.9.9',
+      buildNumber: '42',
+      buildSignature: '',
+    );
 
     final verifyOtp = _MockVerifyOtp();
     when(() => verifyOtp(any())).thenAnswer((_) async => const Right(_session));
@@ -242,13 +250,13 @@ void main() {
       // build/cache extentidan tashqarida, shuning uchun ko'ringuncha
       // pastga suriladi (`ListView` uzun bo'lgani uchun bu qism darhol
       // qurilmagan bo'lishi mumkin).
-      await tester.scrollUntilVisible(find.text('v1.0.8'), 300);
+      await tester.scrollUntilVisible(find.text('9.9.9 (42)'), 300);
       // Skroll paytida yangi qurilgan kartalarning kirish
       // animatsiyalari (`flutter_animate` `delay`li fadeIn) ishga
       // tushadi — test tugashidan oldin ularning tugashini kutamiz,
       // aks holda "Timer is still pending" xatosi chiqadi.
       await tester.pump(const Duration(seconds: 1));
-      expect(find.text('v1.0.8'), findsOneWidget);
+      expect(find.text('9.9.9 (42)'), findsOneWidget);
     });
 
     testWidgets(

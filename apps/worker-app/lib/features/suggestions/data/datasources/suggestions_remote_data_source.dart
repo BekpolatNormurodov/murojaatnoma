@@ -94,16 +94,19 @@ class SuggestionsRemoteDataSourceApiImpl
     String? query,
   }) async {
     try {
-      final response = await _client.dio.get<List<dynamic>>(
-        '/suggestions',
-        queryParameters: {
-          if (status != null) 'status': status.name,
-          if (query != null && query.isNotEmpty) 'query': query,
-        },
-      );
+      // Server filtrlamaydi — qidiruv va holat shu yerda qo'llanadi.
+      final response = await _client.dio.get<List<dynamic>>('/suggestions');
       final data = response.data ?? const [];
+      final needle = (query ?? '').trim().toLowerCase();
       return data
           .map((e) => Suggestion.fromJson(e as Map<String, dynamic>))
+          .where((s) => status == null || s.status == status)
+          .where(
+            (s) =>
+                needle.isEmpty ||
+                s.title.toLowerCase().contains(needle) ||
+                s.body.toLowerCase().contains(needle),
+          )
           .toList();
     } on DioException catch (e) {
       throw ServerException(e.message ?? 'Server xatosi');

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/mock/mock_chat.dart';
 import 'package:worker_app/features/chat/domain/entities/conversation.dart';
 import 'package:worker_app/features/chat/domain/entities/message.dart';
+import 'package:worker_app/features/chat/presentation/widgets/sticker_catalog.dart';
 
 /// The admin↔employee "chat" module conversation ids (backend `chat` module),
 /// distinct from the `/applications` (murojaat) task-threads. The group thread
@@ -46,7 +47,15 @@ class ChatRemoteDataSourceMockImpl implements ChatRemoteDataSource {
 
     var result = List<Conversation>.of(mockConversations);
     if (type != null) {
-      result = result.where((c) => c.type == type).toList();
+      result = result
+            .where(
+              (c) =>
+                  c.type == type ||
+                  // Umumiy chat ham guruh suhbati.
+                  (type == ConversationType.guruh &&
+                      c.type == ConversationType.umumiy),
+            )
+            .toList();
     }
     final normalizedQuery = query?.trim().toLowerCase();
     if (normalizedQuery != null && normalizedQuery.isNotEmpty) {
@@ -246,7 +255,15 @@ class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
       result.sort((a, b) => b.lastMessageAt.compareTo(a.lastMessageAt));
 
       if (type != null) {
-        result = result.where((c) => c.type == type).toList();
+        result = result
+            .where(
+              (c) =>
+                  c.type == type ||
+                  // Umumiy chat ham guruh suhbati.
+                  (type == ConversationType.guruh &&
+                      c.type == ConversationType.umumiy),
+            )
+            .toList();
       }
       final normalizedQuery = query?.trim().toLowerCase();
       if (normalizedQuery != null && normalizedQuery.isNotEmpty) {
@@ -343,8 +360,15 @@ class ChatRemoteDataSourceApiImpl implements ChatRemoteDataSource {
             'kind': _kindToContract(type),
             'text': (text != null && text.isNotEmpty)
                 ? text
+                : type == MessageType.sticker
+                ? stickerEmoji(stickerId)
                 : _fallbackText(type: type, stickerId: stickerId),
             if (isRemoteUrl) 'url': attachmentUrl,
+            if (attachment?.name != null) 'fileName': attachment!.name,
+            if (attachment?.sizeBytes != null)
+              'fileSize': attachment!.sizeBytes,
+            if (attachment?.durationMs != null)
+              'durationSec': (attachment!.durationMs! / 1000).round(),
           },
         );
         return _messageFromChat(

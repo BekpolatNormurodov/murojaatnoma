@@ -299,7 +299,7 @@ class MeetingCubit extends Cubit<MeetingState> {
     if (ack['ok'] == false) {
       _fail(
         ack['error'] == 'not-invited'
-            ? "Bu yig'ilish allaqachon tugagan"
+            ? "Yig'ilish hali boshlanmagan yoki tugagan"
             : "Yig'ilishga qo'shilib bo'lmadi",
       );
       return;

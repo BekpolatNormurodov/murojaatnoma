@@ -23,7 +23,7 @@ test('a working phone needs no explanation', () => {
 
 test('without a report the app is missing or outdated', () => {
   assert.match(reason(null, 0, null)!, /kirmagan/);
-  assert.match(reason(null, 0, 60)!, /eski versiyada/);
+  assert.match(reason(null, 0, 60)!, /o‘rnatilmagan —/);
 });
 
 test('a broken setting is named, even while points still arrive', () => {

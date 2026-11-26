@@ -239,7 +239,7 @@ class SessionAuthInterceptor extends Interceptor {
         contentType: 'application/json',
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 20),
-        headers: {IdempotencyInterceptor.header: key},
+        headers: {...ClientHeaders.value, IdempotencyInterceptor.header: key},
       ),
     )..httpClientAdapter = _dio.httpClientAdapter;
 

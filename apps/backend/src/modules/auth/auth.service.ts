@@ -11,6 +11,7 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { AppConfig } from '../../common/config/configuration';
 import { JwtPayload } from '../../common/interfaces/authenticated-user.interface';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { ClientInfo } from './client-info';
 import { EmployeeLoginDto } from './dto/employee-login.dto';
 import { MeDto } from './dto/me.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
@@ -18,6 +19,9 @@ import { RequestOtpResultDto } from './dto/request-otp-result.dto';
 import { TokenPairDto } from './dto/token-pair.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { OtpSmsProvider } from './providers/otp-sms.provider';
+
+/** What a rotated refresh token inherits from the one it replaces. */
+const SESSION = { startedAt: true, device: true, platform: true, appVersion: true } as const;
 
 @Injectable()
 export class AuthService {
@@ -74,7 +78,7 @@ export class AuthService {
    * CitizenAccessGuard confines scope:'citizen' to @AllowCitizen routes
    * (secure-by-default). The session lives on through {@link refresh}.
    */
-  async verifyOtp(dto: VerifyOtpDto): Promise<TokenPairDto> {
+  async verifyOtp(dto: VerifyOtpDto, client: ClientInfo = {}): Promise<TokenPairDto> {
     const challenge = await this.prisma.otpChallenge.findFirst({
       where: { phone: dto.phone, consumed: false },
       orderBy: { createdAt: 'desc' },
@@ -105,12 +109,15 @@ export class AuthService {
       data: { consumed: true },
     });
 
-    return this.issueTokenPair({
-      sub: dto.phone,
-      phone: dto.phone,
-      role: 'CITIZEN',
-      scope: 'citizen',
-    });
+    return this.issueTokenPair(
+      {
+        sub: dto.phone,
+        phone: dto.phone,
+        role: 'CITIZEN',
+        scope: 'citizen',
+      },
+      client,
+    );
   }
 
   /**
@@ -119,7 +126,7 @@ export class AuthService {
    * Mirrors the admin-auth bcrypt flow; the error message is deliberately
    * generic so it never reveals whether the username exists.
    */
-  async employeeLogin(dto: EmployeeLoginDto): Promise<TokenPairDto> {
+  async employeeLogin(dto: EmployeeLoginDto, client: ClientInfo = {}): Promise<TokenPairDto> {
     const employee = await this.prisma.employee.findUnique({
       where: { username: dto.username.trim() },
     });
@@ -135,12 +142,15 @@ export class AuthService {
       throw new UnauthorizedException('Login yoki parol xato');
     }
 
-    return this.issueTokenPair({
-      sub: employee.id,
-      phone: employee.phone,
-      role: employee.role,
-      scope: 'employee',
-    });
+    return this.issueTokenPair(
+      {
+        sub: employee.id,
+        phone: employee.phone,
+        role: employee.role,
+        scope: 'employee',
+      },
+      client,
+    );
   }
 
   /** Returns the current employee's profile, derived from the JWT subject. */
@@ -172,7 +182,7 @@ export class AuthService {
    * the same kind (citizen stays citizen). The stored row is claimed in one
    * UPDATE, so a token can be spent only once even under concurrent requests.
    */
-  async refresh(refreshToken: string): Promise<TokenPairDto> {
+  async refresh(refreshToken: string, client: ClientInfo = {}): Promise<TokenPairDto> {
     const { refreshSecret } = this.configService.get('jwt', { infer: true });
 
     let payload: JwtPayload;
@@ -190,6 +200,18 @@ export class AuthService {
       expiresAt: { gt: new Date() },
     };
 
+    // The rotated token continues the same sign-in: its start and phone details
+    // move to the new row, newer details from the app winning.
+    const previous = await (payload.scope === 'citizen'
+      ? this.prisma.citizenRefreshToken.findFirst({ where: live, select: SESSION })
+      : this.prisma.refreshToken.findFirst({ where: live, select: SESSION }));
+    const session = {
+      startedAt: previous?.startedAt,
+      device: client.device ?? previous?.device ?? undefined,
+      platform: client.platform ?? previous?.platform ?? undefined,
+      appVersion: client.appVersion ?? previous?.appVersion ?? undefined,
+    };
+
     if (payload.scope === 'citizen') {
       const claimed = await this.prisma.citizenRefreshToken.updateMany({
         where: { ...live, phone: payload.sub },
@@ -200,12 +222,15 @@ export class AuthService {
       }
       // Claims are rebuilt, never copied: the decoded token carries `iat`/`exp`,
       // which jsonwebtoken refuses to sign together with `expiresIn`.
-      return this.issueTokenPair({
-        sub: payload.sub,
-        phone: payload.sub,
-        role: 'CITIZEN',
-        scope: 'citizen',
-      });
+      return this.issueTokenPair(
+        {
+          sub: payload.sub,
+          phone: payload.sub,
+          role: 'CITIZEN',
+          scope: 'citizen',
+        },
+        session,
+      );
     }
 
     const claimed = await this.prisma.refreshToken.updateMany({
@@ -226,12 +251,15 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token is no longer valid');
     }
 
-    return this.issueTokenPair({
-      sub: employee.id,
-      phone: employee.phone,
-      role: employee.role,
-      scope: 'employee',
-    });
+    return this.issueTokenPair(
+      {
+        sub: employee.id,
+        phone: employee.phone,
+        role: employee.role,
+        scope: 'employee',
+      },
+      session,
+    );
   }
 
   /**
@@ -251,7 +279,10 @@ export class AuthService {
     return { ok: true };
   }
 
-  private async issueTokenPair(payload: JwtPayload): Promise<TokenPairDto> {
+  private async issueTokenPair(
+    payload: JwtPayload,
+    session: ClientInfo & { startedAt?: Date } = {},
+  ): Promise<TokenPairDto> {
     const { accessSecret, refreshSecret, accessTtl, refreshTtl } = this.configService.get(
       'jwt',
       { infer: true },
@@ -276,6 +307,7 @@ export class AuthService {
     const row = {
       tokenHash: this.hashToken(refreshToken),
       expiresAt: this.addDuration(refreshTtl),
+      ...session,
     };
     if (payload.role === 'CITIZEN') {
       await this.prisma.citizenRefreshToken.create({

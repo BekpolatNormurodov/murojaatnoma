@@ -164,10 +164,13 @@ class _PayPageState extends State<PayPage> {
                 if (getIt.isRegistered<NotificationService>()) {
                   unawaited(
                     getIt<NotificationService>().show(
-                      title: "To'lov muvaffaqiyatli",
-                      body:
-                          '${formatSom(state.payment.amount)} miqdorida '
-                          "to'lov muvaffaqiyatli amalga oshirildi.",
+                      title: AppConfig.useMock
+                          ? "Namoyish to'lovi"
+                          : "To'lov muvaffaqiyatli",
+                      body: AppConfig.useMock
+                          ? "Bu sinov: haqiqiy pul o'tkazilmadi."
+                          : '${formatSom(state.payment.amount)} miqdorida '
+                                "to'lov muvaffaqiyatli amalga oshirildi.",
                     ),
                   );
                 }

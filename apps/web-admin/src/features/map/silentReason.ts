@@ -21,8 +21,8 @@ export const SILENT_AFTER_MIN = 10;
 
 const TEXT = {
   uz: {
-    neverApp: 'Ilovadan ma’lumot yo‘q: kirmagan yoki eski versiya',
-    oldApp: 'Sababi noma’lum: ilova eski versiyada',
+    neverApp: 'Ilovaga kirmagan yoki yangi ilova o‘rnatilmagan',
+    oldApp: 'Yangi ilova o‘rnatilmagan — sabab ko‘rinmaydi',
     gps: 'GPS o‘chiq',
     denied: 'Joylashuvga ruxsat yo‘q',
     whileInUse: '«Doim» ruxsati berilmagan',
@@ -32,8 +32,8 @@ const TEXT = {
     low: (n: number) => `batareya ${n}%`,
   },
   ru: {
-    neverApp: 'Нет данных из приложения: не входил или старая версия',
-    oldApp: 'Причина неизвестна: старая версия приложения',
+    neverApp: 'Не входил в приложение или не установил новую версию',
+    oldApp: 'Новая версия не установлена — причина не видна',
     gps: 'GPS выключен',
     denied: 'Нет доступа к геолокации',
     whileInUse: 'Не разрешено «Всегда»',

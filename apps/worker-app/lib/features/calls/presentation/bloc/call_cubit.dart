@@ -180,11 +180,11 @@ class CallCubit extends Cubit<CallState> {
     _armConnectWatchdog();
   }
 
-  /// FCM to'liq-ekran bildirishnomasi bosilganda (`incoming_call` push) —
-  /// socketni ulaydi (idempotent) va qo'ng'iroqni qabul qiladi. `call:accept`
-  /// emit `presence:snapshot` (auth tayyor) kutadi, shuning uchun socket
-  /// hali autentifikatsiya qilinayotgan bo'lsa ham xavfsiz.
-  Future<void> acceptFromPush({
+  /// `incoming_call` bildirishnomasidan ochilganda — socketni ulaydi va
+  /// KIRUVCHI ekranini ko'rsatadi. Qabul qilmaydi: Android to'liq-ekran
+  /// bildirishnomani o'zi ochadi va buni bosishdan ajratib bo'lmaydi —
+  /// mikrofon/kamera faqat xodim "Qabul qilish"ni bosgach yoqiladi.
+  Future<void> showFromPush({
     required String callId,
     required String callerName,
     required CallMedia media,
@@ -200,7 +200,6 @@ class CallCubit extends Cubit<CallState> {
         camOn: media == CallMedia.video,
       ),
     );
-    await accept();
   }
 
   /// Kiruvchi qo'ng'iroqni rad etadi.

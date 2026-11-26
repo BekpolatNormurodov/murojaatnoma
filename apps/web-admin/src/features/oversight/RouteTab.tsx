@@ -20,6 +20,7 @@ import {
   type TrackWindow,
 } from '@/features/map/mapShared';
 import { routeStops, type RouteStop } from '@/features/map/routeStops';
+import { OnlineCard } from './OnlineCard';
 import { durationText } from './useActivity';
 import { addDays, dmy, localDay } from './period';
 
@@ -178,6 +179,8 @@ export function RouteTab({
           ))}
         </dl>
       </Card>
+
+      <OnlineCard key={day} employeeId={employeeId} date={day} live={isToday} />
 
       {trackQ.isError && !trackQ.data ? (
         <Card className="p-5 text-[13px] text-ink-soft">

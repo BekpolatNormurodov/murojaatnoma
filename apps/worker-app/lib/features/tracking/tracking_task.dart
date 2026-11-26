@@ -39,10 +39,12 @@ class TrackingTaskHandler extends TaskHandler {
       await FlutterForegroundTask.stopService();
       return;
     }
+    await ClientHeaders.load();
     final dio = Dio(
       BaseOptions(
         baseUrl: base,
         contentType: 'application/json',
+        headers: {...ClientHeaders.value},
         connectTimeout: const Duration(seconds: 15),
         sendTimeout: const Duration(seconds: 20),
         receiveTimeout: const Duration(seconds: 20),
@@ -87,8 +89,13 @@ class TrackingTaskHandler extends TaskHandler {
       // tiklanadi; ishlayotgan bo'lsa hech nima qilmaydi.
       await tracking.start(prompt: false);
       final status = await _status?.report(tracking: tracking.isRunning);
-      await _notify(status?.problem ?? ForegroundServiceTracking.runningText);
-      await _alerts?.check(problem: status?.problem);
+      final problem =
+          status?.problem ??
+          (tracking.sessionRejected
+              ? 'Qayta kirish kerak — ilovani oching'
+              : null);
+      await _notify(problem ?? ForegroundServiceTracking.runningText);
+      await _alerts?.check(problem: problem);
     } on Object catch (error) {
       debugPrint('[tracking-task] $error');
     } finally {

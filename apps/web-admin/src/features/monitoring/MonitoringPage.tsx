@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { SearchNormal1 } from 'iconsax-react';
 import { useAttendanceToday, todayIso } from '@/features/attendance/useAttendanceToday';
+import { clock, duration } from '@/features/oversight/online';
+import { OnlineBar } from '@/features/oversight/OnlineCard';
 import { useActivity } from '@/features/oversight/useActivity';
 import { api } from '@/shared/api/client';
 import { fetchLiveLocations } from '@/shared/api/locations';
@@ -11,7 +13,7 @@ import { Avatar } from '@/shared/ui/Avatar';
 import { Card } from '@/shared/ui/Card';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { Skeleton } from '@/shared/ui/Skeleton';
-import { buildRows, hours, matches, type Coverage, type Filter, type Row } from './monitoring';
+import { buildRows, matches, type Coverage, type Filter, type Row } from './monitoring';
 
 const CARDS: { key: Filter; label: string; tone: string }[] = [
   { key: 'all', label: 'Jami xodim', tone: 'text-ink' },
@@ -151,21 +153,30 @@ function Person({ row }: { row: Row }) {
 
 function Facts({ row }: { row: Row }) {
   const pct = row.coverage;
+  const day = row.day;
   return (
-    <span className="grid w-full grid-cols-2 gap-3 text-xs sm:w-auto sm:grid-cols-[160px_90px_90px_90px]">
-      <span>
-        <span className="block text-ink-muted">Ish vaqtida qamrov</span>
-        <span className="font-semibold tabular-nums text-ink">
-          {pct === null ? '—' : `${pct}% · ${hours(row.coveredMinutes)}`}
+    <span className="grid w-full grid-cols-2 gap-3 text-xs sm:w-auto sm:grid-cols-[230px_100px_70px_80px]">
+      <span className="col-span-2 sm:col-span-1">
+        <span className="block text-ink-muted">Bugun onlayn</span>
+        <span className="block font-semibold tabular-nums text-ink">
+          {day ? duration(day.onlineMinutes) : '—'}
+          {pct !== null && (
+            <span className={cn('ml-1', pct >= 80 ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-red-600')}>
+              · ish vaqtining {pct}%
+            </span>
+          )}
         </span>
-        <span className="mt-1 block h-1.5 rounded-full bg-surface-2">
-          <span
-            className={cn(
-              'block h-full rounded-full',
-              (pct ?? 0) >= 80 ? 'bg-emerald-500' : (pct ?? 0) >= 40 ? 'bg-amber-500' : 'bg-red-500',
-            )}
-            style={{ width: `${pct ?? 0}%` }}
-          />
+        {day && (
+          <span className="mt-1 block">
+            <OnlineBar day={day} />
+          </span>
+        )}
+        <span className="mt-0.5 block text-[11px] tabular-nums text-ink-muted">
+          {day?.onlineSince
+            ? `${clock(day.onlineSince)} dan beri onlayn`
+            : day?.lastAt
+              ? `${clock(day.lastAt)} dan beri oflayn`
+              : 'bugun ulanmagan'}
         </span>
       </span>
       <span>

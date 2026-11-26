@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:app_core/app_core.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:worker_app/app/auth_navigation_host.dart';
 import 'package:worker_app/app/router/app_router.dart';
+import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
+import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
 import 'package:worker_app/features/calls/presentation/bloc/meeting_cubit.dart';
 import 'package:worker_app/features/notifications/presentation/bloc/notifications_cubit.dart';
@@ -97,13 +100,34 @@ class _CallNavigationHostState extends State<_CallNavigationHost> {
   @override
   void initState() {
     super.initState();
-    // Sovuq start (FCM push -> acceptFromPush allaqachon holatni o'rnatgan
+    // Sovuq start (FCM push -> showFromPush allaqachon holatni o'rnatgan
     // bo'lishi mumkin) — BlocListener bunday boshlang'ich holat uchun
     // ishlamaydi, shuning uchun birinchi kadrdan keyin qo'lda tekshiramiz.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _maybeNavigate(context.read<CallCubit>().state);
     });
+  }
+
+  /// Ilova fonda turganda ekran ko'rinmaydi — ovozli bildirishnoma.
+  void _ring(CallState state) {
+    if (!getIt.isRegistered<NotificationService>()) return;
+    final notifications = getIt<NotificationService>();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final callId = state.callId;
+    if (state.phase != CallPhase.incoming) {
+      unawaited(notifications.cancelIncomingCall());
+    } else if (callId != null &&
+        lifecycle != null &&
+        lifecycle != AppLifecycleState.resumed) {
+      unawaited(
+        notifications.showIncomingCall(
+          callId: callId,
+          callerName: state.peer?.name ?? 'Nomaʼlum',
+          media: state.media == CallMedia.video ? 'video' : 'audio',
+        ),
+      );
+    }
   }
 
   void _maybeNavigate(CallState state) {
@@ -120,7 +144,10 @@ class _CallNavigationHostState extends State<_CallNavigationHost> {
   @override
   Widget build(BuildContext context) {
     return BlocListener<CallCubit, CallState>(
-      listener: (context, state) => _maybeNavigate(state),
+      listener: (context, state) {
+        _maybeNavigate(state);
+        _ring(state);
+      },
       child: widget.child,
     );
   }

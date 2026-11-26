@@ -23,13 +23,16 @@ import 'package:user_app/injection.dart';
 Future<void> bootstrap({bool systemServices = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  // DI'dan oldin: birinchi so'rovdan boshlab telefon ma'lumoti ketadi.
+  // `useMock` bu ilovada faqat to'lovlarga tegishli (prod'da ham yoqiq),
+  // shuning uchun haqiqiy qurilma xizmatlari flavor bo'yicha ulanadi.
+  final live = systemServices && AppConfig.flavor == AppFlavor.prod;
+  if (live) await ClientHeaders.load();
   await configureDependencies();
   await _restoreSession();
   if (systemServices) unawaited(_initNotifications());
   // Saytda yangiroq APK bo'lsa taklif qilinadi (faqat real Android).
-  if (systemServices &&
-      !AppConfig.useMock &&
-      defaultTargetPlatform == TargetPlatform.android) {
+  if (live && defaultTargetPlatform == TargetPlatform.android) {
     UpdateChecker.instance = UpdateChecker(appKey: 'user');
   }
   // Server sessiyani rad etsa (refresh 401) — "Chiqish" tugmasi bilan AYNAN

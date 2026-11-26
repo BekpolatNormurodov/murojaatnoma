@@ -11,7 +11,7 @@ import 'package:worker_app/features/face/domain/entities/face_template.dart';
 /// `writeError` orqali platformadagi xatoliklarni simulyatsiya qiladi.
 class _FakeFaceLocalDataSource implements FaceLocalDataSource {
   @override
-  Future<void> clear() async {}
+  Future<void> clear() async => stored = null;
 
   FaceTemplate? stored;
   Exception? readError;
@@ -229,7 +229,7 @@ void main() {
 
       test(
         'remote upload failing surfaces a ServerFailure (the server template '
-        'is required for check-in) while the local template stays saved',
+        'is required for check-in) and no local template is left behind',
         () async {
           AppConfig.useMock = false;
           remote.uploadError = ServerException('tarmoq xatosi');
@@ -242,7 +242,7 @@ void main() {
             (failure) => expect(failure, isA<ServerFailure>()),
             (_) => fail('upload failure must not look like success'),
           );
-          expect(local.stored, equals(template));
+          expect(local.stored, isNull);
           expect(remote.uploadCallCount, 1);
         },
       );

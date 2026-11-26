@@ -508,7 +508,7 @@ Future<void> configureDependencies() async {
     )
     // `CallCubit` — GLOBAL (lazy singleton, factory EMAS): ilova ildizida
     // (`app.dart`) `BlocProvider` orqali ta'minlanadi, kiruvchi qo'ng'iroq
-    // tinglovchisi VA FCM bildirishnoma bosilishi (`acceptFromPush`) XUDDI
+    // tinglovchisi VA FCM bildirishnoma bosilishi (`showFromPush`) XUDDI
     // SHU instansiyani ishlatishi shart (bitta RTCPeerConnection). Socket
     // call:* oqimlariga konstruktorda obuna bo'ladi (mock rejimda oqim
     // bo'sh — zararsiz).

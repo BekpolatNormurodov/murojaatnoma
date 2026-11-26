@@ -292,11 +292,43 @@ class AttendanceRemoteDataSourceApiImpl implements AttendanceRemoteDataSource {
       final response = await _client.dio.get<Map<String, dynamic>>(
         '/attendance/me',
       );
-      return MyAttendance.fromJson(response.data ?? const {});
+      var data = response.data ?? const <String, dynamic>{};
+      if (response.extra['fromCache'] == true) data = withoutOldToday(data);
+      return MyAttendance.fromJson(data);
     } on DioException catch (e) {
       final message = _messageFrom(e.response?.data);
       throw ServerException(message ?? e.message ?? 'Server xatosi');
     }
+  }
+
+  /// Oflayn paytda javob keshdan keladi: kechagi (yoki eskiroq) kun
+  /// "bugun" bo'lib ko'rinmasin — aks holda "Keldim" tugmasi yo'qoladi.
+  @visibleForTesting
+  static Map<String, dynamic> withoutOldToday(
+    Map<String, dynamic> data, {
+    DateTime? now,
+  }) {
+    final today = data['today'];
+    if (today is! Map<String, dynamic>) return data;
+    final date = '${today['date']}';
+    final local = now ?? DateTime.now();
+    final key =
+        '${local.year}-${'${local.month}'.padLeft(2, '0')}-'
+        '${'${local.day}'.padLeft(2, '0')}';
+    if (date.length < 10 || date.substring(0, 10).compareTo(key) >= 0) {
+      return data;
+    }
+    return {
+      ...data,
+      'today': {
+        ...today,
+        'date': key,
+        'checkIn': null,
+        'checkOut': null,
+        'status': 'absent',
+        'hours': 0,
+      },
+    };
   }
 
   /// Backend xato javobi tanasidan (`{message: "..."}`) `uz` tilidagi

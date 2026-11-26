@@ -68,6 +68,7 @@ class WorkerAuthInterceptor extends Interceptor {
     BaseOptions(
       baseUrl: baseUrl,
       contentType: 'application/json',
+      headers: {...ClientHeaders.value},
       connectTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 20),
     ),
