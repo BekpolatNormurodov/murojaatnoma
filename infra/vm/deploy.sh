@@ -29,16 +29,17 @@ if [ "$prev" != "$tag" ]; then
     fi
   done
   # The server's Docker has no BuildKit: drop the cache mount and the heredoc.
-  remote "cd $REMOTE_DIR/src-$tag/web-admin && python3 - <<'PY'
+  remote "cd $REMOTE_DIR/src-$tag && python3 - <<'PY'
 import re
-s=open('Dockerfile').read()
-s=s.replace('--mount=type=cache,target=/root/.npm ','')
-s=re.sub(r'^# syntax=.*\n','',s)
-m=re.search(r\"RUN <<'EOF' cat > (\S+)\n(.*?)\nEOF\n\",s,re.S)
-if m:
-    open('spa-nginx.conf','w').write(m.group(2)+'\n')
-    s=s[:m.start()]+'COPY spa-nginx.conf '+m.group(1)+'\n'+s[m.end():]
-open('Dockerfile','w').write(s)
+for d in ('backend', 'web-admin'):
+    s=open(d+'/Dockerfile').read()
+    s=s.replace('--mount=type=cache,target=/root/.npm ','')
+    s=re.sub(r'^# syntax=.*\n','',s)
+    m=re.search(r\"RUN <<'EOF' cat > (\S+)\n(.*?)\nEOF\n\",s,re.S)
+    if m:
+        open(d+'/spa-nginx.conf','w').write(m.group(2)+'\n')
+        s=s[:m.start()]+'COPY spa-nginx.conf '+m.group(1)+'\n'+s[m.end():]
+    open(d+'/Dockerfile','w').write(s)
 PY"
   echo "== building (this takes a few minutes)"
   remote "cd $REMOTE_DIR/src-$tag && nohup sh -c 'true $build && echo BUILD-OK || echo BUILD-FAIL' > ../build-$tag.log 2>&1 < /dev/null &"
