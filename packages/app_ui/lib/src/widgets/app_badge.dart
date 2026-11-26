@@ -42,7 +42,7 @@ class AppBadge extends StatelessWidget {
     AppBadgeVariant.warning => AppColors.warning,
     AppBadgeVariant.danger => AppColors.danger,
     AppBadgeVariant.info => AppColors.info,
-    AppBadgeVariant.neutral => AppColors.inkMuted,
+    AppBadgeVariant.neutral => AppColors.neutral,
   };
 
   @override

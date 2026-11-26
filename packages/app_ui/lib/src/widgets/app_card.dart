@@ -67,7 +67,15 @@ class _AppCardState extends State<AppCard> {
                     offset: const Offset(0, 8),
                   ),
                 ]
-              : null,
+              : isDark || widget.gradient != null
+              ? null
+              : const [
+                  BoxShadow(
+                    color: Color(0x0F1E3A8A),
+                    blurRadius: 14,
+                    offset: Offset(0, 5),
+                  ),
+                ],
         ),
         child: widget.child,
       ),

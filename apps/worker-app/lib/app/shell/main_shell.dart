@@ -233,10 +233,25 @@ class _TabButton extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: isActive
-                        ? AppColors.primary.withValues(alpha: 0.12)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(AppRadii.sm),
+                    gradient: isActive
+                        ? const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [AppColors.primary, AppColors.accentDark],
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(AppRadii.md),
+                    boxShadow: isActive
+                        ? [
+                            BoxShadow(
+                              color: AppColors.accentDark.withValues(
+                                alpha: 0.30,
+                              ),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : null,
                   ),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
@@ -245,7 +260,7 @@ class _TabButton extends StatelessWidget {
                     child: Icon(
                       isActive ? item.activeIcon : item.icon,
                       key: ValueKey(isActive),
-                      color: color,
+                      color: isActive ? Colors.white : color,
                       size: 24,
                     ),
                   ),

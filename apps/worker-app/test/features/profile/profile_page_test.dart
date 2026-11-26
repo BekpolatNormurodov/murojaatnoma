@@ -243,6 +243,8 @@ void main() {
     ) async {
       await pumpProfilePage(tester);
 
+      await tester.scrollUntilVisible(find.text('09:00–18:00'), 300);
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('09:00–18:00'), findsOneWidget);
       // Yangi ichki sahifa — kalendar va skan rasmlari.
       expect(find.text('Mening davomatim'), findsOneWidget);

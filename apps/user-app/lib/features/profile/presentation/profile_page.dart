@@ -78,26 +78,32 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final inkMuted = Colors.white.withValues(alpha: 0.82);
     final name = widget.session?.name ?? '';
     final phone = widget.session?.phone ?? '';
     final sessionRegion = widget.session?.region ?? '';
 
-    return Column(
+    final column = Column(
       children: [
         FutureBuilder<_EnrollInfo>(
           future: _enrollInfo,
-          builder: (context, snapshot) => _FaceAvatar(
-            name: name.isEmpty ? '?' : name,
-            size: 84,
-            photoPath: snapshot.data?.photoPath,
+          builder: (context, snapshot) => Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: _FaceAvatar(
+              name: name.isEmpty ? '?' : name,
+              size: 84,
+              photoPath: snapshot.data?.photoPath,
+            ),
           ),
         ),
         const SizedBox(height: 14),
         Text(
           formatPhone(name),
-          style: AppTextStyles.h2,
+          style: AppTextStyles.h2.copyWith(color: Colors.white),
           textAlign: TextAlign.center,
         ),
         FutureBuilder<_EnrollInfo>(
@@ -144,7 +150,10 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
           },
         ),
       ],
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.06, end: 0);
+    );
+    return AppHero(
+      child: SizedBox(width: double.infinity, child: column),
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: -0.06, end: 0);
   }
 }
 
@@ -160,13 +169,13 @@ class _RegionChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.1),
+          color: Colors.white.withValues(alpha: 0.2),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           region,
           style: AppTextStyles.caption.copyWith(
-            color: AppColors.primaryDark,
+            color: Colors.white,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -268,7 +277,8 @@ class _SettingsCard extends StatelessWidget {
                 subtitle: locale.languageCode == 'ru'
                     ? l10n.profileLanguageRu
                     : l10n.profileLanguageUz,
-                leadingIcon: IconsaxPlusLinear.translate,
+                leadingIcon: IconsaxPlusBold.translate,
+                iconColor: AppColors.accent,
                 trailing: chevron,
                 onTap: () => context.read<LocaleCubit>().setLocale(
                   Locale(locale.languageCode == 'ru' ? 'uz' : 'ru'),
@@ -279,7 +289,10 @@ class _SettingsCard extends StatelessWidget {
                 subtitle: isDark
                     ? l10n.profileThemeDark
                     : l10n.profileThemeLight,
-                leadingIcon: IconsaxPlusLinear.moon,
+                leadingIcon: isDark
+                    ? IconsaxPlusBold.moon
+                    : IconsaxPlusBold.sun_1,
+                iconColor: const Color(0xFF8B5CF6),
                 trailing: chevron,
                 onTap: () => context.read<ThemeCubit>().setMode(
                   isDark ? ThemeMode.light : ThemeMode.dark,
@@ -287,14 +300,16 @@ class _SettingsCard extends StatelessWidget {
               ),
               AppListTile(
                 title: l10n.profilePinLabel,
-                leadingIcon: AppIcons.lock,
+                leadingIcon: IconsaxPlusBold.lock,
+                iconColor: const Color(0xFFEA580C),
                 // Ro'yxatdan to'liq o'tgan fuqaro uchun `/pin/set` ochiq
                 // (redirect siyosati ataylab ruxsat beradi) — yangi PIN.
                 onTap: () => context.push('/pin/set'),
               ),
               AppListTile(
                 title: l10n.profileHelpLabel,
-                leadingIcon: AppIcons.info,
+                leadingIcon: IconsaxPlusBold.message_question,
+                iconColor: const Color(0xFF15803D),
                 onTap: () => _showHelp(context),
               ),
             ],
@@ -505,13 +520,14 @@ class _ServicesCard extends StatelessWidget {
         children: [
           AppListTile(
             title: _t(context, 'Murojaatlarim', 'Мои обращения'),
-            leadingIcon: AppIcons.requests,
+            leadingIcon: AppIcons.requestsBold,
             onTap: () => context.go('/applications'),
           ),
           if (notifications == null)
             AppListTile(
               title: _t(context, 'Bildirishnomalar', 'Уведомления'),
-              leadingIcon: AppIcons.notification,
+              leadingIcon: IconsaxPlusBold.notification,
+              iconColor: const Color(0xFFDC2626),
               onTap: () => context.push('/notifications'),
             )
           else
@@ -521,7 +537,8 @@ class _ServicesCard extends StatelessWidget {
                 final unread = notifications.unreadCount;
                 return AppListTile(
                   title: _t(context, 'Bildirishnomalar', 'Уведомления'),
-                  leadingIcon: AppIcons.notification,
+                  leadingIcon: IconsaxPlusBold.notification,
+                  iconColor: const Color(0xFFDC2626),
                   trailing: unread > 0 ? AppBadge(label: '$unread') : null,
                   onTap: () => context.push('/notifications'),
                 );
@@ -529,12 +546,14 @@ class _ServicesCard extends StatelessWidget {
             ),
           AppListTile(
             title: _t(context, "To'lovlar tarixi", 'История платежей'),
-            leadingIcon: AppIcons.receipt,
+            leadingIcon: IconsaxPlusBold.receipt_item,
+            iconColor: const Color(0xFF4338CA),
             onTap: () => context.push('/payments-history'),
           ),
           AppListTile(
             title: l10n.profileReportsLabel,
-            leadingIcon: IconsaxPlusLinear.chart_2,
+            leadingIcon: IconsaxPlusBold.chart_2,
+            iconColor: const Color(0xFFD97706),
             onTap: () => context.push('/reports'),
           ),
         ],

@@ -67,7 +67,7 @@ class _DayBar extends StatelessWidget {
     AttendanceStatus.late => AppColors.warning,
     AttendanceStatus.absent => AppColors.danger,
     AttendanceStatus.leave => AppColors.accent,
-    AttendanceStatus.dayOff => AppColors.inkMuted,
+    AttendanceStatus.dayOff => AppColors.neutral,
   };
 
   /// `AttendanceDay.date` ('yyyy-MM-dd') dan oy kunini ajratib oladi —

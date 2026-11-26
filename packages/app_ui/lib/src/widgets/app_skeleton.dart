@@ -75,7 +75,7 @@ class _AppSkeletonState extends State<AppSkeleton>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     // Asos karta foni ustida aniq ko'rinadigan bo'lsin (ilgari line*0.55
     // oq kartada deyarli ko'rinmasdi).
-    final base = isDark ? const Color(0xFF243044) : const Color(0xFFE8EDF3);
+    final base = isDark ? const Color(0xFF243044) : const Color(0xFFD9E1EE);
     final shine = isDark
         ? const Color(0xFF34425A)
         : Colors.white.withValues(alpha: 0.95);

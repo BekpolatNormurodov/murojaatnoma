@@ -638,7 +638,7 @@ class _Skeleton extends StatelessWidget {
 Color _statusColor(AttendanceHistoryDay d) => switch (d.status) {
   'absent' => AppColors.danger,
   'leave' => AppColors.info,
-  'dayoff' => AppColors.inkMuted,
+  'dayoff' => AppColors.neutral,
   _ => d.isLate ? AppColors.warning : AppColors.success,
 };
 

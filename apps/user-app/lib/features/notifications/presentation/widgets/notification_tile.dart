@@ -123,16 +123,8 @@ class NotificationIconBox extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(AppRadii.sm),
-    ),
-    child: Icon(icon, size: size * 0.45, color: color),
-  );
+  Widget build(BuildContext context) =>
+      AppIconTile(icon: icon, tone: AppToneColors.of(color), size: size);
 }
 
 /// Berilgan vaqtni joriy vaqtga nisbatan qisqa matnga aylantiradi (masalan

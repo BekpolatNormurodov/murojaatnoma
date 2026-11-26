@@ -116,7 +116,11 @@ class ProfilePage extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _SectionTitle(l10n.profileLanguageTitle),
+                          _SettingTitle(
+                            l10n.profileLanguageTitle,
+                            IconsaxPlusBold.translate,
+                            AppTone.blue,
+                          ),
                           const SizedBox(height: 8),
                           AppSegmented<Locale>(
                             value: locale,
@@ -135,7 +139,11 @@ class ProfilePage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 18),
-                          _SectionTitle(l10n.profileThemeTitle),
+                          _SettingTitle(
+                            l10n.profileThemeTitle,
+                            IconsaxPlusBold.color_swatch,
+                            AppTone.violet,
+                          ),
                           const SizedBox(height: 8),
                           AppSegmented<ThemeMode>(
                             value: themeMode == ThemeMode.dark
@@ -170,19 +178,20 @@ class ProfilePage extends StatelessWidget {
                       items: [
                         _MenuItem(
                           _t(context, 'Mening davomatim', 'Моя посещаемость'),
-                          AppIcons.calendar,
+                          IconsaxPlusBold.calendar,
                           () => context.push('/my-attendance'),
+                          tone: AppTone.teal,
                           hint: _t(
                             context,
                             'Kalendar va skan rasmlari',
                             'Календарь и фото',
                           ),
-                          accent: true,
                         ),
                         _MenuItem(
                           _t(context, 'Kunlik hisobot', 'Ежедневный отчёт'),
-                          AppIcons.documentUpload,
+                          IconsaxPlusBold.document_upload,
                           () => context.push('/reports'),
+                          tone: AppTone.blue,
                           hint: _t(
                             context,
                             "Hisobotlar va hududda bo'lgan vaqt",
@@ -191,19 +200,22 @@ class ProfilePage extends StatelessWidget {
                         ),
                         _MenuItem(
                           l10n.profileWorkingHoursLabel,
-                          AppIcons.timer,
+                          IconsaxPlusBold.timer_1,
                           () => context.push('/schedule'),
+                          tone: AppTone.orange,
                           trailing: l10n.workScheduleHours,
                         ),
                         _MenuItem(
                           'Oyliklarim',
-                          AppIcons.wallet,
+                          IconsaxPlusBold.wallet_3,
                           () => context.push('/salaries'),
+                          tone: AppTone.green,
                         ),
                         _MenuItem(
                           _t(context, 'Ballarim', 'Мои баллы'),
-                          AppIcons.medal,
+                          IconsaxPlusBold.medal_star,
                           () => context.push('/points'),
+                          tone: AppTone.amber,
                         ),
                       ],
                     )
@@ -217,18 +229,21 @@ class ProfilePage extends StatelessWidget {
                       items: [
                         _MenuItem(
                           l10n.leaveRequestTileLabel,
-                          AppIcons.calendar,
+                          IconsaxPlusBold.calendar_remove,
                           () => context.push('/leave-request'),
+                          tone: AppTone.violet,
                         ),
                         _MenuItem(
                           l10n.premyaRequestTileLabel,
-                          AppIcons.gift,
+                          IconsaxPlusBold.gift,
                           () => context.push('/premya-request'),
+                          tone: AppTone.pink,
                         ),
                         _MenuItem(
                           _t(context, 'Takliflar', 'Предложения'),
-                          AppIcons.lampOn,
+                          IconsaxPlusBold.lamp_on,
                           () => context.push('/suggestions'),
+                          tone: AppTone.amber,
                         ),
                       ],
                     )
@@ -242,8 +257,9 @@ class ProfilePage extends StatelessWidget {
                       items: [
                         _MenuItem(
                           _t(context, "Shaxsiy ma'lumotlar", 'Личные данные'),
-                          AppIcons.profile,
+                          IconsaxPlusBold.profile_circle,
                           () => context.push('/profile/info'),
+                          tone: AppTone.indigo,
                           trailing:
                               _departmentValue(session) == _emptyPlaceholder
                               ? null
@@ -251,13 +267,15 @@ class ProfilePage extends StatelessWidget {
                         ),
                         _MenuItem(
                           l10n.profileNewsTileLabel,
-                          AppIcons.notification,
+                          IconsaxPlusBold.notification,
                           () => context.push('/news'),
+                          tone: AppTone.red,
                         ),
                         _MenuItem(
                           l10n.profileDocumentsTileLabel,
-                          IconsaxPlusLinear.document_text,
+                          IconsaxPlusBold.document_text,
                           () => context.push('/documents'),
+                          tone: AppTone.slate,
                         ),
                       ],
                     )
@@ -274,7 +292,8 @@ class ProfilePage extends StatelessWidget {
                       ),
                       child: AppListTile(
                         title: l10n.profileAppVersionLabel,
-                        leadingIcon: AppIcons.info,
+                        leadingIcon: IconsaxPlusBold.info_circle,
+                        iconColor: AppColors.accent,
                         trailing: const _AppVersionValue(),
                       ),
                     )
@@ -295,6 +314,24 @@ class ProfilePage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Sozlama sarlavhasi: rangli ikonka va nom.
+class _SettingTitle extends StatelessWidget {
+  const _SettingTitle(this.label, this.icon, this.tone);
+
+  final String label;
+  final IconData icon;
+  final AppTone tone;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      AppIconTile(icon: icon, tone: tone, size: 32),
+      const SizedBox(width: 10),
+      Text(label, style: AppTextStyles.bodyStrong),
+    ],
+  );
 }
 
 /// Bo'lim sarlavhasi — ro'yxat kartalari ustida kichik, xira label
@@ -361,27 +398,25 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
-    // Lavozim (rol) — ismdan keyingi ASOSIY subtitr, shuning uchun eng xira
-    // "muted" emas, biroz to'yingroq "soft" rang bilan (qo'shimcha yarim
-    // qalinlik pastda) ajratiladi. Ro'yxatdan o'tgan sana esa eng yengil
-    // (uchinchi darajali) bo'lib qoladi.
-    final roleColor = isDark ? AppColors.darkInkSoft : AppColors.inkSoft;
     final name = widget.session?.name ?? '';
     final position = widget.session?.position ?? '';
 
-    return AppCard(
-      shadow: true,
+    return AppHero(
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FutureBuilder<_EnrollInfo>(
-            future: _enrollInfo,
-            builder: (context, snapshot) => _FaceAvatar(
-              name: name.isEmpty ? '?' : name,
-              size: 68,
-              photoPath: snapshot.data?.photoPath,
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: FutureBuilder<_EnrollInfo>(
+              future: _enrollInfo,
+              builder: (context, snapshot) => _FaceAvatar(
+                name: name.isEmpty ? '?' : name,
+                size: 68,
+                photoPath: snapshot.data?.photoPath,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -391,21 +426,33 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
               children: [
                 Text(
                   name,
-                  style: AppTextStyles.h2,
+                  style: AppTextStyles.h2.copyWith(color: Colors.white),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  position,
-                  style: AppTextStyles.body.copyWith(
-                    color: roleColor,
-                    fontWeight: FontWeight.w600,
+                if (position.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(AppRadii.sm),
+                    ),
+                    child: Text(
+                      position,
+                      style: AppTextStyles.caption.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      // Lavozimlar uzun — 2 qator.
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  // Lavozimlar uzun ("Kommunal xizmat mutaxassisi") — 2 qator.
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                ],
                 FutureBuilder<_EnrollInfo>(
                   future: _enrollInfo,
                   builder: (context, snapshot) {
@@ -416,7 +463,7 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                       child: Text(
                         l10n.profileEnrolledOn(formatDate(enrolledAt)),
                         style: AppTextStyles.caption.copyWith(
-                          color: mutedColor,
+                          color: Colors.white.withValues(alpha: 0.8),
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -424,12 +471,8 @@ class _ProfileHeaderCardState extends State<_ProfileHeaderCard> {
                     );
                   },
                 ),
-                // Xodim ID (`workerId`) ATAYLAB ko'rsatilmaydi — bu xom UUID
-                // (masalan "2e17c07b-0b4f-465…"), qisqartirilgan holda
-                // foydalanuvchiga hech qanday ma'no bermaydi va foydali
-                // "xodim raqami" mavjud emas. Region ham ko'rsatilmaydi
-                // (loyiha hozircha faqat Mirzo Ulug'bek uchun) — tuman
-                // "Bo'lim" qatorida (`_departmentValue`) chiqadi.
+                // Xodim ID (`workerId`) va region ATAYLAB ko'rsatilmaydi: ID
+                // xom UUID, tuman esa "Bo'lim" qatorida chiqadi.
               ],
             ),
           ),
@@ -502,7 +545,7 @@ class _MenuItem {
     this.onTap, {
     this.trailing,
     this.hint,
-    this.accent = false,
+    this.tone = AppTone.teal,
   });
 
   final String title;
@@ -511,8 +554,8 @@ class _MenuItem {
   final String? trailing;
   final String? hint;
 
-  /// Yangi/asosiy bo'lim — ikonkasi rangli fon bilan ajratiladi.
-  final bool accent;
+  /// Ikonka fonining rangi.
+  final AppTone tone;
 }
 
 /// Guruhlangan menyu kartasi — har qatorda rangli ikonka, nom, ixtiyoriy
@@ -531,7 +574,7 @@ class _MenuCard extends StatelessWidget {
       child: Column(
         children: [
           for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const Divider(height: 1, indent: 60),
+            if (i > 0) const Divider(height: 1, indent: 66),
             InkWell(
               onTap: items[i].onTap,
               child: Padding(
@@ -541,23 +584,10 @@ class _MenuCard extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 36,
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: items[i].accent
-                            ? AppColors.primary
-                            : AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        items[i].icon,
-                        size: 19,
-                        color: items[i].accent
-                            ? Colors.white
-                            : AppColors.primary,
-                      ),
+                    AppIconTile(
+                      icon: items[i].icon,
+                      tone: items[i].tone,
+                      size: 40,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -636,15 +666,23 @@ class _MonthStatsRowState extends State<_MonthStatsRow> {
     final late = month.where((d) => d.isLate).length;
     final hours = month.fold<double>(0, (s, d) => s + (d.hours ?? 0));
     final loading = _days == null;
-    Widget tile(String value, String label, Color color) => Expanded(
+    Widget tile(String value, String label, IconData icon, AppTone tone) =>
+        Expanded(
       child: AppCard(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            AppIconTile(icon: icon, tone: tone, size: 34),
+            const SizedBox(height: 10),
             Text(
               loading ? '—' : value,
-              style: AppTextStyles.h3.copyWith(color: color),
+              style: AppTextStyles.h2.copyWith(
+                // Tungi fonda gradientning yorqin uchi o'qiladi.
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? tone.colors.$1
+                    : tone.solid,
+              ),
             ),
             // Sig'masa kichrayadi — so'z kesilmaydi va bo'linmaydi.
             FittedBox(
@@ -664,18 +702,25 @@ class _MonthStatsRowState extends State<_MonthStatsRow> {
         onTap: () => context.push('/my-attendance'),
         child: Row(
           children: [
-            tile('$came', _t(context, 'kun keldi', 'дней'), AppColors.success),
+            tile(
+              '$came',
+              _t(context, 'kun keldi', 'дней'),
+              IconsaxPlusBold.calendar_tick,
+              AppTone.green,
+            ),
             const SizedBox(width: 8),
             tile(
               '$late',
               _t(context, 'kechikish', 'опозданий'),
-              AppColors.warning,
+              IconsaxPlusBold.clock,
+              AppTone.orange,
             ),
             const SizedBox(width: 8),
             tile(
               hours.toStringAsFixed(0),
               _t(context, 'soat (bu oy)', 'часов'),
-              AppColors.info,
+              IconsaxPlusBold.timer_1,
+              AppTone.blue,
             ),
           ],
         ),

@@ -20,6 +20,7 @@ import 'package:user_app/features/payments/domain/entities/utility.dart';
 import 'package:user_app/features/requests/domain/entities/citizen_request.dart';
 import 'package:user_app/injection.dart';
 import 'package:user_app/core/widgets/test_mode_banner.dart';
+import 'package:iconsax_plus/iconsax_plus.dart';
 
 /// Fuqaro bosh sahifasi (dashboard) — 4-tab shellning "home" branchi.
 ///
@@ -149,8 +150,7 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final inkMuted = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final inkMuted = Colors.white.withValues(alpha: 0.82);
     final name = widget.session?.name ?? '';
     final phone = widget.session?.phone ?? '';
     // Ism hali yo'q bo'lsa u telefonning o'zi — ikki marta chiqmasin.
@@ -159,14 +159,16 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
       formatDate(DateTime.now()),
     ];
 
-    return Row(
+    final row = Row(
       children: [
         FutureBuilder<String?>(
           future: _photoPath,
-          builder: (context, snapshot) => _FaceAvatar(
-            name: name.isEmpty ? '?' : name,
-            size: 56,
-            photoPath: snapshot.data,
+          builder: (context, snapshot) => _ringed(
+            _FaceAvatar(
+              name: name.isEmpty ? '?' : name,
+              size: 52,
+              photoPath: snapshot.data,
+            ),
           ),
         ),
         const SizedBox(width: 14),
@@ -180,25 +182,44 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
               ),
               Text(
                 formatPhone(name),
-                style: AppTextStyles.h3.copyWith(height: 1.25),
+                style: AppTextStyles.h3.copyWith(
+                  height: 1.25,
+                  color: Colors.white,
+                ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              Text(
-                subtitleParts.join('\n'),
-                style: AppTextStyles.caption.copyWith(color: inkMuted),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+              // Alohida qatorlar: katta shriftda sana kesilib ketmasin.
+              for (final part in subtitleParts)
+                Text(
+                  part,
+                  style: AppTextStyles.caption.copyWith(color: inkMuted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
         const SizedBox(width: 8),
         const _NotificationBell(),
       ],
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.08, end: 0);
+    );
+    return AppHero(
+      padding: const EdgeInsets.all(16),
+      child: row,
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: -0.08, end: 0);
   }
+
+  /// Yashil fonda avatar oq halqa bilan ajralib turadi.
+  static Widget _ringed(Widget child) => Container(
+    padding: const EdgeInsets.all(2),
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      shape: BoxShape.circle,
+    ),
+    child: child,
+  );
 }
 
 /// Bosh sahifa sarlavha avatari — saqlangan (skanerlangan) yuz rasmi
@@ -415,29 +436,29 @@ class _QuickActionsGrid extends StatelessWidget {
     final l10n = context.l10n;
     final actions = [
       _QuickAction(
-        icon: AppIcons.wallet,
+        icon: AppIcons.walletBold,
         label: l10n.quickActionKommunalka,
         color: AppColors.primary,
         onTap: () => context.go('/kommunalka'),
       ),
       _QuickAction(
-        icon: AppIcons.documentUpload,
+        icon: IconsaxPlusBold.document_upload,
         label: l10n.quickActionNewApplication,
         color: AppColors.accent,
         onTap: () =>
             context.push('/applications/submit', extra: RequestKind.ariza),
       ),
       _QuickAction(
-        icon: AppIcons.info,
+        icon: IconsaxPlusBold.warning_2,
         label: l10n.quickActionComplaint,
         color: AppColors.warning,
         onTap: () =>
             context.push('/applications/submit', extra: RequestKind.shikoyat),
       ),
       _QuickAction(
-        icon: AppIcons.receipt,
+        icon: IconsaxPlusBold.receipt_item,
         label: l10n.quickActionPaymentHistory,
-        color: AppColors.accentDark,
+        color: const Color(0xFF7C3AED),
         onTap: () => context.push('/payments-history'),
       ),
     ];
@@ -487,16 +508,7 @@ class _QuickAction extends StatelessWidget {
         // bir chiziqda turadi.
         children: [
           const SizedBox(width: double.infinity, height: 6),
-          Container(
-            width: 38,
-            height: 38,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-            ),
-            child: Icon(icon, color: color, size: 19),
-          ),
+          AppIconTile(icon: icon, tone: AppToneColors.of(color), size: 44),
           const SizedBox(height: 10),
           Text(
             label,

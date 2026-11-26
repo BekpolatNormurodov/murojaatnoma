@@ -128,9 +128,8 @@ class _Segment<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.darkSurface : AppColors.surface;
     final color = active
-        ? (isDark ? AppColors.darkInk : AppColors.ink)
+        ? Colors.white
         // Nofaol yorliqlar ilgari juda och (inkMuted) edi — biroz to'qroq
         // (inkSoft) qilib o'qilishini yaxshiladik; faol pill o'zgarmaydi.
         : (isDark ? AppColors.darkInkSoft : AppColors.inkSoft);
@@ -151,12 +150,18 @@ class _Segment<T> extends StatelessWidget {
           horizontal: AppSegmented._segmentPadding,
         ),
         decoration: BoxDecoration(
-          color: active ? surface : Colors.transparent,
+          gradient: active
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [AppColors.primary, AppColors.primaryDark],
+                )
+              : null,
           borderRadius: BorderRadius.circular(AppRadii.sm),
           boxShadow: active
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
+                    color: AppColors.primaryDark.withValues(alpha: 0.30),
                     blurRadius: 10,
                     offset: const Offset(0, 3),
                   ),

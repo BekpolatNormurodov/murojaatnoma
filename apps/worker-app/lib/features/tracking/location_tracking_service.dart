@@ -65,6 +65,10 @@ class LocationTrackingService {
   final Future<Position> Function()? _currentOverride;
 
   static const String outboxKey = 'location_outbox_v1';
+
+  /// Server oxirgi marta nuqtani qabul qilgan payt (ms) — bosh sahifa uchun.
+  static const String lastSentKey = 'location_last_sent_at';
+  static const String lastSentOwnerKey = 'location_last_sent_owner';
   static const String _ownerField = '_owner';
   static const int _batchSize = 100;
   static const int _distanceFilterMeters = 15;
@@ -402,6 +406,7 @@ class LocationTrackingService {
     try {
       await _dio.post<dynamic>('/locations', data: report);
       _sessionRejected = false;
+      await _markSent();
       // Muvaffaqiyatli yuborish = onlayn bo'ldik — bufernikini oqizamiz.
       await flush();
     } on Object catch (error) {
@@ -554,7 +559,40 @@ class LocationTrackingService {
       return false;
     }
     await _remove(entries);
+    await _markSent();
     return true;
+  }
+
+  Future<void> _markSent() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(lastSentKey, DateTime.now().millisecondsSinceEpoch);
+    final owner = _ownerId?.call();
+    if (owner != null) await prefs.setString(lastSentOwnerKey, owner);
+  }
+
+  /// Joriy xodim uchun: navbatdagi nuqtalar soni va oxirgi muvaffaqiyatli
+  /// yuborish (boshqa xodimniki hisoblanmaydi).
+  Future<({int queued, DateTime? sentAt})> delivery() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Yozuvchi — fon xizmati (boshqa isolate).
+    await prefs.reload();
+    final owner = _ownerId?.call();
+    final queued = (prefs.getStringList(outboxKey) ?? const <String>[]).where((
+      raw,
+    ) {
+      final entryOwner = _decode(raw)?[_ownerField];
+      return entryOwner == null || entryOwner == owner;
+    }).length;
+    final sentBy = prefs.getString(lastSentOwnerKey);
+    final millis = sentBy == null || sentBy == owner
+        ? prefs.getInt(lastSentKey)
+        : null;
+    return (
+      queued: queued,
+      sentAt: millis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(millis),
+    );
   }
 
   /// Faqat shu yozuvlarni o'chiradi — yuborish davomida qo'shilganlari qoladi.

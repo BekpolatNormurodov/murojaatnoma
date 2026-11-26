@@ -120,4 +120,50 @@ void main() {
     expect(prefs.getString(AuthInterceptor.tokenKey), 'old-access');
     expect(prefs.getString(AuthInterceptor.refreshTokenKey), 'rt');
   }, timeout: const Timeout(Duration(seconds: 60)));
+
+  test('a rarely changing page is not waited out when saved recently', () async {
+    final adapter = _ScriptAdapter([
+      _json({'n': 1}),
+      DioExceptionType.receiveTimeout,
+    ]);
+    final dio = _dio(adapter, cache);
+    await dio.get<dynamic>('/news');
+
+    final res = await dio.get<dynamic>('/news');
+
+    expect(res.data, {'n': 1});
+    expect(res.extra['fromCache'], isTrue);
+    // No retries, a short wait, and "slow" rather than "offline".
+    expect(adapter.seen, hasLength(2));
+    expect(adapter.seen.last.receiveTimeout, OfflineCacheInterceptor.patience);
+    expect(adapter.seen.last.connectTimeout, isNull);
+    expect(NetworkStatus.instance.quality.value, NetworkQuality.slow);
+  });
+
+  test('data the user changes keeps the normal limits and retries', () async {
+    final adapter = _ScriptAdapter([
+      _json({'n': 1}),
+      DioExceptionType.receiveTimeout,
+      _json({'n': 2}),
+    ]);
+    final dio = _dio(adapter, cache);
+    await dio.get<dynamic>('/attendance/me');
+
+    final res = await dio.get<dynamic>('/attendance/me');
+
+    expect(res.data, {'n': 2});
+    expect(adapter.seen.last.receiveTimeout, isNull);
+  });
+
+  test('a server error on a saved page is still retried', () async {
+    final adapter = _ScriptAdapter([
+      _json({'n': 1}),
+      _json({'message': 'busy'}, 503),
+      _json({'n': 2}),
+    ]);
+    final dio = _dio(adapter, cache);
+    await dio.get<dynamic>('/news');
+
+    expect((await dio.get<dynamic>('/news')).data, {'n': 2});
+  });
 }

@@ -98,7 +98,7 @@ class ZoneDayCard extends StatelessWidget {
               _Metric(
                 label: 'Hudud biriktirilmagan',
                 value: formatMinutes(day.unassignedMinutes),
-                color: AppColors.inkMuted,
+                color: AppColors.neutral,
               ),
             ],
             if (day.byMahalla.isNotEmpty) ...[
@@ -136,7 +136,7 @@ class _MahallaChip extends StatelessWidget {
         ? AppColors.info
         : item.assigned
         ? AppColors.danger
-        : AppColors.inkMuted;
+        : AppColors.neutral;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -217,7 +217,7 @@ class _StretchRow extends StatelessWidget {
         ? AppColors.info
         : stretch.assigned
         ? AppColors.warning
-        : AppColors.inkMuted;
+        : AppColors.neutral;
     final parts = <String>[
       '${formatClock(stretch.from)} – ${formatClock(stretch.to)}',
       if (stretch.inside)

@@ -64,15 +64,10 @@ class NotificationTile extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(AppRadii.sm),
-                  ),
-                  child: Icon(icon, size: 20, color: color),
+                AppIconTile(
+                  icon: icon,
+                  tone: AppToneColors.of(color),
+                  size: 44,
                 ),
                 const SizedBox(width: 14),
                 Expanded(

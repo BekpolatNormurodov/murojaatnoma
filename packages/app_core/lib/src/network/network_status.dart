@@ -71,6 +71,14 @@ class NetworkStatus {
     }
   }
 
+  /// Javob kutib o'tirilmadi (keshdan ko'rsatildi): internet sekin, lekin
+  /// uzilgan deb hisoblanmaydi.
+  void reportSlow() {
+    if (isOffline) return;
+    _slowStreak = 2;
+    _set(NetworkQuality.slow);
+  }
+
   /// Ulanish darajasidagi xato (timeout / DNS / socket).
   void reportFailure() {
     _set(NetworkQuality.offline);

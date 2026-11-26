@@ -22,6 +22,10 @@ class RetryInterceptor extends Interceptor {
   /// Ichki (qayta) urinish belgisi — boshqa interceptorlar ham tekshiradi.
   static const String innerFlag = '__retry_inner__';
   static const String _inner = innerFlag;
+
+  /// Keshi bor so'rov: javob kutish tugasa qayta urinilmaydi (boshqa
+  /// xatolarda odatdagidek uriniladi).
+  static const String impatientFlag = '__net_impatient__';
   static const List<Duration> _delays = [
     Duration(milliseconds: 800),
     Duration(seconds: 2),
@@ -38,6 +42,8 @@ class RetryInterceptor extends Interceptor {
     // Ichki (qayta) urinishlarning xatosini tashqi tsikl o'zi boshqaradi.
     if (options.extra[_inner] == true ||
         options.extra['noRetry'] == true ||
+        (options.extra[impatientFlag] == true &&
+            err.type == DioExceptionType.receiveTimeout) ||
         !_retryable(err)) {
       handler.next(err);
       return;

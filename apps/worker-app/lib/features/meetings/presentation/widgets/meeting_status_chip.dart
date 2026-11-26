@@ -19,7 +19,7 @@ class MeetingStatusChip extends StatelessWidget {
   static Color colorOf(MeetingStatus status) => switch (status) {
     MeetingStatus.rejalashtirilgan => AppColors.info,
     MeetingStatus.jonli => AppColors.danger,
-    MeetingStatus.tugagan => AppColors.inkMuted,
+    MeetingStatus.tugagan => AppColors.neutral,
   };
 
   static String labelOf(BuildContext context, MeetingStatus status) {

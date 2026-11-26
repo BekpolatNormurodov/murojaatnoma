@@ -17,7 +17,7 @@ class DocumentStatusChip extends StatelessWidget {
   /// asosiy yashil (yakunlangan/rasmiy), `archived` — ko'k-kulrang
   /// (endi faol emas).
   static Color colorOf(DocumentStatus status) => switch (status) {
-    DocumentStatus.draft => AppColors.inkMuted,
+    DocumentStatus.draft => AppColors.neutral,
     DocumentStatus.review => AppColors.warning,
     DocumentStatus.signed => AppColors.success,
     DocumentStatus.archived => AppColors.info,

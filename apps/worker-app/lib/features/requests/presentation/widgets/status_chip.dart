@@ -20,7 +20,7 @@ class StatusChip extends StatelessWidget {
     ApplicationStatus.yangi => AppColors.info,
     ApplicationStatus.jarayonda => AppColors.warning,
     ApplicationStatus.javobBerildi => AppColors.primary,
-    ApplicationStatus.yopildi => AppColors.inkMuted,
+    ApplicationStatus.yopildi => AppColors.neutral,
     ApplicationStatus.rad => AppColors.danger,
   };
 

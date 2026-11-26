@@ -966,7 +966,7 @@ class _MahallaChip extends StatelessWidget {
 }) {
   if (!hours.contains(DateTime.now())) {
     return (
-      color: AppColors.inkMuted,
+      color: AppColors.neutral,
       icon: AppIcons.clock,
       message: l10n.mapOffWorkHoursMessage,
     );
@@ -980,14 +980,14 @@ class _MahallaChip extends StatelessWidget {
             message: ru ? 'Вы в офисе' : 'Ofisdasiz',
           )
         : (
-            color: AppColors.inkMuted,
+            color: AppColors.neutral,
             icon: AppIcons.map,
             message: ru ? 'Территория не назначена' : 'Hudud biriktirilmagan',
           );
   }
   if (insideZone == null) {
     return (
-      color: AppColors.inkMuted,
+      color: AppColors.neutral,
       icon: AppIcons.location,
       message: l10n.mapLocating,
     );

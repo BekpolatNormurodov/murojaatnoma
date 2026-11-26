@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // Brand (O'zbekiston yashil)
-  static const Color primary = Color(0xFF10B981);
-  static const Color primaryDark = Color(0xFF059669);
-  static const Color primaryDeep = Color(0xFF047857);
-  static const Color primaryLight = Color(0xFFD1FAE5);
+  // Brend: ko'kimtir yashil (to'yingan, matn va tugmalarda tiniq).
+  static const Color primary = Color(0xFF0D9488);
+  static const Color primaryDark = Color(0xFF0F766E);
+  static const Color primaryDeep = Color(0xFF115E59);
+  static const Color primaryLight = Color(0xFFCCFBF1);
 
   // Accent (Hokimiyat ko'k)
   static const Color accent = Color(0xFF3B82F6);
@@ -20,16 +20,19 @@ class AppColors {
   static const Color danger = Color(0xFFEF4444);
   static const Color info = Color(0xFF3B82F6);
 
+  /// "Neytral" holat belgilari uchun — och va tungi fonda ham o'qiladi.
+  static const Color neutral = Color(0xFF7C8AA5);
+
   // Surfaces — light
-  static const Color canvas = Color(0xFFF6F8FB);
+  static const Color canvas = Color(0xFFEFF3FA);
   static const Color surface = Color(0xFFFFFFFF);
-  static const Color surfaceAlt = Color(0xFFF9FAFB);
-  static const Color line = Color(0xFFEAEEF3);
+  static const Color surfaceAlt = Color(0xFFF5F8FC);
+  static const Color line = Color(0xFFD9E1EE);
 
   // Ink (text) — light
   static const Color ink = Color(0xFF0F172A);
-  static const Color inkSoft = Color(0xFF475569);
-  static const Color inkMuted = Color(0xFF94A3B8);
+  static const Color inkSoft = Color(0xFF334155);
+  static const Color inkMuted = Color(0xFF64748B);
 
   // Surfaces — dark
   static const Color darkCanvas = Color(0xFF0B1220);
@@ -59,13 +62,13 @@ class AppColors {
   static const LinearGradient cardGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF10B981), Color(0xFF0EA5E9)],
+    colors: [Color(0xFF0D9488), Color(0xFF2563EB)],
   );
 
   /// Yumshoq "porlash" (glow) soyasi — brend rangida.
   static const List<BoxShadow> glowShadow = [
     BoxShadow(
-      color: Color.fromRGBO(16, 185, 129, 0.25),
+      color: Color.fromRGBO(13, 148, 136, 0.28),
       offset: Offset(0, 8),
       blurRadius: 30,
     ),

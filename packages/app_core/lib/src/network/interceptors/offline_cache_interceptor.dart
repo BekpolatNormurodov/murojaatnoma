@@ -16,6 +16,11 @@ import 'package:dio/dio.dart';
 ///  * Allaqachon oflayn ([NetworkStatus.isOffline]) va kesh bor: 20 soniya
 ///    timeout kutmasdan DARHOL keshdan; probe internetni qaytarganda yana
 ///    tarmoqdan olinadi.
+///  * Kam o'zgaradigan sahifalarda ([staleTolerant]) yaqinda ([freshFor])
+///    saqlangan javob bo'lsa, sekin internet uzoq kutilmaydi: javob
+///    [patience] (sekinlik ma'lum bo'lsa [slowPatience]) ichida kelmasa
+///    keshdan ko'rsatiladi. Davomat, chat, to'lov kabi so'rovlarga bu
+///    qo'llanmaydi — eski ma'lumot adashtirardi.
 /// Kalit = metod + to'liq URL + foydalanuvchi (JWT `sub`) — boshqa
 /// foydalanuvchining keshi hech qachon ko'rinmaydi.
 /// `extra['noCache'] = true` — o'chirish.
@@ -25,6 +30,21 @@ class OfflineCacheInterceptor extends Interceptor {
 
   final ResponseCache _cache;
   static const String _started = '__net_started__';
+
+  static const Duration patience = Duration(seconds: 8);
+  static const Duration slowPatience = Duration(seconds: 3);
+
+  /// Eskirgan nusxa faqat shu muddat ichida "tez javob" bo'la oladi; undan
+  /// keyin odatdagidek kutiladi va kesh yangilanadi.
+  static const Duration freshFor = Duration(minutes: 15);
+
+  /// Foydalanuvchining o'z yozuvi bilan o'zgarmaydigan o'qishlar.
+  static const List<String> staleTolerant = [
+    '/news',
+    '/documents',
+    '/salaries',
+    '/points',
+  ];
 
   @override
   Future<void> onRequest(
@@ -39,6 +59,22 @@ class OfflineCacheInterceptor extends Interceptor {
       if (cached != null) {
         handler.resolve(_fromCache(options, cached), true);
         return;
+      }
+    }
+    if (_cacheable(options) &&
+        !_isInnerRetry(options) &&
+        staleTolerant.any(options.path.startsWith)) {
+      final cached = await _cache.read(_key(options));
+      if (cached != null &&
+          DateTime.now().difference(cached.savedAt) <= freshFor) {
+        // Faqat javob kutish qisqaradi: ulanish chegarasi o'zgarmaydi, aks
+        // holda sekin (lekin ishlaydigan) tarmoq "uzilgan" deb ko'rinardi.
+        options
+          ..receiveTimeout =
+              NetworkStatus.instance.quality.value == NetworkQuality.slow
+              ? slowPatience
+              : patience
+          ..extra[RetryInterceptor.impatientFlag] = true;
       }
     }
     handler.next(options);
@@ -70,7 +106,13 @@ class OfflineCacheInterceptor extends Interceptor {
       // Server javob berdi (4xx/5xx) — tarmoq bor.
       NetworkStatus.instance.reportSuccess(_elapsed(err.requestOptions));
     } else if (NetworkStatus.isConnectivityError(err)) {
-      NetworkStatus.instance.reportFailure();
+      // Qisqartirilgan kutish tugagani uzilish emas; ulanib bo'lmasa — uzilish.
+      if (err.requestOptions.extra[RetryInterceptor.impatientFlag] == true &&
+          err.type == DioExceptionType.receiveTimeout) {
+        NetworkStatus.instance.reportSlow();
+      } else {
+        NetworkStatus.instance.reportFailure();
+      }
       // Ichki qayta urinishda keshga qaytmaymiz — RetryInterceptor barcha
       // urinishlarni tugatgach, tashqi so'rov shu yerga qayta keladi.
       if (_cacheable(err.requestOptions) &&

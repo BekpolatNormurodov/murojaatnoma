@@ -1,6 +1,7 @@
 import 'package:app_ui/src/theme/app_colors.dart';
 import 'package:app_ui/src/theme/app_radii.dart';
 import 'package:app_ui/src/theme/app_text_styles.dart';
+import 'package:app_ui/src/widgets/app_icon_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:iconsax_plus/iconsax_plus.dart';
@@ -85,15 +86,10 @@ class _AppListTileState extends State<AppListTile> {
     final leadingWidget =
         widget.leading ??
         (widget.leadingIcon != null
-            ? Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
-                ),
-                child: Icon(widget.leadingIcon, size: 22, color: color),
+            ? AppIconTile(
+                icon: widget.leadingIcon!,
+                tone: AppToneColors.of(color),
+                size: 44,
               )
             : null);
 

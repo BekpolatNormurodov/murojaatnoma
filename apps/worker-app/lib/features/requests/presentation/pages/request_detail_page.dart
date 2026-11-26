@@ -196,7 +196,7 @@ Future<void> _openMap(BuildContext context, Application a) async {
 }
 
 Color _priorityColor(ApplicationPriority priority) => switch (priority) {
-  ApplicationPriority.past => AppColors.inkMuted,
+  ApplicationPriority.past => AppColors.neutral,
   ApplicationPriority.orta => AppColors.warning,
   ApplicationPriority.yuqori => AppColors.danger,
 };

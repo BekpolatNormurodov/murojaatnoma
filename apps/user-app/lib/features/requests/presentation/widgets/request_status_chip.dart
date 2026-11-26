@@ -16,7 +16,7 @@ class RequestStatusChip extends StatelessWidget {
     RequestStatus.yuborilgan => AppColors.info,
     RequestStatus.korilmoqda => AppColors.warning,
     RequestStatus.javobBerildi => AppColors.primary,
-    RequestStatus.yopildi => AppColors.inkMuted,
+    RequestStatus.yopildi => AppColors.neutral,
   };
 
   static String labelOf(BuildContext context, RequestStatus status) {

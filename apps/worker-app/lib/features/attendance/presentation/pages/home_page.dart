@@ -24,7 +24,9 @@ import 'package:worker_app/features/territory/territory_card.dart';
 import 'package:worker_app/features/territory/territory_service.dart';
 import 'package:worker_app/features/tracking/battery_exemption_card.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
+import 'package:worker_app/features/tracking/tracking_status_card.dart';
 import 'package:worker_app/injection.dart';
+import 'package:iconsax_plus/iconsax_plus.dart';
 
 /// Bosh sahifa (davomat) dashboard — 5-tab shellning "home" branchi.
 ///
@@ -369,6 +371,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               const SizedBox(height: 24),
               const TrackingWarning(),
               const BatteryExemptionCard(),
+              const TrackingStatusCard(),
               TodayStatusCard(today: today),
               const SizedBox(height: 16),
               if (today?.checkIn == null)
@@ -503,17 +506,23 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final name = widget.session?.name ?? '';
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final mutedColor = isDark ? AppColors.darkInkMuted : AppColors.inkMuted;
+    final mutedColor = Colors.white.withValues(alpha: 0.82);
 
-    return Row(
+    final row = Row(
       children: [
         FutureBuilder<String?>(
           future: _photoPath,
-          builder: (context, snapshot) => _FaceAvatar(
-            name: name.isEmpty ? '?' : name,
-            size: 56,
-            photoPath: snapshot.data,
+          builder: (context, snapshot) => Container(
+            padding: const EdgeInsets.all(2),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: _FaceAvatar(
+              name: name.isEmpty ? '?' : name,
+              size: 52,
+              photoPath: snapshot.data,
+            ),
           ),
         ),
         const SizedBox(width: 12),
@@ -527,7 +536,7 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
               ),
               Text(
                 name,
-                style: AppTextStyles.h2,
+                style: AppTextStyles.h2.copyWith(color: Colors.white),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -542,7 +551,11 @@ class _GreetingHeaderState extends State<_GreetingHeader> {
         const SizedBox(width: 8),
         const _NotificationBell(),
       ],
-    ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.08, end: 0);
+    );
+    return AppHero(
+      padding: const EdgeInsets.all(16),
+      child: row,
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: -0.08, end: 0);
   }
 }
 
@@ -652,19 +665,10 @@ class _DailyReportCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-            ),
-            child: const Icon(
-              AppIcons.documentUpload,
-              size: 22,
-              color: AppColors.primary,
-            ),
+          const AppIconTile(
+            icon: IconsaxPlusBold.document_upload,
+            tone: AppTone.blue,
+            size: 44,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -727,7 +731,8 @@ class _QuickActions extends StatelessWidget {
             children: [
               Expanded(
                 child: _QuickActionCard(
-                  icon: AppIcons.video,
+                  icon: IconsaxPlusBold.video,
+                  tone: AppTone.violet,
                   label: l10n.meetingsPageTitle,
                   onTap: () => context.push('/meetings'),
                 ),
@@ -735,7 +740,8 @@ class _QuickActions extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _QuickActionCard(
-                  icon: AppIcons.lampOn,
+                  icon: IconsaxPlusBold.lamp_on,
+                  tone: AppTone.orange,
                   label: l10n.suggestionsPageTitle,
                   onTap: () => context.push('/suggestions'),
                 ),
@@ -743,7 +749,8 @@ class _QuickActions extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: _QuickActionCard(
-                  icon: AppIcons.coin,
+                  icon: IconsaxPlusBold.coin,
+                  tone: AppTone.green,
                   label: l10n.pointsPageTitle,
                   onTap: () => context.push('/points'),
                 ),
@@ -761,10 +768,12 @@ class _QuickActionCard extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.tone = AppTone.teal,
     this.badgeText,
     this.reserveBadgeSlot = false,
   });
 
+  final AppTone tone;
   final IconData icon;
   final String label;
   final VoidCallback onTap;
@@ -792,16 +801,7 @@ class _QuickActionCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-            ),
-            child: Icon(icon, size: 22, color: AppColors.primary),
-          ),
+          AppIconTile(icon: icon, tone: tone, size: 46),
           const SizedBox(height: 8),
           Text(
             label,
