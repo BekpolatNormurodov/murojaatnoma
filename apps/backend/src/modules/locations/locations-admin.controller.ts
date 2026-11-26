@@ -22,6 +22,12 @@ export class LocationsAdminController {
     return this.locationsService.getLatestForAll();
   }
 
+  @Get('coverage')
+  @ApiOperation({ summary: "Today's reporting coverage in working hours" })
+  coverage() {
+    return this.locationsService.getCoverage();
+  }
+
   @Get('alerts')
   @ApiOperation({ summary: 'Employees with no location for > staleMinutes (or never)' })
   alerts() {

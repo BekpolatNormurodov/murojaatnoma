@@ -13,4 +13,5 @@ export 'src/network/interceptors/offline_cache_interceptor.dart';
 export 'src/network/interceptors/retry_interceptor.dart';
 export 'src/network/network_status.dart';
 export 'src/network/network_banner.dart';
+export 'src/update/app_update.dart';
 export 'src/usecase/usecase.dart';

@@ -6,16 +6,17 @@ import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:worker_app/core/permissions/permission_queue.dart';
+import 'package:worker_app/features/tracking/background_tracking.dart';
 
 /// Xodim joylashuvini serverga UZLUKSIZ yuboradi (`POST /locations`) va
 /// internet yo'q paytda hisobotlarni qurilmada saqlab turadi (outbox), aloqa
 /// tiklanganda ularni `POST /locations/batch` orqali oqizib yuboradi.
 ///
-/// Kuzatuv fonda ham davom etadi (geolocator position stream): Android'da
-/// foreground-service, iOS'da fon rejimidagi joylashuv yangilanishlari orqali
-/// ilova minimallashtirilganda/ekran o'chganda ham uzilmaydi. [start] ni bir
-/// necha bor chaqirish xavfsiz — allaqachon ishlayotgan bo'lsa hech nima
-/// qilmaydi.
+/// Android'da [background] berilgan bo'lsa kuzatuvni ilovadan mustaqil fon
+/// xizmati yuritadi (u shu sinfning o'z nusxasini ishlatadi), bu nusxa esa
+/// faqat ruxsatni tekshirib xizmatni boshqaradi. Aks holda (iOS, testlar, yoki
+/// xizmat ishga tushmasa) oqim shu yerda ochiladi. [start] ni bir necha bor
+/// chaqirish xavfsiz — allaqachon ishlayotgan bo'lsa hech nima qilmaydi.
 ///
 /// Har bir buferlangan nuqta EGASI (xodim id) bilan saqlanadi va faqat o'sha
 /// xodim kirgan paytda yuboriladi — logout yoki sessiya tugashida nuqtalar
@@ -28,13 +29,35 @@ class LocationTrackingService {
     Future<bool> Function()? hasPermission,
     Stream<Position> Function()? positions,
     Future<Position> Function()? currentPosition,
-  }) : _ownerId = ownerId,
+    this.background,
+    Future<int?> Function()? batteryLevel,
+    this.ownNotification = true,
+    this.source = 'FOREGROUND',
+    this.silentStreamAfter = const Duration(minutes: 3),
+  }) : _batteryLevel = batteryLevel,
+       _ownerId = ownerId,
        _permissionOverride = ensurePermission,
        _hasPermissionOverride = hasPermission,
        _positionsOverride = positions,
        _currentOverride = currentPosition;
 
   final Dio _dio;
+
+  /// Ilova ochilishida (DI tayyor bo'lgach) ulanadi.
+  BackgroundTracking? background;
+
+  /// `false` — doimiy bildirishnomani chaqiruvchi xizmat o'zi ko'rsatadi.
+  final bool ownNotification;
+
+  /// Serverga yuboriladigan manba (`FOREGROUND` / `BACKGROUND`).
+  final String source;
+  final Future<int?> Function()? _batteryLevel;
+
+  /// Oqim shuncha vaqt jim tursa qayta ochiladi: Android uni xatosiz
+  /// "so'ndirib" qo'yishi mumkin (fondan boshlangan xizmat, sozlama
+  /// tekshiruvi xatosi). Joyida turgan xodim uchun bu bepul amal.
+  final Duration silentStreamAfter;
+  DateTime? _streamAliveAt;
   final String? Function()? _ownerId;
   final Future<bool> Function()? _permissionOverride;
   final Future<bool> Function()? _hasPermissionOverride;
@@ -63,7 +86,10 @@ class LocationTrackingService {
   /// hisobot yubormas, admin xaritasida 5 daqiqada "oflayn", 30 daqiqada
   /// "aloqa yo'q" (soxta ogohlantirish) bo'lib qolardi. Shuncha vaqt hech narsa
   /// yuborilmagan bo'lsa — joriy fiksni o'zimiz olib yuboramiz (heartbeat).
-  static const Duration _heartbeatEvery = Duration(minutes: 5);
+  static const Duration _heartbeatEvery = Duration(minutes: 1);
+
+  /// Fon xizmati kuzatyapti (bu nusxada oqim ochilmagan).
+  bool _delegated = false;
 
   StreamSubscription<Position>? _positionSub;
   Timer? _flushTimer;
@@ -93,7 +119,9 @@ class LocationTrackingService {
   /// etgan xodimdan darhol qayta so'ralardi (Android'da ikkinchi rad —
   /// doimiy taqiq).
   Future<bool> start({bool prompt = true}) {
-    if (_running) return Future.value(true);
+    // Fon xizmati bor bo'lsa har safar tekshiriladi: tizim uni to'xtatgan
+    // yoki oldingi urinishda ishga tushmagan bo'lishi mumkin.
+    if (_running && background == null) return Future.value(true);
     // MainShell va MapPage ikkalasi ham start() chaqiradi; ruxsat tekshiruvi
     // davomida ikkinchi chaqiruv `_running`ni hali false ko'rib, IKKINCHI
     // oqim + taymer ochardi. Davom etayotgan ishga tushirishni bo'lishamiz.
@@ -125,20 +153,36 @@ class LocationTrackingService {
     // Kutish davomida stop() chaqirilgan — kuzatuv qayta tirilmasin.
     if (generation != _generation) return false;
     if (!granted) {
+      // Ruxsat qaytarib olingan / GPS o'chgan: fon xizmati to'xtatilmaydi —
+      // u o'zi kuzatib turadi va tiklanganda davom etadi.
       status.value = TrackingStatus.blocked;
       return false;
+    }
+    final host = background;
+    final owner = _ownerId?.call();
+    if (host != null && owner != null) {
+      final hosted = await host.start(owner);
+      if (generation != _generation) {
+        if (hosted) await host.stop();
+        return false;
+      }
+      if (hosted) {
+        // Avval ilova ichida ochilgan oqim bo'lsa — ikkitasi ishlamasin.
+        await _closeStream();
+        _running = true;
+        _delegated = true;
+        status.value = TrackingStatus.running;
+        return true;
+      }
+      if (_delegated) {
+        _delegated = false;
+        _running = false;
+      }
     }
     if (_running) return true;
 
     _running = true;
-    final stream =
-        _positionsOverride?.call() ??
-        Geolocator.getPositionStream(locationSettings: _buildSettings());
-    _positionSub = stream.listen(
-      _onPosition,
-      onError: _onStreamError,
-      cancelOnError: false,
-    );
+    _openStream();
 
     _flushTimer = Timer.periodic(_flushInterval, (_) => _tick());
     status.value = TrackingStatus.running;
@@ -148,6 +192,35 @@ class LocationTrackingService {
     unawaited(_reportCurrent());
 
     return true;
+  }
+
+  void _openStream() {
+    _streamAliveAt = DateTime.now();
+    final stream =
+        _positionsOverride?.call() ??
+        Geolocator.getPositionStream(locationSettings: _buildSettings());
+    _positionSub = stream.listen(
+      (position) {
+        _streamAliveAt = DateTime.now();
+        unawaited(_onPosition(position));
+      },
+      onError: _onStreamError,
+      cancelOnError: false,
+    );
+  }
+
+  Future<void> _reopenSilentStream() async {
+    final alive = _streamAliveAt;
+    final sub = _positionSub;
+    if (sub == null ||
+        alive == null ||
+        DateTime.now().difference(alive) < silentStreamAfter) {
+      return;
+    }
+    final generation = _generation;
+    _positionSub = null;
+    await sub.cancel();
+    if (generation == _generation && _running) _openStream();
   }
 
   void _onStreamError(Object error) {
@@ -164,7 +237,13 @@ class LocationTrackingService {
     _generation++;
     _starting = null;
     _running = false;
+    _delegated = false;
     status.value = TrackingStatus.idle;
+    await _closeStream();
+    await background?.stop();
+  }
+
+  Future<void> _closeStream() async {
     final sub = _positionSub;
     _positionSub = null;
     _flushTimer?.cancel();
@@ -205,7 +284,10 @@ class LocationTrackingService {
 
   Future<void> _locked(Future<void> Function(SharedPreferences prefs) action) {
     final next = _lock.then((_) async {
-      await action(await SharedPreferences.getInstance());
+      final prefs = await SharedPreferences.getInstance();
+      // Buferga fon xizmati (boshqa isolate) ham yozadi.
+      await prefs.reload();
+      await action(prefs);
     });
     _lock = next.catchError((Object error) {
       _lastError = error;
@@ -225,13 +307,15 @@ class LocationTrackingService {
           // tarmoq/Wi-Fi asosidagi DAG'AL (~100-500 m) fiksni qaytarib, nuqta
           // qo'shni mahallaga "tushib" ketardi (mahalla ~500 m).
           distanceFilter: _distanceFilterMeters,
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: 'Joylashuv kuzatuvi',
-            notificationText: 'Ish vaqtida joylashuvingiz yuborilmoqda',
-            notificationIcon: AndroidResource(name: 'ic_stat_notify'),
-            enableWakeLock: true,
-            setOngoing: true,
-          ),
+          foregroundNotificationConfig: ownNotification
+              ? const ForegroundNotificationConfig(
+                  notificationTitle: 'Joylashuv kuzatuvi',
+                  notificationText: 'Ish vaqtida joylashuvingiz yuborilmoqda',
+                  notificationIcon: AndroidResource(name: 'ic_stat_notify'),
+                  enableWakeLock: true,
+                  setOngoing: true,
+                )
+              : null,
         );
       case TargetPlatform.iOS:
         // Fon rejimidagi yangilanishlar uchun `showBackgroundLocationIndicator`
@@ -255,6 +339,7 @@ class LocationTrackingService {
   }
 
   Future<void> _tick() async {
+    await _reopenSilentStream();
     await flush();
     final last = _lastSentAt;
     if (_running &&
@@ -308,8 +393,8 @@ class LocationTrackingService {
     final owner = _ownerId?.call();
     // Hech kim kirmagan — nuqta hech kimga tegishli emas.
     if (_ownerId != null && owner == null) return;
-    final report = _toReport(position);
     _lastSentAt = DateTime.now();
+    final report = _toReport(position, await _batteryLevel?.call());
     try {
       await _dio.post<dynamic>('/locations', data: report);
       // Muvaffaqiyatli yuborish = onlayn bo'ldik — bufernikini oqizamiz.
@@ -320,14 +405,15 @@ class LocationTrackingService {
     }
   }
 
-  Map<String, dynamic> _toReport(Position p) {
+  Map<String, dynamic> _toReport(Position p, int? battery) {
     return <String, dynamic>{
       'latitude': p.latitude,
       'longitude': p.longitude,
       'accuracy': p.accuracy,
       if (p.speed >= 0) 'speed': p.speed,
       if (p.heading >= 0) 'heading': p.heading,
-      'source': 'FOREGROUND',
+      'source': source,
+      if (battery != null) 'battery': battery,
       'recordedAt': p.timestamp.toUtc().toIso8601String(),
     };
   }
@@ -415,6 +501,7 @@ class LocationTrackingService {
       final owner = _ownerId?.call();
       if (_ownerId != null && owner == null) return;
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
       final mine = (prefs.getStringList(outboxKey) ?? <String>[])
           .where((raw) {
             final entryOwner = _decode(raw)?[_ownerField];

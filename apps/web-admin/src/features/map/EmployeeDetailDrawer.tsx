@@ -38,6 +38,7 @@ import {
   type TrackWindow,
 } from './mapShared';
 import { routeStops } from './routeStops';
+import { silentReason } from './silentReason';
 
 /**
  * Auto-generated phones for employees added without one (`+99800…`, and the
@@ -78,6 +79,7 @@ interface Props {
   /** Names of the employee's assigned mahallas (empty = whole district). */
   assignedNames: string[];
   t: Labels;
+  lang: 'uz' | 'ru';
   onClose: () => void;
   /** Fly the map to a track point when its row is clicked. */
   onFocusPoint: (p: TrackPoint) => void;
@@ -100,11 +102,13 @@ export function EmployeeDetailDrawer({
   attendance,
   assignedNames,
   t,
+  lang,
   onClose,
   onFocusPoint,
 }: Props) {
   const navigate = useNavigate();
   const online = isOnline(loc);
+  const reason = silentReason(loc, lang);
 
   // Enter transition: mount off-screen, then slide in on the next frame.
   const [shown, setShown] = useState(false);
@@ -228,6 +232,22 @@ export function EmployeeDetailDrawer({
               </span>
             </span>
           </div>
+          {reason && (
+            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+              {reason}
+            </p>
+          )}
+          {loc.deviceStatus?.device && (
+            <p className="mt-1.5 text-[11px] text-ink-muted">
+              {[
+                loc.deviceStatus.device,
+                loc.deviceStatus.appVersion,
+                loc.deviceStatus.battery != null ? `${loc.deviceStatus.battery}%` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
           <div className="mt-3 flex gap-2">
             <button
               type="button"

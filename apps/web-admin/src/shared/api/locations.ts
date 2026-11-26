@@ -1,3 +1,4 @@
+import type { DeviceStatus } from '@/features/map/silentReason';
 import { api } from './client';
 
 export interface LiveLocation {
@@ -21,6 +22,9 @@ export interface LiveLocation {
   ageMinutes: number | null;
   hasLocation: boolean;
   isStale: boolean;
+  /** Telefonning oxirgi o'z hisoboti; null — eski ilova yoki kirmagan. */
+  deviceStatus?: DeviceStatus | null;
+  deviceStatusAt?: string | null;
 }
 
 export interface LocationStats {

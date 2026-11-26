@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, type Variants } from 'framer-motion';
 import {
   Sms,
@@ -338,6 +338,12 @@ export function LoginPage() {
               </motion.div>
             </form>
           </div>
+
+          <motion.p variants={item} className="mt-5 text-center text-sm">
+            <Link to="/yuklab-olish" className="font-semibold text-primary-600 hover:underline">
+              Mobil ilovani yuklab olish
+            </Link>
+          </motion.p>
 
           <motion.p variants={item} className="mt-6 text-center text-xs text-ink-muted">
             © 2026 Hokimiyat Digital Platform · O'zbekiston Respublikasi

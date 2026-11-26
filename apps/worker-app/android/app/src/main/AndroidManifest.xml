@@ -58,6 +58,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Ilovadan mustaqil joylashuv kuzatuvi (flutter_foreground_task):
+             ilova surib yopilsa ham ishlaydi, telefon yonganda va ilova
+             yangilangach qayta boshlanadi. Nomini o'zgartirmang. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false"
+            android:exported="false" />
+        <meta-data
+            android:name="uz.gov.hokimiyat.worker_app.TRACKING_ICON"
+            android:resource="@drawable/ic_stat_notify" />
         <!-- FCM bildirishnomalari uchun bir rangli kichik ikonka (adaptiv
              launcher ikonkasi Android 8.0 da SystemUI ni yiqitadi). -->
         <meta-data

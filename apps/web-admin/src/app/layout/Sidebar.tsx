@@ -26,6 +26,7 @@ import {
   Radar,
   DocumentText1,
   type Icon as IconType,
+  Activity,
 } from 'iconsax-react';
 import { useI18n } from '@/shared/i18n/I18nProvider';
 import { useAuth } from '@/shared/store/auth';
@@ -80,6 +81,8 @@ const SECTIONS: NavSection[] = [
   {
     titleKey: 'nav.section.monitoring',
     items: [
+      // Bugungi alertlar: joylashuv, davomat, hisobot (dict'da kalit yo'q → literal)
+      { to: '/monitoring', labelKey: 'Kunlik monitoring', icon: Activity, feature: 'oversight' },
       // OAV monitoringi — kun.uz/Telegram/YouTube/Instagram, AI xulosa (dict'da kalit yo'q → literal)
       { to: '/media', labelKey: 'OAV monitoringi', icon: Radar, feature: 'media' },
       { to: '/cameras', labelKey: 'nav.cameras', icon: Video, feature: 'cameras' },

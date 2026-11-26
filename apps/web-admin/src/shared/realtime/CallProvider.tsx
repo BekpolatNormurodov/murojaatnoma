@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { api } from '@/shared/api/client';
 import { useRealtime } from './RealtimeProvider';
+import { CALL_AUDIO, CALL_VIDEO, raiseCallQuality } from './media';
 
 /* ============================================================
    1:1 WebRTC qo'ng'iroq (audio/video) — global holat mashinasi.
@@ -126,8 +127,8 @@ async function getMedia(media: CallMedia): Promise<MediaStream> {
     throw new DOMException('Media qurilma qo‘llab-quvvatlanmaydi', 'NotFoundError');
   }
   return navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: media === 'video',
+    audio: CALL_AUDIO,
+    video: media === 'video' ? CALL_VIDEO : false,
   });
 }
 
@@ -294,6 +295,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       pc.onconnectionstatechange = () => {
         const st = pc.connectionState;
         if (st === 'connected') {
+          void raiseCallQuality(pc);
           if (connectTimerRef.current) {
             window.clearTimeout(connectTimerRef.current);
             connectTimerRef.current = null;

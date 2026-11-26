@@ -57,8 +57,10 @@ class WorkerApp extends StatelessWidget {
                 child: _MeetingNavigationHost(
                   // Internet holati (oflayn / sekin / tiklandi) — butun ilova
                   // ustida.
-                  child: NetworkBanner(
-                    child: child ?? const SizedBox.shrink(),
+                  child: UpdateGate(
+                    child: NetworkBanner(
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   ),
                 ),
               ),

@@ -605,12 +605,12 @@ class MeetingCubit extends Cubit<MeetingState> {
   Future<void> _rebalanceBitrate() async {
     final people = _slots.length + 1;
     final bps = people <= 2
-        ? 1000000
+        ? 2000000
         : people <= 4
-        ? 500000
+        ? 900000
         : people <= 6
-        ? 300000
-        : 180000;
+        ? 500000
+        : 250000;
     // Copy: peers may be added/removed while we await (concurrent joins).
     for (final slot in _slots.values.toList()) {
       try {

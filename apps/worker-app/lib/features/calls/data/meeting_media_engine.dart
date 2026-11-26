@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:worker_app/features/calls/data/call_quality.dart';
 import 'package:worker_app/features/calls/data/datasources/call_remote_data_source.dart';
 import 'package:worker_app/features/calls/domain/repositories/call_repository.dart';
 
@@ -71,13 +72,14 @@ class WebRtcMeetingEngine implements MeetingMediaEngine {
     if (video) {
       try {
         return await navigator.mediaDevices.getUserMedia({
-          'audio': true,
+          'audio': kCallAudio,
           'video': {
             'facingMode': 'user',
-            // Mesh: har bir ishtirokchiga alohida yuboriladi — o'rtacha sifat.
-            'width': {'ideal': 640},
-            'height': {'ideal': 360},
-            'frameRate': {'ideal': 20},
+            // Mesh: har bir ishtirokchiga alohida yuboriladi — bitrate
+            // ishtirokchilar soniga qarab cheklanadi.
+            'width': {'ideal': 1280},
+            'height': {'ideal': 720},
+            'frameRate': {'ideal': 24},
           },
         });
       } on Object catch (e) {
@@ -86,7 +88,7 @@ class WebRtcMeetingEngine implements MeetingMediaEngine {
     }
     try {
       return await navigator.mediaDevices.getUserMedia({
-        'audio': true,
+        'audio': kCallAudio,
         'video': false,
       });
     } on Object catch (e) {

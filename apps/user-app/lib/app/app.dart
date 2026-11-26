@@ -36,8 +36,9 @@ class UserApp extends StatelessWidget {
             supportedLocales: AppLocalizations.supportedLocales,
             routerConfig: getIt<AppRouter>().config,
             // Internet holati (oflayn / sekin / tiklandi) — butun ilova ustida.
-            builder: (context, child) =>
-                NetworkBanner(child: child ?? const SizedBox.shrink()),
+            builder: (context, child) => UpdateGate(
+              child: NetworkBanner(child: child ?? const SizedBox.shrink()),
+            ),
           );
         },
       ),

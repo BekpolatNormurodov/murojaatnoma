@@ -41,6 +41,8 @@ grep -q '^TAG=' .env && sed -i "s/^TAG=.*/TAG=${TAG}/" .env || echo "TAG=${TAG}"
 if [ -n "$ARCHIVE" ]; then
   echo "== docker load $ARCHIVE"; gunzip -c "$ARCHIVE" | docker load
 fi
+# Created by this user — otherwise Docker would create it owned by root.
+mkdir -p downloads
 echo "== up (tag $TAG)"
 docker compose --env-file .env up -d --remove-orphans
 echo "== waiting for backend health"

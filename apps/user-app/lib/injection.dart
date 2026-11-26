@@ -87,7 +87,11 @@ Future<void> configureDependencies() async {
       return client;
     })
     ..registerLazySingleton<FlutterSecureStorage>(
-      () => const FlutterSecureStorage(),
+      () => const FlutterSecureStorage(
+        // Kalitsiz tiklangan (zaxira/ko'chirish) ma'lumot o'qilmaydi —
+        // tozalab, saqlashni yana ishlaydigan qilamiz.
+        aOptions: AndroidOptions(resetOnError: true),
+      ),
     )
     // `NotificationService` — HAQIQIY on-device mahalliy bildirishnomalar
     // (`flutter_local_notifications` ustidan yupqa qatlam). Lazy singleton:

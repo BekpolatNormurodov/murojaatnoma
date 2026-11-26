@@ -4,6 +4,7 @@ import 'package:app_core/app_core.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:worker_app/core/network/worker_auth_interceptor.dart';
 
 import '../../support/fake_http.dart';
@@ -170,5 +171,72 @@ void main() {
     WorkerAuthInterceptor.install(dio);
     expect(dio.interceptors.whereType<AuthInterceptor>(), isEmpty);
     expect(dio.interceptors.whereType<WorkerAuthInterceptor>(), hasLength(1));
+  });
+
+  /// Ikkinchi isolate yozgandek: faqat diskka, bu isolate keshiga emas.
+  Future<void> writtenElsewhere(String key, String value) =>
+      SharedPreferencesStorePlatform.instance.setValue(
+        'String',
+        'flutter.$key',
+        value,
+      );
+
+  test('tokens refreshed by the other isolate are used as they are', () async {
+    await writtenElsewhere(AuthInterceptor.tokenKey, 'new');
+    final (dio, http) = build((_) => json({'message': 'no'}, 401));
+    await dio.get<dynamic>('/x');
+    expect(
+      http.requests.where((r) => r.path.contains('/auth/refresh')),
+      isEmpty,
+    );
+    expect(expiries, 0);
+  });
+
+  test(
+    'losing the refresh race to the other isolate keeps the session',
+    () async {
+      final (dio, _) = build((_) async {
+        await writtenElsewhere(AuthInterceptor.tokenKey, 'new');
+        await writtenElsewhere(AuthInterceptor.refreshTokenKey, 'r2');
+        return json({'message': 'already used'}, 401);
+      });
+      await dio.get<dynamic>('/x');
+      await pumpEventQueue();
+      expect(prefs.getString(AuthInterceptor.refreshTokenKey), 'r2');
+      expect(expiries, 0);
+    },
+  );
+
+  test(
+    'the same pair saved first by the other isolate is not revoked',
+    () async {
+      final (dio, http) = build((_) async {
+        await writtenElsewhere(AuthInterceptor.tokenKey, 'new');
+        await writtenElsewhere(AuthInterceptor.refreshTokenKey, 'r2');
+        return json({'accessToken': 'new', 'refreshToken': 'r2'});
+      });
+      await dio.get<dynamic>('/x');
+      await pumpEventQueue();
+      expect(
+        http.requests.where((r) => r.path.contains('/auth/logout')),
+        isEmpty,
+      );
+    },
+  );
+
+  test('the background service never deletes the tokens', () async {
+    final http = FakeHttp((_) => json({'message': 'no'}, 401));
+    final dio = http.dio()
+      ..interceptors.add(
+        WorkerAuthInterceptor(
+          bareDio: (_) => http.dio(),
+          retryDelay: Duration.zero,
+          clearOnExpire: false,
+        ),
+      );
+    await expectLater(dio.get<dynamic>('/x'), throwsA(isA<DioException>()));
+    await pumpEventQueue();
+    expect(prefs.getString(AuthInterceptor.refreshTokenKey), 'r1');
+    expect(expiries, 0);
   });
 }

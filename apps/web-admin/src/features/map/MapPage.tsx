@@ -60,6 +60,7 @@ import {
   type TrackWindow,
   YANDEX_TILE_URL,
 } from './mapShared';
+import { silentReason } from './silentReason';
 
 type MahallaFilter = { code: string; name: string };
 type FlyTarget = { pos: [number, number]; nonce: number };
@@ -764,7 +765,8 @@ export function MapPage() {
                     {problem && <Warning2 size={13} variant="Bold" className="shrink-0 text-amber-500" />}
                   </span>
                   <span className={cn('block truncate text-xs', problem ? 'text-amber-600' : 'text-ink-muted')}>
-                    {problem ? statusLabel(loc, lang) : (loc.mahallaName ?? loc.position)}
+                    {silentReason(loc, lang) ??
+                      (problem ? statusLabel(loc, lang) : (loc.mahallaName ?? loc.position))}
                     {hasAttendance && att?.checkOut && ` · ${t.leftAt.toLowerCase()}`}
                     {hasAttendance && att && !att.checkIn && ` · ${t.notCame.toLowerCase()}`}
                   </span>
@@ -1017,7 +1019,8 @@ export function MapPage() {
             attendance={attendanceById.get(selected.employeeId) ?? null}
             assignedNames={assignedCodes.map((c) => mahallaNames.get(c) ?? c)}
             t={t}
-            onClose={() => setSelectedId(null)}
+          lang={lang}
+          onClose={() => setSelectedId(null)}
             onFocusPoint={focusPoint}
           />
         )}

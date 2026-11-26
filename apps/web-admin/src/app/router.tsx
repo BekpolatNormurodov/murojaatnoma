@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AdminLayout } from './layout/AdminLayout';
 import { ProtectedRoute, GuestRoute, RoleRoute } from './guards';
@@ -31,6 +31,8 @@ const EmployeeProfilePage = lazy(() =>
 const ReportsPage = lazy(() => import('@/features/oversight/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const MediaPage = lazy(() => import('@/features/media/MediaPage').then((m) => ({ default: m.MediaPage })));
 const NewsPage = lazy(() => import('@/features/news/NewsPage').then((m) => ({ default: m.NewsPage })));
+const DownloadPage = lazy(() => import('@/features/download/DownloadPage').then((m) => ({ default: m.DownloadPage })));
+const MonitoringPage = lazy(() => import('@/features/monitoring/MonitoringPage').then((m) => ({ default: m.MonitoringPage })));
 const SettingsPage = lazy(() => import('@/features/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const AdminsPage = lazy(() => import('@/features/admins/AdminsPage').then((m) => ({ default: m.AdminsPage })));
 
@@ -42,6 +44,16 @@ export const router = createBrowserRouter([
       <GuestRoute>
         <LoginPage />
       </GuestRoute>
+    ),
+  },
+  // Ochiq sahifa — ilovani yuklab olish uchun kirish shart emas.
+  {
+    path: '/yuklab-olish',
+    errorElement: <RouteError />,
+    element: (
+      <Suspense fallback={null}>
+        <DownloadPage />
+      </Suspense>
     ),
   },
   {
@@ -75,6 +87,7 @@ export const router = createBrowserRouter([
       { path: 'salaries', element: <RoleRoute feature="salaries"><SalariesPage /></RoleRoute> },
       { path: 'oversight', element: <RoleRoute feature="oversight"><OversightPage /></RoleRoute> },
       { path: 'oversight/:id', element: <RoleRoute feature="oversight"><EmployeeProfilePage /></RoleRoute> },
+      { path: 'monitoring', element: <RoleRoute feature="oversight"><MonitoringPage /></RoleRoute> },
       { path: 'map', element: <RoleRoute feature="map"><MapPage /></RoleRoute> },
       { path: 'app-users', element: <RoleRoute feature="appUsers"><AppUsersPage /></RoleRoute> },
       { path: 'cameras', element: <RoleRoute feature="cameras"><CamerasPage /></RoleRoute> },

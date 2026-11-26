@@ -21,10 +21,23 @@ class WorkerAuthInterceptor extends Interceptor {
   WorkerAuthInterceptor({
     Dio Function(String baseUrl)? bareDio,
     this.retryDelay = const Duration(milliseconds: 700),
+    this.clearOnExpire = true,
   }) : _bareDio = bareDio ?? _defaultBareDio;
 
   final Dio Function(String baseUrl) _bareDio;
   final Duration retryDelay;
+
+  /// `false` (fon xizmati) — rad etilgan sessiyada tokenlar o'chirilmaydi;
+  /// chiqishni asosiy ilova bajaradi.
+  final bool clearOnExpire;
+
+  /// Asosiy ilova va fon xizmati alohida isolate'lar: ikkinchisi yangilagan
+  /// tokenlarni ko'rish uchun diskdan qayta o'qiladi.
+  static Future<SharedPreferences> _prefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return prefs;
+  }
 
   static const String _retriedFlag = '__auth_retried__';
 
@@ -65,7 +78,7 @@ class WorkerAuthInterceptor extends Interceptor {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
     final token = prefs.getString(AuthInterceptor.tokenKey);
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
@@ -94,7 +107,7 @@ class WorkerAuthInterceptor extends Interceptor {
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
     final refreshToken = prefs.getString(AuthInterceptor.refreshTokenKey);
     if (refreshToken == null || refreshToken.isEmpty) {
       await _expire();
@@ -102,10 +115,27 @@ class WorkerAuthInterceptor extends Interceptor {
       return;
     }
 
-    final outcome = await (_refreshing ??= _performRefresh(
-      options.baseUrl,
-      refreshToken,
-    ).whenComplete(() => _refreshing = null));
+    // So'rov eski token bilan ketgan, ikkinchi isolate esa allaqachon
+    // yangilagan bo'lsa — yana yangilamaymiz.
+    final sent = options.headers['Authorization'];
+    final stored = prefs.getString(AuthInterceptor.tokenKey);
+    var outcome = sent != null && stored != null && sent != 'Bearer $stored'
+        ? _Refresh.refreshed
+        : await (_refreshing ??= _performRefresh(
+            options.baseUrl,
+            refreshToken,
+          ).whenComplete(() => _refreshing = null));
+
+    if (outcome == _Refresh.rejected) {
+      // Ikkinchi isolate shu tokenni hozirgina almashtirgan bo'lishi mumkin —
+      // natijasi diskka tushishini bir oz kutamiz.
+      await Future<void>.delayed(retryDelay * 3);
+      await prefs.reload();
+      final current = prefs.getString(AuthInterceptor.refreshTokenKey);
+      if (current != null && current != refreshToken) {
+        outcome = _Refresh.refreshed;
+      }
+    }
 
     if (outcome == _Refresh.rejected) {
       // Faqat rad etilgan token HALI saqlangan bo'lsa (logout/yangi login
@@ -156,8 +186,12 @@ class WorkerAuthInterceptor extends Interceptor {
         final access = data['accessToken'];
         final next = data['refreshToken'];
         if (access is! String || access.isEmpty) return _Refresh.unavailable;
-        final prefs = await SharedPreferences.getInstance();
-        if (prefs.getString(AuthInterceptor.refreshTokenKey) != refreshToken) {
+        final prefs = await _prefs();
+        final saved = prefs.getString(AuthInterceptor.refreshTokenKey);
+        // Ikkinchi isolate xuddi shu kalit bilan xuddi shu juftlikni olib
+        // saqlagan — uni bekor qilib bo'lmaydi.
+        if (saved != null && saved == next) return _Refresh.refreshed;
+        if (saved != refreshToken) {
           // Oradan logout / boshqa login o'tdi — yangi juftlikni saqlamaymiz
           // va serverda bekor qilamiz.
           if (next is String) unawaited(_revoke(bare, next));
@@ -190,7 +224,7 @@ class WorkerAuthInterceptor extends Interceptor {
   /// AYNAN shu kalit bilan ketadi — aks holda server allaqachon almashtirilgan
   /// tokenni rad etib, xodim tizimdan chiqib qolardi.
   Future<String> _attemptKey(String refreshToken) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _prefs();
     // JWT imzosining oxiri — tokenning o'zini ikkinchi marta saqlamaymiz.
     final mark = refreshToken.length > 24
         ? refreshToken.substring(refreshToken.length - 24)
@@ -216,6 +250,9 @@ class WorkerAuthInterceptor extends Interceptor {
   }
 
   Future<void> _expire() async {
+    if (!clearOnExpire) return;
+    // Qayta o'qilmaydi: ikkinchi isolate tokenlarni o'chirgan bo'lsa ham shu
+    // isolate'dagi ilova chiqishni boshlashi kerak.
     final prefs = await SharedPreferences.getInstance();
     final had =
         prefs.getString(AuthInterceptor.tokenKey) != null ||

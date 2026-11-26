@@ -23,6 +23,7 @@ import { api } from '@/shared/api/client';
 import { cn } from '@/shared/lib/cn';
 import { useRealtime } from './RealtimeProvider';
 import { isSocketReady } from './socket';
+import { CALL_AUDIO, CALL_VIDEO } from './media';
 
 /* ============================================================
    Haqiqiy ko'p tomonlama (mesh) video konferensiya.
@@ -93,10 +94,10 @@ type Phase = 'connecting' | 'live' | 'error' | 'ended';
 
 /** Mesh: every extra person is another upload — keep video light as the room grows. */
 function videoBitrateFor(people: number): number {
-  if (people <= 2) return 1_200_000;
-  if (people <= 4) return 600_000;
-  if (people <= 6) return 350_000;
-  return 200_000;
+  if (people <= 2) return 2_000_000;
+  if (people <= 4) return 900_000;
+  if (people <= 6) return 500_000;
+  return 250_000;
 }
 
 async function capVideoBitrate(pc: RTCPeerConnection, bps: number): Promise<void> {
@@ -638,15 +639,15 @@ export function MeetingCall({
     let stream: MediaStream;
     try {
       stream = audioOnly
-        ? await navigator.mediaDevices.getUserMedia({ audio: true })
-        : await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        ? await navigator.mediaDevices.getUserMedia({ audio: CALL_AUDIO })
+        : await navigator.mediaDevices.getUserMedia({ video: CALL_VIDEO, audio: CALL_AUDIO });
     } catch (e) {
       // No / busy camera: still join with the microphone instead of failing.
       const name = (e as DOMException | undefined)?.name ?? '';
       const permission = name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError';
       try {
         if (permission || audioOnly) throw e;
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: CALL_AUDIO });
         if (runIdRef.current === runId) setNotice('Kamera topilmadi — faqat ovoz bilan qo‘shildingiz');
       } catch (e2) {
         if (runIdRef.current === runId) {

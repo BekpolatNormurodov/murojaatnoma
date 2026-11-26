@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_core/app_core.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:worker_app/app/app.dart';
@@ -16,6 +17,7 @@ import 'package:worker_app/features/auth/presentation/bloc/auth_cubit.dart';
 import 'package:worker_app/features/chat/data/chat_outbox.dart';
 import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/presentation/bloc/call_cubit.dart';
+import 'package:worker_app/features/tracking/tracking_setup.dart';
 import 'package:worker_app/firebase_options.dart';
 import 'package:worker_app/injection.dart';
 
@@ -32,6 +34,11 @@ Future<void> bootstrap({bool systemServices = true}) async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   await configureDependencies();
+  // Tizim ruxsatlari va fon xizmati — faqat haqiqiy ishga tushirishda.
+  if (systemServices) {
+    enableBackgroundTracking();
+    _enableUpdateCheck();
+  }
   // Server sessiyani rad etsa — qo'lda chiqish bilan BIR XIL toza chiqish.
   // Obuna HAR QANDAY tarmoq so'rovidan OLDIN: aks holda erta kelgan xabar
   // yo'qolib, ilova "kirgan, lekin tokensiz" holatda qolardi.
@@ -50,6 +57,14 @@ Future<void> bootstrap({bool systemServices = true}) async {
   }
   _initRealtime();
   runApp(const WorkerApp());
+}
+
+/// Saytda yangiroq APK bo'lsa taklif qilinadi (faqat real Android).
+void _enableUpdateCheck() {
+  if (AppConfig.useMock || defaultTargetPlatform != TargetPlatform.android) {
+    return;
+  }
+  UpdateChecker.instance = UpdateChecker(appKey: 'worker');
 }
 
 /// Jonli chat socketini (Socket.IO) login holatiga bog'laydi — faqat REAL

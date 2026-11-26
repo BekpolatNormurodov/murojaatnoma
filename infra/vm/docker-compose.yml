@@ -8,6 +8,7 @@
 #              /api/      -> backend:3000/   (prefix stripped)
 #              /socket.io -> backend:3000
 #              /uploads/  -> uploads volume (static)
+#              /downloads/ -> ./downloads (APK files + manifest.json)
 #
 # Images are built elsewhere (linux/amd64) and `docker load`-ed here, so the
 # VM never runs a heavy npm build. TAG = the git commit they were built from.
@@ -88,4 +89,5 @@ services:
     volumes:
       - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
       - uploads:/var/www/uploads:ro
+      - ./downloads:/var/www/downloads:ro
     networks: [internal]

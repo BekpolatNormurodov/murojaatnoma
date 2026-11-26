@@ -536,3 +536,24 @@ describe('LocationsService', () => {
     });
   });
 });
+
+describe('LocationsService.saveDeviceStatus', () => {
+  it('stores the report on the caller and dates it with the server clock', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const service = new LocationsService(
+      { employee: { update } } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    const dto = { gpsEnabled: false, permission: 'whileInUse' as const, batteryExempt: false, tracking: false };
+
+    await expect(service.saveDeviceStatus('e1', dto)).resolves.toEqual({ ok: true });
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'e1' },
+      data: { deviceStatus: dto, deviceStatusAt: expect.any(Date) },
+    });
+  });
+});

@@ -384,6 +384,11 @@ void main() {
       await openTab('Profil');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('auth_token', 'expired.invalid.token');
+      // A valid refresh token would silently renew the session.
+      await prefs.setString(
+        AuthInterceptor.refreshTokenKey,
+        'revoked-refresh-token',
+      );
       await openTab('Bosh sahifa');
       await e.tap(find.byIcon(AppIcons.notification).first);
       await e.see(button('Kodni yuborish'), seconds: 30);

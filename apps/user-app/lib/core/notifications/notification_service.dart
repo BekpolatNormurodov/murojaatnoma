@@ -23,7 +23,9 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
     try {
-      const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const androidInit = AndroidInitializationSettings(
+        '@drawable/ic_stat_notify',
+      );
       const darwinInit = DarwinInitializationSettings();
       const settings = InitializationSettings(
         android: androidInit,

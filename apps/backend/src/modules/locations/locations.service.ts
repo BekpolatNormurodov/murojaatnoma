@@ -7,8 +7,11 @@ import { RT_EVENTS, TerritoryChangedEvent } from '../../common/events/realtime-e
 import { distanceInMeters } from '../../common/geo/geo.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationCenter } from '../notifications/notification-center.service';
+import { parseTimeOnDate } from '../attendance/utils/date.util';
 import { ZonesService, zoneToleranceM } from '../zones/zones.service';
+import { coveredMs } from './coverage';
 import { CreateLocationDto } from './dto/create-location.dto';
+import { DeviceStatusDto } from './dto/device-status.dto';
 import { TrackQueryDto } from './dto/track-query.dto';
 
 
@@ -684,6 +687,51 @@ export class LocationsService {
     };
   }
 
+  /** Stores the phone's latest self-report; the server clock dates it. */
+  async saveDeviceStatus(employeeId: string, dto: DeviceStatusDto): Promise<{ ok: true }> {
+    await this.prisma.employee.update({
+      where: { id: employeeId },
+      data: { deviceStatus: { ...dto }, deviceStatusAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Today's reporting coverage of every active employee inside their own
+   * working hours (up to now) — "who is really sending location".
+   */
+  async getCoverage(now = new Date()) {
+    const employees = await this.prisma.employee.findMany({
+      where: { isActive: true },
+      select: { id: true, workStartTime: true, workEndTime: true },
+    });
+    const dayStart = parseTimeOnDate(now, '00:00');
+    const points = await this.prisma.employeeLocation.findMany({
+      where: { recordedAt: { gte: dayStart, lte: now } },
+      select: { employeeId: true, recordedAt: true },
+      orderBy: { recordedAt: 'asc' },
+    });
+    const byEmployee = new Map<string, number[]>();
+    for (const p of points) {
+      const list = byEmployee.get(p.employeeId);
+      if (list) list.push(p.recordedAt.getTime());
+      else byEmployee.set(p.employeeId, [p.recordedAt.getTime()]);
+    }
+    return employees.map((e) => {
+      const from = parseTimeOnDate(now, e.workStartTime).getTime();
+      const to = Math.max(from, Math.min(now.getTime(), parseTimeOnDate(now, e.workEndTime).getTime()));
+      const times = byEmployee.get(e.id) ?? [];
+      return {
+        employeeId: e.id,
+        windowMinutes: Math.round((to - from) / 60_000),
+        coveredMinutes: Math.round(coveredMs(times, from, to) / 60_000),
+        points: times.length,
+        firstAt: times.length ? new Date(times[0]) : null,
+        lastAt: times.length ? new Date(times[times.length - 1]) : null,
+      };
+    });
+  }
+
   /** Latest position of every active employee — powers the admin live map. */
   async getLatestForAll() {
     const staleMinutes = this.staleMinutes;
@@ -707,6 +755,8 @@ export class LocationsService {
         lastInsideOffice: true,
         lastInsideAssignedZone: true,
         assignedMahallaCodes: true,
+        deviceStatus: true,
+        deviceStatusAt: true,
       },
       orderBy: { fullName: 'asc' },
     });
@@ -735,6 +785,8 @@ export class LocationsService {
         ageMinutes,
         hasLocation: e.lastLat !== null && e.lastLng !== null,
         isStale: ageMinutes === null || ageMinutes > staleMinutes,
+        deviceStatus: e.deviceStatus,
+        deviceStatusAt: e.deviceStatusAt,
       };
     });
   }

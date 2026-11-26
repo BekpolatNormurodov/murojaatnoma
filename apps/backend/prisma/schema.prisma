@@ -143,6 +143,12 @@ model Employee {
   // "in zone" when its resolved mahalla is one of these (see locations.service).
   assignedMahallaCodes String[] @default([])
 
+  // --- Last self-report of the phone (GPS / permission / battery), so the admin
+  // panel can say WHY somebody is silent. Null = never sent (not installed, or
+  // an app version older than 1.3.0).
+  deviceStatus   Json?
+  deviceStatusAt DateTime?
+
   // --- Denormalized "latest location" for fast admin live-map + stale checks ---
   lastLat            Float?
   lastLng            Float?

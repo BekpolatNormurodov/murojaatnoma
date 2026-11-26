@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:worker_app/core/notifications/notification_service.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
+import 'package:worker_app/features/calls/data/call_quality.dart';
 import 'package:worker_app/features/calls/data/datasources/call_remote_data_source.dart';
 import 'package:worker_app/features/calls/domain/entities/call.dart';
 import 'package:worker_app/features/calls/domain/repositories/call_repository.dart';
@@ -263,8 +264,7 @@ class CallCubit extends Cubit<CallState> {
 
   /// Old/orqa kamerani almashtiradi.
   Future<void> switchCamera() async {
-    final tracks =
-        _localStream?.getVideoTracks() ?? const <MediaStreamTrack>[];
+    final tracks = _localStream?.getVideoTracks() ?? const <MediaStreamTrack>[];
     if (tracks.isEmpty) return;
     try {
       await Helper.switchCamera(tracks.first);
@@ -419,10 +419,8 @@ class CallCubit extends Cubit<CallState> {
     try {
       await _ensureRenderers();
       final constraints = <String, dynamic>{
-        'audio': true,
-        'video': media == CallMedia.video
-            ? {'facingMode': 'user'}
-            : false,
+        'audio': kCallAudio,
+        'video': media == CallMedia.video ? kCallVideo : false,
       };
       if (_stale(generation)) return false;
       final stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -479,6 +477,7 @@ class CallCubit extends Cubit<CallState> {
           case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
             _disconnectTimer?.cancel();
             _disconnectTimer = null;
+            unawaited(raiseCallQuality(pc));
             _markActive();
           case RTCPeerConnectionState.RTCPeerConnectionStateFailed:
             _fail('Ulanish uzildi');
@@ -577,8 +576,8 @@ class CallCubit extends Cubit<CallState> {
     // SUHBATDOSHNI ham yakunlash haqida xabardor qilamiz — aks holda u tomonda
     // ekran "Ulanmoqda…"/faol holda osilib qoladi.
     final callId = state.callId;
-    final wasNegotiating = state.phase == CallPhase.connecting ||
-        state.phase == CallPhase.active;
+    final wasNegotiating =
+        state.phase == CallPhase.connecting || state.phase == CallPhase.active;
     if (callId != null && wasNegotiating) {
       _socket.endCall(callId);
     }

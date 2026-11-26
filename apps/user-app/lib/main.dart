@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:app_core/app_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:user_app/app/app.dart';
@@ -25,6 +26,12 @@ Future<void> bootstrap({bool systemServices = true}) async {
   await configureDependencies();
   await _restoreSession();
   if (systemServices) unawaited(_initNotifications());
+  // Saytda yangiroq APK bo'lsa taklif qilinadi (faqat real Android).
+  if (systemServices &&
+      !AppConfig.useMock &&
+      defaultTargetPlatform == TargetPlatform.android) {
+    UpdateChecker.instance = UpdateChecker(appKey: 'user');
+  }
   // Server sessiyani rad etsa (refresh 401) — "Chiqish" tugmasi bilan AYNAN
   // bir xil to'liq chiqish: saqlangan sessiya, bildirishnomalar, popuplar
   // tozalanadi va `/login`ga o'tiladi (ilgari faqat `reset()` edi — keyingi

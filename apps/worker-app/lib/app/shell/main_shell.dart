@@ -5,7 +5,9 @@ import 'package:app_ui/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:worker_app/core/realtime/realtime_socket_service.dart';
+import 'package:worker_app/features/tracking/device_status.dart';
 import 'package:worker_app/features/tracking/location_tracking_service.dart';
+import 'package:worker_app/features/tracking/tracking_setup_gate.dart';
 import 'package:worker_app/injection.dart';
 
 /// 5-tabli asosiy qobiq (shell) — `StatefulShellRoute.indexedStack` uchun.
@@ -56,10 +58,23 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Tizimdan chiqilganda (qobiq yo'q qilinganda) kuzatuvni to'xtatamiz —
-    // chiqib ketgan qurilma lokatsiya yubormasligi kerak.
-    unawaited(getIt<LocationTrackingService>().stop());
+    // Fon xizmati ilovadan mustaqil: qobiq yopilishi uni to'xtatmaydi.
+    // Chiqishda `SessionService` to'xtatadi.
+    final tracking = getIt<LocationTrackingService>();
+    if (tracking.background == null) unawaited(tracking.stop());
     super.dispose();
+  }
+
+  /// Fon kuzatuvi yoqilgan bo'lsa majburiy sozlash ekrani bilan o'raydi.
+  Widget _gated(Widget child) {
+    if (!getIt.isRegistered<DeviceStatusReporter>()) return child;
+    final tracking = getIt<LocationTrackingService>();
+    return TrackingSetupGate(
+      check: () =>
+          getIt<DeviceStatusReporter>().report(tracking: tracking.isRunning),
+      onReady: () => unawaited(tracking.start(prompt: false)),
+      child: child,
+    );
   }
 
   @override
@@ -93,7 +108,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ),
     ];
 
-    return Scaffold(
+    final scaffold = Scaffold(
       body: widget.shell,
       bottomNavigationBar: _BottomNav(
         items: items,
@@ -107,6 +122,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         ),
       ),
     );
+    return _gated(scaffold);
   }
 }
 

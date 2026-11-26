@@ -5,6 +5,7 @@ import { RequireScope } from '../../common/decorators/scope.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
 import { CreateLocationBatchDto } from './dto/create-location-batch.dto';
 import { CreateLocationDto } from './dto/create-location.dto';
+import { DeviceStatusDto } from './dto/device-status.dto';
 import { LocationsService } from './locations.service';
 
 /**
@@ -33,6 +34,13 @@ export class LocationsController {
     @Body() dto: CreateLocationBatchDto,
   ) {
     return this.locationsService.ingestBatch(user.employeeId, dto.items);
+  }
+
+  @Post('device-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Report GPS / permission / battery state of my phone' })
+  deviceStatus(@CurrentUser() user: AuthenticatedUser, @Body() dto: DeviceStatusDto) {
+    return this.locationsService.saveDeviceStatus(user.employeeId, dto);
   }
 
   @Get('me')
