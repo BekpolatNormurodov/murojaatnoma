@@ -4,6 +4,7 @@ import { CircleMarker, GeoJSON, MapContainer, Polyline, TileLayer, Tooltip, useM
 import L from 'leaflet';
 import { ArrowLeft2, ArrowRight2, Routing, RotateRight } from 'iconsax-react';
 import { Card } from '@/shared/ui/Card';
+import { DatePicker } from '@/shared/ui/DatePicker';
 import { cn } from '@/shared/lib/cn';
 import { fetchTrack, type TrackPoint } from '@/shared/api/locations';
 import { fetchZonesGeoJson, type ZoneProps } from '@/shared/api/zones';
@@ -136,7 +137,7 @@ export function RouteTab({
   ];
 
   const stepButton =
-    'inline-flex h-10 w-10 items-center justify-center rounded-lg border border-line text-ink-soft hover:bg-surface-2 disabled:opacity-40';
+    'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line text-ink-soft transition-colors hover:bg-surface-2 disabled:opacity-40';
 
   return (
     <div className="space-y-4">
@@ -146,25 +147,18 @@ export function RouteTab({
             <Routing size={18} variant="Bulk" className="text-primary-600" /> Yurgan yo'li · {dmy(day)}
             {trackQ.isFetching && <RotateRight size={14} className="animate-spin text-ink-muted" />}
           </h3>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <button className={stepButton} onClick={() => pick(addDays(day, -1))} aria-label="Oldingi kun">
               <ArrowLeft2 size={16} />
             </button>
-            <input
-              type="date"
-              value={day}
-              max={today}
-              onChange={(e) => pick(e.target.value)}
-              aria-label="Sana"
-              className="h-10 rounded-lg border border-line bg-surface px-3 text-[13px] text-ink"
-            />
+            <DatePicker value={day} max={today} onChange={pick} className="min-w-0 flex-1 sm:w-52 sm:flex-none" />
             <button className={stepButton} onClick={() => pick(addDays(day, 1))} disabled={isToday} aria-label="Keyingi kun">
               <ArrowRight2 size={16} />
             </button>
             <button
               onClick={() => pick(today)}
               disabled={isToday}
-              className="h-10 rounded-lg border border-line px-3 text-[13px] font-medium text-ink-soft hover:bg-surface-2 disabled:opacity-40"
+              className="hidden h-11 shrink-0 rounded-xl border border-line px-3.5 text-[13px] font-medium text-ink-soft transition-colors hover:bg-surface-2 disabled:opacity-40 sm:block"
             >
               Bugun
             </button>

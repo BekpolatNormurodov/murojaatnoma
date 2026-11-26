@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, Clock, ArrowLeft2, ArrowRight2 } from 'iconsax-react';
+import { Calendar, Clock, ArrowDown2, ArrowLeft2, ArrowRight2 } from 'iconsax-react';
 import { cn } from '@/shared/lib/cn';
+import { clampDay, fromDay, isAllowed, monthGrid, moveDay, toDay } from './calendar';
+import { Popover } from './Popover';
 
 const MONTHS_FULL = [
   'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
@@ -9,13 +11,6 @@ const MONTHS_FULL = [
 ];
 // Dushanbadan boshlanadi
 const WEEKDAYS = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya'];
-
-/** DatePicker'dagi tez tanlash tugmalari (bugungidan necha kun oldin). */
-const DAY_PRESETS = [
-  { label: 'Bugun', back: 0 },
-  { label: 'Kecha', back: 1 },
-  { label: "O'tgan kun", back: 2 },
-];
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -65,191 +60,250 @@ function useAutoAlign<T extends HTMLElement>(open: boolean, popoverWidth = 288, 
   return [btnRef, left] as const;
 }
 
-/**
- * Stillangan kalendar drop-down — native `type="date"` o'rniga.
- * Qiymat formati: "yyyy-mm-dd".
- */
-export function DatePicker({
+const dayLabel = (d: Date) => `${d.getDate()}-${MONTHS_FULL[d.getMonth()]}, ${d.getFullYear()}`;
+
+const navButton =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-soft outline-none transition-colors hover:bg-surface-2 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary-300 disabled:pointer-events-none disabled:opacity-30';
+
+/** Ochiq kalendar: kunlar to'ri, sarlavha bosilsa — oy va yil tanlash. */
+function CalendarPanel({
   value,
-  onChange,
-  block = false,
-  placeholder = 'Sanani tanlang',
-  className,
+  min,
+  max,
+  onPick,
 }: {
   value: string;
-  onChange: (value: string) => void;
-  block?: boolean;
-  placeholder?: string;
-  className?: string;
+  min?: string;
+  max?: string;
+  onPick: (day: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useClickOutside<HTMLDivElement>(() => setOpen(false));
-  const [btnRef, popLeft] = useAutoAlign<HTMLButtonElement>(open, 280);
-  const selected = parseDate(value);
-  const today = new Date();
+  const today = toDay(new Date());
+  // Klaviatura kursori; ko'rsatilayotgan oy ham shundan olinadi.
+  const [cursor, setCursor] = useState(() => clampDay(fromDay(value) ? value : today, min, max));
+  const [mode, setMode] = useState<'days' | 'months'>('days');
+  const gridRef = useRef<HTMLDivElement>(null);
+  const wantFocus = useRef(true);
 
-  // Ko'rsatilayotgan oy (oyning 1-kuni)
-  const [view, setView] = useState(() => {
-    const base = selected ?? today;
-    return new Date(base.getFullYear(), base.getMonth(), 1);
-  });
+  const shown = fromDay(cursor) ?? new Date();
+  const year = shown.getFullYear();
+  const month = shown.getMonth();
+  const monthKey = (y: number, m: number) => toDay(new Date(y, m, 1)).slice(0, 7);
+  const monthAllowed = (y: number, m: number) => isAllowed(monthKey(y, m), min?.slice(0, 7), max?.slice(0, 7));
+  const goMonth = (y: number, m: number) => {
+    const last = new Date(y, m + 1, 0).getDate();
+    setCursor(clampDay(toDay(new Date(y, m, Math.min(shown.getDate(), last))), min, max));
+  };
 
+  // Ochilganda va klaviaturada yurilganda fokus kursor kunida turadi.
   useEffect(() => {
-    if (open) {
-      const base = parseDate(value) ?? new Date();
-      setView(new Date(base.getFullYear(), base.getMonth(), 1));
-    }
-  }, [open, value]);
+    if (!wantFocus.current || mode !== 'days') return;
+    const t = window.setTimeout(() => {
+      // Taymer ichida o'chiriladi: effekt qayta ishga tushsa ham fokus yo'qolmaydi.
+      wantFocus.current = false;
+      gridRef.current?.querySelector<HTMLElement>(`[data-day="${cursor}"]`)?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [cursor, mode]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open]);
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const next = moveDay(cursor, e.key);
+    if (!next) return;
+    e.preventDefault();
+    wantFocus.current = true;
+    setCursor(clampDay(next, min, max));
+  };
 
-  // Oy katakchalari (Dushanbadan boshlab)
-  const cells = useMemo(() => {
-    const year = view.getFullYear();
-    const month = view.getMonth();
-    const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // 0 = Dushanba
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const arr: (number | null)[] = [];
-    for (let i = 0; i < firstDow; i++) arr.push(null);
-    for (let d = 1; d <= daysInMonth; d++) arr.push(d);
-    return arr;
-  }, [view]);
-
-  const label = selected
-    ? `${selected.getDate()}-${MONTHS_FULL[selected.getMonth()]}, ${selected.getFullYear()}`
-    : placeholder;
-
-  function pick(day: number) {
-    const d = new Date(view.getFullYear(), view.getMonth(), day);
-    onChange(toValue(d));
-    setOpen(false);
-  }
+  const prevOff = mode === 'days' ? !monthAllowed(year, month - 1) : !!min && String(year - 1) < min.slice(0, 4);
+  const nextOff = mode === 'days' ? !monthAllowed(year, month + 1) : !!max && String(year + 1) > max.slice(0, 4);
+  const step = (dir: 1 | -1) => (mode === 'days' ? goMonth(year, month + dir) : goMonth(year + dir, month));
 
   return (
-    <div ref={ref} className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={cn(
-          'flex h-11 w-full items-center gap-2.5 rounded-xl border bg-surface px-3.5 text-sm font-medium outline-none transition-colors',
-          open ? 'border-primary-300 text-primary-700' : 'border-line text-ink-soft hover:bg-surface-2',
-        )}
-      >
-        <Calendar size={17} variant="Bulk" className={cn('shrink-0', open ? 'text-primary-500' : 'text-ink-muted')} />
-        <span className={cn('flex-1 truncate text-left', !selected && 'text-ink-muted')}>{label}</span>
-      </button>
+    <div className="w-[272px]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button type="button" className={navButton} onClick={() => step(-1)} disabled={prevOff} aria-label={mode === 'days' ? 'Oldingi oy' : 'Oldingi yil'}>
+          <ArrowLeft2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            wantFocus.current = mode === 'months';
+            setMode(mode === 'days' ? 'months' : 'days');
+          }}
+          aria-expanded={mode === 'months'}
+          className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-bold text-ink outline-none transition-colors hover:bg-surface-2 focus-visible:ring-2 focus-visible:ring-primary-300"
+        >
+          {mode === 'days' ? `${MONTHS_FULL[month]} ${year}` : year}
+          <ArrowDown2 size={14} className={cn('text-ink-muted transition-transform', mode === 'months' && 'rotate-180')} />
+        </button>
+        <button type="button" className={navButton} onClick={() => step(1)} disabled={nextOff} aria-label={mode === 'days' ? 'Keyingi oy' : 'Keyingi yil'}>
+          <ArrowRight2 size={16} />
+        </button>
+      </div>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.97 }}
-            transition={{ duration: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            style={{ left: popLeft }}
-            className="absolute z-50 mt-2 w-70 rounded-2xl border border-line bg-surface p-3 shadow-pop"
-          >
-            {/* Oy navigatsiyasi */}
-            <div className="mb-2 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
-              >
-                <ArrowLeft2 size={16} />
-              </button>
-              <span className="text-sm font-semibold text-ink">
-                {MONTHS_FULL[view.getMonth()]} {view.getFullYear()}
-              </span>
-              <button
-                type="button"
-                onClick={() => setView((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-surface-2"
-              >
-                <ArrowRight2 size={16} />
-              </button>
-            </div>
-
-            {/* Hafta kunlari */}
-            <div className="mb-1 grid grid-cols-7 gap-1">
+      {/* Ikkala ko'rinish bir xil balandlikda — drop-down sakramaydi. */}
+      <div className="h-[262px]">
+        {mode === 'days' ? (
+          <>
+            <div className="mb-1 grid grid-cols-7">
               {WEEKDAYS.map((w, i) => (
                 <div
                   key={w}
-                  className={cn(
-                    'flex h-7 items-center justify-center text-[11px] font-semibold',
-                    i >= 5 ? 'text-danger' : 'text-ink-muted',
-                  )}
+                  className={cn('flex h-7 items-center justify-center text-[11px] font-semibold', i >= 5 ? 'text-danger' : 'text-ink-muted')}
                 >
                   {w}
                 </div>
               ))}
             </div>
-
-            {/* Kunlar */}
-            <div className="grid grid-cols-7 gap-1">
-              {cells.map((day, i) => {
-                if (day === null) return <div key={`b${i}`} />;
-                const d = new Date(view.getFullYear(), view.getMonth(), day);
-                const isSel = !!selected && sameDay(d, selected);
-                const isToday = sameDay(d, today);
-                const weekend = i % 7 >= 5;
+            <div ref={gridRef} className="grid grid-cols-7 gap-y-0.5" onKeyDown={onKeyDown}>
+              {monthGrid(year, month).map(({ day, inMonth }, i) => {
+                const off = !isAllowed(day, min, max);
+                const selected = day === value;
                 return (
                   <button
                     key={day}
                     type="button"
-                    onClick={() => pick(day)}
+                    data-day={day}
+                    tabIndex={day === cursor ? 0 : -1}
+                    disabled={off}
+                    aria-pressed={selected}
+                    aria-current={day === today ? 'date' : undefined}
+                    aria-label={dayLabel(fromDay(day)!)}
+                    onClick={() => onPick(day)}
                     className={cn(
-                      'flex h-9 items-center justify-center rounded-lg text-[13px] font-medium transition-colors',
-                      isSel
-                        ? 'bg-primary-600 text-white shadow-glow'
-                        : isToday
-                          ? 'bg-primary-50 text-primary-700'
-                          : weekend
-                            ? 'text-danger hover:bg-surface-2'
-                            : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                      'mx-auto flex h-[36px] w-[36px] items-center justify-center rounded-xl text-[13px] font-medium tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-400',
+                      selected
+                        ? 'bg-primary-600 font-bold text-white shadow-glow'
+                        : off
+                          ? 'cursor-not-allowed text-ink-muted opacity-35'
+                          : cn(
+                              'hover:bg-surface-2',
+                              !inMonth ? 'text-ink-muted opacity-60' : i % 7 >= 5 ? 'text-danger' : 'text-ink',
+                              day === today && 'font-bold text-primary-700 ring-1 ring-inset ring-primary-300',
+                            ),
                     )}
                   >
-                    {day}
+                    {Number(day.slice(8))}
                   </button>
                 );
               })}
             </div>
-
-            {/* Tez tanlash */}
-            <div className="mt-2 grid grid-cols-3 gap-1.5">
-              {DAY_PRESETS.map((p) => {
-                const d = new Date();
-                d.setDate(d.getDate() - p.back);
-                const active = !!selected && sameDay(d, selected);
-                return (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => {
-                      onChange(toValue(d));
-                      setOpen(false);
-                    }}
-                    className={cn(
-                      'rounded-xl border py-2 text-[12px] font-medium transition-colors',
-                      active
-                        ? 'border-primary-300 bg-primary-50 text-primary-700'
-                        : 'border-line text-ink-soft hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600',
-                    )}
-                  >
-                    {p.label}
-                  </button>
-                );
-              })}
-            </div>
-          </motion.div>
+          </>
+        ) : (
+          <div className="grid h-full grid-cols-3 grid-rows-4 gap-1.5">
+            {MONTHS_SHORT.map((name, i) => (
+              <button
+                key={name}
+                type="button"
+                disabled={!monthAllowed(year, i)}
+                onClick={() => {
+                  goMonth(year, i);
+                  wantFocus.current = true;
+                  setMode('days');
+                }}
+                className={cn(
+                  'rounded-xl text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-300 disabled:cursor-not-allowed disabled:opacity-35',
+                  i === month ? 'bg-primary-600 text-white shadow-glow' : 'text-ink-soft hover:bg-surface-2 hover:text-ink',
+                )}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-line pt-2.5">
+        {[
+          { label: 'Kecha', day: toDay(addDays(new Date(), -1)) },
+          { label: 'Bugun', day: today },
+        ].map((p) => (
+          <button
+            key={p.label}
+            type="button"
+            disabled={!isAllowed(p.day, min, max)}
+            onClick={() => onPick(p.day)}
+            className={cn(
+              'rounded-xl border py-2 text-[12.5px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-35',
+              value === p.day
+                ? 'border-primary-300 bg-primary-50 text-primary-700'
+                : 'border-line text-ink-soft hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600',
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Stillangan kalendar drop-down — native `type="date"` o'rniga.
+ * Qiymat formati: "yyyy-mm-dd"; `min` / `max` ham shu formatda.
+ */
+export function DatePicker({
+  value,
+  onChange,
+  min,
+  max,
+  block = false,
+  placeholder = 'Sanani tanlang',
+  ariaLabel = 'Sana',
+  compact = false,
+  className,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  min?: string;
+  max?: string;
+  block?: boolean;
+  placeholder?: string;
+  ariaLabel?: string;
+  /** Tor joy uchun: tugmada "26.11.2026". */
+  compact?: boolean;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const selected = fromDay(value);
+  const close = useCallback(() => setOpen(false), []);
+
+  return (
+    <div className={cn('relative', block ? 'w-full' : 'inline-block', className)}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-label={`${ariaLabel}: ${selected ? dayLabel(selected) : placeholder}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={cn(
+          'flex h-11 w-full items-center rounded-xl border bg-surface text-sm font-medium outline-none transition-colors focus-visible:border-primary-300',
+          compact ? 'gap-2 px-3' : 'gap-2.5 px-3.5',
+          open ? 'border-primary-300 text-primary-700' : 'border-line text-ink-soft hover:bg-surface-2',
+        )}
+      >
+        <Calendar size={17} variant="Bulk" className={cn('shrink-0', open ? 'text-primary-500' : 'text-ink-muted')} />
+        <span className={cn('flex-1 truncate text-left tabular-nums', selected ? 'text-ink' : 'text-ink-muted')}>
+          {!selected ? placeholder : compact ? value.split('-').reverse().join('.') : dayLabel(selected)}
+        </span>
+        {!compact && (
+          <ArrowDown2 size={14} className={cn('shrink-0 text-ink-muted transition-transform', open && 'rotate-180')} />
+        )}
+      </button>
+
+      <Popover open={open} onClose={close} anchorRef={btnRef} label="Sana tanlash">
+        <CalendarPanel
+          value={value}
+          min={min}
+          max={max}
+          onPick={(day) => {
+            onChange(day);
+            setOpen(false);
+            btnRef.current?.focus({ preventScroll: true });
+          }}
+        />
+      </Popover>
     </div>
   );
 }

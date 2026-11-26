@@ -33,6 +33,7 @@ import {
 import { bonusSource, formatMonthLabel, SOURCE_META } from './meta';
 import { BonusFormModal } from './BonusFormModal';
 import { usePrefersReducedMotion } from './usePrefersReducedMotion';
+import { MonthPicker } from '@/shared/ui/MonthPicker';
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn('animate-pulse rounded-2xl bg-surface-2', className)} />;
@@ -163,13 +164,7 @@ export function BonusesPage() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="month"
-                value={monthFilter}
-                onChange={(e) => setMonthFilter(e.target.value)}
-                aria-label="Oy bo'yicha filtr"
-                className="h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-medium text-ink outline-none focus:border-primary-300"
-              />
+              <MonthPicker value={monthFilter} onChange={setMonthFilter} placeholder="Barcha oylar" className="w-48" />
               {monthFilter && (
                 <button
                   onClick={() => setMonthFilter('')}

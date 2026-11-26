@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { DocumentDownload, RotateRight } from 'iconsax-react';
 import { Modal } from '@/shared/ui/Modal';
 import { Button } from '@/shared/ui/Button';
+import { DatePicker } from '@/shared/ui/DatePicker';
+import { MonthPicker } from '@/shared/ui/MonthPicker';
 import { cn } from '@/shared/lib/cn';
 import {
   daysInclusive,
@@ -14,26 +16,7 @@ import {
   type Range,
 } from './period';
 
-const MONTH_NAMES = [
-  'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
-  'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr',
-];
-
 type Mode = 'week' | 'month' | 'custom';
-
-const monthLabel = (value: string) => {
-  const [y, m] = value.split('-').map(Number);
-  return `${MONTH_NAMES[m - 1]} ${y}`;
-};
-
-/** Oxirgi 12 oy + sahifada tanlangan oy ("YYYY-MM", yangi birinchi). */
-function monthOptions(selected: string): string[] {
-  const now = new Date();
-  const list = Array.from({ length: 12 }, (_, i) =>
-    localDay(0, new Date(now.getFullYear(), now.getMonth() - i, 1)).slice(0, 7),
-  );
-  return [...new Set([...list, selected])].sort().reverse();
-}
 
 /** Excel davri: oxirgi 7 kun + bugun, bir oy yoki ixtiyoriy oraliq. */
 export function ExportPeriodModal({
@@ -86,7 +69,6 @@ export function ExportPeriodModal({
     { key: 'month', label: 'Oy bo‘yicha' },
     { key: 'custom', label: 'Boshqa davr' },
   ];
-  const field = 'h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-primary-300';
 
   return (
     <Modal open={open} onClose={onClose} title="Excel davri" subtitle="Qaysi kunlar uchun hisobot tayyorlansin" width={440}>
@@ -112,29 +94,26 @@ export function ExportPeriodModal({
           ))}
         </div>
 
-        {mode === 'month' && (
-          <select value={month} onChange={(e) => setMonth(e.target.value)} aria-label="Oy" className={field}>
-            {monthOptions(pageMonth).map((v) => (
-              <option key={v} value={v}>
-                {monthLabel(v)}
-              </option>
-            ))}
-          </select>
-        )}
+        {mode === 'month' && <MonthPicker value={month} onChange={setMonth} max={today.slice(0, 7)} />}
         {mode === 'custom' && (
           <div className="grid grid-cols-2 gap-3">
-            {(['from', 'to'] as const).map((k) => (
-              <label key={k} className="text-[12px] text-ink-muted">
-                {k === 'from' ? 'Boshlanish' : 'Tugash'}
-                <input
-                  type="date"
-                  value={custom[k]}
-                  max={today}
-                  onChange={(e) => setCustom((r) => ({ ...r, [k]: e.target.value }))}
-                  className={cn(field, 'mt-1')}
-                />
-              </label>
-            ))}
+            {(['from', 'to'] as const).map((k) => {
+              const label = k === 'from' ? 'Boshlanish' : 'Tugash';
+              return (
+                <div key={k} className="min-w-0 text-[12px] text-ink-muted">
+                  {label}
+                  <DatePicker
+                    value={custom[k]}
+                    max={today}
+                    onChange={(v) => setCustom((r) => ({ ...r, [k]: v }))}
+                    ariaLabel={label}
+                    compact
+                    block
+                    className="mt-1"
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
 
